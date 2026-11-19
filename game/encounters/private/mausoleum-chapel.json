@@ -1,0 +1,150 @@
+{
+ "id": "mausoleum-chapel",
+ "name": "Mausoleum chapel",
+ "private": true,
+ "order": 102,
+ "map": "mausoleum-chapel",
+ "theme": "mausoleum",
+ "blurb": "An upper chapel and a walkway around a deep central opening.",
+ "presets": [
+  {
+   "id": "p1",
+   "name": "Mausoleum chapel: Wights",
+   "difficulty": "Medium",
+   "blurb": "Guy, Elion and Curogana against 2 skeletons, 1 ghast and 2 wights.",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "skeleton",
+    "ghast",
+    "wight",
+    "wight"
+   ],
+   "placements": {
+    "guy": [
+     3,
+     0
+    ],
+    "elion": [
+     4,
+     2
+    ],
+    "curogana": [
+     4,
+     1
+    ],
+    "skeleton-1": [
+     3,
+     14
+    ],
+    "skeleton-2": [
+     2,
+     17
+    ],
+    "ghast-1": [
+     2,
+     15
+    ],
+    "wight-1": [
+     4,
+     17
+    ],
+    "wight-2": [
+     2,
+     18
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1179"
+   }
+  },
+  {
+   "id": "p2",
+   "name": "Mausoleum chapel: Mummy · Elion and Curogana",
+   "difficulty": "Medium",
+   "blurb": "Elion and Curogana against 1 ghast, 1 wight and 1 mummy.",
+   "party": [
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "ghast",
+    "wight",
+    "mummy"
+   ],
+   "placements": {
+    "elion": [
+     14,
+     14
+    ],
+    "curogana": [
+     16,
+     13
+    ],
+    "ghast-1": [
+     12,
+     2
+    ],
+    "wight-1": [
+     13,
+     2
+    ],
+    "mummy-1": [
+     14,
+     2
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1180"
+   }
+  },
+  {
+   "id": "p3",
+   "name": "Mausoleum chapel: Mummies · Curogana",
+   "difficulty": "Medium",
+   "blurb": "Curogana against 1 specter and 2 mummies.",
+   "party": [
+    "curogana"
+   ],
+   "roster": [
+    "specter",
+    "mummy",
+    "mummy"
+   ],
+   "placements": {
+    "curogana": [
+     4,
+     0
+    ],
+    "specter-1": [
+     17,
+     8
+    ],
+    "mummy-1": [
+     18,
+     8
+    ],
+    "mummy-2": [
+     16,
+     7
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1181"
+   }
+  }
+ ]
+}

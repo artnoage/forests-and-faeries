@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forests-and-faeries"
+version = "0.2.0"
+description = "General-backend RL trainer and Forests and Faeries web game server on ember_rs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+web = [
+    "flask>=3.0",
+    "gunicorn>=22.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["rl", "."]
+include = ["ember_rl*", "game*"]
+
+[tool.pytest.ini_options]
+testpaths = ["rl/ember_rl/tests", "game/tests"]

@@ -1,0 +1,25 @@
+{
+ "licence": "MIT (original maps, natural20-metaskepsis)",
+ "maps": {
+  "hall_32x32.yml": {
+   "natural20_commit": "4db33c86fae542cc6840287f40e7fda4def1b693",
+   "path": "scenarios/general/maps/hall_32x32.yml",
+   "sha256": "e834658388213e2c28a2da8806c7f2e191ceddfb447b866a628c1e88dd4e94c3"
+  },
+  "room_12x10.yml": {
+   "natural20_commit": "4db33c86fae542cc6840287f40e7fda4def1b693",
+   "path": "scenarios/general/maps/room_12x10.yml",
+   "sha256": "21cc38fa384d1d34b351377e044ebc836016af96be282a6f13ac7a0f1825c969"
+  },
+  "two_rooms_24x18.yml": {
+   "natural20_commit": "4db33c86fae542cc6840287f40e7fda4def1b693",
+   "path": "scenarios/general/maps/two_rooms_24x18.yml",
+   "sha256": "bde4bf24f2d467b8d96b72b5581ec8bee6ceec1b9e35cac609cda822128f2c1c"
+  },
+  "vault.yml": {
+   "natural20_commit": "4db33c86fae542cc6840287f40e7fda4def1b693",
+   "path": "scenarios/general/maps/vault.yml",
+   "sha256": "bbeaec54f606bfa169786051f7663f330c898943d8c7b141f7b4cf0ab7cf400c"
+  }
+ }
+}

@@ -1,0 +1,210 @@
+{
+  "what": "Static 3D miniatures for the six heroes of the general pool: the level-3 Guy (human Champion fighter), Elion (human Life cleric), Curogana (high elf Draconic sorcerer) and Chruna (human Berserker barbarian), and the level-2 Mara (human Fighter 2, soldier) and Ilyra (human Wizard 2, sage).",
+  "made": "2026-11-17 and 2026-11-18, for this prototype, at the maintainer's request (Guy, Elion and Curogana approved 2026-11-17; Mara and Ilyra in a second batch approved the same day; Chruna added 2026-11-18).",
+  "design": "Original, generic fantasy heroes drawn from their character sheets (scenarios/general/campaign/characters/*.yml and webgame/undead_text.py DESCRIPTIONS): Guy in chain mail with a greatsword, Elion in heavy plate with a warhammer and a shield on his back, Curogana in a sorcerer's coat with draconic scales, Mara in chain mail and a green tabard with longsword and shield, Ilyra in a blue scholar's robe with a quarterstaff, a dagger and a spellbook. No franchise-specific look, no real person, nothing from the private player files.",
+  "pipeline": [
+    "Reference images: ChatGPT image generation (Codex's built-in image_gen tool) through OpenAI Codex CLI 0.161.0 on the maintainer's ChatGPT subscription. One full-body front view per hero with the undead skeleton's front view as the style reference (so heroes and monsters match), then a matching back view generated from that front.",
+    "Meshes: Tripo API v3 multiview-to-model (front + back), model v3.1-20260211, standard geometry, detailed PBR texture, 40 credits each, on the maintainer's Tripo API account. Every first result was kept.",
+    "Web copies: Blender 5.2.3, 3d-models/tools/normalize_glb.py: decimate to 30k triangles, textures to 1024 px WebP, rotate 90 degrees (Tripo faces +X) to face glTF -Z, scale to the listed height, centre, feet at y=0. Mara and Ilyra (welded: true) were reduced with --weld, which joins the glTF UV-seam splits first, so the copy welds back into one closed mesh (ready for rigging); the first three were reduced per UV island and have hairline seam cracks."
+  ],
+  "style_prompt": "Use case: stylized-concept, image-to-3D full-body character reference for a small figure in a tabletop-miniature style fantasy game. Original generic fantasy design, not based on any existing game, film, book, franchise or brand.\nStyle: polished stylized 3D game-character render with hand-painted textures, like a high-quality stylized fantasy tabletop miniature: chunky readable silhouette, simplified clean forms, slightly enlarged head, hands and feet, muted desaturated palette, soft clay-like shading, crisp material separation.\nView and pose: strict front view (orthographic-looking, camera at chest height), the character faces directly toward the viewer, symmetric neutral A-pose: upright, feet planted shoulder-width apart, both arms held down and slightly away from the body (about 20 degrees) so background is visible between each arm and the torso, fingers relaxed. Anything held in the hands points straight down and stays close to the leg.\nFraming: exactly one character, the entire figure (head to feet, all held items) fully inside the portrait frame with generous white margin on all sides.\nBackground: pure white, soft even studio lighting, only a faint contact shadow under the feet. No base, plinth, ground plane, scenery, smoke, particles, text, letters, logo, watermark, signature, border, or extra characters or objects.",
+  "sources": "Reference images and prompts: assets/heroes/source/<kind>/ (tracked). Codex logs, raw Tripo model.glb and task.json: the same folders, untracked (copied from <repo-root>).",
+  "rights": "Generated with the maintainer's own accounts under the OpenAI and Tripo terms that applied at the time; no third-party asset is included. Re-check those terms before any redistribution outside this game.",
+  "runtime": "frontend/figure-models.js (FIGURE_MODELS); served only at the exact paths in webgame.app.HERO_MODEL_FILES.",
+  "tripo_credits_total": 260.0,
+  "models": [
+    {
+      "kind": "guy",
+      "file": "static/models/guy.glb",
+      "sha256": "c53f45bb4bb85cda93c85eeeff4a01deec7463cb88534b700766c7243debd7cc",
+      "bytes": 1283584,
+      "triangles": 30000,
+      "height": 1.3,
+      "footprint_xz": [
+        0.676,
+        0.2788
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": false,
+      "source_triangles": 1475956,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "9bbb257f-4c24-4084-afee-3a87d361b1d9",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "275db8f71d2d0143e93e44af7b18b1b91a51993e96851a4268d838bfa8cf5be2"
+      },
+      "references": {
+        "front_sha256": "f15fe5d4d8ea01acf6fd759cc5bc74102b93a974c3ce6b4d2039017d60c3e8cc",
+        "back_sha256": "151f6f87604c019194a1e1d168e114b5e3046920a95c646bd324a81d2725a10b",
+        "subject": "Subject: Guy, a human champion fighter (hero), a sturdy broad-shouldered young man with short tousled chestnut-brown hair, a short trimmed beard and a determined, friendly face. He wears a knee-length riveted steel chain-mail hauberk with short mail sleeves over a padded dark-blue gambeson, a short sleeveless dark-blue cloth tabard over the mail with a plain light-grey trim and no emblem, a wide brown leather belt with a plain iron buckle, brown leather bracers and gloves, dark brown trousers and sturdy knee-high brown leather boots. He has no helmet and no shield. In his right hand (on viewer-left) he holds a large two-handed greatsword with a long straight steel blade, a simple wide steel crossguard and a leather-wrapped grip with a round pommel: the sword hangs straight down, its tip just above the ground, the blade a hand's width outside his right leg and not touching it. His left hand (on viewer-right) is empty, fingers relaxed."
+      }
+    },
+    {
+      "kind": "elion",
+      "file": "static/models/elion.glb",
+      "sha256": "021063ab7c50dc5065e38b39eaa269e606a4100299d059c0a0fcb4c8f9f7b1c0",
+      "bytes": 1343776,
+      "triangles": 30000,
+      "height": 1.3,
+      "footprint_xz": [
+        0.7318,
+        0.3682
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": false,
+      "source_triangles": 1461474,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "9f06c276-d0bb-4c0a-8da4-02e66bd835ca",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "523d0a007df9fc4c814b63113539090c1ee4d3320f31c1ca5ccec1eba34d3a69"
+      },
+      "references": {
+        "front_sha256": "7baa3ae23e5c15bb58605544f6cf97e130085dadeb4d5e9db3af381523e57a4c",
+        "back_sha256": "989a090615b527fde79e48188bc7b7d7f17812814ebc7979305f72372d0aca35",
+        "subject": "Subject: Elion, a human cleric of a gentle faith of life and healing (hero), a calm middle-aged man with short silver-grey hair, a clean-shaven kind face and steady eyes. He wears full heavy plate armour: a rounded polished steel breastplate, layered steel pauldrons, steel vambraces and gauntlets, a steel plate fauld over the hips, steel greaves and sabatons, all with simple warm brass edging, over dark chain mail at the joints. Over the plate hangs a long white cloth tabard to the knees with a broad gold border and a simple embroidered golden sunburst (a plain circle with straight rays) on the chest. He has no helmet. A round steel-rimmed wooden shield with a plain white face and a small golden sunburst boss is strapped flat on his back between the shoulder blades (from the front only its rim peeks out behind the shoulders). In his right hand (on viewer-left) he holds a one-handed warhammer with a steel head, a short spike on the back and a leather-wrapped wooden haft, its head pointing straight down beside his right leg without touching it. His left hand (on viewer-right) is empty in its gauntlet, fingers relaxed."
+      }
+    },
+    {
+      "kind": "curogana",
+      "file": "static/models/curogana.glb",
+      "sha256": "cd09042fca8dbc403ff8744fe999ead930aa057e56739e1ca8f27a23de5498d9",
+      "bytes": 1187028,
+      "triangles": 30000,
+      "height": 1.27,
+      "footprint_xz": [
+        0.6254,
+        0.2818
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": false,
+      "source_triangles": 1486060,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "a3c57a64-5b75-4196-98d9-706e83c60f51",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "f6c200726f13057fcc4a5ff6b33397b172f7f1466e5a3b48b3d0918782ce423b"
+      },
+      "references": {
+        "front_sha256": "72fb4cdd4d0cb0498a1ffa2e282f44caec42cc524e39385a8a1b978b8d498c59",
+        "back_sha256": "1bc280c21b7455e89333d2a20d7d19c1df6b22f21e0a578c8f0221b8c034a100",
+        "subject": "Subject: Curogana, a high elf sorcerer of draconic blood (hero), a slender young elven woman with long pointed ears, fine elegant features, glowing amber eyes and long copper-red hair gathered in one thick braid that hangs down her back. Small iridescent dark-crimson dragon scales cover patches of her cheekbones and temples, the sides of her neck, her forearms and the backs of her hands. She wears a fitted crimson sorcerer's coat with a high stiff collar, gold trim and a dark charcoal waistcoat underneath, the coat split at the front from the waist and falling to just above the knees so both legs stay clearly visible; a dark leather belt with two small pouches; fitted charcoal trousers and soft dark-brown knee-high leather boots; a small polished red crystal pendant on a chain at her throat. No armour, no staff, no weapon, no hat. Both hands are empty and open, fingers relaxed and slightly spread."
+      }
+    },
+    {
+      "kind": "mara",
+      "file": "static/models/mara.glb",
+      "sha256": "7c4faf725ccc6165ccc6d23cf385d19da20edd3b464955979d4f15483aac3c56",
+      "bytes": 1206808,
+      "triangles": 30000,
+      "height": 1.27,
+      "footprint_xz": [
+        0.7312,
+        0.3645
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": true,
+      "source_triangles": 1476952,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "48b1e7bb-a977-42d8-9c39-b56aa305df32",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "66e5d7f8ff40b594a011b4214095d3507db5b4c88fc9cede7aed06863a24fb6d"
+      },
+      "references": {
+        "front_sha256": "a5a01668be0b4127948e738c904b76b02b5a78f3f24d455b72c6ac3b83ca1ac1",
+        "back_sha256": "086b96f5e6948f605d062b9fbd438fe66d7ec8a407063be738e33beea96c7ba4",
+        "subject": "Subject: Mara, a human soldier fighter (hero), a fit, sturdy young woman with tanned skin, a calm determined face, a small scar on one eyebrow and dark brown hair pulled back into a short practical braid. She wears a knee-length riveted steel chain-mail hauberk with short mail sleeves over a padded grey gambeson, a sleeveless teal-green cloth tabard over the mail with a plain brass-coloured trim and no emblem, a wide dark leather belt with a brass buckle, brown leather bracers and gloves, dark grey trousers and sturdy knee-high brown leather boots. She has no helmet. In her right hand (on viewer-left) she holds a one-handed longsword with a straight steel blade and a simple crossguard, pointing straight down, a hand's width outside her right leg and not touching it. In her left hand (on viewer-right) she holds a round wooden shield with a steel rim, a plain teal-green painted face and a central steel boss, by its grip at her side, face turned toward the viewer, its lower rim at knee height, a hand's width outside her left leg."
+      }
+    },
+    {
+      "kind": "ilyra",
+      "file": "static/models/ilyra.glb",
+      "sha256": "15cc031c6647fde7baa2586ddfc78d9b20e5860124ae5f48c026a72537a537cf",
+      "bytes": 1107612,
+      "triangles": 30000,
+      "height": 1.26,
+      "footprint_xz": [
+        0.6252,
+        0.3701
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": true,
+      "source_triangles": 1466112,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "908eb0ef-c572-42e4-804b-30b69ee29141",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "8d64c45c0b5e2a3911aaa68205542afa768818f5072e7c71b090f2c7d532b927"
+      },
+      "references": {
+        "front_sha256": "b21c7b4f2637acde0de7cfb6940b55df90b2b163d50798cf86d9e54a951b05f8",
+        "back_sha256": "0dade74b78dfb83280249eaf2cd5adcb0937f4c907a3d731084fa333142e0f66",
+        "subject": "Subject: Ilyra, a human wizard and scholar (hero), a slender young woman with fair skin, a thoughtful, alert face, dark brown eyes and straight black hair gathered into a low bun with a few loose strands. She wears a long scholar's robe of deep blue-teal wool with a pale cream trim, its hood lowered onto her shoulders, the robe falling to mid-calf and split at the front and sides below the waist so both legs stay clearly visible, over dark grey fitted trousers and soft brown knee-high boots; a plain rope belt with a small leather pouch, a sheathed dagger on her left hip and a small leather-bound spellbook hanging from the belt on a short strap. In her right hand (on viewer-left) she holds a plain wooden quarterstaff upright, as tall as she is, its foot resting on the ground a hand's width outside her right foot and its top at the height of the top of her head. Her left hand (on viewer-right) is empty, fingers relaxed."
+      }
+    },
+    {
+      "kind": "chruna",
+      "file": "<repo-root>/heroes/chruna/model-web.glb",
+      "sha256": "9854d98e35e757e9159d4f61dcb24f951466db78834637e91f20946d143fbff3",
+      "bytes": 1410576,
+      "triangles": 30000,
+      "height": 1.3,
+      "footprint_xz": [
+        0.8384,
+        0.3868
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": false,
+      "source_triangles": 1957883,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "2b0bdd88-b6cf-4421-af70-c72cfd5d1cf5",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "detailed",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 60.0,
+        "raw_model_sha256": "78099b4f38b0ad3468492ee859257ba5e9ef42e6d7febce8a23240493e0a96a4"
+      },
+      "references": {
+        "front_sha256": "d04fcb266d294b6a3d0094de2c7772e8a0dcae269a1654ac98a5b8f26987b868",
+        "back_sha256": "a8d2b351948ed45541b0f5d1be85d1501080a6c836a6bef787c5f3e705a7a478",
+        "subject": "Chruna, original character: clean full-body front and back views on white redrawn by Codex from the project's own character drawing, then Tripo multiview. A human barbarian with two long-hafted axe-bladed polearms (the halberds of her level-3 sheet), a plate cuirass, red bracers and a torn blue cape."
+      },
+      "shipped": "rigged from the raw Tripo mesh into game/static/models/chruna.glb on 2026-11-18"
+    }
+  ]
+}

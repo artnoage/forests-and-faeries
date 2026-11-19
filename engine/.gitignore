@@ -1,0 +1,8 @@
+/target/
+/reference/natural20-*/
+/tapes/
+__pycache__/
+*.pyc
+# private pack and private tapes never enter this repository (GENERAL_ENV.md §2.6)
+content-private/
+tapes-private/

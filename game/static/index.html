@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07090c">
+  <meta name="description" content="Forests and Faeries: a small 3D tactical tabletop game played with the Natural20 rules engine and free SRD 5.2.1 rules content.">
+  <title>Forests and Faeries</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23d9ae66' d='M16 2 5 18l11 12 11-12-6-9-5 11-5-5z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css?v=ff1">
+  <script src="./scene3d.js?v=ff1" defer></script>
+  <script src="./app.js?v=ff1" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#command-area">Skip to the command deck</a>
+
+  <!-- Portraits and the CC BY 3.0 game-icons.net action icons (modified; see licenses.html) -->
+<svg class="art-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="steel" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dbe4df"/><stop offset=".45" stop-color="#7c9392"/><stop offset=".55" stop-color="#b4c6be"/><stop offset="1" stop-color="#3c5256"/></linearGradient>
+      <linearGradient id="gold-trim" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffe7a8"/><stop offset=".5" stop-color="#d49e47"/><stop offset="1" stop-color="#7a531e"/></linearGradient>
+      <linearGradient id="robe" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7fa2d4"/><stop offset=".5" stop-color="#3a5282"/><stop offset="1" stop-color="#1e2a48"/></linearGradient>
+      <linearGradient id="crimson-robe" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#da5a4a"/><stop offset=".5" stop-color="#8b2824"/><stop offset="1" stop-color="#441315"/></linearGradient>
+      <linearGradient id="cleric-cloth" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f2ede0"/><stop offset=".6" stop-color="#c6bca3"/><stop offset="1" stop-color="#6b6456"/></linearGradient>
+      <linearGradient id="skin" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#ebc49a"/><stop offset="1" stop-color="#9e6950"/></linearGradient>
+      <linearGradient id="goblin-skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9ab364"/><stop offset="1" stop-color="#4c5f3a"/></linearGradient>
+      <linearGradient id="ghoul-skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#99a896"/><stop offset="1" stop-color="#49574b"/></linearGradient>
+      <linearGradient id="linen-wrap" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dfcfa8"/><stop offset=".55" stop-color="#a8946b"/><stop offset="1" stop-color="#5d4f37"/></linearGradient>
+      <radialGradient id="spell-glow"><stop stop-color="#e3faff"/><stop offset=".35" stop-color="#7ce0eb" stop-opacity=".8"/><stop offset="1" stop-color="#63c5d2" stop-opacity="0"/></radialGradient>
+      <radialGradient id="amber-glow"><stop stop-color="#fff4c4"/><stop offset=".4" stop-color="#f5a93b" stop-opacity=".85"/><stop offset="1" stop-color="#e06b22" stop-opacity="0"/></radialGradient>
+
+      <symbol id="art-fighter" viewBox="-44 -104 88 112">
+        <path d="M-18-67Q-39-43-31 0L-7-8 26 1Q33-32 15-68Z" fill="#192d32" stroke="#527170"/>
+        <path d="m-16-67-11 15 8 27 33 1 7-31-14-14Z" fill="url(#steel)" stroke="#263b40" stroke-width="2"/>
+        <path d="M-26-57q-14-1-13 14l10 6 13-17M15-59q19-5 22 10l-10 9-12-14" fill="url(#steel)" stroke="#273d41" stroke-width="2"/>
+        <path d="m-25-31 16 8-2 26-18 13-18-15 1-26Z" fill="#294d50" stroke="#dfb974" stroke-width="2"/>
+        <path d="m-25-17 4 10-4 12-4-12Z" fill="#e8c378"/>
+        <path d="m33-28 1-52 3-13 4 14-4 52Z" fill="url(#steel)" stroke="#e6ead5"/>
+        <path d="m26-27 18 1M35-27l-1 13" stroke="#d4aa63" stroke-width="4"/>
+        <path d="M-11-83q0-18 15-17 18 4 14 20l-4 17-18 1-9-12Z" fill="url(#skin)" stroke="#322e2a" stroke-width="2"/>
+        <path d="M-14-84q-2-19 16-20 20 0 18 21l-7-6-11-3-8 9Z" fill="#4f3b2f"/>
+        <path d="m-13-87 14-6 14 6" fill="none" stroke="url(#gold-trim)" stroke-width="3"/>
+        <path d="m-5-80 4 1m9-1 4-1" stroke="#202c2c" stroke-width="2.2"/>
+        <path d="m-12-68 12 9 14-9-4 13-10 5-10-5Z" fill="#c7b080" stroke="#374b4c"/>
+      </symbol>
+
+      <symbol id="art-cleric" viewBox="-44 -104 88 112">
+        <circle cx="0" cy="-78" r="30" fill="url(#amber-glow)" opacity=".55"/>
+        <path d="M-20-64Q-36-36-30 2L0-4 30 2Q35-35 20-64Z" fill="url(#cleric-cloth)" stroke="#a89060" stroke-width="2"/>
+        <path d="M-6-62H6V-4H-6Z" fill="#285868" stroke="url(#gold-trim)" stroke-width="1.6"/>
+        <path d="M-24-58q-12 4-10 17l13 5 9-18M24-58q12 4 10 17l-13 5-9-18" fill="url(#gold-trim)" stroke="#4c381c" stroke-width="1.8"/>
+        <path d="M30-16V-78" stroke="#7c5c38" stroke-width="5"/>
+        <rect x="20" y="-92" width="20" height="14" rx="2" fill="url(#gold-trim)" stroke="#fff0bd" stroke-width="1.5"/>
+        <path d="M-11-82q0-17 12-17 15 1 13 18l-3 16-16 1-7-10Z" fill="url(#skin)" stroke="#382e28" stroke-width="2"/>
+        <path d="M-13-84q1-18 14-18 16 1 15 18l-8-6-12 0Z" fill="#d9c8a9"/>
+        <path d="m-5-79 4 0m8 0 4 0" stroke="#263338" stroke-width="2"/>
+        <path d="M0-53l4 8 8 4-8 4-4 8-4-8-8-4 8-4Z" fill="#ffe89c"/>
+      </symbol>
+
+      <symbol id="art-sorcerer" viewBox="-44 -104 88 112">
+        <circle cx="25" cy="-54" r="22" fill="url(#amber-glow)"/>
+        <path d="M-18-63Q-34-34-28 2L-2-5 26 2Q30-35 16-63Z" fill="url(#crimson-robe)" stroke="#d9a15b" stroke-width="2"/>
+        <path d="m-12-58 12 18 12-18M-15-34l30 0" fill="none" stroke="url(#gold-trim)" stroke-width="2.4"/>
+        <path d="M-12-86l-10-16 8 6 5 9M12-86l10-16-8 6-5 9" fill="url(#gold-trim)" stroke="#5b3418" stroke-width="1.5"/>
+        <path d="m-12-78-10-4 6 9M12-78l10-4-6 9" fill="url(#skin)" stroke="#4c2c24"/>
+        <path d="M-11-82q0-17 11-17 14 1 13 17l-4 16-14 1-6-11Z" fill="url(#skin)" stroke="#3b2222" stroke-width="2"/>
+        <path d="M-13-85q2-16 14-16 14 1 14 16l-7-5-13 0Z" fill="#2a1c24"/>
+        <path d="m-5-79 4 1m8-1 4-1" stroke="#ffd27d" stroke-width="2.2"/>
+        <path d="m25-68 7 12-5 13-8-11 2-6Z" fill="#ffdf8e" stroke="#ff7b39" stroke-width="1.5"/>
+      </symbol>
+
+      <symbol id="art-mage" viewBox="-44 -104 88 112">
+        <path d="M-17-64q-20 23-17 64l21-7 16 10 27-7Q21-39 14-64Z" fill="#202c4a" stroke="#6884a8"/>
+        <path d="m-13-57-10 24L-28 0l16-3 11 8L9-3l18 2-13-54Z" fill="url(#robe)" stroke="#243252" stroke-width="2"/>
+        <path d="m-13-57 14 17 11-16M-15-34l31 1" fill="none" stroke="#dfc17d" stroke-width="2"/>
+        <path d="m-35-18 1-63-5-9 7-13 8 12-6 10-1 63" fill="#685244" stroke="#d4b379"/>
+        <circle cx="-32" cy="-89" r="13" fill="url(#spell-glow)"/>
+        <path d="m-32-96-4 7 4 7 4-7Z" fill="#b8f7f0"/>
+        <path d="M-16-74Q-18-99 2-101 22-99 19-74L12-59-10-59Z" fill="#2c4472" stroke="#9ab6dc" stroke-width="1.8"/>
+        <path d="M-9-78q0-13 10-13 11 1 10 13l-3 13-12 1Z" fill="url(#skin)" stroke="#2e3548" stroke-width="1.6"/>
+        <path d="m-5-78 3 1m7-1 4-1" stroke="#9ef3ff" stroke-width="2"/>
+        <circle cx="26" cy="-49" r="19" fill="url(#spell-glow)"/>
+        <path d="m27-60 5 11-7 12-6-13Z" fill="#d0fff9"/>
+      </symbol>
+
+      <symbol id="art-goblin" viewBox="-44 -104 88 112">
+        <path d="m-17-63-10 32 17 12 29-11-7-31Z" fill="#7c3b34" stroke="#322a24" stroke-width="2"/>
+        <path d="m-12-57 20 29M-20-29l35-8" fill="none" stroke="#cfa46b" stroke-width="4.5"/>
+        <path d="m25-26 7-40 5-8 4 8-10 42Z" fill="url(#steel)" stroke="#b8b596"/>
+        <path d="m-14-82-23-8 9 23 15 2M12-83l25-10-9 24-17 5" fill="url(#goblin-skin)" stroke="#35452e" stroke-width="2"/>
+        <path d="M-19-80q2-18 19-17 21-1 22 20l-7 22-16 8-16-10Z" fill="url(#goblin-skin)" stroke="#34412e" stroke-width="2"/>
+        <path d="m-13-93 6-9 7 7 7-8 7 9" fill="none" stroke="url(#gold-trim)" stroke-width="2.5"/>
+        <path d="m-14-74 11 4-9 3M7-70l11-6-2 8" fill="#ffb84d" stroke="#3b2818"/>
+        <path d="m-11-58 10 4 12-5-6 9-10 1Z" fill="#262c22"/>
+        <path d="m-8-56 3 5 2-4m9-2-3 5-1-4" fill="#ebe0b5"/>
+      </symbol>
+
+      <symbol id="art-skeleton" viewBox="-44 -104 88 112">
+        <path d="M0-71v35m-16-29 31 1m-30 5q15 14 29 0m-27 8q13 13 25 0m-20 11 7-4 9 4-7 9Z" fill="none" stroke="#d4cfb4" stroke-width="4"/>
+        <path d="m-16-65-8 6-3 14 8-1 8-19M16-65l10 9 2 11-10 2-7-23" fill="#6e4840" stroke="#342828"/>
+        <path d="M-15-84q-3-17 15-18 20 0 17 19l-5 13-23 1Z" fill="#dfd8bc" stroke="#696856" stroke-width="2"/>
+        <circle cx="-6" cy="-81" r="4" fill="#222d2a"/><circle cx="8" cy="-81" r="4" fill="#222d2a"/>
+        <circle cx="-6" cy="-81" r="1.8" fill="#7cf7d4"/><circle cx="8" cy="-81" r="1.8" fill="#7cf7d4"/>
+        <path d="m-9-68 17-1-1 8-14 1Zm4 0v7m6-7v7" fill="#cbc5a4" stroke="#686756"/>
+        <path d="m24-27 8-48 4-12 3 14-9 47" fill="url(#steel)" stroke="#b9c7ba"/>
+      </symbol>
+
+      <symbol id="art-zombie" viewBox="-44 -104 88 112">
+        <path d="M-20-62-29-12 24-8 19-60Z" fill="#465246" stroke="#262e27" stroke-width="2"/>
+        <path d="m-14-56 9 22 12-18" fill="none" stroke="#7d8a74" stroke-width="3"/>
+        <path d="M-15-82q-2-18 14-18 18 1 16 19l-5 16-20 1Z" fill="url(#ghoul-skin)" stroke="#333e34" stroke-width="2"/>
+        <circle cx="-6" cy="-79" r="3.5" fill="#d9e89c"/><circle cx="8" cy="-77" r="2.5" fill="#d9e89c"/>
+        <path d="m-9-66 16 2-2 6-13-1Z" fill="#2c2426"/>
+      </symbol>
+
+      <symbol id="art-ghoul" viewBox="-44 -104 88 112">
+        <path d="M-19-60-28-8 25-8 19-60Z" fill="#3a453e" stroke="#6d8774" stroke-width="1.8"/>
+        <path d="M-16-84q0-18 16-18 18 1 17 19l-6 18-21 0Z" fill="url(#ghoul-skin)" stroke="#2c3830" stroke-width="2"/>
+        <path d="m-14-83-10-7 5 13M15-83l10-7-5 13" fill="url(#ghoul-skin)" stroke="#2c3830"/>
+        <path d="m-10-79 7 3-6 3M10-79l-7 3 6 3" fill="#ff735c"/>
+        <path d="m-9-65 18 0-3 11-12 0Z" fill="#2c191d"/>
+        <path d="m-3-61 3 13 4-13" fill="#d85c6e"/>
+        <path d="m-30-32 7-14 4 12m28 2 6-14 4 12" fill="none" stroke="#dce3cc" stroke-width="2.5"/>
+      </symbol>
+
+      <symbol id="art-wight" viewBox="-44 -104 88 112">
+        <path d="M-21-65Q-36-35-30 2L28 2Q34-36 20-65Z" fill="#232c33" stroke="#6c8794" stroke-width="2"/>
+        <path d="m-16-62-8 26 48 0-8-26Z" fill="url(#steel)" stroke="#2a3942" stroke-width="2"/>
+        <path d="m-15-92 6-9 9 7 9-7 6 9" fill="none" stroke="#9ab8c4" stroke-width="2.6"/>
+        <path d="M-14-83q0-16 14-16 16 1 15 17l-4 16-20 0Z" fill="#8b9da1" stroke="#28353b" stroke-width="2"/>
+        <circle cx="-5" cy="-80" r="3.2" fill="#8bf5ff"/><circle cx="7" cy="-80" r="3.2" fill="#8bf5ff"/>
+        <path d="m-32-24-5-54 4-12 4 12 4 54Z" fill="#4f6d7a" stroke="#9cf5ff" stroke-width="1.6"/>
+      </symbol>
+
+      <symbol id="art-specter" viewBox="-44 -104 88 112">
+        <circle cx="0" cy="-64" r="36" fill="url(#spell-glow)" opacity=".55"/>
+        <path d="M-22-68Q-36-30-26 4L-10-6 2 5 14-6 28 3Q34-32 20-68Q10-102 0-102Q-12-102-22-68Z" fill="#1b3444" fill-opacity=".88" stroke="#7ce8f5" stroke-width="2"/>
+        <path d="M-12-80Q0-96 12-80L8-62-8-62Z" fill="#09131a"/>
+        <circle cx="-5" cy="-75" r="3.2" fill="#aefbff"/><circle cx="5" cy="-75" r="3.2" fill="#aefbff"/>
+      </symbol>
+
+      <symbol id="art-mummy" viewBox="-44 -104 88 112">
+        <circle cx="0" cy="-78" r="28" fill="url(#amber-glow)" opacity=".45"/>
+        <path d="M-20-63-28 0 28 0 20-63Z" fill="url(#linen-wrap)" stroke="#5c4b32" stroke-width="2"/>
+        <path d="M-22-60Q0-44 22-60Q18-48 0-48Q-18-48-22-60Z" fill="url(#gold-trim)" stroke="#2d5f8a" stroke-width="2"/>
+        <path d="M-15-84q0-17 15-17 16 1 15 18l-4 16-22 0Z" fill="url(#linen-wrap)" stroke="#58472f" stroke-width="2"/>
+        <path d="M-15-88 15-84M-15-75 14-79M-12-68 12-71M-22-38 22-44M-24-22 24-28" stroke="#6e5a3c" stroke-width="2.2"/>
+        <circle cx="-5" cy="-80" r="3.4" fill="#ffbe3b"/><circle cx="6" cy="-80" r="3.4" fill="#ffbe3b"/>
+      </symbol>
+
+      <!-- action-icons:start -->
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-move" viewBox="0 0 512 512"><path fill="currentColor" d="M272.5 18.906c-12.775.17-26.23 2.553-40.344 7.594-30.165 55.31-68.313 120.904-125.72 178.5-21.19 21.26-39.23 44.94-52.28 68.313 1.294 6.312 4.984 11.65 10.72 17.406 10.992 11.032 30.86 21.618 54.593 33.25 46.313 22.695 107.284 50.39 146.374 108.467l195.625.032c-20.198-70.834-100.276-101.12-159.064-83.94-.073.03-.145.066-.22.095-1.61.633-3.27 1.138-4.967 1.563-.024.005-.04.025-.064.03-8.86 2.204-18.82 1.68-29.125-.406-24.79-5.02-52.76-19.695-61.342-45.687-28.615-86.673 16.65-179.742 78.156-223.28 23.064-16.328 49.06-25.848 74.47-24.47.144.008.29.023.436.03-24.19-22.74-53.33-37.95-87.25-37.5zm81.75 56c-19.213.01-39.414 7.59-58.625 21.188-54.644 38.682-96.652 125.024-71.188 202.156 5.127 15.53 27.25 29.162 47.282 33.22 10.015 2.027 19.218 1.518 23.717-.283 2.25-.9 3.173-1.84 3.594-2.562.422-.72.81-1.663.25-4.375-9.08-44.167-2.743-84.61 22.533-114.47 23.586-27.863 62.753-45.462 117.406-50.686-15.014-47.145-37.47-71.226-61.314-80.03-6.407-2.368-13.032-3.706-19.812-4.064-1.272-.067-2.563-.094-3.844-.094zM43.78 294.22c-5.405 12.554-9.136 24.756-10.905 36.186 7.178 27.76 51.898 55.43 91.094 61.344 1.703-5.973 5.832-11.475 10.28-14.25 51.01 28.844 86.18 60.704 102 101h229.594c.697-9.613.44-18.712-.625-27.344l-204.314-.03h-5.125l-2.75-4.345c-35.405-55.575-93.93-82.58-141.78-106.03-23.925-11.724-45.17-22.336-59.625-36.844-2.978-2.99-5.618-6.225-7.844-9.687z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-attack" viewBox="0 0 512 512"><path fill="currentColor" d="M19.75 14.438c59.538 112.29 142.51 202.35 232.28 292.718l3.626 3.75.063-.062c21.827 21.93 44.04 43.923 66.405 66.25-18.856 14.813-38.974 28.2-59.938 40.312l28.532 28.53 68.717-68.717c42.337 27.636 76.286 63.646 104.094 105.81l28.064-28.06c-42.47-27.493-79.74-60.206-106.03-103.876l68.936-68.938-28.53-28.53c-11.115 21.853-24.413 42.015-39.47 60.593-43.852-43.8-86.462-85.842-130.125-125.47-.224-.203-.432-.422-.656-.625C183.624 122.75 108.515 63.91 19.75 14.437zm471.875 0c-83.038 46.28-154.122 100.78-221.97 161.156l22.814 21.562 56.81-56.812 13.22 13.187-56.438 56.44 24.594 23.186c61.802-66.92 117.6-136.92 160.97-218.72zm-329.53 125.906l200.56 200.53c-4.36 4.443-8.84 8.793-13.405 13.032L148.875 153.53l13.22-13.186zm-76.69 113.28l-28.5 28.532 68.907 68.906c-26.29 43.673-63.53 76.414-106 103.907l28.063 28.06c27.807-42.164 61.758-78.174 104.094-105.81l68.718 68.717 28.53-28.53c-20.962-12.113-41.08-25.5-59.937-40.313 17.865-17.83 35.61-35.433 53.157-52.97l-24.843-25.655-55.47 55.467c-4.565-4.238-9.014-8.62-13.374-13.062l55.844-55.844-24.53-25.374c-18.28 17.856-36.602 36.06-55.158 54.594-15.068-18.587-28.38-38.758-39.5-60.625z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-bow" viewBox="0 0 512 512"><path fill="currentColor" d="M331.734 20.443a4.421 4.421 0 0 0-1.802.327c-27.736 11.543-47.295 57.495-29.899 76.671 33.52 38.946 72.835 55.573 90.147 128.434 2.607 20.15 1.218 40.094 0 60.25-17.312 72.861-56.627 89.488-90.147 128.434-17.396 19.176 2.163 65.128 29.899 76.671 9.038 3.762 28.025-26.165 21.752-25.209-16.34 2.491-37.8-20.941-28.387-28.93 38.47-32.65 105.49-100.055 100.277-135.552-2.211-15.057-9.35-30.36-15.574-45.539 6.225-15.18 13.363-30.482 15.574-45.54 5.214-35.496-61.806-102.901-100.277-135.552-9.412-7.988 12.047-31.42 28.387-28.93 5.881.897-10.44-25.35-19.95-25.535zM152 24.23l-21.441 53.602L152 99.273l21.441-21.441zm-9 91.497v296.546l9-9 9 9V115.727l-2.637 2.636-6.363 6.364zm160 9.847v260.824l18-17.53V143.104zM152 428.727l-23 23v38.546l23-23 23 23v-38.546z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-fire" viewBox="0 0 512 512"><path fill="currentColor" d="M108.28 18.78c-1.2 6.05 1.1 13.32 9.095 19.876 15.883 13.01 36.716-3.12 27.875-19.875h-36.97zm174.564 0c13.572 15.575 25.36 48.026 21.687 77.22-3.915 31.118-22.083 59.048-73.624 67.094v.094c-1.964.284-3.904.743-5.812 1.343 4.17.89 8.657 2.86 13.344 6.22 24.482 17.577 3.918 55.804-26.125 36.47-8.196-5.266-12.213-12.31-13.032-19.19-4.615 11.776-2.376 25.68 12.47 37.126 42.122 32.48 76.872-19.863 48.844-50.437 35.076-12.994 54.042-38.53 60.594-65.97 17.85 2.145 40.616 8.678 58.156 22.22 19.867 15.337 34.025 38.73 29.844 79.25l-.032.405v.406c-.43 27.1 3.257 52.267 13.906 77.314-.175-.088-.355-.164-.53-.25 10.834 28.695-4.215 77.915-32.094 76.375-1.608-.09-3.144-.24-4.625-.47 10.87-3.895 19.736-14.11 20.187-31.47.57-21.935-30.486-31.816-48.688-21.28 1.853-10.077 5.738-19.852 11.125-27.53 2.282-2.24 4.347-4.612 6.188-7.095.204.627.43 1.27.72 1.906 9.98 22.058 34.89 7.416 25.186-11.405-4.35-8.457-11.074-10.648-16.686-9.03 3.504-11.767 3.415-24.225.406-35.72-3.952-15.098-13.013-28.82-26.625-37.03-7.976-4.812-17.48-7.51-27.844-7.44-.69.006-1.394.034-2.092.064-5.57.233-11.385 1.277-17.313 3.186-5.246.927-10.17 3.588-14.03 8.438-23.005 28.896 14.76 74.018 41.967 39.687 8.61-10.862 8.926-21.705 4.813-30.374 1.69.692 3.303 1.508 4.844 2.438 8.787 5.3 15.35 14.822 18.217 25.78 2.87 10.96 1.946 23.044-3.312 33.126-4.384 8.406-11.626 15.654-23.28 20.28-1.272.41-2.53.853-3.783 1.314 18.878 44.79-9.97 58.624-46.03 37.156-6.794 10.808-11.198 22.857-13.25 35.47 9.883-4.887 23.666-6.502 41.687-2.595 28.884 6.263 33.747 41 18.75 61.906.643-2.984 1.033-6.202 1.124-9.686.48-18.44-18.605-29.432-37-29.156-17.28.258-33.966 10.457-33.28 33.75.14 4.844 1.124 9.19 2.748 13.03-4.827-1.217-9.4-2.263-13.593-3.312-20.567-5.145-33.424-9.23-50.25-42.22-11.65-22.837-13.746-44.61-9.657-62.717.35-1.55.75-3.07 1.187-4.564.887-2.386 2.22-4.867 4.063-7.437 14.096-19.637 44.76-3.16 29.25 20.936-1.586 2.468-3.375 4.467-5.282 6.03 10.913-.16 22-6.1 29.69-20.56 13.784-25.93-8.35-51.58-31.5-51.688-1.84-.01-3.696.173-5.532.5-3.696-10.15-11.607-14.724-19.125-14.657-11.395.103-21.84 10.833-15.063 28.814 1.5 3.97 3.765 6.996 6.438 9.187-15.838 24.13-20.18 58.28-6.22 93.376-28.655 4.51-48 1-62.25-6.375-16.074-8.32-26.524-22.114-35.718-38.124-9.194-16.01-16.705-33.956-27.813-48.97-9.438-12.754-22.502-23.363-40.28-26.686v19c10.905 2.694 18.18 9.218 25.28 18.813 9.153 12.37 16.656 29.85 26.594 47.156 9.94 17.305 22.74 34.724 43.376 45.405 19.365 10.023 44.896 13.558 79.28 7.28 17.85 31.407 38.335 40.456 59 45.626 20.14 5.04 40.485 7.83 68.376 28.97 1.97 1.66 3.995 3.258 6.032 4.78.594.49 1.18.965 1.78 1.47l.095-.094c44.505 32.063 102.997 31.564 138.467-3.906 38.87-38.87 35.765-105.384-6.187-150.844-26.624-35.576-33.77-66.875-33.156-105.562h-.03c4.428-45.38-13.045-76.668-37.033-95.188-21.172-16.346-46.585-23.457-67-25.875 1.496-26.37-5.78-52.345-17.717-71.5h-23.22zM88.438 52.688c-3.178 0-6.483.374-9.907 1.188-5.71 1.356-10.715 4.073-15 7.75-.027.024-.064.038-.093.063-2.25 1.463-4.222 3.494-5.75 6.093-.033.058-.092.1-.124.157-2.415 4.2-3.617 9.88-2.907 17.063 2.628 26.407 40.834 27.546 39.313-3.875-.388-8.14-3.673-14.105-8.19-17.813 15.426 4.92 26.523 22.082 16.72 48.063-10.34 27.408-41.76 29.372-55.47 12.313 5.018 20.444 20.162 35.828 46.44 29.656 14.73-3.46 24.825-11.138 31-20.78.233 17.556-5.215 34.5-14.782 47.967-18.347 25.828-50.26 39.48-90.782 19.126v20.375c40.907 16.38 78.436 3.814 100.875-22.155 19.068 10 28.71 30.633 27.782 48.344-.462 8.83-3.42 16.56-8.75 22.25 1.273-11.394-3.145-22.947-14.906-28.064-35.92-15.636-71.766 35.453-29.125 53.906 2.805 1.213 5.5 2.042 8.095 2.563v.03c.085.01.165.024.25.033 3.398.657 6.63.743 9.625.375 14.957-.285 27.384-4.945 36.375-12.844 10.904-9.582 16.36-23.27 17.094-37.283 1.275-24.38-11.26-50.987-35.69-64.78 6.762-12.177 10.956-25.986 12.157-40.313 5.06 2.946 10.495 4.818 15.97 5.656 12.77 1.955 25.603-1.35 36.312-7.844 10.708-6.493 19.516-16.308 23.75-28.437 3.2-9.173 3.47-19.695-.032-30.064-3.167-14.78-14.114-27.622-29.438-27.625-2.21 0-4.495.248-6.875.814-30.3 7.19-32.07 68.89 1.625 70.062-7.1 3.967-15.24 5.71-22.53 4.594-7.578-1.16-14.436-4.948-20.095-13.906-2.58-13.888-8.185-27.66-17.25-40.344-7.554-12.997-20.047-22.31-35.688-22.313zm157.156 57.75c-4.71.03-9.694 2.802-13.156 9.532-9.705 18.82 15.205 33.46 25.187 11.405 5.02-11.105-3.04-20.995-12.03-20.938zm48.437 145.5c-19.927.602-18.62 25.754-.717 27.532 24.093 2.383 23.874-26.494 2.718-27.5-.686-.035-1.356-.052-2-.032z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-missile" viewBox="0 0 512 512"><path fill="currentColor" d="M247.79 18.734C137.967 17.596 19.874 96.94 19.73 244.53l21.403-51.395c-9.485 72.28-7.75 147.236 38.79 202.502L38.2 377.355c39.24 69.774 126.333 90.976 200.855 92.51C124.11 429.9 67.87 342.277 63.912 246.492c-6.722-211.78 260.658-217.694 340.78-75.77-3.417-19.492-8.623-38.426-15.618-56.11 77.406 89.155 59.293 214.875-21.29 253.036-24.25 3.95-48.93 12.06-60.954 19-58.548 33.802-6.27 126.536 53.225 92.188 9.44-5.45 23.404-17.303 36.494-31.352 64.36-59.52 98.1-118.24 93.108-188.94-6.52 29.1-19.175 57.904-35.623 84.683 63.158-146.822 7.956-263.89-144.838-301.354 12.097 5.835 23.503 13.63 33.873 23.36-57.415-23.752-131.123-22.62-186.884 3.505 28.066-26.2 64.776-43.73 102.2-49.642-3.52-.205-7.054-.325-10.597-.362zm-19.74 160.202l-19.843 100.566c-2.958 3.81-5.64 6.852-9.033 9.94l-25.688-49.096-22.705 11.93 31.37 60.945c4.48 11.474 10.02 20.68 15.162 28.524 28.063 42.803 64.547 35.252 95.303 9.555l87.28-48.452-12.71-22.498-66.136 36.94c-1.517-3.154-3.266-6.552-5.056-9.51l67.818-64.96-17.54-18.695-66.47 63.762c-2.356-2.318-4.238-4.527-6.765-6.54l45.084-78.085-22.733-13.127-45.864 78.297c-3.79-1.31-7.72-2.2-11.595-2.745l15.656-81.896-25.533-4.854z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-spell" viewBox="0 0 512 512"><path fill="currentColor" d="M245.813 23.188c-1.228-.006-2.455.027-3.657.093-10.103.56-19.646 3.682-30.156 11.25l20.72 196.782c-8.394 2.127-16.676 4.47-24.814 7.094L137.72 57.812c-7.032-1.706-17.442-.3-27.126 4.626-10.248 5.213-19.034 13.84-22.813 22.937L155.03 261.5c-7.414 4.345-14.59 9.137-21.5 14.47l-74.343-94.25c-16.34.698-34.965 14.455-37.562 32.655C28.89 222.693 93.978 297.77 126 357.405c10.3 19.184 29.543 50.725 39.188 70.064 5.83 11.693 16.004 24.238 27.843 32.342 11.84 8.104 24.7 11.82 37.907 8.282l112.907-30.22c5.493-1.47 9.196-5.39 13.22-11.937 4.02-6.545 7.535-15.137 12.905-23 20.61-30.185 50.432-76.085 115.186-112.062-2.696-15.053-7.405-24.57-12.72-29.563-6.03-5.667-13.198-7.372-23.686-5.843-18.062 2.63-43.498 17.063-69.594 36.874-1.68 1.39-3.318 2.802-4.937 4.22l-7-61.252 42.5-155.718c-4.478-7.355-13.806-13.258-24.845-15.97-10.874-2.67-22.506-1.698-30.28 1.595l-38.75 149.874c-9.365 1.58-18.732 3.17-28.064 4.812L273.69 27.5c-10.057-2.52-19.284-4.272-27.875-4.313zM234.343 255l30.157 56.625 54.406-33.906-33.78 54.186L341.562 362l-64.157-2.188 2.188 64.032-30.03-56.344-54.283 33.813 33.97-54.438-56.53-30.125 63.78 2.156L234.344 255z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-dodge" viewBox="0 0 512 512"><path fill="currentColor" d="M396.082 17.326c-.166-.025-1.922.108-4.977.108-21.975 0-42.158 18.904-49.437 46.595l75.713 12.61-78.526 13.085c.564 16.248 5.55 30.99 13.062 42.367l54.39 9.603-41.277 7.29.484.607-15.91 2.47c-15.262 2.366-25.866 9.63-34.46 21.165-2.534 3.4-4.848 7.198-6.962 11.328l90.798 13.2-100.976 14.684c-.576 2.25-1.118 4.542-1.627 6.874-1.662 7.613-2.953 15.622-3.982 23.854l115.275 14.107-117.81 14.418c-.525 9.083-.84 18.236-1.022 27.31l114.07 16.407-113.304 16.3h40.826l2.144 32.532 82.026 11.38-80.54 11.173 2.512 38.14 75.582 10.897-74.158 10.69 2.938 44.59h96.306l11.875-159.403h43.983c-.228-36.033-1.914-77.32-10.137-111.194-4.462-18.384-10.84-34.42-19.314-46.063-8.472-11.642-18.583-18.958-32.248-21.53l-15.59-2.933 10.124-12.213c10.435-12.587 17.49-30.688 17.49-51.127 0-37.056-22.084-66.04-47.127-69.295l-.106-.013-.108-.016zm-53.535 5.055L16.785 45.968l304.93 22.082c3.073-17.672 10.43-33.57 20.832-45.67zm-22.402 62.114L16.783 106.46l312.28 22.612c-5.686-12.618-8.96-27.047-8.96-42.422 0-.722.027-1.437.042-2.156zm-2.612 60.688L16.783 166.96l269.96 19.546c3.583-8.906 7.975-17.144 13.415-24.445 4.868-6.532 10.676-12.254 17.375-16.878zm-37.79 63.228l-262.96 19.04L273.19 246.02c1.18-10.497 2.77-20.808 4.927-30.69.51-2.33 1.05-4.635 1.625-6.918zm-8.327 57.803L16.783 284.65l253.225 18.336c.18-12.057.585-24.438 1.408-36.773zm-1.562 60.605l-253.07 18.325 297.22 21.52-1.072-16.267H269.86v-9.343c0-4.62-.01-9.38-.006-14.235zm45.294 57.22L16.783 405.64l301.227 21.81-2.862-43.413zm3.97 60.202L16.782 466.13l305.233 22.102-2.9-43.992z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-dash" viewBox="0 0 512 512"><path fill="currentColor" d="M169.53 16.344L259.345 88 337 92.28l-1.03 18.657-161.376-8.906-118.78-4.905 227.28 68.03-197.72 246.75-14.53-17.655-49.22 96.625 248.69-202.78 51.81 11.592-38.78 40.594L270.5 329.5l-57.28 84.125L444.843 273.47 328 241.06l100.22-81.718c1.132.46 2.3.898 3.5 1.22 23.324 6.248 49.764-16.835 59.06-51.533 9.298-34.695-2.08-67.874-25.405-74.124-23.325-6.25-49.765 16.802-59.063 51.5-1.467 5.476-2.403 10.918-2.875 16.22L169.53 16.343z" /></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-second_wind" viewBox="0 0 512 512"><path fill="currentColor" d="M250.9 18.9c-23.9 2.99-45.3 30.65-45.3 66.99 0 19.91 6.8 37.41 16.8 49.61l12.2 14.5-18.7 3.5c-13 2.5-22.6 9.5-30.7 20.8-8.5 11.5-14.8 26.9-19.1 45.2-8 32.7-9.9 72.7-9.9 108.2h43.6l11.7 160.5c30.4 7 63.1 6.5 92.3 0l10.7-160.5H356c0-35.7-.5-76.4-7.8-109.7-3.9-17.9-10-33.7-18.2-45.1-8.2-11.1-18.5-17.8-33.3-20.1l-18.9-3 11.9-14.9c9.9-12.1 16.4-29.6 16.4-49.01 0-38.54-24-66.99-50.3-66.99h-4.9zm145 3.59v41.85h-41.8v50.16h41.8v41.6h49.9v-41.6h41.9V64.34h-41.9V22.49h-49.9zM52.92 62.89v30.58H22.39v36.63h30.53v30.4h36.4v-30.4h30.58V93.47H89.32V62.89h-36.4zM92.63 199.7v21.8H70.75v26.3h21.88v21.9h26.27v-21.9h21.8v-26.3h-21.8v-21.8H92.63zm355.07 62.4v21.8h-21.9v26.3h21.9v21.9H474v-21.9h21.8v-26.3H474v-21.8h-26.3zm-307.5 99.4v15h-15v18h15v15h18.1v-15h15v-18h-15v-15h-18.1zm230 45.8v15h-15v18h15v15h18v-15h15v-18h-15v-15h-18zM49.32 431.8v15h-15v18h15v15h18.01v-15h15v-18h-15v-15H49.32z" /></symbol>
+      <!-- action-icons:end -->
+    </defs>
+  </svg>
+
+  <div class="crucible-stage" id="app-shell">
+    <!-- The 3D stage, and the 2D map (the playable fallback, or an inset) -->
+    <div class="world-layer" id="board-scroll">
+      <div class="scene-view" id="scene-viewport" role="group" aria-label="3D tabletop. Drag to orbit, scroll or pinch to zoom."></div>
+      <svg id="battlefield" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="2D map. Arrow keys move between squares; Enter selects."></svg>
+    </div>
+
+    <div class="cursor-tooltip" id="cursor-tooltip" hidden></div>
+
+    <!-- START SCREEN: choose a level -->
+    <div class="start-screen" id="start-screen" role="dialog" aria-modal="true" aria-labelledby="start-screen-title">
+      <div class="start-modal">
+        <div class="start-header">
+          <div>
+            <span class="eyebrow">FORESTS AND FAERIES · A TACTICAL TABLETOP</span>
+            <h1 id="start-screen-title">Choose a level</h1>
+            <p class="start-subtitle">Each card is one fight. Your heroes are on the left of the board, the monsters on the right. Pick a level, then press Fight (or place the figures yourself).</p>
+          </div>
+          <div class="start-header-actions">
+            <button class="button quiet" id="close-start-btn" hidden>✕ Back to the game</button>
+          </div>
+        </div>
+
+        <div class="level-grid" id="level-grid"><p class="loading-label">Loading the levels…</p></div>
+
+        <div class="start-theme-bar">
+          <div class="start-theme-label">
+            <span class="eyebrow">BOARD THEME</span>
+            <small id="start-theme-note">Each level comes with a theme.</small>
+          </div>
+          <div class="theme-swatch-row" id="start-theme-swatches" role="radiogroup" aria-label="Board theme"></div>
+        </div>
+
+        <div class="start-footer">
+          <div class="start-options">
+            <label for="start-monster-control" class="eyebrow">MONSTERS</label>
+            <select id="start-monster-control" class="hud-select lg">
+              <option value="ai">played by the engine</option>
+              <option value="manual">played by you too</option>
+            </select>
+          </div>
+          <div class="start-ctas">
+            <button class="button quiet" id="start-custom-place">Place the figures</button>
+            <button class="button primary start-launch-btn" id="start-quick-play">⚔ Fight →</button>
+          </div>
+        </div>
+        <p class="start-tribute">Built on <a href="https://github.com/jedld/natural_20.py">Natural20</a>, the open-source 5e rules engine by Joseph Dayo. The game runs a Rust port of it, checked against his original roll by roll. Thank you, Joseph! Enjoying the game? <a href="https://github.com/jedld/natural_20.py">⭐ Star Natural20 on GitHub</a>.</p>
+        <p class="start-credits">Rules content from the SRD 5.1 and SRD 5.2.1 (CC BY 4.0). <a href="./licenses.html">Credits and licences</a>.</p>
+      </div>
+    </div>
+
+    <!-- TOP HUD -->
+    <header class="hud-top">
+      <div class="hud-pod brand-pod">
+        <a class="brand" href="./" aria-label="Forests and Faeries">
+          <svg viewBox="0 0 36 42" aria-hidden="true"><path d="m20 2-5 15 7-4 8 12-12 15L5 26l9-15-2 15 6 5 6-7-7-5Z" fill="currentColor"/></svg>
+          <span>FORESTS AND FAERIES<small id="render-status">3D tabletop</small></span>
+        </a>
+        <button class="icon-btn gold-accent" id="open-levels-btn">✦ Levels</button>
+        <button class="icon-btn" id="new-button" title="Start this level again">↻ Restart</button>
+        <button class="icon-btn" id="help-button" aria-controls="help-dialog" aria-label="How to play">?</button>
+        <button class="icon-btn view-toggle" id="view-toggle" aria-controls="camera-pod" aria-expanded="false">⚙ View</button>
+      </div>
+
+      <section class="hud-pod initiative-ribbon" aria-label="Initiative order">
+        <div class="round-crest"><span>ROUND</span><strong id="round-value">—</strong></div>
+        <div class="initiative-list" id="initiative-list" role="list" aria-label="Turn order"><span class="loading-label">Connecting…</span></div>
+        <div class="turn-pill" id="turn-indicator" role="status"><i></i><span>Connecting…</span></div>
+      </section>
+
+      <div class="hud-pod camera-pod" id="camera-pod" role="toolbar" aria-label="Camera and view">
+        <div class="cam-modes" role="group" aria-label="Camera presets">
+          <button class="cam-btn is-on" data-cam="tactical" aria-pressed="true" title="Overview (V)">🗺 Overview</button>
+          <button class="cam-btn" data-cam="heroic" aria-pressed="false" title="Close-up behind the acting figure (C)">⚔ Close-up</button>
+          <button class="cam-btn" data-cam="skirmish" aria-pressed="false" title="Tight framing of the fight (X)">⚡ Action</button>
+          <button class="cam-btn" data-cam="overhead" aria-pressed="false" title="Top-down (T)">🦅 Top-down</button>
+        </div>
+        <div class="cam-orbits" role="group" aria-label="Orbit">
+          <button class="cam-btn" id="orbit-left" title="Orbit 90° left (Q)" aria-label="Orbit left">⟲ 90°</button>
+          <button class="cam-btn" id="orbit-right" title="Orbit 90° right (E)" aria-label="Orbit right">⟳ 90°</button>
+          <button class="cam-btn" id="reset-view-button" title="Reset the camera (R)" aria-label="Reset the camera">↺</button>
+          <button class="cam-btn is-on" id="follow-cam-toggle" aria-pressed="true" title="Follow the acting figure (F)">🎯 Follow</button>
+        </div>
+        <div class="world-toggles">
+          <select id="biome-select" class="hud-select" aria-label="Board theme"></select>
+          <select id="label-select" class="hud-select" aria-label="Name labels">
+            <option value="smart">Labels: smart</option>
+            <option value="minimal">Labels: minimal</option>
+            <option value="off">Labels: off</option>
+          </select>
+          <button class="cam-btn" id="drawer-left-toggle" aria-pressed="true" aria-controls="left-drawer">🎲 Dice and log</button>
+          <button class="cam-btn" id="drawer-right-toggle" aria-pressed="false" aria-controls="right-drawer">🛡 Inspector</button>
+          <button class="cam-btn" id="minimap-toggle" aria-pressed="false" title="2D map (M)">🧭 2D map</button>
+          <button class="cam-btn" id="anim-toggle" aria-pressed="false" title="Animation: figures breathe, torches flicker (uses more power)">✨ Animation</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="error-banner" id="error-banner" role="alert" hidden>
+      <span id="error-message"></span>
+      <button class="button quiet" id="retry-button">Reconnect</button>
+      <button class="button quiet" id="dismiss-error" aria-label="Dismiss">✕</button>
+    </div>
+
+    <!-- LEFT DRAWER: dice and log -->
+    <aside class="hud-drawer left-drawer" id="left-drawer" aria-label="Dice and log">
+      <section class="dice-arena-card">
+        <div class="drawer-head">
+          <span class="eyebrow">DICE (THE ENGINE'S ROLLS)</span>
+          <span>
+            <button class="mini-action-btn" id="spin-dice-btn" aria-label="Roll the dice animation again">🎲 Again</button>
+            <button class="mini-action-btn drawer-close" data-close-drawer="left" aria-label="Close the dice and log">✕</button>
+          </span>
+        </div>
+        <div class="dice-canvas-wrap" id="dice-canvas-wrap">
+          <canvas id="dice-canvas" width="290" height="96" aria-hidden="true"></canvas>
+          <span class="dice-context-tag" id="dice-context">Dice</span>
+        </div>
+        <div class="dice-strip" id="dice-strip" aria-live="polite"></div>
+      </section>
+      <section class="chronicle-card" id="journal-panel">
+        <div class="drawer-head">
+          <span class="eyebrow">LOG</span>
+          <span class="map-tag" id="map-name"></span>
+        </div>
+        <div class="combat-log" id="combat-log" role="log" aria-live="polite" tabindex="0"></div>
+        <button id="latest-button" class="latest-button" hidden>↓ Latest</button>
+      </section>
+    </aside>
+
+    <!-- RIGHT DRAWER: inspector and monsters -->
+    <aside class="hud-drawer right-drawer is-collapsed" id="right-drawer" aria-label="Inspector and monsters">
+      <section class="inspect-card">
+        <div class="drawer-head">
+          <span class="eyebrow">INSPECTOR</span>
+          <span>
+            <button class="mini-action-btn" id="zoom-inspected-btn">⚔ Close-up</button>
+            <button class="mini-action-btn drawer-close" data-close-drawer="right" aria-label="Close the inspector">✕</button>
+          </span>
+        </div>
+        <div id="inspect-content"></div>
+      </section>
+      <section class="roster-card">
+        <div class="drawer-head"><span class="eyebrow enemy-txt">MONSTERS</span><span id="enemy-count" class="map-tag">—</span></div>
+        <div id="enemy-roster" class="roster"></div>
+      </section>
+    </aside>
+
+    <div class="result-overlay" id="result-overlay" hidden aria-live="polite">
+      <span class="eyebrow">THE FIGHT IS OVER</span>
+      <h2 id="result-title"></h2>
+      <p id="result-detail"></p>
+      <div class="result-actions">
+        <button class="button quiet" id="result-levels-button">✦ Another level</button>
+        <button class="button primary" id="again-button">⚔ Play this level again</button>
+      </div>
+    </div>
+
+    <section class="expedition-dock" id="expedition-dock" aria-label="Your party">
+      <div class="expedition-head">
+        <span class="eyebrow hero-txt">YOUR PARTY</span>
+        <span id="hero-count" class="map-tag">—</span>
+      </div>
+      <div id="hero-roster" class="expedition-list"></div>
+    </section>
+
+    <div class="hud-bottom" id="command-area" tabindex="-1">
+      <section id="setup-panel" class="bottom-deck setup-deck" aria-labelledby="setup-title" hidden>
+        <div class="setup-top-row">
+          <div class="setup-title-block">
+            <span class="eyebrow">DEPLOYMENT</span>
+            <h2 id="setup-title">Place the figures</h2>
+            <p id="setup-preset-blurb" class="setup-blurb"></p>
+          </div>
+          <div class="setup-controls-row">
+            <label for="setup-preset" class="toolbar-label">Level</label>
+            <select id="setup-preset" class="hud-select lg"></select>
+            <button class="button quiet" id="setup-suggested">✦ Suggested layout</button>
+            <select id="setup-monster-control" class="hud-select lg" aria-label="Who plays the monsters">
+              <option value="ai">Monsters: engine</option>
+              <option value="manual">Monsters: you</option>
+            </select>
+            <button class="button primary start-cta" id="start-button" disabled>⚔ Roll initiative and start →</button>
+          </div>
+        </div>
+        <div id="setup-roster" class="setup-roster" aria-label="Figures to place"></div>
+        <p id="setup-status" class="setup-hint" role="status"></p>
+      </section>
+
+      <section id="combat-dock" class="bottom-deck combat-dock" aria-label="Command deck" hidden>
+        <div class="hotbar-popbar" id="hotbar-popbar" hidden>
+          <div id="action-options" class="action-options"></div>
+          <div id="target-options" class="target-options" aria-label="Choices"></div>
+          <button class="mini-action-btn" id="chooser-back" title="Clear the selected action (Esc)">✕ Clear</button>
+        </div>
+        <div class="hotbar-main">
+          <div class="actor-medallion-pod" id="active-actor-pod">
+            <div id="active-actor"></div>
+            <div class="resource-orbs" id="resources"></div>
+          </div>
+          <div class="hotbar-center">
+            <div class="hotbar-top-strip">
+              <div class="cat-tabs" id="cat-tabs" role="group" aria-label="Action categories"></div>
+              <span id="action-hint" class="hotbar-hint" role="status"></span>
+            </div>
+            <div class="hotbar-cards" id="action-bar" role="toolbar" aria-label="Actions"></div>
+          </div>
+          <div class="turn-crest-pod" id="live-encounter-controls">
+            <button class="button end-turn-crest" id="end-button" disabled><span>END TURN</span><small>Next creature →</small></button>
+            <div class="ai-mini-controls">
+              <button class="mini-action-btn" id="watch-button" aria-pressed="false" disabled>▷ Watch</button>
+              <button class="mini-action-btn" id="pause-button" aria-label="Pause" disabled>⏸</button>
+              <button class="mini-action-btn" id="step-button" aria-label="Play one turn" title="Play one turn" disabled>⏭</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- HOW TO PLAY -->
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="dialog-heading">
+      <span class="eyebrow">FORESTS AND FAERIES · HOW TO PLAY</span>
+      <button class="button quiet" id="close-help" aria-label="Close">✕</button>
+    </div>
+    <h2 id="help-title">How to play</h2>
+    <ol class="manual">
+      <li><b>Choose a level.</b> <code>✦ Levels</code> opens the level list. <b>Fight</b> uses the suggested layout and rolls initiative at once; <b>Place the figures</b> lets you put each figure on a square first (select it, then click a highlighted square), then press <b>Roll initiative and start</b>.</li>
+      <li><b>Take your turn.</b> A turn has one action, one bonus action, movement and one reaction. The cards at the bottom are everything the engine allows right now. Pick a card, then a highlighted creature or square. Moving is a card too: the teal squares are the places you can reach, and the tooltip shows the cost. Several moves and a bonus action can follow one another. Press <b>End Turn</b> when you are done.</li>
+      <li><b>Choices on a card.</b> A spell with several slot levels shows <b>Slot</b> pills; a sorcerer's Metamagic, or a feature with modes, shows <b>Metamagic</b> or <b>Mode</b> pills. Every choice shows its cost.</li>
+      <li><b>Darts, rays and several targets.</b> Magic Missile, Scorching Ray and spells with several targets ask you to split them: click creatures (or use + and −) until the count is full, then press <b>Cast</b>.</li>
+      <li><b>Areas.</b> Area spells (Burning Hands, Thunderwave, Shatter…) are aimed in two steps: click the square to aim at, look at the highlighted area, then <b>Confirm</b>. A choice marked <b>⚠ ally</b> would also hit one of your figures.</li>
+      <li><b>Reactions are automatic.</b> Opportunity attacks, Shield and the Goblin Boss's Redirect Attack are taken by the engine when they apply.</li>
+      <li><b>The monsters' turns</b> play by themselves. <b>Watch</b> lets the engine play your heroes too; <b>⏸</b> pauses, <b>⏭</b> plays one turn.</li>
+      <li><b>Dice.</b> The dice tray shows the engine's own rolls for each step (advantage shows both dice). The log has every roll in words.</li>
+      <li><b>No 3D?</b> If WebGL is missing or fails, a 2D map takes its place: click its squares and figures, or use the arrow keys and Enter. The 3D view comes back by itself after a lost context.</li>
+    </ol>
+    <h3>Levels</h3>
+    <ul class="manual" id="help-encounters"></ul>
+    <h3>Markers on the board</h3>
+    <ul class="legend">
+      <li><i class="legend-dot active"></i> gold ring: the acting figure</li>
+      <li><i class="legend-dot down"></i> red ring: a hero at 0 HP, dying (death saves); <i class="legend-dot dead"></i> dark ring: dead</li>
+      <li><i class="legend-dot paralyzed"></i> paralysed · <i class="legend-dot poisoned"></i> poisoned · <i class="legend-dot frightened"></i> frightened · <i class="legend-dot cursed"></i> cursed (no healing) · <i class="legend-dot drained"></i> Strength drained</li>
+      <li><i class="legend-dot blessed"></i> Bless, Guiding Bolt (the next attack has advantage) · <i class="legend-dot slowed"></i> slowed (Ray of Frost) · <i class="legend-dot warded"></i> Shield of Faith, Sanctuary, Protection</li>
+    </ul>
+    <h3>Options</h3>
+    <div class="options-list">
+      <label><input type="checkbox" id="shortcut-toggle" checked> Single-key shortcuts (listed below)</label>
+      <label><input type="checkbox" id="move-chips-toggle"> List move destinations as buttons</label>
+      <label><input type="checkbox" id="idle-toggle"> Idle animation (figures breathe, torches flicker; uses more power)</label>
+    </div>
+    <div class="keyboard-help">
+      <span><kbd>1</kbd>–<kbd>9</kbd> action cards</span>
+      <span><kbd>Esc</kbd> clear the selection</span>
+      <span><kbd>Q</kbd> / <kbd>E</kbd> orbit 90°</span>
+      <span><kbd>V</kbd> overview · <kbd>C</kbd> close-up · <kbd>X</kbd> action · <kbd>T</kbd> top-down</span>
+      <span><kbd>R</kbd> reset camera · <kbd>F</kbd> follow · <kbd>M</kbd> 2D map</span>
+    </div>
+    <p class="help-footer">Forests and Faeries is an independent fan project. Its rules come from <a class="text-link" href="https://github.com/jedld/natural_20.py">Natural20</a>, the open-source 5e engine by Joseph Dayo (MIT licence): the game runs a Rust port of it, checked against the original. If you enjoy the game, please <a class="text-link" href="https://github.com/jedld/natural_20.py">⭐ star Natural20 on GitHub</a>. The rules content comes from the System Reference Documents 5.1 and 5.2.1 (CC BY 4.0). It is not affiliated with, sponsored by or endorsed by Wizards of the Coast or the Natural20 authors. <a class="text-link" href="./licenses.html">Credits and licences →</a></p>
+  </dialog>
+</body>
+</html>

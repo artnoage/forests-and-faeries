@@ -1,0 +1,267 @@
+{
+  "what": "Static 3D miniatures for the eight SRD 5.2.1 undead of the undead encounter and the general pool (skeleton, zombie, ghoul, ghast, shadow, specter, wight; the mummy added on 2026-11-17).",
+  "made": "2026-11-16 (seven undead) and 2026-11-17 (mummy), for this prototype, at the maintainer's request (approved 2026-11-16 and 2026-11-17).",
+  "design": "Original, generic fantasy undead based on the creatures' SRD 5.2.1 roles and the descriptions in templates/rulesets/5e-2024/npcs/*.yml; no franchise-specific or trademarked designs.",
+  "pipeline": [
+    "Reference images: ChatGPT image generation (Codex's built-in image_gen tool) through OpenAI Codex CLI 0.161.0 on the maintainer's ChatGPT subscription. One full-body front view per creature (the skeleton front is the style reference for the other six), then a matching back view generated from that front.",
+    "Meshes: Tripo API v3 multiview-to-model (front + back), model v3.1-20260211, standard geometry, detailed PBR texture, 40 credits each, on the maintainer's Tripo API account. Every first result was kept.",
+    "Web copies: Blender 5.2.3, 3d-models/tools/normalize_glb.py: decimate to 30k triangles, textures to 1024 px WebP, rotate 90 degrees (Tripo faces +X) to face glTF -Z, scale to the listed height, centre, feet at y=0."
+  ],
+  "style_prompt": "Use case: stylized-concept, image-to-3D full-body character reference for a small figure in a tabletop-miniature style fantasy game. Original generic fantasy design, not based on any existing game, film, book, franchise or brand.\nStyle: polished stylized 3D game-character render with hand-painted textures, like a high-quality stylized fantasy tabletop miniature: chunky readable silhouette, simplified clean forms, slightly enlarged head, hands and feet, muted desaturated palette, soft clay-like shading, crisp material separation.\nView and pose: strict front view (orthographic-looking, camera at chest height), the character faces directly toward the viewer, symmetric neutral A-pose: upright, feet planted shoulder-width apart, both arms held down and slightly away from the body (about 20 degrees) so background is visible between each arm and the torso, fingers relaxed. Anything held in the hands points straight down and stays close to the leg.\nFraming: exactly one character, the entire figure (head to feet, all held items) fully inside the portrait frame with generous white margin on all sides.\nBackground: pure white, soft even studio lighting, only a faint contact shadow under the feet. No base, plinth, ground plane, scenery, smoke, particles, text, letters, logo, watermark, signature, border, or extra characters or objects.",
+  "sources": "Reference images and prompts: assets/undead/source/<kind>/ (tracked). Codex logs, raw Tripo model.glb and task.json: the same folders, untracked (copied from <repo-root>).",
+  "rights": "Generated with the maintainer's own accounts under the OpenAI and Tripo terms that applied at the time; no third-party asset is included. Re-check those terms before any redistribution outside this game.",
+  "runtime": "frontend/figure-models.js (FIGURE_MODELS); served only at the exact paths in webgame.app.UNDEAD_MODEL_FILES.",
+  "tripo_credits_total": 320.0,
+  "models": [
+    {
+      "kind": "skeleton",
+      "file": "static/models/skeleton.glb",
+      "sha256": "fea43201bfceb8feb5d35c171cd4af93742dbb23ce7c56dbba0af8327b6e0b7f",
+      "bytes": 1308776,
+      "triangles": 30000,
+      "height": 1.25,
+      "footprint_xz": [
+        0.6296,
+        0.2703
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1397434,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "a5334133-3523-4959-970a-24bc289b38b5",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "6624e3e319615d7dbd97eaa8897d9e8914ccb57f5cf03de0d6095aa25a0b7a08"
+      },
+      "references": {
+        "front_sha256": "4e0c397b3dcd8d55bc6729c2e51fcf6cd39e175a6971fbb4cb853be58a669c7c",
+        "back_sha256": "816734cb5b0a9a3dade5005b3f8b9de4670a2213f799ca79390fdff65bf82f6f",
+        "subject": "Subject: an animated human skeleton warrior (undead). Clean ivory-yellow aged bones with a clearly visible rib cage, spine, pelvis and separate arm and leg bones, chunky simplified bone shapes; a skull with empty dark eye sockets holding faint cold blue-white pinpoints of light; a few scraps of torn dark brown cloth hanging from a simple leather belt at the waist. It holds a short straight iron sword pointing down in its right hand (on viewer-left) and a small wooden recurve shortbow, string facing the leg, pointing down in its left hand (on viewer-right). A small leather quiver with a few arrows is strapped diagonally across its back, only the arrow fletchings peeking over its right shoulder."
+      }
+    },
+    {
+      "kind": "zombie",
+      "file": "static/models/zombie.glb",
+      "sha256": "0c39dec72cb1e6073901da655fa5da87b054a845ef6afed1dc9025ecc728d402",
+      "bytes": 1295164,
+      "triangles": 30000,
+      "height": 1.25,
+      "footprint_xz": [
+        0.6481,
+        0.2907
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1499184,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "d7a1d60c-5fa5-4df3-80d0-0e4bceecc42f",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "86d80878ca3e631c69190b3915ea68484ffb84b03bdcd2733344ed0dd92eac00"
+      },
+      "references": {
+        "front_sha256": "b4e0e3022cba7ce54640d1188694f7bae67d842823848dc2aa9097088488a68c",
+        "back_sha256": "60f37338c9610b99866b7ec31bca9bdf71c7aea64390c0a80a59082a49344686",
+        "subject": "Subject: a shambling human zombie (undead), a rotting corpse animated by dark magic. Mottled grey-green skin with darker bruised patches, sunken cheeks, cloudy pale eyes, slack half-open jaw, thin patchy dark hair; a torn, stained, faded peasant shirt with one sleeve ripped off and ragged knee-length trousers held by a frayed rope belt, bare feet; a few pale rib bones visible through a tear in the shirt side (no blood or gore). Slightly hunched shoulders with the head tilted a little forward, empty hands with stiff curled fingers, arms hanging slightly forward and away from the body but still clear of the torso."
+      }
+    },
+    {
+      "kind": "ghoul",
+      "file": "static/models/ghoul.glb",
+      "sha256": "0763588732c0f78a36d334e4ab748d81bde1ee17bbd2809148bc3384968e47e6",
+      "bytes": 1255092,
+      "triangles": 29999,
+      "height": 1.22,
+      "footprint_xz": [
+        0.6935,
+        0.3386
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1467588,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "83454610-33ac-451f-87ef-1bd858679718",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "11257bca8399be54893a8667c5ac01a1010ba9246e93ad01396cdecd6e38d256"
+      },
+      "references": {
+        "front_sha256": "d0783ed8298b8bb74f16508160e90cbc943fa04b93c9ed809a37bc5ce5c652a6",
+        "back_sha256": "a33a53e5ff87ea365faac0f3ac08fb8957e80d356ec60a416cd2da0a6b736064",
+        "subject": "Subject: a gaunt, ravenous ghoul (undead). An emaciated, hairless humanoid of human height with tight pale grey-ochre skin stretched over visible ribs, collarbones and knobbly joints; long pointed ears; a wide mouth of sharp yellowed teeth; small glowing yellow eyes in hollow sockets; long bony fingers ending in black hooked claws; long toes with claws. It wears only a ragged dark brown loincloth with a torn strip of grey burial cloth. Slight predatory crouch with knees a little bent and back slightly hunched, arms hanging forward and apart from the body with the claws spread."
+      }
+    },
+    {
+      "kind": "ghast",
+      "file": "static/models/ghast.glb",
+      "sha256": "435f577337e875929daadefd279f98951313a4fc5305bff3b76656dd987d947b",
+      "bytes": 1333040,
+      "triangles": 29999,
+      "height": 1.36,
+      "footprint_xz": [
+        0.7803,
+        0.3754
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1496718,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "3f2e9833-ac8d-496d-8698-aad29262d0f7",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "7765d8c777f9107c63780381601b926b0d393dbbef84c2ef6e1f78ce02214e5b"
+      },
+      "references": {
+        "front_sha256": "d07d8a10b34b8889719aff9f7fd31729ca104867c37e7cca6e2588ba41758b21",
+        "back_sha256": "bfbb4840744b28b6a86a4420d539d58337efae40130c876ff72477a622ccba0e",
+        "subject": "Subject: a ghast (undead), a larger and more powerful ghoul-like creature. Taller and broader-shouldered than a person, lean but sinewy; mottled dusky violet-grey skin; long pointed ears; a jaw of jagged teeth; burning green eyes; very long black claws on its hands and feet. It wears tattered dark charcoal burial robes hanging from a cord at the waist down to the shins, and a torn shroud draped over one shoulder; faint sickly yellow-green discolouration around the mouth and fingers (no smoke, gas or particles). Upright, menacing stance, arms apart from the body with the claws spread."
+      }
+    },
+    {
+      "kind": "shadow",
+      "file": "static/models/shadow.glb",
+      "sha256": "a772841d41c2e72f6e594f5008049271956b6c51782c12331ab49a2d5732e1ad",
+      "bytes": 1114372,
+      "triangles": 30000,
+      "height": 1.28,
+      "footprint_xz": [
+        0.6638,
+        0.295
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1455594,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "6e940c11-2705-4030-b231-c3a6e246c537",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "3296a0169fe57c4ed1e50a76953b7a4576ddf98b4325303ca9d1da59b27bc0c2"
+      },
+      "references": {
+        "front_sha256": "6039ca8b086db0ddbadf63ce2afa34563f2ebf3f77975397bf374205a57343dd",
+        "back_sha256": "7c070f8411bd7149c7edc463474bdf99db619e13d7688f79fff38f686c0781e5",
+        "subject": "Subject: a shadow (undead), a creature of living darkness that drains strength. A slender, featureless humanoid figure of human height made of solid, smooth, matte deep black-violet shadow matter, as if dark smoke had frozen into one solid sculpted body; subtle cool violet rim highlights define the forms; two small glowing pale white eyes and no other facial features; its fingers taper into short pointed shadow claws; ragged shadowy tatters hang from the forearms and from the hips to the knees like a torn cloak, but everything is one solid connected opaque form. Solid legs and feet standing on the ground. No transparency, no glow halos, no loose wisps, smoke or particles.",
+        "front_correction": "Correction to avoid a previous failure: do NOT draw a smooth alien-like figure with a big bulbous head. The head has normal human proportions and is crowned by a rough, ragged hood-like fringe of torn shadow; broad gaunt shoulders; a slightly hunched, predatory posture; long thin arms ending in long clawed shadow fingers; torn shadow tatters flow from the shoulders, forearms and from the hips to the knees, all part of the same solid sculpted body. Deep black with dark violet highlights, menacing and ghostly, clearly a dark undead spirit rather than a creature from space.",
+        "rejected": "front-v1-rejected.png: a smooth alien-like figure; regenerated with front_correction before any mesh was made"
+      }
+    },
+    {
+      "kind": "specter",
+      "file": "static/models/specter.glb",
+      "sha256": "56e4449d86975ee07b3530f9c47b79f4b0b91c3002ec435a422fb56a2e7220a3",
+      "bytes": 1410792,
+      "triangles": 30000,
+      "height": 1.32,
+      "footprint_xz": [
+        0.7606,
+        0.6678
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1439432,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "ddd6e02a-f927-4c9b-9985-cbe94a6678c9",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "0d9ef20415389f93fecc1321f85272696a998a5f4b71303f9e04f2b7887cc70a"
+      },
+      "references": {
+        "front_sha256": "a60873b1ab1a6609dbc34d5cf9332c3c24c89addea709b820c3d5da40775b843",
+        "back_sha256": "7fc6843f089b7e5c40bb6ef5de2b64379a09f0ddcf588e20ff87182686845cdb",
+        "subject": "Subject: a specter (undead), the angry spirit of a person denied its rest. A gaunt ghostly human figure wrapped in a long tattered hooded burial shroud; pale icy blue-white skin and cloth; a hollow-cheeked, furious face with glowing white eyes and an open howling mouth under the hood; thin skeletal hands with long fingers held slightly out from the body. The shroud flows down into a long trailing ragged robe whose torn hem rests on the ground all around (no visible legs or feet), forming a solid connected base. Render it as an opaque solid sculpted figure in pale icy blue and grey tones: no transparency, no glow halos, no loose wisps, smoke or particles."
+      }
+    },
+    {
+      "kind": "wight",
+      "file": "static/models/wight.glb",
+      "sha256": "3c320e24d902fddfe112352e95d99eeaa83f2b5d09942d8486d0cf7d08cee3ff",
+      "bytes": 1324044,
+      "triangles": 30000,
+      "height": 1.38,
+      "footprint_xz": [
+        0.7061,
+        0.3412
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1440154,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "fc7742ff-6e2d-441f-a972-c776447517b2",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "8c2686ba97b9e36b317f47d5049ae95c0dd18b927103eeed0a28edd7ba552315"
+      },
+      "references": {
+        "front_sha256": "dc7e81cc5cff0a355f274daccec3c97c69db96e2e81d0a458b795dd479a9973d",
+        "back_sha256": "76194cea99883f8050cbcde289e5971e60cd36f21ce0842e0af7ece0f302f41f",
+        "subject": "Subject: a wight (undead), an armored undead warrior. A tall, gaunt, desiccated corpse with dry grey-brown skin tight over the skull, sunken cheeks, thin long white hair and cold glowing blue-green eyes. It wears dark brown studded leather armor (a jerkin with small metal studs and leather pauldrons) over a torn dark tunic, leather bracers, a belt with a sheath, dark trousers and worn leather boots, and a tattered dark grey cloak falling from the shoulders to the calves. It holds a straight longsword pointing down in its right hand (on viewer-left) and a plain wooden longbow pointing down in its left hand (on viewer-right). Upright, proud, menacing stance."
+      }
+    },
+    {
+      "kind": "mummy",
+      "file": "static/models/mummy.glb",
+      "sha256": "4006019442c6704821f374be8ef219fbb569b32472ed13f1f76c28b3612bb2e8",
+      "bytes": 1250516,
+      "triangles": 30000,
+      "height": 1.34,
+      "footprint_xz": [
+        0.704,
+        0.2936
+      ],
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "source_triangles": 1472312,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "fa5c8848-53a4-4f4a-a65c-833d343101b5",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "9cae58a82fea0112dbb99a8f18839d7e6dc62a03023a2d22e9bd0bcbb3979801"
+      },
+      "references": {
+        "front_sha256": "bbccc9ef06efc686823d775e9ccda088c294ad648673dd2c7843098cea47efe0",
+        "back_sha256": "e1a4e68a007cb29c4c3c537a7c8c0c47c8c9c34f81c1cfc559c6874cf9b5f741",
+        "subject": "Subject: a mummy (undead), a tall gaunt human corpse preserved and wrapped from head to toe in layered, frayed, dusty linen grave bandages in aged ivory, tan and dusty brown tones, the wrappings crossing in clear diagonal bands. In a few gaps of the wrappings dark withered leathery brown skin shows. The wrapped face is a narrow skull-like shape with two deep shadowed eye sockets holding small cold green pinpoints of light, a hint of a dry lipless mouth under the bandages. A broad tarnished bronze funerary collar set with faded blue and green stones rests on the shoulders, and a frayed dark brown cloth sash hangs from the hips. Several loose bandage strips trail from the forearms, the waist and the knees, all part of the same solid sculpted figure. Its hands are empty with long withered bandaged fingers, its feet bare and wrapped; the shoulders slightly hunched, the arms hanging slightly forward and away from the body but still clear of the torso. No weapon, no blood or gore."
+      }
+    }
+  ]
+}

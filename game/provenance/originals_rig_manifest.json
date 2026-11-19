@@ -1,0 +1,567 @@
+{
+  "updated": "2026-11-18",
+  "script": "blender/rig_originals.py",
+  "fps": 24,
+  "height_policy": "kept canonical original heights baked into the GLBs (guy 1.30, elion 1.30, curogana 1.27, mummy 1.34, mara 1.27, ilyra 1.26, goblin 0.95, goblin_boss 1.05) and updated CAST_MODELS in frontend/scene/skinned-cast.js to match",
+  "models": [
+    {
+      "kind": "guy",
+      "tripo_task": "9bbb257f-4c24-4084-afee-3a87d361b1d9",
+      "height": 1.3,
+      "rest_z_bounds": [
+        -0.0001,
+        1.3
+      ],
+      "triangles": 18000,
+      "glb_bytes": 1262944,
+      "skin": {
+        "nodes": 8998,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_weapon_nodes": 469,
+        "rigid_shield_nodes": 0
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 75,
+          "duration_sec": 3.125
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "guard",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "sha256": "d0dd7e6d0f8d821dbeec80665eb893b1c48c0eedebe6602fe8431d91265cd557",
+      "file": "game/static/models/guy.glb"
+    },
+    {
+      "kind": "elion",
+      "tripo_task": "9f06c276-d0bb-4c0a-8da4-02e66bd835ca",
+      "height": 1.3,
+      "rest_z_bounds": [
+        -0.0028,
+        1.3034
+      ],
+      "triangles": 17999,
+      "glb_bytes": 1296796,
+      "skin": {
+        "nodes": 8985,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_weapon_nodes": 928,
+        "rigid_shield_nodes": 697
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 75,
+          "duration_sec": 3.125
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast_area",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "guard",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "sha256": "61f4b1a661b7e5ff22c51cc51a555d07e28ea2df68079de191a92ba8afd11a8f",
+      "file": "game/static/models/elion.glb"
+    },
+    {
+      "kind": "curogana",
+      "tripo_task": "a3c57a64-5b75-4196-98d9-706e83c60f51",
+      "height": 1.27,
+      "rest_z_bounds": [
+        0.0038,
+        1.2721
+      ],
+      "triangles": 18000,
+      "glb_bytes": 1145976,
+      "skin": {
+        "nodes": 8985,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_weapon_nodes": 0,
+        "rigid_shield_nodes": 0
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 75,
+          "duration_sec": 3.125
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast_area",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "guard",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "sha256": "cde714b6bd37796377f523e174f5971ed1519bcb45089eb35dfc4521ae2069e4",
+      "file": "game/static/models/curogana.glb"
+    },
+    {
+      "kind": "mummy",
+      "tripo_task": "fa5c8848-53a4-4f4a-a65c-833d343101b5",
+      "height": 1.34,
+      "rest_z_bounds": [
+        -0.0051,
+        1.3297
+      ],
+      "triangles": 18000,
+      "glb_bytes": 1210404,
+      "skin": {
+        "nodes": 8976,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_weapon_nodes": 0,
+        "rigid_shield_nodes": 0
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 40,
+          "duration_sec": 1.667
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "sha256": "e5329cfb5594d567f3fb1d77777be0d3fba79dcae7e23c973951a2277af744fc",
+      "file": "game/static/models/mummy.glb"
+    },
+    {
+      "kind": "mara",
+      "tripo_task": "48b1e7bb-a977-42d8-9c39-b56aa305df32",
+      "height": 1.27,
+      "sha256": "4377ee6a4f730c0d44e47453d77b1794fb817896e4e4f213a960ab50ca5eaeaf",
+      "rest_z_bounds": [
+        -0.0031,
+        1.2687
+      ],
+      "triangles": 18000,
+      "glb_bytes": 1283116,
+      "skin": {
+        "nodes": 8989,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_right_hand_nodes": 486,
+        "rigid_left_hand_nodes": 1174,
+        "rigid_back_nodes": 0,
+        "rigid_hip_nodes": 0
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 75,
+          "duration_sec": 3.125
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "guard",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "file": "game/static/models/mara.glb"
+    },
+    {
+      "kind": "ilyra",
+      "tripo_task": "908eb0ef-c572-42e4-804b-30b69ee29141",
+      "height": 1.26,
+      "sha256": "1fbf3a329c808198ce67014bd25513e1574160d7e2056b166fb558e0246a6aab",
+      "rest_z_bounds": [
+        -0.0037,
+        1.258
+      ],
+      "triangles": 18000,
+      "glb_bytes": 1211792,
+      "skin": {
+        "nodes": 8982,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_right_hand_nodes": 1013,
+        "rigid_left_hand_nodes": 0,
+        "rigid_back_nodes": 0,
+        "rigid_hip_nodes": 659
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 75,
+          "duration_sec": 3.125
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "arrow",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "cast_area",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "guard",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "file": "game/static/models/ilyra.glb"
+    },
+    {
+      "kind": "goblin",
+      "tripo_task": "4550d989-dd6d-448b-88b5-5a0c7139476d",
+      "height": 0.95,
+      "sha256": "f73621e500a9a18e858206804c9d9c0f67b904bda6c057cfb949b16b6451b990",
+      "rest_z_bounds": [
+        -0.0116,
+        0.9426
+      ],
+      "triangles": 18000,
+      "glb_bytes": 1410524,
+      "skin": {
+        "nodes": 8940,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_right_hand_nodes": 448,
+        "rigid_left_hand_nodes": 787,
+        "rigid_back_nodes": 819,
+        "rigid_hip_nodes": 499
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 40,
+          "duration_sec": 1.667
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "arrow",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "guard",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "file": "game/static/models/goblin.glb"
+    },
+    {
+      "kind": "goblin_boss",
+      "tripo_task": "6727e7f3-8fd0-4890-930e-3452d97740e0",
+      "height": 1.05,
+      "sha256": "5c70d30fc97742736fba7d01a99b6b1399cf177144cace4e8ba4e669e4804ddb",
+      "rest_z_bounds": [
+        -0.0125,
+        1.037
+      ],
+      "triangles": 18000,
+      "glb_bytes": 1535316,
+      "skin": {
+        "nodes": 8796,
+        "bones": 19,
+        "max_influences": 4,
+        "rigid_right_hand_nodes": 315,
+        "rigid_left_hand_nodes": 455,
+        "rigid_back_nodes": 1221,
+        "rigid_hip_nodes": 119
+      },
+      "key_bones": [
+        "Hand.R",
+        "Hand.L",
+        "Head"
+      ],
+      "clips": [
+        {
+          "name": "idle",
+          "frames": 40,
+          "duration_sec": 1.667
+        },
+        {
+          "name": "walk",
+          "frames": 30,
+          "duration_sec": 1.25
+        },
+        {
+          "name": "run",
+          "frames": 21,
+          "duration_sec": 0.875
+        },
+        {
+          "name": "slash",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "arrow",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "guard",
+          "frames": 19,
+          "duration_sec": 0.792
+        },
+        {
+          "name": "hit",
+          "frames": 12,
+          "duration_sec": 0.5
+        },
+        {
+          "name": "death",
+          "frames": 28,
+          "duration_sec": 1.167
+        }
+      ],
+      "file": "game/static/models/goblin_boss.glb"
+    }
+  ]
+}

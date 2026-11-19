@@ -1,0 +1,145 @@
+{
+ "schema": 1,
+ "id": "ghoul",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/ghoul.yml": "bfb5c9b1b471580374170edeeca43d56a2d1e10b390f9d07b88fb951111f27b2"
+  }
+ },
+ "side": "monsters",
+ "name": "Ghoul",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": true,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "undead"
+ ],
+ "ac": 12,
+ "max_hp": 22,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 13,
+  "dex": 15,
+  "con": 10,
+  "int": 7,
+  "wis": 10,
+  "cha": 6
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 1,
+  "dex": 2,
+  "con": 0,
+  "int": -2,
+  "wis": 0,
+  "cha": -2
+ },
+ "initiative": {
+  "bonus": 2,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [
+   "poison"
+  ],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [
+  "charmed",
+  "exhaustion",
+  "poisoned"
+ ],
+ "passive_perception": 10,
+ "attacks": [
+  {
+   "name": "bite",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1d6+2",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [
+    {
+     "damage": "1d6",
+     "damage_type": "necrotic"
+    }
+   ],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "claw",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1d4+2",
+   "damage_type": "slashing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "save_condition",
+     "if": [
+      "!object",
+      "!undead",
+      "!elf"
+     ],
+     "save": "con",
+     "dc": 10,
+     "condition": "paralyzed"
+    }
+   ],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [
+  [
+   "bite",
+   "bite"
+  ]
+ ],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    9.0
+   ],
+   [
+    4,
+    4.5
+   ]
+  ],
+  "count": 2
+ },
+ "traits": [],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

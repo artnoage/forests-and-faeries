@@ -1,0 +1,31 @@
+# ember-rs G2 hand-made map (24x18, walls only): Two rooms split by a two-square-thick wall, joined by a 2-wide and a 1-wide gap (chokepoints); a few pillars and an L-shaped screen.
+# Format: ember-rs docs/GENERAL_ENV.md §3.2 (H stone walls, . floor, bright light).
+name: "Two Rooms"
+map:
+  illumination: 1.0
+  base:
+    - 'HHHHHHHHHHHHHHHHHHHHHHHH'
+    - 'H..........HH..........H'
+    - 'H..........HH..........H'
+    - 'H..........HH....HHH...H'
+    - 'H................H.....H'
+    - 'H......................H'
+    - 'H..........HH..........H'
+    - 'H...HH.....HH..........H'
+    - 'H...HH.....HH..........H'
+    - 'H..........HH..........H'
+    - 'H..........HH..........H'
+    - 'H..........HH...HH.....H'
+    - 'H......H...HH...HH.....H'
+    - 'H......................H'
+    - 'H..........HH.......H..H'
+    - 'H..........HH..........H'
+    - 'H..........HH..........H'
+    - 'HHHHHHHHHHHHHHHHHHHHHHHH'
+legend:
+  H:
+    name: Wall
+    type: stone_wall
+ember:
+  family: rooms
+  hand_made: true

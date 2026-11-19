@@ -1,0 +1,180 @@
+{
+ "id": "mausoleum-forecourt",
+ "name": "Mausoleum forecourt",
+ "private": true,
+ "order": 103,
+ "map": "mausoleum-forecourt",
+ "theme": "mausoleum_crypt",
+ "blurb": "A plateau of broken columns before the facade; a causeway crosses the chasm.",
+ "presets": [
+  {
+   "id": "p1",
+   "name": "Mausoleum forecourt: Wights",
+   "difficulty": "Medium",
+   "blurb": "Guy, Elion and Curogana against 2 skeletons, 1 zombie, 1 shadow and 2 wights.",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "skeleton",
+    "zombie",
+    "shadow",
+    "wight",
+    "wight"
+   ],
+   "placements": {
+    "guy": [
+     29,
+     7
+    ],
+    "elion": [
+     31,
+     5
+    ],
+    "curogana": [
+     30,
+     5
+    ],
+    "skeleton-1": [
+     5,
+     7
+    ],
+    "skeleton-2": [
+     6,
+     8
+    ],
+    "zombie-1": [
+     3,
+     8
+    ],
+    "shadow-1": [
+     4,
+     9
+    ],
+    "wight-1": [
+     3,
+     11
+    ],
+    "wight-2": [
+     3,
+     9
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1210"
+   }
+  },
+  {
+   "id": "p2",
+   "name": "Mausoleum forecourt: Ghoul · Guy and Curogana",
+   "difficulty": "Medium",
+   "blurb": "Guy and Curogana against 3 skeletons, 2 zombies, 2 shadows and 1 ghoul.",
+   "party": [
+    "guy",
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "skeleton",
+    "skeleton",
+    "zombie",
+    "zombie",
+    "shadow",
+    "shadow",
+    "ghoul"
+   ],
+   "placements": {
+    "guy": [
+     1,
+     1
+    ],
+    "curogana": [
+     0,
+     1
+    ],
+    "skeleton-1": [
+     14,
+     11
+    ],
+    "skeleton-2": [
+     18,
+     10
+    ],
+    "skeleton-3": [
+     16,
+     11
+    ],
+    "zombie-1": [
+     18,
+     8
+    ],
+    "zombie-2": [
+     14,
+     8
+    ],
+    "shadow-1": [
+     14,
+     10
+    ],
+    "shadow-2": [
+     17,
+     11
+    ],
+    "ghoul-1": [
+     17,
+     9
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1211"
+   }
+  },
+  {
+   "id": "p3",
+   "name": "Mausoleum forecourt: Ghasts · Curogana",
+   "difficulty": "Medium",
+   "blurb": "Curogana against 1 shadow and 2 ghasts.",
+   "party": [
+    "curogana"
+   ],
+   "roster": [
+    "shadow",
+    "ghast",
+    "ghast"
+   ],
+   "placements": {
+    "curogana": [
+     18,
+     22
+    ],
+    "shadow-1": [
+     16,
+     4
+    ],
+    "ghast-1": [
+     14,
+     5
+    ],
+    "ghast-2": [
+     15,
+     6
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.505,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1212"
+   }
+  }
+ ]
+}

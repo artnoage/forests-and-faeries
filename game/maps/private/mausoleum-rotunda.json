@@ -1,0 +1,153 @@
+{
+ "version": 1,
+ "map": {
+  "name": "mausoleum-rotunda",
+  "display_name": "Mausoleum rotunda",
+  "rows": [
+   "HHHHHHHHHHHHH..........HHHHHH",
+   "HHHHHHHHHHHHH..........HHHHHH",
+   "HHHHHHHHHHHHH..........HHHHHH",
+   "HHHHHHHHHHHHH...HHH....HHHHHH",
+   "HHHHHHHHHHHHHHH.HHH.H.HHHHHHH",
+   "HHHHHHHHHHHHHHH.....H.HHHHHHH",
+   "HHHHHHHHHHHHH..........HHHHHH",
+   "HHHHHH.........H....H........",
+   ".............................",
+   "....H...HHH..H........H..HHHH",
+   "..HHHH..HHH..............HHHH",
+   "..HHHH..HHH.....HHH......HHHH",
+   "..HHHH..HHH.....HHH......HHHH",
+   "..HHHH..HHH..............HHHH",
+   "..HHHH..HHH..............HHHH",
+   "..HHHH..HHH..H........H..HHHH",
+   "........HHH....H....H....HHHH",
+   "........HHH..............HHHH"
+  ]
+ },
+ "scene": {
+  "wall_height": 1.1,
+  "props": [
+   {
+    "kind": "sarcophagus",
+    "x": 16,
+    "y": 3,
+    "width": 1,
+    "depth": 2,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 17,
+    "y": 3,
+    "width": 1,
+    "depth": 2,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 18,
+    "y": 3,
+    "width": 1,
+    "depth": 2,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 20,
+    "y": 4,
+    "width": 1,
+    "depth": 2,
+    "height": 0.62
+   },
+   {
+    "kind": "brazier",
+    "x": 15,
+    "y": 7,
+    "width": 1,
+    "depth": 1,
+    "height": 0.7
+   },
+   {
+    "kind": "pillar",
+    "x": 20,
+    "y": 7,
+    "width": 1,
+    "depth": 1,
+    "height": 1.5
+   },
+   {
+    "kind": "brazier",
+    "x": 13,
+    "y": 9,
+    "width": 1,
+    "depth": 1,
+    "height": 0.7
+   },
+   {
+    "kind": "pillar",
+    "x": 22,
+    "y": 9,
+    "width": 1,
+    "depth": 1,
+    "height": 1.5
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 16,
+    "y": 11,
+    "width": 1,
+    "depth": 2,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 17,
+    "y": 11,
+    "width": 1,
+    "depth": 2,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 18,
+    "y": 11,
+    "width": 1,
+    "depth": 2,
+    "height": 0.62
+   },
+   {
+    "kind": "brazier",
+    "x": 13,
+    "y": 15,
+    "width": 1,
+    "depth": 1,
+    "height": 0.7
+   },
+   {
+    "kind": "pillar",
+    "x": 22,
+    "y": 15,
+    "width": 1,
+    "depth": 1,
+    "height": 1.5
+   },
+   {
+    "kind": "brazier",
+    "x": 15,
+    "y": 16,
+    "width": 1,
+    "depth": 1,
+    "height": 0.7
+   },
+   {
+    "kind": "pillar",
+    "x": 20,
+    "y": 16,
+    "width": 1,
+    "depth": 1,
+    "height": 1.5
+   }
+  ]
+ },
+ "source": "ember-rs catalogs/private/l3-undead-mausoleum-v1.jsonl (room rows only)"
+}

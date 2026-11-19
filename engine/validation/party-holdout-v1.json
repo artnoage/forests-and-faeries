@@ -1,0 +1,385 @@
+{
+ "compositions": {
+  "ghast2+mummy1": [
+   "guy+curogana"
+  ],
+  "ghast4+wight1": [
+   "l3-undead-v2"
+  ],
+  "ghoul1+mummy3": [
+   "l3-undead-gen-v2"
+  ],
+  "ghoul1+specter1": [
+   "guy"
+  ],
+  "ghoul2+ghast2": [
+   "guy+elion"
+  ],
+  "ghoul2+wight1": [
+   "guy+elion"
+  ],
+  "ghoul3+ghast1+mummy2": [
+   "l3-undead-gen-v2"
+  ],
+  "mummy3": [
+   "l3-undead-gen-v2"
+  ],
+  "shadow1+ghoul1+ghast3+wight1": [
+   "l3-undead-v2"
+  ],
+  "shadow1+ghoul1+specter1+ghast1+mummy2": [
+   "l3-undead-gen-v2"
+  ],
+  "shadow1+ghoul7+wight1": [
+   "l3-undead-gen-v2"
+  ],
+  "shadow1+mummy2": [
+   "guy+curogana"
+  ],
+  "shadow1+specter1+ghast2": [
+   "guy+elion"
+  ],
+  "shadow2+ghast1+wight1": [
+   "elion+curogana"
+  ],
+  "shadow2+ghoul1+specter1+ghast1": [
+   "guy+curogana"
+  ],
+  "skeleton1+ghast1": [
+   "guy"
+  ],
+  "skeleton1+ghast1+wight1": [
+   "guy+elion"
+  ],
+  "skeleton1+ghoul1+ghast1+wight2": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton1+ghoul1+ghast2+mummy2": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton1+ghoul1+specter4": [
+   "guy+curogana"
+  ],
+  "skeleton1+ghoul1+wight1": [
+   "guy+curogana"
+  ],
+  "skeleton1+ghoul3+wight2": [
+   "l3-undead-v2"
+  ],
+  "skeleton1+mummy2": [
+   "curogana"
+  ],
+  "skeleton1+shadow1+mummy3": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton1+shadow1+specter1+wight2": [
+   "l3-undead-v2"
+  ],
+  "skeleton1+shadow2+specter1+mummy1": [
+   "guy+curogana"
+  ],
+  "skeleton1+shadow2+specter2+ghast1+mummy1": [
+   "elion+curogana"
+  ],
+  "skeleton1+shadow2+wight2": [
+   "l3-undead-v2"
+  ],
+  "skeleton1+shadow3+specter1+ghast4": [
+   "l3-undead-v2"
+  ],
+  "skeleton1+specter1": [
+   "guy"
+  ],
+  "skeleton1+specter1+mummy3": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton1+zombie1+shadow1": [
+   "guy"
+  ],
+  "skeleton1+zombie1+shadow1+specter2+ghast1": [
+   "guy+curogana"
+  ],
+  "skeleton1+zombie1+shadow2+specter3+wight1": [
+   "l3-undead-gen-v2",
+   "l3-undead-v2"
+  ],
+  "skeleton1+zombie2+ghoul2+ghast3+mummy1": [
+   "l3-undead-v2"
+  ],
+  "skeleton1+zombie2+specter1+wight2": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton2+ghoul1": [
+   "guy"
+  ],
+  "skeleton2+shadow1+ghoul3+specter1": [
+   "guy+elion"
+  ],
+  "skeleton2+shadow1+mummy1": [
+   "curogana"
+  ],
+  "skeleton2+shadow2+specter3+wight1": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton2+zombie1+shadow1+ghoul1+specter2+mummy2": [
+   "l3-undead-v2"
+  ],
+  "skeleton3+ghoul1+wight1": [
+   "guy+elion"
+  ],
+  "skeleton3+mummy2": [
+   "guy+curogana"
+  ],
+  "skeleton3+shadow1+ghoul1+wight2": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton3+shadow5": [
+   "guy+elion"
+  ],
+  "skeleton3+zombie1+ghoul3+mummy2": [
+   "l3-undead-gen-v2"
+  ],
+  "skeleton3+zombie2+ghast1+wight1": [
+   "elion+curogana"
+  ],
+  "skeleton4+mummy1": [
+   "curogana"
+  ],
+  "skeleton4+specter1+wight2": [
+   "l3-undead-v2"
+  ],
+  "skeleton5+ghoul1+ghast2": [
+   "guy+curogana"
+  ],
+  "skeleton5+ghoul1+wight2": [
+   "l3-undead-v2"
+  ],
+  "skeleton5+shadow1+mummy2": [
+   "elion+curogana"
+  ],
+  "skeleton5+zombie1+specter1+ghast1": [
+   "guy+elion"
+  ],
+  "specter1+ghast4+mummy1": [
+   "l3-undead-gen-v2"
+  ],
+  "specter1+wight1+mummy1": [
+   "elion+curogana"
+  ],
+  "specter4+ghast4": [
+   "l3-undead-gen-v2"
+  ],
+  "wight1+mummy2": [
+   "elion+curogana"
+  ],
+  "zombie1+ghoul1+specter1+ghast1": [
+   "curogana"
+  ],
+  "zombie1+mummy1": [
+   "guy+elion"
+  ],
+  "zombie1+mummy3": [
+   "l3-undead-gen-v2"
+  ],
+  "zombie1+shadow1+ghast6": [
+   "l3-undead-v2"
+  ],
+  "zombie1+shadow1+ghoul4": [
+   "curogana"
+  ],
+  "zombie1+shadow1+specter2+wight1": [
+   "elion+curogana"
+  ],
+  "zombie1+specter1+ghast2+mummy2": [
+   "l3-undead-v2"
+  ],
+  "zombie1+specter5+wight1": [
+   "l3-undead-v2"
+  ],
+  "zombie2+ghoul1+specter4+wight1": [
+   "l3-undead-v2"
+  ],
+  "zombie2+shadow1": [
+   "guy"
+  ],
+  "zombie2+shadow1+ghoul2+specter1+ghast2+mummy1": [
+   "l3-undead-gen-v2"
+  ],
+  "zombie3+shadow2+specter3+wight1": [
+   "l3-undead-v2"
+  ],
+  "zombie3+specter1+mummy1": [
+   "curogana"
+  ]
+ },
+ "catalogs": [
+  "l3-undead-gen-v2",
+  "l3-undead-v2"
+ ],
+ "blocked_train_compositions": 115,
+ "per_tier": {
+  "S": 3,
+  "M": 3,
+  "L": 3
+ },
+ "parties": {
+  "guy+elion": {
+   "tiers": [
+    3,
+    5
+   ],
+   "maps_screened": 149,
+   "compositions": 128,
+   "frequent": 70,
+   "from_catalogs": [],
+   "added": [
+    "ghoul2+ghast2",
+    "ghoul2+wight1",
+    "shadow1+specter1+ghast2",
+    "skeleton1+ghast1+wight1",
+    "skeleton2+shadow1+ghoul3+specter1",
+    "skeleton3+ghoul1+wight1",
+    "skeleton3+shadow5",
+    "skeleton5+zombie1+specter1+ghast1",
+    "zombie1+mummy1"
+   ],
+   "held_in_pool": [
+    "ghoul2+ghast2",
+    "ghoul2+wight1",
+    "shadow1+specter1+ghast2",
+    "skeleton1+ghast1+wight1",
+    "skeleton2+shadow1+ghoul3+specter1",
+    "skeleton3+ghoul1+wight1",
+    "skeleton3+shadow5",
+    "skeleton4+mummy1",
+    "skeleton5+zombie1+specter1+ghast1",
+    "zombie1+mummy1"
+   ],
+   "types_without_seen_composition": []
+  },
+  "guy+curogana": {
+   "tiers": [
+    3,
+    5
+   ],
+   "maps_screened": 149,
+   "compositions": 126,
+   "frequent": 71,
+   "from_catalogs": [],
+   "added": [
+    "ghast2+mummy1",
+    "shadow1+mummy2",
+    "shadow2+ghoul1+specter1+ghast1",
+    "skeleton1+ghoul1+specter4",
+    "skeleton1+ghoul1+wight1",
+    "skeleton1+shadow2+specter1+mummy1",
+    "skeleton1+zombie1+shadow1+specter2+ghast1",
+    "skeleton3+mummy2",
+    "skeleton5+ghoul1+ghast2"
+   ],
+   "held_in_pool": [
+    "ghast2+mummy1",
+    "ghoul2+ghast2",
+    "shadow1+mummy2",
+    "shadow2+ghoul1+specter1+ghast1",
+    "skeleton1+ghoul1+specter4",
+    "skeleton1+ghoul1+wight1",
+    "skeleton1+mummy2",
+    "skeleton1+shadow2+specter1+mummy1",
+    "skeleton1+zombie1+shadow1+specter2+ghast1",
+    "skeleton3+mummy2",
+    "skeleton5+ghoul1+ghast2"
+   ],
+   "types_without_seen_composition": []
+  },
+  "elion+curogana": {
+   "tiers": [
+    3,
+    5
+   ],
+   "maps_screened": 149,
+   "compositions": 119,
+   "frequent": 70,
+   "from_catalogs": [
+    "mummy3",
+    "zombie1+mummy3"
+   ],
+   "added": [
+    "shadow2+ghast1+wight1",
+    "skeleton1+shadow2+specter2+ghast1+mummy1",
+    "skeleton3+zombie2+ghast1+wight1",
+    "skeleton5+shadow1+mummy2",
+    "specter1+wight1+mummy1",
+    "wight1+mummy2",
+    "zombie1+shadow1+specter2+wight1"
+   ],
+   "held_in_pool": [
+    "mummy3",
+    "shadow2+ghast1+wight1",
+    "skeleton1+shadow2+specter2+ghast1+mummy1",
+    "skeleton3+zombie2+ghast1+wight1",
+    "skeleton5+shadow1+mummy2",
+    "specter1+wight1+mummy1",
+    "wight1+mummy2",
+    "zombie1+mummy3",
+    "zombie1+shadow1+specter2+wight1"
+   ],
+   "types_without_seen_composition": []
+  },
+  "guy": {
+   "tiers": [
+    2,
+    4
+   ],
+   "maps_screened": 149,
+   "compositions": 20,
+   "frequent": 10,
+   "from_catalogs": [],
+   "added": [
+    "ghoul1+specter1",
+    "skeleton1+ghast1",
+    "skeleton1+specter1",
+    "skeleton1+zombie1+shadow1",
+    "skeleton2+ghoul1",
+    "zombie2+shadow1"
+   ],
+   "held_in_pool": [
+    "ghoul1+specter1",
+    "skeleton1+ghast1",
+    "skeleton1+specter1",
+    "skeleton1+zombie1+shadow1",
+    "skeleton2+ghoul1",
+    "zombie2+shadow1"
+   ],
+   "types_without_seen_composition": []
+  },
+  "curogana": {
+   "tiers": [
+    2,
+    4
+   ],
+   "maps_screened": 149,
+   "compositions": 92,
+   "frequent": 51,
+   "from_catalogs": [],
+   "added": [
+    "skeleton1+mummy2",
+    "skeleton2+shadow1+mummy1",
+    "skeleton4+mummy1",
+    "zombie1+ghoul1+specter1+ghast1",
+    "zombie1+shadow1+ghoul4",
+    "zombie3+specter1+mummy1"
+   ],
+   "held_in_pool": [
+    "ghoul2+ghast2",
+    "skeleton1+mummy2",
+    "skeleton2+shadow1+mummy1",
+    "skeleton4+mummy1",
+    "zombie1+ghoul1+specter1+ghast1",
+    "zombie1+shadow1+ghoul4",
+    "zombie3+specter1+mummy1"
+   ],
+   "types_without_seen_composition": []
+  }
+ }
+}

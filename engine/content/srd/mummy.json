@@ -1,0 +1,157 @@
+{
+ "schema": 1,
+ "id": "mummy",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "de027005e2cb8d1190c11d1026266ed0905f5f1d",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/mummy.yml": "c47500815c6d775acbd86f3b0e2ee7946c2d7d244502f4db79b08913de5d18e2"
+  }
+ },
+ "side": "monsters",
+ "name": "Mummy",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": true,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "undead"
+ ],
+ "ac": 11,
+ "max_hp": 58,
+ "speed": 20,
+ "fly": false,
+ "abilities": {
+  "str": 16,
+  "dex": 8,
+  "con": 15,
+  "int": 6,
+  "wis": 12,
+  "cha": 12
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 3,
+  "dex": -1,
+  "con": 2,
+  "int": -2,
+  "wis": 3,
+  "cha": 1
+ },
+ "initiative": {
+  "bonus": -1,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [
+   "necrotic",
+   "poison"
+  ],
+  "vulnerabilities": [
+   "fire"
+  ]
+ },
+ "condition_immunities": [
+  "charmed",
+  "exhaustion",
+  "frightened",
+  "paralyzed",
+  "poisoned"
+ ],
+ "passive_perception": 11,
+ "attacks": [
+  {
+   "name": "rotting_fist",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 5,
+   "damage": "1d10+3",
+   "damage_type": "bludgeoning",
+   "ability": null,
+   "proficient": null,
+   "additional": [
+    {
+     "damage": "3d6",
+     "damage_type": "necrotic"
+    }
+   ],
+   "on_hit": [
+    {
+     "id": "curse",
+     "if": [
+      "!object"
+     ]
+    }
+   ],
+   "save_attack": null,
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": [],
+   "kill_at_zero": true
+  },
+  {
+   "name": "dreadful_glare",
+   "type": "ranged_attack",
+   "range": 60,
+   "range_max": 60,
+   "to_hit": null,
+   "damage": "0",
+   "damage_type": null,
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "frighten",
+     "if": []
+    }
+   ],
+   "save_attack": {
+    "save": "wis",
+    "dc": 11,
+    "immune_on_success": true
+   },
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": [],
+   "no_damage": true
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [
+  [
+   "rotting_fist",
+   "rotting_fist",
+   "dreadful_glare"
+  ]
+ ],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    5,
+    19.0
+   ],
+   [
+    null,
+    0.0
+   ]
+  ],
+  "count": 2
+ },
+ "traits": [],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

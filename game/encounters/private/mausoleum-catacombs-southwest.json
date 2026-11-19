@@ -1,0 +1,155 @@
+{
+ "id": "mausoleum-catacombs-southwest",
+ "name": "Catacombs (south-west)",
+ "private": true,
+ "order": 105,
+ "map": "mausoleum-catacombs-southwest",
+ "theme": "mausoleum_caves",
+ "blurb": "Two burial rooms and tunnels around rock pillars.",
+ "presets": [
+  {
+   "id": "p1",
+   "name": "Catacombs (south-west): Wights",
+   "difficulty": "Medium",
+   "blurb": "Guy, Elion and Curogana against 2 specters and 2 wights.",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "specter",
+    "specter",
+    "wight",
+    "wight"
+   ],
+   "placements": {
+    "guy": [
+     12,
+     7
+    ],
+    "elion": [
+     11,
+     5
+    ],
+    "curogana": [
+     12,
+     5
+    ],
+    "specter-1": [
+     5,
+     1
+    ],
+    "specter-2": [
+     5,
+     0
+    ],
+    "wight-1": [
+     3,
+     3
+    ],
+    "wight-2": [
+     4,
+     0
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1272"
+   }
+  },
+  {
+   "id": "p2",
+   "name": "Catacombs (south-west): Mummy · Guy and Elion",
+   "difficulty": "Medium",
+   "blurb": "Guy and Elion against 1 skeleton and 1 mummy.",
+   "party": [
+    "guy",
+    "elion"
+   ],
+   "roster": [
+    "skeleton",
+    "mummy"
+   ],
+   "placements": {
+    "guy": [
+     5,
+     4
+    ],
+    "elion": [
+     5,
+     3
+    ],
+    "skeleton-1": [
+     12,
+     7
+    ],
+    "mummy-1": [
+     11,
+     6
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.495,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1273"
+   }
+  },
+  {
+   "id": "p3",
+   "name": "Catacombs (south-west): Ghoul · Curogana",
+   "difficulty": "Medium",
+   "blurb": "Curogana against 4 zombies, 1 ghoul and 1 mummy.",
+   "party": [
+    "curogana"
+   ],
+   "roster": [
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "ghoul",
+    "mummy"
+   ],
+   "placements": {
+    "curogana": [
+     8,
+     10
+    ],
+    "zombie-1": [
+     4,
+     4
+    ],
+    "zombie-2": [
+     3,
+     4
+    ],
+    "zombie-3": [
+     0,
+     7
+    ],
+    "zombie-4": [
+     4,
+     2
+    ],
+    "ghoul-1": [
+     1,
+     7
+    ],
+    "mummy-1": [
+     2,
+     4
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "screened",
+    "games": 200,
+    "layout": "zone, sight, seed 1274"
+   }
+  }
+ ]
+}

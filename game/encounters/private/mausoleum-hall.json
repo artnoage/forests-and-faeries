@@ -1,0 +1,185 @@
+{
+ "id": "mausoleum-hall",
+ "name": "Mausoleum hall",
+ "private": true,
+ "order": 100,
+ "map": "mausoleum-hall",
+ "theme": "mausoleum",
+ "blurb": "A long hall between two banks of sarcophagi, with a vestibule to the south.",
+ "presets": [
+  {
+   "id": "p1",
+   "name": "Mausoleum hall: Wights",
+   "difficulty": "Medium",
+   "blurb": "Guy, Elion and Curogana against 1 zombie, 1 shadow, 1 ghoul and 2 wights.",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "zombie",
+    "shadow",
+    "ghoul",
+    "wight",
+    "wight"
+   ],
+   "placements": {
+    "guy": [
+     8,
+     15
+    ],
+    "elion": [
+     9,
+     15
+    ],
+    "curogana": [
+     6,
+     15
+    ],
+    "zombie-1": [
+     8,
+     6
+    ],
+    "shadow-1": [
+     7,
+     5
+    ],
+    "ghoul-1": [
+     7,
+     6
+    ],
+    "wight-1": [
+     7,
+     8
+    ],
+    "wight-2": [
+     7,
+     7
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.4997,
+    "band": "strict",
+    "games": 3000,
+    "layout": "zone, sight, seed 1117"
+   }
+  },
+  {
+   "id": "p2",
+   "name": "Mausoleum hall: Mummy · Guy and Curogana",
+   "difficulty": "Medium",
+   "blurb": "Guy and Curogana against 3 skeletons, 1 zombie, 1 ghoul, 1 specter and 1 mummy.",
+   "party": [
+    "guy",
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "skeleton",
+    "skeleton",
+    "zombie",
+    "ghoul",
+    "specter",
+    "mummy"
+   ],
+   "placements": {
+    "guy": [
+     8,
+     14
+    ],
+    "curogana": [
+     6,
+     15
+    ],
+    "skeleton-1": [
+     5,
+     4
+    ],
+    "skeleton-2": [
+     4,
+     5
+    ],
+    "skeleton-3": [
+     6,
+     5
+    ],
+    "zombie-1": [
+     4,
+     6
+    ],
+    "ghoul-1": [
+     6,
+     2
+    ],
+    "specter-1": [
+     7,
+     5
+    ],
+    "mummy-1": [
+     5,
+     5
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "band": "strict",
+    "games": 3000,
+    "layout": "zone, sight, seed 1118"
+   }
+  },
+  {
+   "id": "p3",
+   "name": "Mausoleum hall: Zombies · Curogana",
+   "difficulty": "Medium",
+   "blurb": "Curogana against 1 skeleton, 4 zombies and 1 mummy.",
+   "party": [
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "mummy"
+   ],
+   "placements": {
+    "curogana": [
+     0,
+     1
+    ],
+    "skeleton-1": [
+     8,
+     5
+    ],
+    "zombie-1": [
+     9,
+     6
+    ],
+    "zombie-2": [
+     10,
+     3
+    ],
+    "zombie-3": [
+     9,
+     2
+    ],
+    "zombie-4": [
+     9,
+     5
+    ],
+    "mummy-1": [
+     8,
+     6
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5027,
+    "band": "strict",
+    "games": 3000,
+    "layout": "zone, sight, seed 1119"
+   }
+  }
+ ]
+}

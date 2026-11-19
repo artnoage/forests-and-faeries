@@ -1,0 +1,25 @@
+# Content ids allowed in the public pack (content/srd/): SRD 5.2.1 stat blocks and
+# characters built to SRD 5.2.1 rules. cargo test fails for any other id.
+# Heroes (level 3, undead party)
+guy
+elion
+curogana
+# Heroes (level 2, SRD 5.2.1 Fighter 2 and Wizard 2; GENERAL_ENV.md §2.3)
+mara
+ilyra
+# Heroes (level 3, SRD 5.2.1 Barbarian 3, Path of the Berserker; natural20 docs/CHRUNA_BARBARIAN.md)
+chruna
+# Monsters (SRD 5.2.1 undead)
+skeleton
+zombie
+ghoul
+ghast
+specter
+shadow
+wight
+# Monsters (SRD 5.2.1 goblins, G8b; Small Fey (Goblinoid))
+goblin_minion
+goblin_warrior
+goblin_boss
+# Monsters (SRD 5.2.1 Mummy; CR 3)
+mummy

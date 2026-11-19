@@ -1,0 +1,572 @@
+{
+ "id": "crypt",
+ "name": "The Crypt",
+ "order": 1,
+ "map": "vault",
+ "map_name": "The crypt hall",
+ "theme": "ossuary",
+ "blurb": "Guy, Elion and Curogana, level-3 heroes (two of them in some levels), against the SRD 5.2.1 undead; Chruna the berserker joins them in the Mummies' Tomb.",
+ "presets": [
+  {
+   "id": "bone_patrol",
+   "name": "Bone Patrol",
+   "difficulty": "Easy",
+   "blurb": "Six skeletons and six zombies against Guy and Curogana. Many weak bodies.",
+   "theme": "ossuary",
+   "party": [
+    "guy",
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "skeleton",
+    "skeleton",
+    "skeleton",
+    "skeleton",
+    "skeleton",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "curogana": [
+     2,
+     7
+    ],
+    "skeleton-1": [
+     12,
+     3
+    ],
+    "skeleton-2": [
+     12,
+     8
+    ],
+    "skeleton-3": [
+     13,
+     5
+    ],
+    "skeleton-4": [
+     12,
+     5
+    ],
+    "skeleton-5": [
+     13,
+     3
+    ],
+    "skeleton-6": [
+     13,
+     7
+    ],
+    "zombie-1": [
+     11,
+     4
+    ],
+    "zombie-2": [
+     11,
+     7
+    ],
+    "zombie-3": [
+     13,
+     4
+    ],
+    "zombie-4": [
+     12,
+     6
+    ],
+    "zombie-5": [
+     11,
+     5
+    ],
+    "zombie-6": [
+     13,
+     8
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.843,
+    "games": 1200,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.811,
+     "games": 8000,
+     "truncation": 0.0023
+    }
+   }
+  },
+  {
+   "id": "ghoul_pack",
+   "name": "Ghoul Pack",
+   "difficulty": "Medium",
+   "blurb": "A ghast and four ghouls against Guy and Curogana. Paralysing claws and a sickening stench.",
+   "theme": "catacombs",
+   "party": [
+    "guy",
+    "curogana"
+   ],
+   "roster": [
+    "ghoul",
+    "ghoul",
+    "ghoul",
+    "ghoul",
+    "ghast"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "curogana": [
+     2,
+     7
+    ],
+    "ghoul-1": [
+     11,
+     10
+    ],
+    "ghoul-2": [
+     10,
+     5
+    ],
+    "ghoul-3": [
+     13,
+     4
+    ],
+    "ghoul-4": [
+     12,
+     4
+    ],
+    "ghast-1": [
+     11,
+     2
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.676,
+    "games": 210,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.643,
+     "games": 8000,
+     "truncation": 0.0
+    }
+   }
+  },
+  {
+   "id": "haunting",
+   "name": "Haunting",
+   "difficulty": "Medium",
+   "blurb": "Four specters and five shadows. They drain life and strength.",
+   "theme": "caverns",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "specter",
+    "specter",
+    "specter",
+    "specter",
+    "shadow",
+    "shadow",
+    "shadow",
+    "shadow",
+    "shadow"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "elion": [
+     1,
+     5
+    ],
+    "curogana": [
+     2,
+     7
+    ],
+    "specter-1": [
+     12,
+     3
+    ],
+    "specter-2": [
+     12,
+     8
+    ],
+    "specter-3": [
+     13,
+     5
+    ],
+    "specter-4": [
+     12,
+     5
+    ],
+    "shadow-1": [
+     13,
+     3
+    ],
+    "shadow-2": [
+     13,
+     7
+    ],
+    "shadow-3": [
+     11,
+     4
+    ],
+    "shadow-4": [
+     11,
+     7
+    ],
+    "shadow-5": [
+     13,
+     4
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.7,
+    "games": 210,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.667,
+     "games": 8000,
+     "truncation": 0.0112
+    }
+   }
+  },
+  {
+   "id": "wights_retinue",
+   "name": "Wight's Retinue",
+   "difficulty": "Medium",
+   "blurb": "A wight with sixteen zombies. Life Drain lowers maximum HP.",
+   "theme": "reliquary",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "zombie",
+    "wight"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "elion": [
+     1,
+     5
+    ],
+    "curogana": [
+     2,
+     7
+    ],
+    "zombie-1": [
+     12,
+     3
+    ],
+    "zombie-2": [
+     12,
+     8
+    ],
+    "zombie-3": [
+     13,
+     5
+    ],
+    "zombie-4": [
+     12,
+     5
+    ],
+    "zombie-5": [
+     13,
+     3
+    ],
+    "zombie-6": [
+     13,
+     7
+    ],
+    "zombie-7": [
+     11,
+     4
+    ],
+    "zombie-8": [
+     11,
+     7
+    ],
+    "zombie-9": [
+     13,
+     4
+    ],
+    "zombie-10": [
+     12,
+     6
+    ],
+    "zombie-11": [
+     11,
+     5
+    ],
+    "zombie-12": [
+     13,
+     8
+    ],
+    "zombie-13": [
+     12,
+     4
+    ],
+    "zombie-14": [
+     13,
+     6
+    ],
+    "zombie-15": [
+     11,
+     6
+    ],
+    "zombie-16": [
+     11,
+     3
+    ],
+    "wight-1": [
+     12,
+     7
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.629,
+    "games": 210,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.655,
+     "games": 8000,
+     "truncation": 0.0118
+    }
+   }
+  },
+  {
+   "id": "two_wights",
+   "name": "Two Wights",
+   "difficulty": "Hard",
+   "blurb": "Two wights and three ghouls. Life Drain and paralysing claws.",
+   "theme": "sanctum",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "wight",
+    "wight",
+    "ghoul",
+    "ghoul",
+    "ghoul"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "elion": [
+     1,
+     5
+    ],
+    "curogana": [
+     2,
+     7
+    ],
+    "wight-1": [
+     12,
+     3
+    ],
+    "wight-2": [
+     12,
+     8
+    ],
+    "ghoul-1": [
+     13,
+     5
+    ],
+    "ghoul-2": [
+     12,
+     5
+    ],
+    "ghoul-3": [
+     13,
+     3
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.486,
+    "games": 210,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.497,
+     "games": 8000,
+     "truncation": 0.005
+    }
+   }
+  },
+  {
+   "id": "whole_crypt",
+   "name": "The Whole Crypt",
+   "difficulty": "Hard",
+   "blurb": "One of each of the seven undead, with the heroes scattered through the hall.",
+   "theme": "crucible",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "zombie",
+    "ghoul",
+    "ghast",
+    "specter",
+    "shadow",
+    "wight"
+   ],
+   "placements": {
+    "guy": [
+     6,
+     4
+    ],
+    "elion": [
+     1,
+     8
+    ],
+    "curogana": [
+     2,
+     6
+    ],
+    "skeleton-1": [
+     6,
+     9
+    ],
+    "zombie-1": [
+     10,
+     2
+    ],
+    "ghoul-1": [
+     6,
+     10
+    ],
+    "ghast-1": [
+     10,
+     4
+    ],
+    "specter-1": [
+     10,
+     7
+    ],
+    "shadow-1": [
+     12,
+     8
+    ],
+    "wight-1": [
+     12,
+     9
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.476,
+    "games": 210,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.501,
+     "games": 8000,
+     "truncation": 0.0019
+    }
+   }
+  },
+  {
+   "id": "mummies_tomb",
+   "name": "The Mummies' Tomb",
+   "difficulty": "Hard",
+   "blurb": "Two mummies, a wight, a ghast and a zombie, against four heroes with Chruna the berserker.",
+   "theme": "reliquary",
+   "party": [
+    "guy",
+    "elion",
+    "curogana",
+    "chruna"
+   ],
+   "roster": [
+    "mummy",
+    "mummy",
+    "wight",
+    "ghast",
+    "zombie"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "elion": [
+     1,
+     5
+    ],
+    "curogana": [
+     2,
+     7
+    ],
+    "chruna": [
+     3,
+     5
+    ],
+    "mummy-1": [
+     12,
+     3
+    ],
+    "mummy-2": [
+     12,
+     8
+    ],
+    "wight-1": [
+     13,
+     5
+    ],
+    "ghast-1": [
+     12,
+     5
+    ],
+    "zombie-1": [
+     13,
+     3
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.51,
+    "games": 205,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.518,
+     "games": 8000,
+     "truncation": 0.0015
+    }
+   }
+  }
+ ]
+}

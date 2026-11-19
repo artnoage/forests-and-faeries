@@ -1,0 +1,620 @@
+{
+ "what": "The sixteen rigged figures of Forests and Faeries (game/static/models/).",
+ "pipeline": "Project-original meshes (Codex reference images, Tripo multiview image-to-3D, reduced in Blender; see mesh_source) rigged and animated by Gemini with its own armatures, geodesic skinning and clips. No third-party geometry, armature, texture or animation data.",
+ "rig_manifests": [
+  "<repo-root> (with hashes)",
+  "<repo-root> (no hashes)"
+ ],
+ "added": {
+  "eleven figures": "2026-11-17 (628b52aa)",
+  "mara, ilyra, goblin, goblin_boss": "2026-11-18",
+  "chruna": "2026-11-18 (rigged from the raw Tripo mesh, mesh_source.tripo.raw_model_sha256)"
+ },
+ "figures": [
+  {
+   "kind": "chruna",
+   "file": "game/static/models/chruna.glb",
+   "sha256": "14958090a3931b89507c6fe6c550383599a6dff74e088409b2cd77f9414c073b",
+   "bytes": 1519332,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "chruna_Mat"
+   ],
+   "mesh_source": {
+    "group": "heroes",
+    "file": "<repo-root>/heroes/chruna/model-web.glb",
+    "sha256": "9854d98e35e757e9159d4f61dcb24f951466db78834637e91f20946d143fbff3",
+    "tripo": {
+     "task_id": "2b0bdd88-b6cf-4421-af70-c72cfd5d1cf5",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "detailed",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 60.0,
+     "raw_model_sha256": "78099b4f38b0ad3468492ee859257ba5e9ef42e6d7febce8a23240493e0a96a4"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "curogana",
+   "file": "webgame/ff/static/models/curogana.glb",
+   "sha256": "cde714b6bd37796377f523e174f5971ed1519bcb45089eb35dfc4521ae2069e4",
+   "bytes": 1145976,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "cast",
+    "cast_area",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_a3c57a64-5b75-4196-98d9-706e83c60f51"
+   ],
+   "mesh_source": {
+    "group": "heroes",
+    "file": "webgame/static/models/curogana.glb",
+    "sha256": "cd09042fca8dbc403ff8744fe999ead930aa057e56739e1ca8f27a23de5498d9",
+    "tripo": {
+     "task_id": "a3c57a64-5b75-4196-98d9-706e83c60f51",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "f6c200726f13057fcc4a5ff6b33397b172f7f1466e5a3b48b3d0918782ce423b"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "elion",
+   "file": "webgame/ff/static/models/elion.glb",
+   "sha256": "61f4b1a661b7e5ff22c51cc51a555d07e28ea2df68079de191a92ba8afd11a8f",
+   "bytes": 1296796,
+   "triangles": 17999,
+   "bones": 20,
+   "clips": [
+    "cast",
+    "cast_area",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_9f06c276-d0bb-4c0a-8da4-02e66bd835ca"
+   ],
+   "mesh_source": {
+    "group": "heroes",
+    "file": "webgame/static/models/elion.glb",
+    "sha256": "021063ab7c50dc5065e38b39eaa269e606a4100299d059c0a0fcb4c8f9f7b1c0",
+    "tripo": {
+     "task_id": "9f06c276-d0bb-4c0a-8da4-02e66bd835ca",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "523d0a007df9fc4c814b63113539090c1ee4d3320f31c1ca5ccec1eba34d3a69"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "ghast",
+   "file": "webgame/ff/static/models/ghast.glb",
+   "sha256": "6371391d8711a824ea5d9e082c0e6466f7ed9850171602ce37df258bb962b1cc",
+   "bytes": 1398952,
+   "triangles": 17999,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_3f2e9833-ac8d-496d-8698-aad29262d0f7"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/ghast.glb",
+    "sha256": "435f577337e875929daadefd279f98951313a4fc5305bff3b76656dd987d947b",
+    "tripo": {
+     "task_id": "3f2e9833-ac8d-496d-8698-aad29262d0f7",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "7765d8c777f9107c63780381601b926b0d393dbbef84c2ef6e1f78ce02214e5b"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": null
+  },
+  {
+   "kind": "ghoul",
+   "file": "webgame/ff/static/models/ghoul.glb",
+   "sha256": "16aa31da33b2416c3454360420eaeae4554aac07a53d778b97f1ee8f23f397ff",
+   "bytes": 1315756,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_83454610-33ac-451f-87ef-1bd858679718"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/ghoul.glb",
+    "sha256": "0763588732c0f78a36d334e4ab748d81bde1ee17bbd2809148bc3384968e47e6",
+    "tripo": {
+     "task_id": "83454610-33ac-451f-87ef-1bd858679718",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "11257bca8399be54893a8667c5ac01a1010ba9246e93ad01396cdecd6e38d256"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": null
+  },
+  {
+   "kind": "goblin",
+   "file": "webgame/ff/static/models/goblin.glb",
+   "sha256": "f73621e500a9a18e858206804c9d9c0f67b904bda6c057cfb949b16b6451b990",
+   "bytes": 1410524,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "goblin_Mat"
+   ],
+   "mesh_source": {
+    "group": "goblins",
+    "file": "webgame/static/models/goblin.glb",
+    "sha256": "56609ae4a16a0e392a9485334d4f408a32efc845507e26290885a37ae207626c",
+    "tripo": {
+     "task_id": "4550d989-dd6d-448b-88b5-5a0c7139476d",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "f18631a0c92e1c66e1052787cf9834da57baede211291e46c2841a81c90d44eb"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "goblin_boss",
+   "file": "webgame/ff/static/models/goblin_boss.glb",
+   "sha256": "5c70d30fc97742736fba7d01a99b6b1399cf177144cace4e8ba4e669e4804ddb",
+   "bytes": 1535316,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "goblin_boss_Mat"
+   ],
+   "mesh_source": {
+    "group": "goblins",
+    "file": "webgame/static/models/goblin_boss.glb",
+    "sha256": "dccd58103b1646dee48d4ec55cb6c4a4a975f179c3d47a1b17dbc2676f4146f0",
+    "tripo": {
+     "task_id": "6727e7f3-8fd0-4890-930e-3452d97740e0",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "2d12e31a4ac1a029cd1b8d68c0062628eebe28addb62fc445f43c3090018912d"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "guy",
+   "file": "webgame/ff/static/models/guy.glb",
+   "sha256": "d0dd7e6d0f8d821dbeec80665eb893b1c48c0eedebe6602fe8431d91265cd557",
+   "bytes": 1262944,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_9bbb257f-4c24-4084-afee-3a87d361b1d9"
+   ],
+   "mesh_source": {
+    "group": "heroes",
+    "file": "webgame/static/models/guy.glb",
+    "sha256": "c53f45bb4bb85cda93c85eeeff4a01deec7463cb88534b700766c7243debd7cc",
+    "tripo": {
+     "task_id": "9bbb257f-4c24-4084-afee-3a87d361b1d9",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "275db8f71d2d0143e93e44af7b18b1b91a51993e96851a4268d838bfa8cf5be2"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "ilyra",
+   "file": "webgame/ff/static/models/ilyra.glb",
+   "sha256": "1fbf3a329c808198ce67014bd25513e1574160d7e2056b166fb558e0246a6aab",
+   "bytes": 1211792,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "cast_area",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "ilyra_Mat"
+   ],
+   "mesh_source": {
+    "group": "heroes",
+    "file": "webgame/static/models/ilyra.glb",
+    "sha256": "15cc031c6647fde7baa2586ddfc78d9b20e5860124ae5f48c026a72537a537cf",
+    "tripo": {
+     "task_id": "908eb0ef-c572-42e4-804b-30b69ee29141",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "8d64c45c0b5e2a3911aaa68205542afa768818f5072e7c71b090f2c7d532b927"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "mara",
+   "file": "webgame/ff/static/models/mara.glb",
+   "sha256": "4377ee6a4f730c0d44e47453d77b1794fb817896e4e4f213a960ab50ca5eaeaf",
+   "bytes": 1283116,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "mara_Mat"
+   ],
+   "mesh_source": {
+    "group": "heroes",
+    "file": "webgame/static/models/mara.glb",
+    "sha256": "7c4faf725ccc6165ccc6d23cf385d19da20edd3b464955979d4f15483aac3c56",
+    "tripo": {
+     "task_id": "48b1e7bb-a977-42d8-9c39-b56aa305df32",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "66e5d7f8ff40b594a011b4214095d3507db5b4c88fc9cede7aed06863a24fb6d"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "mummy",
+   "file": "webgame/ff/static/models/mummy.glb",
+   "sha256": "e5329cfb5594d567f3fb1d77777be0d3fba79dcae7e23c973951a2277af744fc",
+   "bytes": 1210404,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_fa5c8848-53a4-4f4a-a65c-833d343101b5"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/mummy.glb",
+    "sha256": "4006019442c6704821f374be8ef219fbb569b32472ed13f1f76c28b3612bb2e8",
+    "tripo": {
+     "task_id": "fa5c8848-53a4-4f4a-a65c-833d343101b5",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "9cae58a82fea0112dbb99a8f18839d7e6dc62a03023a2d22e9bd0bcbb3979801"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "shadow",
+   "file": "webgame/ff/static/models/shadow.glb",
+   "sha256": "2f42b2566caa49f24979c25eda6f90634a8d2da84f4299e95f0cd6a9de865913",
+   "bytes": 1178256,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_6e940c11-2705-4030-b231-c3a6e246c537"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/shadow.glb",
+    "sha256": "a772841d41c2e72f6e594f5008049271956b6c51782c12331ab49a2d5732e1ad",
+    "tripo": {
+     "task_id": "6e940c11-2705-4030-b231-c3a6e246c537",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "3296a0169fe57c4ed1e50a76953b7a4576ddf98b4325303ca9d1da59b27bc0c2"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": null
+  },
+  {
+   "kind": "skeleton",
+   "file": "webgame/ff/static/models/skeleton.glb",
+   "sha256": "6a5ab59b843793285511b352cb0a7fc70ea0a9d11f5e39d4e1ed380f1a9d5b34",
+   "bytes": 1372544,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_a5334133-3523-4959-970a-24bc289b38b5"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/skeleton.glb",
+    "sha256": "fea43201bfceb8feb5d35c171cd4af93742dbb23ce7c56dbba0af8327b6e0b7f",
+    "tripo": {
+     "task_id": "a5334133-3523-4959-970a-24bc289b38b5",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "6624e3e319615d7dbd97eaa8897d9e8914ccb57f5cf03de0d6095aa25a0b7a08"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": null
+  },
+  {
+   "kind": "specter",
+   "file": "webgame/ff/static/models/specter.glb",
+   "sha256": "a65586d24bca8c649dc10b3dd605206dd236d94816496d707f511cd78ac67edd",
+   "bytes": 1466228,
+   "triangles": 18000,
+   "bones": 17,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_ddd6e02a-f927-4c9b-9985-cbe94a6678c9"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/specter.glb",
+    "sha256": "56e4449d86975ee07b3530f9c47b79f4b0b91c3002ec435a422fb56a2e7220a3",
+    "tripo": {
+     "task_id": "ddd6e02a-f927-4c9b-9985-cbe94a6678c9",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "0d9ef20415389f93fecc1321f85272696a998a5f4b71303f9e04f2b7887cc70a"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": null
+  },
+  {
+   "kind": "wight",
+   "file": "webgame/ff/static/models/wight.glb",
+   "sha256": "b16ef52407a40f2478706c7b75c14b0ff645b9c27e9b8c63e4f2680bca4ba94b",
+   "bytes": 1395176,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_fc7742ff-6e2d-441f-a972-c776447517b2"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/wight.glb",
+    "sha256": "3c320e24d902fddfe112352e95d99eeaa83f2b5d09942d8486d0cf7d08cee3ff",
+    "tripo": {
+     "task_id": "fc7742ff-6e2d-441f-a972-c776447517b2",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "8c2686ba97b9e36b317f47d5049ae95c0dd18b927103eeed0a28edd7ba552315"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": null
+  },
+  {
+   "kind": "zombie",
+   "file": "webgame/ff/static/models/zombie.glb",
+   "sha256": "f658062129d14edb202cbce41b33a9385b688e8e2bbd1bf53ddb021b5d21303c",
+   "bytes": 1360532,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "hit",
+    "idle",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_d7a1d60c-5fa5-4df3-80d0-0e4bceecc42f"
+   ],
+   "mesh_source": {
+    "group": "undead",
+    "file": "webgame/static/models/zombie.glb",
+    "sha256": "0c39dec72cb1e6073901da655fa5da87b054a845ef6afed1dc9025ecc728d402",
+    "tripo": {
+     "task_id": "d7a1d60c-5fa5-4df3-80d0-0e4bceecc42f",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "86d80878ca3e631c69190b3915ea68484ffb84b03bdcd2733344ed0dd92eac00"
+    }
+   },
+   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": null
+  }
+ ]
+}

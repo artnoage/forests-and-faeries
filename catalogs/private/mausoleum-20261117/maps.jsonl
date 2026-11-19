@@ -1,0 +1,7 @@
+{"name": "mausoleum-catacombs-northeast", "file": "mausoleum-catacombs-northeast.json", "family": "hand", "w": 15, "h": 16, "floor": 102}
+{"name": "mausoleum-catacombs-southwest", "file": "mausoleum-catacombs-southwest.json", "family": "hand", "w": 13, "h": 12, "floor": 69}
+{"name": "mausoleum-chapel", "file": "mausoleum-chapel.json", "family": "hand", "w": 20, "h": 22, "floor": 188}
+{"name": "mausoleum-crypts", "file": "mausoleum-crypts.json", "family": "hand", "w": 29, "h": 20, "floor": 219}
+{"name": "mausoleum-forecourt", "file": "mausoleum-forecourt.json", "family": "hand", "w": 32, "h": 24, "floor": 349}
+{"name": "mausoleum-hall", "file": "mausoleum-hall.json", "family": "hand", "w": 15, "h": 18, "floor": 167}
+{"name": "mausoleum-rotunda", "file": "mausoleum-rotunda.json", "family": "hand", "w": 29, "h": 18, "floor": 267}

@@ -1,0 +1,133 @@
+{
+ "schema": 1,
+ "id": "specter",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/npcs/specter.yml": "93b02b13bfc252deb67f1c8bcd57ddcfd1b28f927809af30c58f8002be17cd0d",
+   "templates/rulesets/5e-2024/npcs/specter.yml": "baa0ce2abb5c89aaa171aa11838ee6218235f2a942b573059473cbde9c8930a5"
+  }
+ },
+ "side": "monsters",
+ "name": "Specter",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": true,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "undead"
+ ],
+ "ac": 12,
+ "max_hp": 22,
+ "speed": 50,
+ "fly": true,
+ "abilities": {
+  "str": 1,
+  "dex": 14,
+  "con": 11,
+  "int": 10,
+  "wis": 10,
+  "cha": 11
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": -5,
+  "dex": 2,
+  "con": 0,
+  "int": 0,
+  "wis": 0,
+  "cha": 0
+ },
+ "initiative": {
+  "bonus": 2,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [
+   "acid",
+   "bludgeoning",
+   "cold",
+   "fire",
+   "lightning",
+   "piercing",
+   "slashing",
+   "thunder"
+  ],
+  "immunities": [
+   "necrotic",
+   "poison"
+  ],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [
+  "charmed",
+  "exhaustion",
+  "grappled",
+  "paralyzed",
+  "petrified",
+  "poisoned",
+  "prone",
+  "restrained",
+  "unconscious"
+ ],
+ "passive_perception": 10,
+ "attacks": [
+  {
+   "name": "life_drain",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "2d6",
+   "damage_type": "necrotic",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "life_drain",
+     "if": [
+      "!object"
+     ]
+    }
+   ],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    7.0
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [
+  {
+   "id": "incorporeal_movement"
+  },
+  {
+   "id": "sunlight_sensitivity"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

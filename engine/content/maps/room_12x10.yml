@@ -1,0 +1,23 @@
+# ember-rs G2 hand-made map (12x10, walls only): A small room (10x8 inside the walls) with four single pillars.
+# Format: ember-rs docs/GENERAL_ENV.md §3.2 (H stone walls, . floor, bright light).
+name: "Pillared Room"
+map:
+  illumination: 1.0
+  base:
+    - 'HHHHHHHHHHHH'
+    - 'H..........H'
+    - 'H..........H'
+    - 'H...H..H...H'
+    - 'H..........H'
+    - 'H..........H'
+    - 'H...H..H...H'
+    - 'H..........H'
+    - 'H..........H'
+    - 'HHHHHHHHHHHH'
+legend:
+  H:
+    name: Wall
+    type: stone_wall
+ember:
+  family: pillars
+  hand_made: true

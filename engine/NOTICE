@@ -1,0 +1,23 @@
+ember-rs (MIT licensed, see LICENSE)
+=====================================
+
+This crate mirrors the rules and the native AI of natural20
+(https://github.com/jedld/natural_20.py), MIT licensed:
+
+  Copyright (c) 2024 Joseph Dayo
+  (full licence text in LICENSE-natural20)
+
+The creature and character data (`content/srd/`, exported from natural20;
+every file carries this attribution) are SRD 5.2.1 content:
+
+  This work includes material from the System Reference Document 5.2.1
+  ("SRD 5.2.1") by Wizards of the Coast LLC, available at
+  https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+  Creative Commons Attribution 4.0 International License, available at
+  https://creativecommons.org/licenses/by/4.0/legalcode.
+
+`src/path.rs` and parts of `src/ai.rs` are salvaged from the private
+`ember-engine` repository (our own code). No code from TalkDND is used.
+
+The fixed maps in `content/maps/` are copied from natural20-metaskepsis
+(MIT); `content/maps/MANIFEST.json` names the commit and SHA-256 of each.

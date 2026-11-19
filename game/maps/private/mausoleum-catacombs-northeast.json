@@ -1,0 +1,30 @@
+{
+ "version": 1,
+ "map": {
+  "name": "mausoleum-catacombs-northeast",
+  "display_name": "Catacombs (north-east)",
+  "rows": [
+   "...HHHHHHHHHHHH",
+   "...HHHHHHHHHHHH",
+   "...HHHHHHHHHHHH",
+   "...HHHHHHHHHHHH",
+   "...HHHHHHHHHHHH",
+   ".............HH",
+   ".............HH",
+   "HHHHHH...HH..HH",
+   "HHHHHHH..HH..HH",
+   "HHHHHHH..HHHHHH",
+   "HHH..HH..HHHHHH",
+   "HHH..HH..HHHHHH",
+   "...............",
+   "...............",
+   "HHHH....HHHH...",
+   "HHHH..HHHHHH..."
+  ]
+ },
+ "scene": {
+  "wall_height": 1.1,
+  "props": []
+ },
+ "source": "ember-rs catalogs/private/l3-undead-mausoleum-v1.jsonl (room rows only)"
+}

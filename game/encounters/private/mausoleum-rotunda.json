@@ -1,0 +1,165 @@
+{
+ "id": "mausoleum-rotunda",
+ "name": "Mausoleum rotunda",
+ "private": true,
+ "order": 101,
+ "map": "mausoleum-rotunda",
+ "theme": "mausoleum",
+ "blurb": "A round chamber around a raised dais, with a reliquary and a west wing.",
+ "presets": [
+  {
+   "id": "p1",
+   "name": "Mausoleum rotunda: Mummies",
+   "difficulty": "Medium",
+   "blurb": "Guy, Elion and Curogana against 2 ghouls and 3 mummies.",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "ghoul",
+    "ghoul",
+    "mummy",
+    "mummy",
+    "mummy"
+   ],
+   "placements": {
+    "guy": [
+     12,
+     12
+    ],
+    "elion": [
+     11,
+     14
+    ],
+    "curogana": [
+     12,
+     14
+    ],
+    "ghoul-1": [
+     24,
+     7
+    ],
+    "ghoul-2": [
+     26,
+     8
+    ],
+    "mummy-1": [
+     25,
+     8
+    ],
+    "mummy-2": [
+     24,
+     8
+    ],
+    "mummy-3": [
+     27,
+     8
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5413,
+    "band": "strict",
+    "games": 3000,
+    "layout": "zone, sight, seed 1148"
+   }
+  },
+  {
+   "id": "p2",
+   "name": "Mausoleum rotunda: Ghasts · Guy and Curogana",
+   "difficulty": "Medium",
+   "blurb": "Guy and Curogana against 1 skeleton, 1 zombie and 3 ghasts.",
+   "party": [
+    "guy",
+    "curogana"
+   ],
+   "roster": [
+    "skeleton",
+    "zombie",
+    "ghast",
+    "ghast",
+    "ghast"
+   ],
+   "placements": {
+    "guy": [
+     18,
+     8
+    ],
+    "curogana": [
+     17,
+     9
+    ],
+    "skeleton-1": [
+     0,
+     9
+    ],
+    "zombie-1": [
+     0,
+     8
+    ],
+    "ghast-1": [
+     2,
+     8
+    ],
+    "ghast-2": [
+     1,
+     9
+    ],
+    "ghast-3": [
+     0,
+     11
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.4997,
+    "band": "strict",
+    "games": 3000,
+    "layout": "zone, sight, seed 1149"
+   }
+  },
+  {
+   "id": "p3",
+   "name": "Mausoleum rotunda: Specter · Curogana",
+   "difficulty": "Medium",
+   "blurb": "Curogana against 1 zombie, 1 ghoul, 1 specter and 1 ghast.",
+   "party": [
+    "curogana"
+   ],
+   "roster": [
+    "zombie",
+    "ghoul",
+    "specter",
+    "ghast"
+   ],
+   "placements": {
+    "curogana": [
+     23,
+     8
+    ],
+    "zombie-1": [
+     7,
+     7
+    ],
+    "ghoul-1": [
+     7,
+     10
+    ],
+    "specter-1": [
+     6,
+     8
+    ],
+    "ghast-1": [
+     5,
+     9
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.4943,
+    "band": "strict",
+    "games": 3000,
+    "layout": "zone, sight, seed 1150"
+   }
+  }
+ ]
+}

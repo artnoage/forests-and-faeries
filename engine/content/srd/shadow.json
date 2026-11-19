@@ -1,0 +1,134 @@
+{
+ "schema": 1,
+ "id": "shadow",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/shadow.yml": "0c1c9b40830163099d2c44121fe4abc739fb79d6ce985899855600adc02dfaa3"
+  }
+ },
+ "side": "monsters",
+ "name": "Shadow",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": true,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "undead"
+ ],
+ "ac": 12,
+ "max_hp": 27,
+ "speed": 40,
+ "fly": false,
+ "abilities": {
+  "str": 6,
+  "dex": 14,
+  "con": 13,
+  "int": 6,
+  "wis": 10,
+  "cha": 8
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": -2,
+  "dex": 2,
+  "con": 1,
+  "int": -2,
+  "wis": 0,
+  "cha": -1
+ },
+ "initiative": {
+  "bonus": 2,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [
+   "acid",
+   "cold",
+   "fire",
+   "lightning",
+   "thunder"
+  ],
+  "immunities": [
+   "necrotic",
+   "poison"
+  ],
+  "vulnerabilities": [
+   "radiant"
+  ]
+ },
+ "condition_immunities": [
+  "exhaustion",
+  "frightened",
+  "grappled",
+  "paralyzed",
+  "petrified",
+  "poisoned",
+  "prone",
+  "restrained",
+  "unconscious"
+ ],
+ "passive_perception": 10,
+ "attacks": [
+  {
+   "name": "draining_swipe",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1d6+2",
+   "damage_type": "necrotic",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "strength_drain",
+     "if": [
+      "!object"
+     ]
+    }
+   ],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    5.5
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [
+  {
+   "id": "amorphous"
+  },
+  {
+   "id": "sunlight_weakness"
+  },
+  {
+   "id": "shadow_stealth"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

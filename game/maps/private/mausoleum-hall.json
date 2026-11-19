@@ -1,0 +1,161 @@
+{
+ "version": 1,
+ "map": {
+  "name": "mausoleum-hall",
+  "display_name": "Mausoleum hall",
+  "rows": [
+   "...............",
+   "...............",
+   "..HH.......HH..",
+   "..HH.......HH..",
+   "..HH.......HH..",
+   "..HH.......HH..",
+   "..HH.......HH..",
+   "..HH.......HH..",
+   "..HH.......HH..",
+   "..HH.......HH..",
+   "H.............H",
+   "HHHHHH...HHHHHH",
+   "HHHHHH...HHHHHH",
+   "HHHH.......HHHH",
+   "HHHH.......HHHH",
+   "HHHH.......HHHH",
+   "HHHH.......HHHH",
+   "HHHHHHH..HHHHHH"
+  ]
+ },
+ "scene": {
+  "wall_height": 1.1,
+  "props": [
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 2,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 3,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 4,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 5,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 6,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 7,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 8,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 2,
+    "y": 9,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 2,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 3,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 4,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 5,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 6,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 7,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 8,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   },
+   {
+    "kind": "sarcophagus",
+    "x": 11,
+    "y": 9,
+    "width": 2,
+    "depth": 1,
+    "height": 0.62
+   }
+  ]
+ },
+ "source": "ember-rs catalogs/private/l3-undead-mausoleum-v1.jsonl (room rows only)"
+}

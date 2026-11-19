@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "ember-rs"
+version = "0.1.0"
+description = "ember-rs: a fast Rust mirror of the natural20 5e SRD engine, with a batched RL environment (BatchEnv)"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.26"]
+classifiers = ["Programming Language :: Rust", "Programming Language :: Python :: Implementation :: CPython"]
+
+[tool.maturin]
+module-name = "ember_rs"

@@ -1,0 +1,223 @@
+{
+ "id": "vault",
+ "name": "The Vault",
+ "order": 2,
+ "map": "vault",
+ "theme": "forged_hall",
+ "blurb": "Mara and Ilyra, two level-2 heroes, against the SRD 5.2.1 goblins and a skeleton archer; Chruna, a level-3 berserker, joins them against the three bosses.",
+ "presets": [
+  {
+   "id": "goblin_raiders",
+   "name": "Goblin Raiders",
+   "difficulty": "Easy",
+   "blurb": "The goblin boss, a goblin warrior and two minions.",
+   "party": [
+    "mara",
+    "ilyra"
+   ],
+   "roster": [
+    "goblin_boss",
+    "goblin_warrior",
+    "goblin_minion",
+    "goblin_minion"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "ilyra": [
+     2,
+     7
+    ],
+    "goblin_boss-1": [
+     12,
+     3
+    ],
+    "goblin_warrior-1": [
+     12,
+     8
+    ],
+    "goblin_minion-1": [
+     13,
+     5
+    ],
+    "goblin_minion-2": [
+     13,
+     7
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.75,
+    "games": 120,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap"
+   }
+  },
+  {
+   "id": "boss_guard",
+   "name": "The Boss's Guard",
+   "difficulty": "Medium",
+   "blurb": "The goblin boss with two warriors and a skeleton archer.",
+   "party": [
+    "mara",
+    "ilyra"
+   ],
+   "roster": [
+    "goblin_boss",
+    "goblin_warrior",
+    "goblin_warrior",
+    "skeleton"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "ilyra": [
+     2,
+     7
+    ],
+    "goblin_boss-1": [
+     12,
+     3
+    ],
+    "goblin_warrior-1": [
+     12,
+     8
+    ],
+    "goblin_warrior-2": [
+     13,
+     5
+    ],
+    "skeleton-1": [
+     13,
+     7
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.53,
+    "games": 120,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap"
+   }
+  },
+  {
+   "id": "warband",
+   "name": "The Whole Warband",
+   "difficulty": "Hard",
+   "blurb": "The boss, two warriors, a minion and a skeleton archer.",
+   "party": [
+    "mara",
+    "ilyra"
+   ],
+   "roster": [
+    "goblin_boss",
+    "goblin_warrior",
+    "goblin_warrior",
+    "skeleton",
+    "goblin_minion"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "ilyra": [
+     2,
+     7
+    ],
+    "goblin_boss-1": [
+     12,
+     3
+    ],
+    "goblin_warrior-1": [
+     12,
+     8
+    ],
+    "goblin_warrior-2": [
+     13,
+     5
+    ],
+    "skeleton-1": [
+     13,
+     7
+    ],
+    "goblin_minion-1": [
+     13,
+     3
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.33,
+    "games": 80,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap"
+   }
+  },
+  {
+   "id": "three_bosses",
+   "name": "Three Bosses",
+   "difficulty": "Hard",
+   "blurb": "Chruna joins Mara and Ilyra against three goblin bosses, two warriors and a skeleton archer.",
+   "party": [
+    "mara",
+    "ilyra",
+    "chruna"
+   ],
+   "roster": [
+    "goblin_boss",
+    "goblin_boss",
+    "goblin_boss",
+    "goblin_warrior",
+    "goblin_warrior",
+    "skeleton"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "ilyra": [
+     2,
+     7
+    ],
+    "chruna": [
+     3,
+     5
+    ],
+    "goblin_boss-1": [
+     12,
+     3
+    ],
+    "goblin_boss-2": [
+     12,
+     8
+    ],
+    "goblin_boss-3": [
+     13,
+     5
+    ],
+    "goblin_warrior-1": [
+     12,
+     5
+    ],
+    "goblin_warrior-2": [
+     13,
+     3
+    ],
+    "skeleton-1": [
+     13,
+     7
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.47,
+    "games": 203,
+    "method": "natural20 native AI on both sides, these placements, 30-round cap",
+    "ember_rs": {
+     "hero_win_rate": 0.495,
+     "games": 8000,
+     "truncation": 0.0005
+    }
+   }
+  }
+ ]
+}

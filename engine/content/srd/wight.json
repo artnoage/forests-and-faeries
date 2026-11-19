@@ -1,0 +1,190 @@
+{
+ "schema": 1,
+ "id": "wight",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/wight.yml": "b56be856b197599b1fabf9b34be48c425fbdfa9e5a4059044323e4079f7461ee"
+  }
+ },
+ "side": "monsters",
+ "name": "Wight",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": true,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "undead"
+ ],
+ "ac": 14,
+ "max_hp": 82,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 15,
+  "dex": 14,
+  "con": 16,
+  "int": 10,
+  "wis": 13,
+  "cha": 15
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 2,
+  "dex": 2,
+  "con": 3,
+  "int": 0,
+  "wis": 1,
+  "cha": 2
+ },
+ "initiative": {
+  "bonus": 4,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [
+   "necrotic"
+  ],
+  "immunities": [
+   "poison"
+  ],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [
+  "exhaustion",
+  "poisoned"
+ ],
+ "passive_perception": 13,
+ "attacks": [
+  {
+   "name": "necrotic_sword",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1d8+2",
+   "damage_type": "slashing",
+   "ability": null,
+   "proficient": null,
+   "additional": [
+    {
+     "damage": "1d8",
+     "damage_type": "necrotic"
+    }
+   ],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "necrotic_bow",
+   "type": "ranged_attack",
+   "range": 150,
+   "range_max": 600,
+   "to_hit": 4,
+   "damage": "1d8+2",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [
+    {
+     "damage": "1d8",
+     "damage_type": "necrotic"
+    }
+   ],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "life_drain",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": null,
+   "damage": "1d8+2",
+   "damage_type": "necrotic",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "life_drain",
+     "if": [
+      "!object"
+     ]
+    }
+   ],
+   "save_attack": {
+    "save": "con",
+    "dc": 13
+   },
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [
+  [
+   "necrotic_sword",
+   "necrotic_sword"
+  ],
+  [
+   "necrotic_sword",
+   "necrotic_bow"
+  ],
+  [
+   "necrotic_bow",
+   "necrotic_bow"
+  ],
+  [
+   "necrotic_sword",
+   "life_drain"
+  ],
+  [
+   "necrotic_bow",
+   "life_drain"
+  ]
+ ],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    11.0
+   ],
+   [
+    4,
+    11.0
+   ],
+   [
+    null,
+    6.5
+   ]
+  ],
+  "count": 2
+ },
+ "traits": [
+  {
+   "id": "sunlight_sensitivity"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

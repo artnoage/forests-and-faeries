@@ -1,0 +1,27 @@
+[package]
+name = "ember-rs"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Fast Rust mirror of the natural20 5e SRD engine for the undead scenario, checked by dice-tape replay"
+
+[workspace]
+# ember-py: the Python bindings (module ember_rs, GENERAL_ENV.md §8.1); built
+# with maturin, so plain `cargo build` / `cargo test` stay on the core crate.
+members = [".", "ember-py"]
+default-members = ["."]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_norway = "0.9"
+rayon = "1.10"
+
+[profile.release]
+debug = 1
+lto = "thin"
+codegen-units = 4
+
+[[bin]]
+name = "ember"
+path = "src/bin/ember.rs"

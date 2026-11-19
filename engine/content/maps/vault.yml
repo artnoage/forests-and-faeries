@@ -1,0 +1,20 @@
+name: "The Ember Vault"
+map:
+  illumination: 1.0
+  base:
+    - 'HHHHHHHHHHHHHHHH'
+    - 'HH..HHH......HHH'
+    - 'HH..HHH......H.H'
+    - 'H..............H'
+    - 'H..............H'
+    - 'H.....H........H'
+    - 'H........H.....H'
+    - 'H..............H'
+    - 'H......HHH.....H'
+    - 'HHH....HHHH..HHH'
+    - 'H.........H..HHH'
+    - 'HHHHHHHHHHHHHHHH'
+legend:
+  H:
+    name: Vault masonry
+    type: stone_wall

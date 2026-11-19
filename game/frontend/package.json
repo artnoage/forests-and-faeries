@@ -1,0 +1,11 @@
+{
+  "name": "forests-and-faeries-scene",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild scene3d.js --bundle --format=iife --global-name=EmberScene --minify --legal-comments=inline --target=es2022 --outfile=../static/scene3d.js",
+    "test": "node --test *.test.js"
+  },
+  "dependencies": {"three": "0.187.0"},
+  "devDependencies": {"esbuild": "0.28.2"}
+}

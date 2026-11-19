@@ -1,0 +1,319 @@
+{
+ "schema": 1,
+ "id": "elion",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/characters/elion.yml": "216bd0f7c168d262e58c11b95fc244bb245252d7881fcdb03787ce7089fe611d",
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/char_classes/cleric.yml": "08acd7f4e76e90060415c9ca771417f471cfdae6c68021f064230601ae86f48e",
+   "templates/feats/alert.yml": "f3d3345e243c49700211a88ebb58ed07fe88c7a0f16d2a8338c18a551b17b8ef",
+   "templates/feats/magic_initiate_cleric.yml": "6d7102ccf5ededccc585ba95ec2e9532ad36d803c6aac9d97c79281e4e32fc8e",
+   "templates/items/equipment.yml": "0e4a7f72acce1eb5fc6e2a26071f3ebc1a3604286c600fba0f533e771bb12cc0",
+   "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
+   "templates/items/spells.yml": "dd45c5e4f7e47e77c20ebb9da60bf5a548647e185c6f658818bfadca466b37d8",
+   "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
+   "templates/rulesets/5e-2024/char_classes/cleric.yml": "8b7c640b6b76a282a2994962d7fcc244b470c935089b6f8bd35015b22f81b7ab",
+   "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
+   "templates/rulesets/5e-2024/items/weapons.yml": "76cac4362188909c327083df110533ed046ef571e599c0dafb1646262512131a",
+   "templates/rulesets/5e-2024/races/human.yml": "8fb26b79eda7e1ab395db2b3c912e04434d4c180922cf51666f06cc7a0c6c432"
+  }
+ },
+ "side": "heroes",
+ "name": "Elion",
+ "pc": true,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "human"
+ ],
+ "ac": 20,
+ "max_hp": 28,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 15,
+  "dex": 10,
+  "con": 16,
+  "int": 14,
+  "wis": 17,
+  "cha": 13
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 2,
+  "dex": 0,
+  "con": 3,
+  "int": 2,
+  "wis": 5,
+  "cha": 3
+ },
+ "initiative": {
+  "bonus": 2,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 13,
+ "loadout": {
+  "equipment": [
+   {
+    "id": "warhammer",
+    "type": "melee_attack",
+    "hand_slots": 1.0
+   },
+   {
+    "id": "plate",
+    "type": "armor",
+    "hand_slots": 0.0
+   },
+   {
+    "id": "shield",
+    "type": "shield",
+    "hand_slots": 1.0
+   }
+  ],
+  "spares": {},
+  "wearing_armor": true
+ },
+ "classes": {
+  "cleric": 3
+ },
+ "attacks": [
+  {
+   "name": "warhammer",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1d8+2",
+   "damage_type": "bludgeoning",
+   "ability": "str",
+   "proficient": true,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "thrown": false,
+   "versatile": "1d10",
+   "item": "warhammer"
+  },
+  {
+   "name": "unarmed_attack",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1+2",
+   "damage_type": "bludgeoning",
+   "ability": "str",
+   "proficient": true,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "thrown": false,
+   "versatile": null,
+   "item": null
+  }
+ ],
+ "multiattack": [],
+ "features": [
+  {
+   "id": "magic_initiate_cleric"
+  },
+  {
+   "id": "alert"
+  },
+  {
+   "id": "resourceful"
+  },
+  {
+   "id": "skillful"
+  },
+  {
+   "id": "versatile"
+  },
+  {
+   "id": "spellcasting"
+  },
+  {
+   "id": "divine_order"
+  },
+  {
+   "id": "channel_divinity",
+   "uses": 2
+  },
+  {
+   "id": "channel_divinity_turn_undead"
+  },
+  {
+   "id": "divine_spark"
+  },
+  {
+   "id": "divine_domain"
+  },
+  {
+   "id": "disciple_of_life"
+  },
+  {
+   "id": "preserve_life",
+   "level": 3
+  }
+ ],
+ "traits": [],
+ "spellcasting": {
+  "class": "cleric",
+  "level": 3,
+  "ability": "wis",
+  "attack": 5,
+  "dc": 13,
+  "slots": [
+   3,
+   4,
+   2
+  ],
+  "spells": [
+   "sacred_flame",
+   "spare_the_dying",
+   "guiding_bolt",
+   "spiritual_weapon",
+   "shield_of_faith",
+   "protection_from_evil_and_good",
+   "command",
+   "sanctuary",
+   "aid",
+   "bless",
+   "cure_wounds",
+   "lesser_restoration",
+   "healing_word"
+  ],
+  "reaction_spells": [],
+  "inert_spells": [
+   "guidance",
+   "thaumaturgy",
+   "resistance"
+  ],
+  "spell_info": [
+   {
+    "id": "sacred_flame",
+    "name": "Sacred Flame",
+    "level": 0,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "spare_the_dying",
+    "name": "Spare the Dying",
+    "level": 0,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "guiding_bolt",
+    "name": "Guiding Bolt",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "spiritual_weapon",
+    "name": "Spiritual Weapon",
+    "level": 2,
+    "casting_time": "1:bonus_action",
+    "concentration": true
+   },
+   {
+    "id": "shield_of_faith",
+    "name": "Shield of Faith",
+    "level": 1,
+    "casting_time": "1:bonus_action",
+    "concentration": true
+   },
+   {
+    "id": "protection_from_evil_and_good",
+    "name": "Protection from Evil and Good",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": true
+   },
+   {
+    "id": "command",
+    "name": "Command",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "sanctuary",
+    "name": "Sanctuary",
+    "level": 1,
+    "casting_time": "1:bonus_action",
+    "concentration": false
+   },
+   {
+    "id": "aid",
+    "name": "Aid",
+    "level": 2,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "bless",
+    "name": "Bless",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": true
+   },
+   {
+    "id": "cure_wounds",
+    "name": "Cure Wounds",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "lesser_restoration",
+    "name": "Lesser Restoration",
+    "level": 2,
+    "casting_time": "1:bonus_action",
+    "concentration": false
+   },
+   {
+    "id": "healing_word",
+    "name": "Healing Word",
+    "level": 1,
+    "casting_time": "1:bonus_action",
+    "concentration": false
+   }
+  ],
+  "free_casts": [
+   {
+    "spell": "healing_word",
+    "pool": "magic_initiate_cleric",
+    "uses": 1
+   }
+  ],
+  "resources": {
+   "channel_divinity": 2,
+   "holy_water": 1
+  }
+ }
+}

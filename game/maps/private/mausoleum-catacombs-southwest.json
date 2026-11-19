@@ -1,0 +1,26 @@
+{
+ "version": 1,
+ "map": {
+  "name": "mausoleum-catacombs-southwest",
+  "display_name": "Catacombs (south-west)",
+  "rows": [
+   "HHHH..HHHHHHH",
+   "HHHH..HHHHHHH",
+   "HHHH...HHHHHH",
+   "H.......HHHHH",
+   "H........HHHH",
+   "H..HHHH..HH..",
+   "...HHHH......",
+   "...HHHH......",
+   "HH....HHH..HH",
+   "HH.....HH..HH",
+   "HHHHHH.....HH",
+   "HHHHHH.....HH"
+  ]
+ },
+ "scene": {
+  "wall_height": 1.1,
+  "props": []
+ },
+ "source": "ember-rs catalogs/private/l3-undead-mausoleum-v1.jsonl (room rows only)"
+}
