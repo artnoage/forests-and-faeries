@@ -16,3 +16,4 @@ names or lore into ids, map files or catalog rows.
 | `mausoleum-20261117/` | the 7 room maps (EncounterSpec format 1, map only, `ember.family: hand`) and `maps.jsonl` | 2026-11-17 |
 | `l3-undead-mausoleum-v1.jsonl` | the trio, its three pairs, Guy solo and Curogana solo vs the eight undead on those rooms (train rows screened; dev and test verified) | 2026-11-17 |
 | `l3-breadth-mausoleum-v1.jsonl` | breadth arm train rows on the four train rooms: guest parties (Mara, Ilyra with trio heroes) and goblin rosters | 2026-11-17 |
+| `l3-roster-mausoleum-v1.jsonl` | roster train rows on the four train rooms: Chruna alone and with every one and two of the other five heroes, against undead and goblins | 2026-11-19 |
