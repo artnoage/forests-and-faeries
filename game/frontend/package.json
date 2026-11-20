@@ -7,5 +7,5 @@
     "test": "node --test *.test.js"
   },
   "dependencies": {"three": "0.187.0"},
-  "devDependencies": {"esbuild": "0.28.2"}
+  "devDependencies": {"esbuild": "0.28.2", "gltf-validator": "2.0.0-dev.3.10"}
 }
