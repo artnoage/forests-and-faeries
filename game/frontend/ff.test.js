@@ -183,13 +183,49 @@ test('every figure is rigged with the clips the scene plays', async () => {
     // The scene asks for the content-hashed URL, so a new figure is never a cached old one.
     const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
     assert.equal(versioned(spec.file), `${spec.file}?v=${digest}`, `${key} URL carries its hash`);
-    if (key === 'kobold_warrior') {
+    const rigidExpected = {
+      guy: [['Guy_Sword', 'Weapon.R']],
+      mara: [['Mara_Sword', 'Weapon.R'], ['Mara_Shield', 'Shield.L']],
+      elion: [['Elion_Warhammer', 'Weapon.R'], ['Elion_BackShield', 'BackShield']],
+      ilyra: [['Ilyra_Staff', 'Weapon.R']],
+      chruna: [['Chruna_Halberd', 'Weapon.R'], ['Chruna_BackHalberd', 'BackWeapon']],
+      kobold_warrior: [['Kobold_Dagger', 'Weapon.R']],
+    };
+    if (Object.hasOwn(rigidExpected, key)) {
       const nodes = doc.nodes || [];
-      const weap = nodes.find(n => n.name === 'Weapon.R');
-      const dag = nodes.find(n => n.name === 'Kobold_Dagger');
-      assert.ok(weap && dag && dag.mesh !== undefined && dag.skin === undefined, 'Kobold_Dagger is a rigid non-skinned mesh');
-      assert.ok((weap.children || []).map(i => nodes[i]?.name).includes('Kobold_Dagger'), 'Kobold_Dagger is parented under Weapon.R');
+      for (const [objName, sockName] of rigidExpected[key]) {
+        const sock = nodes.find(n => n.name === sockName);
+        const obj = nodes.find(n => n.name === objName);
+        assert.ok(sock && obj && obj.mesh !== undefined && obj.skin === undefined, `${key}: ${objName} is a rigid non-skinned mesh`);
+        assert.ok((sock.children || []).map(i => nodes[i]?.name).includes(objName), `${key}: ${objName} is parented under ${sockName}`);
+      }
     }
   }
   assert.equal(versioned('not/listed.glb'), 'not/listed.glb');
+});
+
+test('clip transitions crossfade smoothly and reset snaps deterministically', () => {
+  const scene = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 0.5), new THREE.MeshStandardMaterial({ color: '#ffffff' }));
+  body.name = 'Body';
+  scene.add(body);
+  const animations = [
+    new THREE.AnimationClip('idle', 1, [new THREE.NumberKeyframeTrack('Body.position[y]', [0, 1], [0, 0])]),
+    new THREE.AnimationClip('walk', 1, [new THREE.NumberKeyframeTrack('Body.position[y]', [0, 1], [1, 1])]),
+  ];
+  const inst = createCastAsset({ scene, animations }, 'guy').createInstance({ id: 'guy', content: 'guy', team: 'heroes' });
+  const mesh = inst.model.getObjectByName('Body');
+  inst.rig.idle(1000);
+  assert.equal(mesh.position.y, 0);
+  // Start walking at clock 0 -> 70ms is halfway through the 140ms smoothstep crossfade (weight 0.5)!
+  inst.rig.walk(0, false);
+  inst.rig.walk(70, false);
+  assert.ok(mesh.position.y > 0.35 && mesh.position.y < 0.65, `mid-blend y=${mesh.position.y}`);
+  // After 140ms the crossfade completes cleanly onto the target clip
+  inst.rig.walk(160, false);
+  assert.ok(Math.abs(mesh.position.y - 1) < 1e-4, `post-blend y=${mesh.position.y}`);
+  // reset() snaps cleanly back to idle without waiting for a blend
+  inst.rig.reset();
+  assert.equal(mesh.position.y, 0);
+  inst.rig.dispose();
 });

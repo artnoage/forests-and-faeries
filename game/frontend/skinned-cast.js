@@ -7,14 +7,15 @@ import { versioned } from './asset-versions.js';
 // marked `static: true` (no skin or clips; the scene slides it, turns it and tips it over on death).
 // Presentation only: every unit position, HP, condition and outcome comes from Natural20.
 export const CAST_MODELS = Object.freeze({
-  // Heroes (guy, elion, curogana use canonical original heights 1.30 / 1.30 / 1.27)
-  mara:        Object.freeze({ file: 'models/mara.glb',        height: 1.28, group: 'hero' }),
-  guy:         Object.freeze({ file: 'models/guy.glb',         height: 1.30, group: 'hero' }),
-  elion:       Object.freeze({ file: 'models/elion.glb',       height: 1.30, group: 'hero' }),
-  ilyra:       Object.freeze({ file: 'models/ilyra.glb',       height: 1.30, group: 'hero' }),
-  curogana:    Object.freeze({ file: 'models/curogana.glb',    height: 1.27, group: 'hero' }),
+  // Heroes (guy, elion, curogana use canonical original heights 1.30 / 1.30 / 1.27;
+  // walkSpeed/runSpeed match the Blender Leg-IK stance foot velocity in board squares per clip-second)
+  mara:        Object.freeze({ file: 'models/mara.glb',        height: 1.28, group: 'hero', walkSpeed: 0.96,   runSpeed: 2.0211 }),
+  guy:         Object.freeze({ file: 'models/guy.glb',         height: 1.30, group: 'hero', walkSpeed: 0.975,  runSpeed: 2.0526 }),
+  elion:       Object.freeze({ file: 'models/elion.glb',       height: 1.30, group: 'hero', walkSpeed: 0.975,  runSpeed: 2.0526 }),
+  ilyra:       Object.freeze({ file: 'models/ilyra.glb',       height: 1.30, group: 'hero', walkSpeed: 0.975,  runSpeed: 2.0526 }),
+  curogana:    Object.freeze({ file: 'models/curogana.glb',    height: 1.27, group: 'hero', walkSpeed: 0.9525, runSpeed: 2.0053 }),
   // Chruna (Barbarian): halberd swings play `slash`, Rage and Reckless Attack `cast` (a roar)
-  chruna:      Object.freeze({ file: 'models/chruna.glb',      height: 1.30, group: 'hero' }),
+  chruna:      Object.freeze({ file: 'models/chruna.glb',      height: 1.30, group: 'hero', walkSpeed: 0.975,  runSpeed: 2.0526 }),
   // Undead (all 8 project-original SRD 5.2.1 figures)
   skeleton:    Object.freeze({ file: 'models/skeleton.glb',    height: 1.25, group: 'undead' }),
   zombie:      Object.freeze({ file: 'models/zombie.glb',      height: 1.25, group: 'undead' }),
@@ -225,18 +226,65 @@ export function createCastAsset(gltf, key) {
       const head  = findAnchor(model, ['Head', 'Mummy_Head'], [0, spec.height * 0.84, -0.12]);
 
       const phaseOffset = hashPhase(unit.id);
-      let disposed = false, activeName = null;
+      const BLEND_MS = 140;
+      const HERO_WALK_STEP_MS = 320;
+      const HERO_RUN_STEP_MS = 200;
+      let disposed = false, activeName = null, activeTime = 0;
+      let prevName = null, prevTime = 0, blendStartMs = 0, lastClockMs = 0;
 
-      function sampleClip(name, timeSec) {
+      function sampleClip(name, timeSec, { instant = false, clockMs = null } = {}) {
         if (disposed) return false;
-        const act = actions[name] || actions.idle;
+        const resolved = actions[name] ? name : 'idle';
+        const act = actions[resolved];
         if (!act) return false;
-        if (activeName && activeName !== name && actions[activeName]) actions[activeName].stop();
-        activeName = name;
-        act.reset().play();
+        const now = clockMs !== null ? clockMs : (typeof performance !== 'undefined' ? performance.now() : Date.now());
         const dur = act.getClip().duration || 1;
         const clamped = Math.max(0, Math.min(dur - 1e-4, timeSec));
-        mixer.setTime(clamped);
+
+        // Smoothly crossfade between clips using the caller's animation clock (works identically
+        // at 60 fps in the browser and in deterministic fast-forward / headless playback!)
+        const clockReset = now < lastClockMs - 1;
+        if (!instant && activeName && activeName !== resolved && actions[activeName]?.isRunning()) {
+          if (prevName && prevName !== activeName && actions[prevName]) actions[prevName].stop();
+          prevName = activeName;
+          prevTime = activeTime;
+          blendStartMs = now;
+        } else if (instant || (prevName && (prevName === resolved || !actions[prevName]?.isRunning()))) {
+          if (prevName && prevName !== resolved && actions[prevName]) actions[prevName].stop();
+          prevName = null;
+        } else if (clockReset && prevName) {
+          blendStartMs = now;
+        }
+        lastClockMs = now;
+
+        let alpha = 1;
+        if (prevName && actions[prevName]) {
+          const u = Math.max(0, Math.min(1, (now - blendStartMs) / BLEND_MS));
+          if (u >= 1) {
+            actions[prevName].stop();
+            prevName = null;
+          } else {
+            alpha = u * u * (3 - 2 * u);
+          }
+        }
+
+        for (const [k, other] of Object.entries(actions)) {
+          if (k !== resolved && k !== prevName && other.isRunning()) other.stop();
+        }
+        if (prevName && actions[prevName]) {
+          const pAct = actions[prevName];
+          if (!pAct.isRunning()) pAct.reset().play();
+          pAct.enabled = true;
+          pAct.setEffectiveWeight(1 - alpha);
+          pAct.time = prevTime;
+        }
+        if (!act.isRunning()) act.reset().play();
+        act.enabled = true;
+        act.setEffectiveWeight(alpha);
+        act.time = clamped;
+        activeName = resolved;
+        activeTime = clamped;
+        mixer.update(0);
         model.updateMatrixWorld(true);
         return true;
       }
@@ -255,7 +303,7 @@ export function createCastAsset(gltf, key) {
         motion.position.set(0, 0, 0);
         motion.rotation.set(0, 0, 0);
         equip(null);
-        sampleClip('idle', 0);
+        sampleClip('idle', 0, { instant: true });
       }
 
       function idle(nowMs, guarding = false) {
@@ -264,14 +312,14 @@ export function createCastAsset(gltf, key) {
         motion.rotation.set(0, 0, 0);
         if (guarding && actions.guard) {
           const dur = actions.guard.getClip().duration || 0.8;
-          sampleClip('guard', dur * 0.42);
+          sampleClip('guard', dur * 0.42, { clockMs: nowMs });
           return;
         }
         const act = actions.idle;
         if (!act) return;
         const dur = Math.max(0.2, act.getClip().duration);
         const t = ((nowMs * 0.00085) + phaseOffset) % dur;
-        sampleClip('idle', t);
+        sampleClip('idle', t, { clockMs: nowMs });
       }
 
       function walk(elapsedMs, fast = false) {
@@ -283,10 +331,12 @@ export function createCastAsset(gltf, key) {
           return;
         }
         const dur = Math.max(0.2, act.getClip().duration);
-        // 1 full stride cycle every ~420ms (about 2.3 squares) so feet match ground travel!
-        const rate = fast ? 0.0028 : 0.0022;
+        const strideSpeed = fast ? spec.runSpeed : spec.walkSpeed;
+        const stepMs = fast ? HERO_RUN_STEP_MS : HERO_WALK_STEP_MS;
+        // Match planted-foot rearward speed directly to straight-path board travel speed (zero skating!)
+        const rate = strideSpeed ? (1 / stepMs) / strideSpeed : (fast ? 0.0028 : 0.0022);
         const t = ((elapsedMs * rate) + phaseOffset * 0.2) % dur;
-        sampleClip(clipName, t);
+        sampleClip(clipName, t, { clockMs: elapsedMs });
       }
 
       function pickActionClip(style, actionKind) {
@@ -300,9 +350,16 @@ export function createCastAsset(gltf, key) {
         return 'idle';
       }
 
+      function settleIdle(clockMs = null) {
+        motion.position.set(0, 0, 0);
+        motion.rotation.set(0, 0, 0);
+        equip(null);
+        sampleClip('idle', 0, { clockMs });
+      }
+
       function pose(style, ageMs, actionKind = null) {
         if (disposed) return;
-        if (ageMs <= 0 || ageMs >= 800) { reset(); return; }
+        if (ageMs <= 0 || ageMs >= 800) { settleIdle(ageMs); return; }
         equip(style);
         const clipName = pickActionClip(style, actionKind);
         const act = actions[clipName];
@@ -322,15 +379,15 @@ export function createCastAsset(gltf, key) {
           : ageMs <= 420
             ? peakT + ((ageMs - 280) / 140) * (strikeT - peakT)
             : strikeT + ((ageMs - 420) / 380) * (dur - strikeT);
-        sampleClip(clipName, t);
+        sampleClip(clipName, t, { clockMs: ageMs });
       }
 
       function hit(hitAgeMs) {
         if (disposed || hitAgeMs < 0) return;
-        if (hitAgeMs >= 380) { reset(); return; }
+        if (hitAgeMs >= 380) { settleIdle(hitAgeMs); return; }
         if (actions.hit) {
           const dur = actions.hit.getClip().duration || 0.5;
-          sampleClip('hit', (hitAgeMs / 380) * dur);
+          sampleClip('hit', (hitAgeMs / 380) * dur, { clockMs: hitAgeMs });
         } else {
           const k = Math.sin(Math.PI * hitAgeMs / 380);
           motion.position.z = 0.1 * k;
@@ -344,7 +401,7 @@ export function createCastAsset(gltf, key) {
         motion.rotation.set(0, 0, 0);
         const dur = actions.death.getClip().duration || 1.0;
         const t = Math.min(dur - 1e-3, Math.max(0, deathAgeMs / 1000));
-        sampleClip('death', t);
+        sampleClip('death', t, { clockMs: deathAgeMs });
         return true;
       }
 

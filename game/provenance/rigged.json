@@ -10,7 +10,8 @@
   "mara, ilyra, goblin, goblin_boss": "2026-11-18",
   "chruna": "2026-11-18 (rigged from the raw Tripo mesh, mesh_source.tripo.raw_model_sha256)",
   "animated_armor": "2026-11-20 (SRD 5.2.1 Medium Construct, rigged from the raw Tripo mesh)",
-  "kobold_warrior": "2026-11-20 (SRD 5.2.1 Small Dragon, rigid bone-parented Kobold_Dagger on Weapon.R + Tail.1/Tail.2)"
+  "kobold_warrior": "2026-11-20 (SRD 5.2.1 Small Dragon, rigid bone-parented Kobold_Dagger on Weapon.R + Tail.1/Tail.2)",
+  "six-hero polish (guy, mara, elion, ilyra, curogana, chruna)": "2026-11-20 (rigid bone-parented weapons/shields/staves, two-handed Chruna halberd IK, zero-slide Leg-IK walk/run cycles, smooth clip crossfading in skinned-cast.js)"
  },
  "figures": [
   {
@@ -97,10 +98,10 @@
   {
    "kind": "chruna",
    "file": "game/static/models/chruna.glb",
-   "sha256": "14958090a3931b89507c6fe6c550383599a6dff74e088409b2cd77f9414c073b",
-   "bytes": 1519332,
-   "triangles": 18000,
-   "bones": 20,
+   "sha256": "64fa164692e5f3a2dbc73c2d03642d4e4fc7a4a7a3fa5b32005d9cd0843507c3",
+   "bytes": 1522184,
+   "triangles": 18060,
+   "bones": 23,
    "clips": [
     "arrow",
     "cast",
@@ -130,15 +131,19 @@
      "raw_model_sha256": "78099b4f38b0ad3468492ee859257ba5e9ef42e6d7febce8a23240493e0a96a4"
     }
    },
-   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
-   "rig_manifest_sha256_match": true
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true,
+   "rigid_weapons": {
+    "Chruna_Halberd": "Weapon.R",
+    "Chruna_BackHalberd": "BackWeapon"
+   }
   },
   {
    "kind": "curogana",
-   "file": "webgame/ff/static/models/curogana.glb",
-   "sha256": "cde714b6bd37796377f523e174f5971ed1519bcb45089eb35dfc4521ae2069e4",
-   "bytes": 1145976,
-   "triangles": 18000,
+   "file": "game/static/models/curogana.glb",
+   "sha256": "5e7af2fab0a630cb21bf06b98a8092b90698912673a3e724a45302bcd13e1381",
+   "bytes": 1298776,
+   "triangles": 17999,
    "bones": 20,
    "clips": [
     "cast",
@@ -152,7 +157,7 @@
     "walk"
    ],
    "materials": [
-    "tripo_material_a3c57a64-5b75-4196-98d9-706e83c60f51"
+    "curogana_Mat"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -169,16 +174,16 @@
      "raw_model_sha256": "f6c200726f13057fcc4a5ff6b33397b172f7f1466e5a3b48b3d0918782ce423b"
     }
    },
-   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
    "rig_manifest_sha256_match": true
   },
   {
    "kind": "elion",
-   "file": "webgame/ff/static/models/elion.glb",
-   "sha256": "61f4b1a661b7e5ff22c51cc51a555d07e28ea2df68079de191a92ba8afd11a8f",
-   "bytes": 1296796,
-   "triangles": 17999,
-   "bones": 20,
+   "file": "game/static/models/elion.glb",
+   "sha256": "81fc8635f4bcbe53aac1dccdca57eeddb5745fa3b116f20ca632b40c393a90f8",
+   "bytes": 1426336,
+   "triangles": 18028,
+   "bones": 22,
    "clips": [
     "cast",
     "cast_area",
@@ -191,7 +196,7 @@
     "walk"
    ],
    "materials": [
-    "tripo_material_9f06c276-d0bb-4c0a-8da4-02e66bd835ca"
+    "elion_Mat"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -208,8 +213,12 @@
      "raw_model_sha256": "523d0a007df9fc4c814b63113539090c1ee4d3320f31c1ca5ccec1eba34d3a69"
     }
    },
-   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
-   "rig_manifest_sha256_match": true
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true,
+   "rigid_weapons": {
+    "Elion_Warhammer": "Weapon.R",
+    "Elion_BackShield": "BackShield"
+   }
   },
   {
    "kind": "ghast",
@@ -363,12 +372,13 @@
   },
   {
    "kind": "guy",
-   "file": "webgame/ff/static/models/guy.glb",
-   "sha256": "d0dd7e6d0f8d821dbeec80665eb893b1c48c0eedebe6602fe8431d91265cd557",
-   "bytes": 1262944,
-   "triangles": 18000,
-   "bones": 20,
+   "file": "game/static/models/guy.glb",
+   "sha256": "bf311be295d0e94b8c0c678ccce2aa4ccc3aecf5c666a8047e2a962da700bd95",
+   "bytes": 1378316,
+   "triangles": 18040,
+   "bones": 21,
    "clips": [
+    "arrow",
     "cast",
     "death",
     "guard",
@@ -379,7 +389,7 @@
     "walk"
    ],
    "materials": [
-    "tripo_material_9bbb257f-4c24-4084-afee-3a87d361b1d9"
+    "guy_Mat"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -396,16 +406,19 @@
      "raw_model_sha256": "275db8f71d2d0143e93e44af7b18b1b91a51993e96851a4268d838bfa8cf5be2"
     }
    },
-   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
-   "rig_manifest_sha256_match": true
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true,
+   "rigid_weapons": {
+    "Guy_Sword": "Weapon.R"
+   }
   },
   {
    "kind": "ilyra",
-   "file": "webgame/ff/static/models/ilyra.glb",
-   "sha256": "1fbf3a329c808198ce67014bd25513e1574160d7e2056b166fb558e0246a6aab",
-   "bytes": 1211792,
-   "triangles": 18000,
-   "bones": 20,
+   "file": "game/static/models/ilyra.glb",
+   "sha256": "b7bedfab1762f9ce3d6cfa62b98ec5e447829358585c4c5ce3a69b9d20aabee5",
+   "bytes": 1251904,
+   "triangles": 17604,
+   "bones": 21,
    "clips": [
     "arrow",
     "cast",
@@ -436,17 +449,21 @@
      "raw_model_sha256": "8d64c45c0b5e2a3911aaa68205542afa768818f5072e7c71b090f2c7d532b927"
     }
    },
-   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
-   "rig_manifest_sha256_match": true
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true,
+   "rigid_weapons": {
+    "Ilyra_Staff": "Weapon.R"
+   }
   },
   {
    "kind": "mara",
-   "file": "webgame/ff/static/models/mara.glb",
-   "sha256": "4377ee6a4f730c0d44e47453d77b1794fb817896e4e4f213a960ab50ca5eaeaf",
-   "bytes": 1283116,
-   "triangles": 18000,
-   "bones": 20,
+   "file": "game/static/models/mara.glb",
+   "sha256": "a13fa8048911f6e8e9a5babe09796d66e84d5846b7fbd44ac24d7ca2c3b05f48",
+   "bytes": 1293828,
+   "triangles": 17042,
+   "bones": 22,
    "clips": [
+    "arrow",
     "cast",
     "death",
     "guard",
@@ -474,8 +491,12 @@
      "raw_model_sha256": "66e5d7f8ff40b594a011b4214095d3507db5b4c88fc9cede7aed06863a24fb6d"
     }
    },
-   "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
-   "rig_manifest_sha256_match": true
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true,
+   "rigid_weapons": {
+    "Mara_Sword": "Weapon.R",
+    "Mara_Shield": "Shield.L"
+   }
   },
   {
    "kind": "mummy",

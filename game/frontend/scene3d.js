@@ -1526,7 +1526,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       const primary = events.find(e => e.source_id === action.source_id && e.style !== 'touch') || events[0] || null;
       const style = primary?.style || null;
       const isDash = action.kind === 'dash' || (action.moves || []).some(m => m.path.length >= 6);
-      const stepMs = isDash ? 145 : 180;
+      const stepMs = isDash ? 200 : 320;
       const steps = (action.moves || []).reduce((sum, move) => sum + Math.max(0, move.path.length - 1), 0);
       // Newly slain units during this action will play their skeletal death collapse!
       const newlyDead = new Set();
@@ -1585,7 +1585,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
           moving.targetYaw = desiredYaw;
         }
         if (elapsed <= duration) moving.rig.walk?.(elapsed, p.isDash);
-        else moving.rig.reset();
+        else moving.rig.idle?.(now);
         if (p.lastStep !== `${move.source_id}:${step}`) {
           p.lastStep = `${move.source_id}:${step}`;
           spawnStepPuff(x, z);
