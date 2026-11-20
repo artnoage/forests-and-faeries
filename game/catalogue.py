@@ -40,7 +40,6 @@ PROP_KINDS = ('pillar', 'brazier', 'table', 'bench', 'shelf', 'barrel', 'crate',
 MAX_SIZE = 32
 MAX_CREATURES = 24
 CONTENT_NAMES = {'goblin_minion': 'Goblin Minion', 'goblin_warrior': 'Goblin Warrior', 'goblin_boss': 'Goblin Boss'}
-HERO_NAMES = {'guy': 'Guy', 'elion': 'Elion', 'curogana': 'Curogana', 'mara': 'Mara', 'ilyra': 'Ilyra', 'chruna': 'Chruna'}
 
 
 class CatalogueError(ValueError):
@@ -62,20 +61,33 @@ def _title(content):
 
 @lru_cache(maxsize=1)
 def _pool():
-    p = ember_rs.ContentPool()
-    return frozenset(p.heroes), frozenset(p.monsters)
+    return ember_rs.ContentPool()
 
 
 def hero_ids():
-    return _pool()[0]
+    return frozenset(_pool().heroes)
 
 
 def monster_ids():
-    return _pool()[1]
+    return frozenset(_pool().monsters)
 
 
-def _hero_name(content):
-    return HERO_NAMES.get(content) or content.replace('_', ' ').title()
+@lru_cache(maxsize=None)
+def _hero_sheet(content):
+    pool = _pool()
+    if hasattr(pool, 'hero_sheet'):
+        sheet, base, level, name = pool.hero_sheet(content)
+    else:
+        # Older installed engines can still serve their original six sheets.
+        base, sep, requested = content.rpartition('_l')
+        sheet = content if content in pool.heroes else base
+        if sheet not in pool.heroes:
+            raise CatalogueError(f'Unknown hero sheet {content}.')
+        doc = _read(ROOT.parent / 'engine' / 'content' / 'srd' / f'{sheet}.json')
+        base, level, name = doc.get('base_id', sheet), sum(doc['classes'].values()), doc['name']
+        if sep and requested != str(level):
+            raise CatalogueError(f'The installed engine does not contain {content}.')
+    return {'content': sheet, 'base_id': base, 'level': level, 'name': name}
 
 
 def _connected_floor(rows):
@@ -133,6 +145,16 @@ class Level:
         self.units = list(preset['party']) + self._monster_ids()
         self.names = self._names()
         self._rust_json = None
+
+    def with_hero_level(self, level):
+        if type(level) is not int or level not in (1, 2, 3):
+            raise ValueError('Hero level must be 1, 2 or 3.')
+        party = self.preset['party']
+        keys = {hero: _hero_sheet(f"{_hero_sheet(hero)['base_id']}_l{level}")['content'] for hero in party}
+        preset = dict(self.preset, party=[keys[hero] for hero in party], hero_level=level)
+        for field in ('names', 'placements'):
+            preset[field] = {keys.get(uid, uid): value for uid, value in self.preset.get(field, {}).items()}
+        return Level(self.encounter, preset, self.rows, self.scene, self.map_name)
 
     def _monster_ids(self):
         counts, ids = {}, []
@@ -201,7 +223,8 @@ class Level:
                 'encounter_name': self.encounter['name'], 'difficulty': preset['difficulty'],
                 'blurb': preset['blurb'], 'theme': self.theme, 'private': self.private,
                 'map': {'name': self.map_name, 'width': len(self.rows[0]), 'height': len(self.rows)},
-                'party': [{'content': h, 'name': _hero_name(h)} for h in preset['party']],
+                'hero_level': preset.get('hero_level'),
+                'party': [dict(_hero_sheet(h)) for h in preset['party']],
                 'roster': [{'content': c, 'name': _title(c), 'count': n} for c, n in roster.items()]}
 
     def to_rust_json(self):

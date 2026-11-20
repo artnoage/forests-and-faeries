@@ -1598,13 +1598,13 @@ impl Fight {
                 let t = t0.unwrap();
                 let dc = self.spell_dc(u);
                 let total = self.save_throw(t, Ability::Dex);
-                if total < dc {
+                if total < dc || self.units[u].t.potent_cantrip {
                     let faces = self.roll_dice(u, "spells.sacred_flame", 1, 8);
                     let amount: i32 = faces.iter().sum();
                     let dmg_fmt = self.web_events.is_some().then(|| crate::web_events::fmt_dice_roll(8, &faces, 0, false, amount));
                     items.push(Item::Damage {
                         t,
-                        amount,
+                        amount: if total < dc { amount } else { amount / 2 },
                         dt: Dmg::Radiant,
                         crit: false,
                         has_save: true,
@@ -2053,6 +2053,9 @@ impl Fight {
             dmg_roll_fmt,
         });
         let app = self.damage_event(src, t, amount, dt, crit, hs);
+        if crit {
+            self.offer_champion_movement(src);
+        }
         if let (Some(idx), Some(buf)) = (ev_idx, &mut self.web_events) {
             if let crate::web_events::WebEv::AttackOutcome { applied_damage, .. } = &mut buf[idx] {
                 *applied_damage = app.unwrap_or(0).max(0);

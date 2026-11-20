@@ -615,7 +615,7 @@ impl Game {
         });
         let s = &self.spec;
         let header = Header {
-            version: 1,
+            version: if self.env.fight.champion_moves_enabled { 2 } else { 1 },
             n20_commit: NATURAL20_COMMIT.trim().to_string(),
             units: e.units.clone(),
             placements: self.placed.placements.clone(),

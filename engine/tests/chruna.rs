@@ -317,3 +317,53 @@ fn web_arena_move_closes_cleave_window() {
     }
     assert!(closed >= 3, "expected at least 3 seeds opening Cleave; got {closed}");
 }
+
+#[test]
+fn sheet_ids_share_embeddings_and_v3_reads_every_class_level() {
+    use ember_rs::encode::Version;
+
+    let global_level = feature_names().global.iter().position(|&name| name == "party_level_div5").unwrap();
+    let individual_level = feature_names().creature.iter().position(|&name| name == "level_div5").unwrap();
+    for (base, shipped) in [("guy", 3), ("elion", 3), ("curogana", 3), ("chruna", 3), ("mara", 2), ("ilyra", 2)] {
+        let mut original = env_on(&[(base, 3, 5), ("skeleton-1", 6, 5)], 12);
+        to_turn_of(&mut original, base);
+        let original = Obs::of(&original, Some(0), (0, 0), &Objective::default()).unwrap();
+        for level in 1..=3 {
+            let sheet = if level == shipped { base.to_owned() } else { format!("{base}_l{level}") };
+            let mut env = env_on(&[(&sheet, 3, 5), ("skeleton-1", 6, 5)], 12);
+            to_turn_of(&mut env, &sheet);
+            for version in [Version::V2, Version::V3] {
+                let obs = Obs::of_version(&env, Some(0), (0, 0), &Objective::default(), version).unwrap();
+                assert_eq!(&obs.creature_ids[..2], &original.creature_ids[..2], "{sheet}");
+                let wanted = if version == Version::V2 && base == "chruna" { 0.0 } else { level as f32 / 5.0 };
+                assert_eq!(obs.global[global_level], wanted, "{sheet} {version:?}");
+                assert_eq!(obs.creatures[individual_level], wanted, "{sheet} {version:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn champion_critical_move_uses_its_own_budget_and_never_provokes() {
+    let mut saw_critical = false;
+    for seed in 0..128 {
+        let mut env = env_on(&[("mara_l3", 3, 5), ("zombie-1", 3, 6)], seed);
+        to_turn_of(&mut env, "mara_l3");
+        let hero = env.fight.current();
+        let monster = unit(&env.fight, "zombie-1");
+        let attack = row_of(&env, |a| matches!(a, Act::Attack { target, .. } if *target == monster)).unwrap();
+        env.step(attack).unwrap();
+        if env.fight.units[hero].champion_movement == 0 { continue; }
+        saw_critical = true;
+        assert_eq!(env.fight.units[hero].champion_movement, 15);
+        env.fight.units[hero].movement = 0;
+        env.fight.units[monster].reaction = 1;
+        env.fight.execute(Act::Move(vec![(3, 5), (4, 5), (5, 5), (6, 5)]));
+        assert_eq!(env.fight.units[hero].pos, (6, 5));
+        assert_eq!(env.fight.units[hero].champion_movement, 0);
+        assert_eq!(env.fight.units[hero].movement, 0);
+        assert_eq!(env.fight.units[monster].reaction, 1);
+        break;
+    }
+    assert!(saw_critical);
+}

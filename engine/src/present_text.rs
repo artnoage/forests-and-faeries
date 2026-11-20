@@ -112,6 +112,25 @@ fn pairs(items: &[(&str, &str)]) -> Vec<Value> {
 }
 
 pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
+    if pc && content.contains("_l") {
+        let pool = crate::content::ContentPool::global();
+        let doc = &pool.docs[pool.tid(content)? as usize];
+        let mut features: Vec<_> = doc.attacks.iter().filter(|a| !a.thrown).map(|a| json!({
+            "name": title_words(&a.name), "text": format!("{:+} to hit, {} {}.", a.to_hit.unwrap_or_default(), a.damage, a.damage_type.as_deref().unwrap_or(""))
+        })).collect();
+        features.extend(doc.features.iter().map(|f| {
+            let detail = match f.id.as_str() {
+                "remarkable_athlete" => "Advantage on initiative and Athletics. A critical hit permits half-speed movement without opportunity attacks.",
+                "potent_cantrip" => "Missed cantrip attacks and successful saves still deal half damage with no additional effects.",
+                "evocation_savant" => "Adds two evocations to the spellbook.",
+                _ => "",
+            };
+            json!({"name": title_words(&f.id), "text": detail})
+        }));
+        let spells: Vec<_> = doc.spellcasting.iter().flat_map(|s| s.spells.iter().chain(s.reaction_spells.iter()))
+            .map(|name| json!({"name": spell_display_name(name), "text": ""})).collect();
+        return Some(json!({"stats": format!("HP {hp} · AC {ac} · Speed {} ft", doc.speed), "features": features, "spells": spells}));
+    }
     if pc {
         let (stats, features, spells): (&str, &[(&str, &str)], &[(&str, &str)]) = match content {
             "mara" => (
@@ -154,7 +173,7 @@ pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
                     ("Second Wind", "Bonus action: regain 1d10+3 HP. Two uses."),
                     ("Action Surge", "Take one extra action this turn. One use."),
                     ("Improved Critical", "Champion: critical hits on a natural 19 or 20."),
-                    ("Remarkable Athlete", "Champion: Advantage on initiative."),
+                    ("Remarkable Athlete", "Advantage on initiative and Athletics. Immediately after a critical hit, move up to half your speed without provoking opportunity attacks."),
                     ("Alert", "Add your proficiency bonus to initiative."),
                 ],
                 &[],

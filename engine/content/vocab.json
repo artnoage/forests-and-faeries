@@ -183,7 +183,10 @@
    "primal_path": 61,
    "primal_knowledge": 62,
    "frenzy": 63,
-   "mastery:cleave": 64
+   "mastery:cleave": 64,
+   "wizard_subclass": 65,
+   "evocation_savant": 66,
+   "potent_cantrip": 67
   },
   "spells": {
    "sacred_flame": 0,

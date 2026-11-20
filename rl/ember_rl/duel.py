@@ -1062,6 +1062,8 @@ def parser():
     p.add_argument('--device', default='cuda')
     p.add_argument('--seed', type=int, default=1)
     p.add_argument('--resume', default='')
+    p.add_argument('--transfer-v2-weights', action='store_true',
+                   help='Initialize fresh v3 general learners from v2 policy weights. Requires matching architecture.')
     p.add_argument('--init-heroes', default='')
     p.add_argument('--init-monsters', default='')
     p.add_argument('--arch', choices=('mlp', 'transformer'), default='mlp',
@@ -1200,7 +1202,7 @@ def add_ember_arguments(p):
     g.add_argument('--ember-env', default='ember_rs',
                    help="ember_rs (the pyo3 module), fake (ember_rl.fake_env.FakeBatchEnv) or 'module:callable'")
     g.add_argument('--content', nargs='*', default=['content/srd'], help='ember_rs content pack directories')
-    g.add_argument('--feature-version', default='ember-gen-v2', choices=('ember-gen-v1', 'ember-gen-v2'),
+    g.add_argument('--feature-version', default='ember-gen-v2', choices=('ember-gen-v1', 'ember-gen-v2', 'ember-gen-v3'),
                    help='observation schema the env encodes (general_env.FEATURE_DIMS); new runs use ember-gen-v2')
     g.add_argument('--slots', type=int, default=256, help='BatchEnv slots (games in flight)')
     g.add_argument('--env-threads', type=int, default=12)

@@ -180,6 +180,10 @@ pub struct Unit {
     /// Cleave (`battle.entities[e]['cleave_attack']`): the open window (the
     /// weapon's attack row, the candidates in battle order).
     pub cleave: Option<(usize, Vec<usize>)>,
+    /// Unspent feet in the immediate Remarkable Athlete movement window.
+    pub champion_movement: i32,
+    /// Optional controller choice for a critical hit during another creature's turn.
+    pub champion_reaction_path: Vec<Pos>,
     /// `cleave_used`: the turn's Cleave is spent.
     pub cleave_used: bool,
     /// Insertion order of `entity.effects` keys (`UndeadWebArena._marks`, presentation only).
@@ -225,7 +229,7 @@ impl Unit {
         if self.unconscious() {
             0
         } else {
-            self.movement
+            self.movement.max(self.champion_movement)
         }
     }
     /// `Entity.has_reaction`: no incapacitated creature (unconscious
@@ -510,6 +514,9 @@ pub struct Fight {
     /// The content pool the units come from (vocabulary ids for the
     /// observation encoder; no game state).
     pub pool: &'static ContentPool,
+    /// Version-one tapes predate Remarkable Athlete movement; their controllers declined it.
+    pub champion_moves_enabled: bool,
+    pub(crate) interactive_champion: Option<usize>,
     /// The map, shared by every fight on it.
     pub grid: Arc<Grid>,
     pub units: Vec<Unit>,
@@ -650,6 +657,8 @@ impl Fight {
                 attack_rolled: false,
                 frenzy_hit: false,
                 cleave: None,
+                champion_movement: 0,
+                champion_reaction_path: Vec::new(),
                 cleave_used: false,
                 effect_key_order: Vec::new(),
             });
@@ -664,6 +673,8 @@ impl Fight {
         }
         Ok(Fight {
             pool,
+            champion_moves_enabled: true,
+            interactive_champion: None,
             grid,
             units,
             occ,
@@ -1192,6 +1203,8 @@ impl Fight {
 
     /// `Battle.end_turn`.
     fn battle_end_turn(&mut self) {
+        let current = self.current();
+        self.units[current].champion_movement = 0;
         // before the end-of-turn effects: a cleric Incapacitated only for its
         // own turn (Command) still ends its turns
         self.expire_timed_conditions();
@@ -1297,6 +1310,9 @@ impl Fight {
 
     /// `Battle.execute_action` (resolve + commit).
     pub(crate) fn execute_action(&mut self, src: usize, act: &Act) {
+        if !matches!(act, Act::Move(_)) {
+            self.units[src].champion_movement = 0;
+        }
         // `Battle.commit` -> `lapse_cleave_window`: any action of the wielder
         // other than the Cleave closes its window
         if !matches!(act, Act::Cleave { .. }) {
@@ -1428,6 +1444,29 @@ impl Fight {
         (moves, budget)
     }
 
+    pub(crate) fn champion_move_fits(&self, src: usize, path: &[Pos]) -> bool {
+        let budget = self.units[src].champion_movement / 5;
+        budget > 0 && path.first() == Some(&self.units[src].pos)
+            && path.windows(2).all(|step| distance(step[0], step[1]) == 1)
+            && self.compute_actual_moves(src, path, budget).0.len() == path.len()
+    }
+
+    pub(crate) fn offer_champion_movement(&mut self, src: usize) {
+        if !self.champion_moves_enabled || !self.units[src].t.remarkable_athlete || self.units[src].incapacitated() {
+            return;
+        }
+        let budget = self.speed_of(src) / 2;
+        self.units[src].champion_movement = budget;
+        if src != self.current() && self.interactive_champion != Some(src) {
+            let path = std::mem::take(&mut self.units[src].champion_reaction_path);
+            if path.first() == Some(&self.units[src].pos) && self.champion_move_fits(src, &path) {
+                let moves = self.prepare_move(src, &path);
+                self.commit_move_segment(src, moves);
+            }
+            self.units[src].champion_movement = 0;
+        }
+    }
+
     pub(crate) fn prepare_move(&self, src: usize, path: &[Pos]) -> Vec<Pos> {
         let budget = self.units[src].available_movement().div_euclid(5);
         let (mut moves, _) = self.compute_actual_moves(src, path, budget);
@@ -1459,8 +1498,14 @@ impl Fight {
             cost -= 1;
         }
         let Some(&dest) = seg.last() else { return };
+        let champion_move = self.champion_move_fits(src, &seg);
         self.move_to(src, dest);
-        self.units[src].movement -= cost * 5;
+        if champion_move {
+            self.units[src].champion_movement -= cost * 5;
+        } else {
+            self.units[src].champion_movement = 0;
+            self.units[src].movement -= cost * 5;
+        }
         // the path starts on the mover's square
         let trail = &mut self.units[src].trail;
         for &p in &seg {
@@ -1474,7 +1519,10 @@ impl Fight {
     /// `MoveAction.resolve` + `apply`.
     fn do_move(&mut self, src: usize, path: &[Pos]) {
         let mut moves = self.prepare_move(src, path);
-        moves = self.check_opportunity_attacks(src, moves);
+        if !self.champion_move_fits(src, path) {
+            self.units[src].champion_movement = 0;
+            moves = self.check_opportunity_attacks(src, moves);
+        }
         self.commit_move_segment(src, moves);
     }
 
@@ -2139,6 +2187,9 @@ impl Fight {
             }
             app
         };
+        if crit {
+            self.offer_champion_movement(src);
+        }
         // `consume_resource`: a hero's thrown weapon lands at the target's
         // square, hit or miss (N20-041 fixed; natural20 puts it on the
         // square's Ground object, which nothing in a fight reads). It no
@@ -2756,8 +2807,8 @@ impl Fight {
                     isc: sorcerer.then_some(u.innate_sorcery),
                     isu: if sorcerer { u.innate_until } else { None },
                     sw: fighter.then_some(u.second_wind_count),
-                    action_surge: fighter.then_some(u.action_surge_count),
-                    asu: fighter.then_some(u.action_surge_flag),
+                    action_surge: (u.t.action_surge_uses > 0).then_some(u.action_surge_count),
+                    asu: (u.t.action_surge_uses > 0).then_some(u.action_surge_flag),
                     rg: u.t.barbarian.then(|| {
                         [
                             u.rage_count,

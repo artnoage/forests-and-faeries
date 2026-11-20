@@ -1,0 +1,270 @@
+{
+ "schema": 1,
+ "id": "curogana_l2",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "0b3724742bcd329426653a152da36c9dba1b4ad9",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/characters/curogana_l2.yml": "13d364389334bea3b86afcaf09044ad09b25f0b7b8c6cf4d6adf863d9fb20ce3",
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/char_classes/sorcerer.yml": "277fa5753370a2254d05f97cae4a470283dd8794d5458ddecdc86537632db42e",
+   "templates/feats/magic_initiate_wizard.yml": "b74bc6eb71afac330ef6e946eabd36b399ba3991f336f908a86b35a14874fdc2",
+   "templates/items/equipment.yml": "0e4a7f72acce1eb5fc6e2a26071f3ebc1a3604286c600fba0f533e771bb12cc0",
+   "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
+   "templates/items/spells.yml": "dd45c5e4f7e47e77c20ebb9da60bf5a548647e185c6f658818bfadca466b37d8",
+   "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
+   "templates/rulesets/5e-2024/char_classes/sorcerer.yml": "2b3a85ef2c17e0dc9bc0244ffe5a2efbb367938e817bd812515dc81fc2dc5d40",
+   "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
+   "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
+   "templates/rulesets/5e-2024/races/elf.yml": "e2337d2f556b294faaabf70537761b1a491ea78b813a4e4aee18ecd20a0b52f3"
+  }
+ },
+ "side": "heroes",
+ "name": "Curogana",
+ "pc": true,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": true,
+  "object": false
+ },
+ "races": [
+  "elf",
+  "high_elf"
+ ],
+ "ac": 13,
+ "max_hp": 20,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 10,
+  "dex": 16,
+  "con": 20,
+  "int": 14,
+  "wis": 8,
+  "cha": 18
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 0,
+  "dex": 3,
+  "con": 7,
+  "int": 2,
+  "wis": -1,
+  "cha": 6
+ },
+ "initiative": {
+  "bonus": 3,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 11,
+ "base_id": "curogana",
+ "loadout": {
+  "equipment": [
+   {
+    "id": "quarterstaff",
+    "type": "melee_attack",
+    "hand_slots": 1.0
+   }
+  ],
+  "spares": {},
+  "wearing_armor": false
+ },
+ "classes": {
+  "sorcerer": 2
+ },
+ "attacks": [
+  {
+   "name": "quarterstaff",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 2,
+   "damage": "1d8+0",
+   "damage_type": "bludgeoning",
+   "ability": "str",
+   "proficient": true,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "thrown": false,
+   "versatile": "1d8",
+   "item": "quarterstaff"
+  },
+  {
+   "name": "unarmed_attack",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 2,
+   "damage": "1+0",
+   "damage_type": "bludgeoning",
+   "ability": "str",
+   "proficient": true,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "thrown": false,
+   "versatile": null,
+   "item": null
+  }
+ ],
+ "multiattack": [],
+ "features": [
+  {
+   "id": "magic_initiate_wizard"
+  },
+  {
+   "id": "elven_lineage"
+  },
+  {
+   "id": "fey_ancestry"
+  },
+  {
+   "id": "keen_senses"
+  },
+  {
+   "id": "trance"
+  },
+  {
+   "id": "spellcasting"
+  },
+  {
+   "id": "innate_sorcery",
+   "uses": 2
+  },
+  {
+   "id": "font_of_magic",
+   "sorcery_points": 2
+  },
+  {
+   "id": "metamagic",
+   "options": [
+    "empowered_spell",
+    "heightened_spell"
+   ]
+  }
+ ],
+ "traits": [],
+ "spellcasting": {
+  "class": "sorcerer",
+  "level": 2,
+  "ability": "cha",
+  "attack": 6,
+  "dc": 14,
+  "slots": [
+   4,
+   3
+  ],
+  "spells": [
+   "sorcerous_burst",
+   "acid_splash",
+   "firebolt",
+   "ray_of_frost",
+   "burning_hands",
+   "thunderwave",
+   "chromatic_orb",
+   "magic_missile"
+  ],
+  "reaction_spells": [
+   "shield"
+  ],
+  "inert_spells": [
+   "mage_hand",
+   "minor_illusion",
+   "elementalism"
+  ],
+  "spell_info": [
+   {
+    "id": "sorcerous_burst",
+    "name": "Sorcerous Burst",
+    "level": 0,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "acid_splash",
+    "name": "Acid Splash",
+    "level": 0,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "firebolt",
+    "name": "Firebolt",
+    "level": 0,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "ray_of_frost",
+    "name": "Ray of Frost",
+    "level": 0,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "burning_hands",
+    "name": "Burning Hands",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "thunderwave",
+    "name": "Thunderwave",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "chromatic_orb",
+    "name": "Chromatic Orb",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "magic_missile",
+    "name": "Magic Missile",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   },
+   {
+    "id": "shield",
+    "name": "Shield",
+    "level": 1,
+    "casting_time": "1:reaction",
+    "concentration": false
+   }
+  ],
+  "free_casts": [
+   {
+    "spell": "magic_missile",
+    "pool": "magic_initiate_wizard",
+    "uses": 1
+   }
+  ],
+  "resources": {
+   "sorcery_points": 2,
+   "innate_sorcery": 2
+  }
+ }
+}

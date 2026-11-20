@@ -71,6 +71,7 @@ DEFAULT_DIMS = dict(N=24, T=8, creature=183, global_=34, cand=122, map_channels=
 FEATURE_DIMS = {
     'ember-gen-v1': dict(N=24, T=8, creature=160, global_=32, cand=112, map_channels=16, canvas=32, relations=0),
     'ember-gen-v2': dict(DEFAULT_DIMS),
+    'ember-gen-v3': dict(DEFAULT_DIMS),
 }
 RELATIONS = ('frightened_of', 'save_immune', 'effect_from', 'sees', 'in_reach')
 ID_SLOTS = 256           # ids 0..255 per vocabulary section (public 0-199, private 200-255)

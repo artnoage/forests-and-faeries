@@ -216,7 +216,7 @@ def create_app():
                                     max_age=store.ttl, path='/')
             return response
 
-    allowed = {'new': {'encounter', 'preset', 'seed'}, 'action': {'revision', 'action_id'},
+    allowed = {'new': {'encounter', 'preset', 'seed', 'hero_level'}, 'action': {'revision', 'action_id'},
                'end-turn': {'revision'}, 'advance': {'revision', 'autoplay'},
                'setup': {'revision', 'placements', 'monster_control'}, 'start': {'revision'}}
 
@@ -262,6 +262,8 @@ def create_app():
                     level = levels.get((encounter, preset))
                     if level is None:
                         raise ValueError('Unknown encounter or preset.')
+                    if 'hero_level' in data:
+                        level = level.with_hero_level(data['hero_level'])
                     game = factory(level=level, seed=seed, revision=game.revision + 1, csrf_token=game.csrf_token)
                     store.put(key, client_address(), game)
                     return jsonify(wire(game, game.state()))

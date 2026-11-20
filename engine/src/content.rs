@@ -418,6 +418,10 @@ pub struct CasterSpec {
 #[derive(Clone, Debug)]
 pub struct Template {
     pub id: &'static str,
+    pub base_id: &'static str,
+    pub level: i32,
+    pub potent_cantrip: bool,
+    pub remarkable_athlete: bool,
     pub name: &'static str,
     pub size: &'static str,
     pub pc: bool,
@@ -539,6 +543,8 @@ pub enum Feature {
     SecondWind,
     ActionSurge,
     ImprovedCritical,
+    PotentCantrip,
+    RemarkableAthlete,
     GreatWeaponFighting,
     SavageAttacker,
     ChannelDivinity,
@@ -577,7 +583,9 @@ impl Feature {
             "reckless_attack" => RecklessAttack,
             "danger_sense" => DangerSense,
             "frenzy" => Frenzy,
-            "remarkable_athlete" | "martial_archetype" | "weapon_mastery" | "divine_order" | "divine_domain"
+            "remarkable_athlete" => RemarkableAthlete,
+            "potent_cantrip" => PotentCantrip,
+            "wizard_subclass" | "evocation_savant" | "martial_archetype" | "weapon_mastery" | "divine_order" | "divine_domain"
             | "draconic_resilience" | "sorcerer_subclass" | "draconic_spells" | "spellcasting" | "alert"
             | "magic_initiate_cleric" | "magic_initiate_wizard" | "resourceful" | "skillful" | "versatile"
             | "elven_lineage" | "fey_ancestry" | "keen_senses" | "trance" | "defense" | "ritual_adept"
@@ -809,6 +817,8 @@ pub struct SpellcastingDoc {
 pub struct ContentDoc {
     pub schema: i32,
     pub id: String,
+    #[serde(default)]
+    pub base_id: Option<String>,
     pub source: String,
     pub licence: String,
     pub attribution: String,
@@ -946,6 +956,10 @@ impl Template {
         }
         let mut t = Template {
             id: intern(&d.id),
+            base_id: intern(d.base_id.as_deref().unwrap_or(&d.id)),
+            level: d.classes.values().sum(),
+            potent_cantrip: false,
+            remarkable_athlete: false,
             name: intern(&d.name),
             size: intern(&d.size),
             pc: d.pc,
@@ -1156,6 +1170,8 @@ impl Template {
                     t.fighter = true;
                     t.action_surge_uses = param_i32(f, "uses")?;
                 }
+                Feature::PotentCantrip => t.potent_cantrip = true,
+                Feature::RemarkableAthlete => t.remarkable_athlete = true,
                 Feature::ImprovedCritical => t.improved_critical = true,
                 Feature::GreatWeaponFighting => {
                     let model = f.params.get("model").and_then(|v| v.as_str());
@@ -1579,10 +1595,11 @@ impl ContentPool {
         let need = |section: &str, name: &str| -> Result<(), String> {
             self.vocab.id(section, name).map(|_| ()).ok_or_else(|| format!("no vocab id for {section}.{name}"))
         };
-        need("creatures", &d.id)?;
+        let base = d.base_id.as_deref().unwrap_or(&d.id);
+        need("creatures", base)?;
         if d.pc {
             // the character embedding (GENERAL_ENV.md §5.1 `creature_ids`)
-            need("characters", &d.id)?;
+            need("characters", base)?;
         }
         for k in d.classes.keys() {
             need("classes", k)?;
@@ -1673,7 +1690,13 @@ impl ContentPool {
     }
 
     pub fn tid(&self, content: &str) -> Option<u16> {
-        self.by_id.get(content).copied()
+        if let Some(&id) = self.by_id.get(content) {
+            return Some(id);
+        }
+        let (base, suffix) = content.rsplit_once("_l")?;
+        let id = *self.by_id.get(base)?;
+        let t = self.template(id);
+        (t.pc && suffix == t.level.to_string()).then_some(id)
     }
 
     pub fn template(&self, tid: u16) -> &Template {
@@ -1984,7 +2007,9 @@ mod tests {
     #[test]
     fn global_pool_loads() {
         let pool = ContentPool::global();
-        assert_eq!(pool.templates.len(), 17);
+        assert_eq!(pool.templates.iter().filter(|t| t.pc).count(), 18);
+        assert_eq!(pool.tid("guy_l3"), pool.tid("guy"));
+        assert_eq!(pool.tid("ilyra_l2"), pool.tid("ilyra"));
         for id in [
             "guy", "elion", "curogana", "mara", "ilyra", "skeleton", "zombie", "ghoul", "ghast", "specter", "shadow", "wight",
             "goblin_minion", "goblin_warrior", "goblin_boss", "mummy", "chruna",

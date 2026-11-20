@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "natural20_commit": "0b3724742bcd329426653a152da36c9dba1b4ad9",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/characters/mara.yml": "930979945719d4869f7222423a0ad9e3673bede92b7d6a3bd9dea15a14c97176",
@@ -17,8 +17,8 @@
    "templates/items/equipment.yml": "0e4a7f72acce1eb5fc6e2a26071f3ebc1a3604286c600fba0f533e771bb12cc0",
    "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
    "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
-   "templates/rulesets/5e-2024/char_classes/fighter.yml": "ac293e2b9679a0df3ee89e413c1ea0dba37718411d3c349cb70e0b3225affd8b",
-   "templates/rulesets/5e-2024/items/weapons.yml": "76cac4362188909c327083df110533ed046ef571e599c0dafb1646262512131a",
+   "templates/rulesets/5e-2024/char_classes/fighter.yml": "b46406e2d376e7ff7e85a5c319f39eac0ff04ff39b45a98eb096837672c0380a",
+   "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
    "templates/rulesets/5e-2024/races/human.yml": "8fb26b79eda7e1ab395db2b3c912e04434d4c180922cf51666f06cc7a0c6c432"
   }
  },
@@ -67,6 +67,7 @@
  },
  "condition_immunities": [],
  "passive_perception": 13,
+ "base_id": "mara",
  "loadout": {
   "equipment": [
    {

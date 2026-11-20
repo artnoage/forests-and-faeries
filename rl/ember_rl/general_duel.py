@@ -196,10 +196,20 @@ class GeneralPolicies(Policies):
         from ember_rl.general_model import build_general
         self.torch, self.device, self.args = torch, device, args
         self.config, self.feature_version = config, feature_version
-        self.initial = {team: self.load_frozen(path, team)
+        transfer = getattr(args, 'transfer_v2_weights', False)
+        if transfer and feature_version != 'ember-gen-v3':
+            raise ValueError('--transfer-v2-weights requires --feature-version ember-gen-v3')
+        if transfer and not (args.init_heroes or args.init_monsters):
+            raise ValueError('--transfer-v2-weights requires an initial policy')
+        self.initial = {} if transfer else {team: self.load_frozen(path, team)
                         for team, path in (('heroes', args.init_heroes), ('monsters', args.init_monsters)) if path}
         self.make = lambda: build_general(config).to(device)
         self.learner = {team: self.make() for team in TEAMS}
+        if transfer:
+            for team, path in (('heroes', args.init_heroes), ('monsters', args.init_monsters)):
+                if path:
+                    source = load_general(path, device, 'ember-gen-v2', team)
+                    self.learner[team].load_state_dict(source.state_dict(), strict=True)
         for team, model in self.initial.items():
             if model.full_config() == self.learner[team].full_config():
                 self.learner[team].load_state_dict(model.state_dict())     # warm start (e.g. a distilled student)
@@ -1161,7 +1171,12 @@ class DistillTrainer:
         self.students = {team: build_general(self.config).to(self.device) for team in TEAMS}
         for team, path in (('heroes', args.init_heroes), ('monsters', args.init_monsters)):
             if path:
-                self.students[team].load_state_dict(load_general(path, 'cpu', self.feature_version, team).state_dict())
+                version = self.feature_version
+                if getattr(args, 'transfer_v2_weights', False):
+                    if version != 'ember-gen-v3':
+                        raise ValueError('--transfer-v2-weights requires --feature-version ember-gen-v3')
+                    version = 'ember-gen-v2'
+                self.students[team].load_state_dict(load_general(path, 'cpu', version, team).state_dict())
         for model in self.students.values():
             model.eval()
         self.optimizers = {team: torch.optim.Adam(self.students[team].parameters(), lr=args.lr, eps=1e-5) for team in TEAMS}

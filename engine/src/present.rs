@@ -82,6 +82,14 @@ struct FFArenaKey {
     path: String,
 }
 
+struct InterruptedMove {
+    champion: usize,
+    mover: usize,
+    requested: Vec<Pos>,
+    moves: Vec<Pos>,
+    opportunities: Vec<(usize, usize)>,
+}
+
 pub struct WebArena {
     level: LevelInput,
     grid: Arc<Grid>,
@@ -97,6 +105,7 @@ pub struct WebArena {
     pub encounter_id: String,
     trace_init: Trace,
     fight: Option<Fight>,
+    interrupted_move: Option<InterruptedMove>,
     /// Map from `fight.units` index -> `roster` index, plus reverse.
     fight_to_roster: Vec<usize>,
     roster_to_fight: Vec<Option<usize>>,
@@ -228,9 +237,9 @@ impl WebArena {
             roster_by_id.insert(hero.clone(), idx);
             roster.push(RosterUnit {
                 id: hero.clone(),
-                content: hero.clone(),
+                content: t.id.to_string(),
                 team: "heroes",
-                name: present_text::default_hero_name(hero).to_string(),
+                name: t.name.to_string(),
                 t,
             });
         }
@@ -264,6 +273,7 @@ impl WebArena {
             encounter_id: encounter_token,
             trace_init: trace,
             fight: None,
+            interrupted_move: None,
             fight_to_roster: Vec::new(),
             roster_to_fight: Vec::new(),
             initiative_rolls: HashMap::new(),
@@ -416,6 +426,18 @@ impl WebArena {
         f.units[u].team == 0 || self.monster_control == "manual"
     }
 
+    fn acting_unit(&self, fight: &Fight) -> usize {
+        self.interrupted_move.as_ref().map_or_else(|| fight.current(), |m| m.champion)
+    }
+
+    fn resume_interrupted_move(&mut self) {
+        if let Some(m) = self.interrupted_move.take() {
+            self.fight.as_mut().unwrap().units[m.champion].champion_movement = 0;
+            self.continue_move(m.mover, &m.requested, m.moves, m.opportunities);
+            self.finish_if_needed();
+        }
+    }
+
     fn can_act(&self) -> bool {
         if self.in_setup || self.finished {
             return false;
@@ -424,7 +446,7 @@ impl WebArena {
         if f.order.is_empty() {
             return false;
         }
-        self.human_controlled_fight(f.current())
+        self.human_controlled_fight(self.acting_unit(f))
     }
 
     fn phase(&self) -> &'static str {
@@ -435,7 +457,7 @@ impl WebArena {
             return "finished";
         }
         let f = self.fight.as_ref().unwrap();
-        if f.units[f.current()].team == 0 {
+        if f.units[self.acting_unit(f)].team == 0 {
             "hero"
         } else {
             "enemy"
@@ -531,8 +553,12 @@ impl WebArena {
         let Some(cand) = self.candidates.get(action_id).cloned() else {
             return Err("Unknown or unavailable action.".to_string());
         };
-        let actor = self.fight.as_ref().unwrap().current();
+        let actor = self.acting_unit(self.fight.as_ref().unwrap());
+        let interrupt = self.interrupted_move.is_some();
         self.execute_candidate(actor, &cand);
+        if interrupt {
+            self.resume_interrupted_move();
+        }
         if !self.finished && !self.fight.as_ref().unwrap().units[actor].conscious() {
             self.end_turn_flow();
         }
@@ -544,7 +570,11 @@ impl WebArena {
         if !self.can_act() {
             return Err("It is not a human-controlled combat turn.".to_string());
         }
-        self.end_turn_flow();
+        if self.interrupted_move.is_some() {
+            self.resume_interrupted_move();
+        } else {
+            self.end_turn_flow();
+        }
         self.revision += 1;
         Ok(self.state())
     }
@@ -555,6 +585,14 @@ impl WebArena {
         }
         if self.finished {
             return Err("The battle has finished.".to_string());
+        }
+        if self.interrupted_move.is_some() {
+            if !autoplay {
+                return Err("Choose the Champion's move or stay here.".to_string());
+            }
+            self.resume_interrupted_move();
+            self.revision += 1;
+            return Ok(self.state());
         }
         let actor = self.fight.as_ref().unwrap().current();
         if self.human_controlled_fight(actor) && !autoplay {
@@ -578,6 +616,10 @@ impl WebArena {
             };
             let cand = HumanCandidate { act, exhale_aim: None };
             self.execute_candidate(actor, &cand);
+            if self.interrupted_move.is_some() {
+                self.revision += 1;
+                return Ok(self.state());
+            }
         }
         if hit_cap && !self.finished {
             let r = self.current_round();
@@ -719,17 +761,32 @@ impl WebArena {
 
     fn execute_move_with_oas(&mut self, mover: usize, path: &[Pos]) {
         self.fight.as_mut().unwrap().decisions += 1;
-        let mut moves = self.fight.as_ref().unwrap().prepare_move(mover, path);
-        let oas = self.fight.as_ref().unwrap().opportunity_attacks(mover, &moves);
+        let moves = self.fight.as_ref().unwrap().prepare_move(mover, path);
+        let f = self.fight.as_mut().unwrap();
+        let oas = if f.champion_move_fits(mover, path) {
+            Vec::new()
+        } else {
+            f.units[mover].champion_movement = 0;
+            f.opportunity_attacks(mover, &moves)
+        };
 
-        for (reactor, index) in oas {
+        self.continue_move(mover, path, moves, oas);
+    }
+
+    fn continue_move(&mut self, mover: usize, path: &[Pos], mut moves: Vec<Pos>, oas: Vec<(usize, usize)>) {
+        let mut oas = oas.into_iter();
+        while let Some((reactor, index)) = oas.next() {
             let original: Vec<Pos> = moves[..index].to_vec();
             let oa_act = self.fight.as_mut().unwrap().opportunity_attack_listener(reactor, mover);
             if let Some(Act::Attack { atk, target, .. }) = oa_act {
                 let oa = Act::Attack { atk, target, reaction: true };
                 let oa_before = self.presentation_snapshot();
                 let oa_first_effect = self.effect_counter;
-                self.fight.as_mut().unwrap().execute_oa_attack(reactor, atk, target);
+                let interactive = self.human_controlled_fight(reactor);
+                let f = self.fight.as_mut().unwrap();
+                f.interactive_champion = interactive.then_some(reactor);
+                f.execute_oa_attack(reactor, atk, target);
+                f.interactive_champion = None;
                 let oa_evs = self.fight.as_mut().unwrap().take_web_events();
                 let (oa_moves, oa_blind_tgt) = self.process_action_events(reactor, &oa, None, oa_evs);
                 self.record_action(reactor, &oa, None, oa_blind_tgt, oa_before, oa_first_effect, oa_moves, true);
@@ -738,6 +795,16 @@ impl WebArena {
                 let f = self.fight.as_ref().unwrap();
                 !f.units[mover].conscious() || f.units[mover].prone()
             };
+            if self.fight.as_ref().unwrap().units[reactor].champion_movement > 0 {
+                let remaining = if stop { Vec::new() } else { oas.collect() };
+                self.interrupted_move = Some(InterruptedMove {
+                    champion: reactor, mover, requested: path.to_vec(),
+                    moves: if stop { original } else { moves }, opportunities: remaining,
+                });
+                let name = self.unit_display_name(reactor).to_owned();
+                self.push_log(&format!("{name} can move up to half speed after the critical hit."), "info", self.current_round());
+                return;
+            }
             if stop {
                 moves = original;
                 break;
@@ -1701,11 +1768,15 @@ impl WebArena {
             return;
         }
         let Some(f_ref) = &self.fight else { return };
-        let actor = f_ref.current();
+        let actor = self.acting_unit(f_ref);
 
         let mut raw_cands: Vec<HumanCandidate> = Vec::new();
         let incap = self.fight.as_ref().unwrap().units[actor].incapacitated();
-        if incap {
+        if self.interrupted_move.is_some() {
+            raw_cands.extend(self.movement_candidates(actor).into_iter().filter(|act|
+                matches!(act, Act::Move(path) if f_ref.champion_move_fits(actor, path)))
+                .map(|act| HumanCandidate { act, exhale_aim: None }));
+        } else if incap {
             if let Some(step) = self.fight.as_mut().unwrap().flee_step(actor) {
                 raw_cands.push(HumanCandidate { act: Act::Move(step), exhale_aim: None });
             }
@@ -2349,7 +2420,7 @@ impl WebArena {
 
     fn presentation_snapshot(&self) -> Value {
         let f = self.fight.as_ref().unwrap();
-        let actor = if self.in_setup || self.finished { None } else { Some(f.current()) };
+        let actor = if self.in_setup || self.finished { None } else { Some(self.acting_unit(f)) };
         let mut units = Vec::with_capacity(f.order.len());
         for &u in &f.order {
             let unit = &f.units[u];
@@ -2387,6 +2458,7 @@ impl WebArena {
             "winner": self.winner,
             "phase": self.phase(),
             "can_act": self.can_act(),
+            "champion_interrupt": self.interrupted_move.is_some(),
             "log_id": self.log_counter,
             "forces": self.forces_view(),
         })
@@ -2407,12 +2479,15 @@ impl WebArena {
         m.insert("ac".into(), json!(ac));
         m.insert("alive".into(), json!(true));
         m.insert("active".into(), json!(false));
-        m.insert("description".into(), json!(present_text::creature_description(&ru.content)));
+        m.insert("description".into(), json!(present_text::creature_description(ru.t.base_id)));
         m.insert("conditions".into(), json!([]));
         m.insert("controlled_by".into(), json!(controlled_by));
         m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
         m.insert("initiative".into(), json!(null));
-        if let Some((lvl, cls, sub)) = present_text::hero_class_meta(&ru.content) {
+        if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
+            let lvl = ru.t.level;
+            let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
+            m.insert("base_id".into(), json!(ru.t.base_id));
             let mut classes = Map::new();
             classes.insert(cls.to_string(), json!(lvl));
             m.insert("level".into(), json!(lvl));
@@ -2426,7 +2501,7 @@ impl WebArena {
         }
         m.insert("content".into(), json!(ru.content));
         m.insert("dead".into(), json!(false));
-        m.insert("model".into(), present_text::model_recipe(&ru.content));
+        m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
         m.insert("marks".into(), if ru.content == "ghast" { json!(["stench"]) } else { json!([]) });
         m.insert("str_loss".into(), json!(0));
         if let Some(sheet) = present_text::unit_sheet(&ru.content, ru.t.pc, hp, ac) {
@@ -2457,12 +2532,15 @@ impl WebArena {
         m.insert("ac".into(), json!(ac));
         m.insert("alive".into(), json!(unit.conscious()));
         m.insert("active".into(), json!(Some(u) == actor));
-        m.insert("description".into(), json!(present_text::creature_description(&ru.content)));
+        m.insert("description".into(), json!(present_text::creature_description(ru.t.base_id)));
         m.insert("conditions".into(), json!(conds));
         m.insert("controlled_by".into(), json!(controlled_by));
         m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
         m.insert("initiative".into(), if self.in_setup { json!(null) } else { json!(unit.initiative) });
-        if let Some((lvl, cls, sub)) = present_text::hero_class_meta(&ru.content) {
+        if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
+            let lvl = ru.t.level;
+            let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
+            m.insert("base_id".into(), json!(ru.t.base_id));
             let mut classes = Map::new();
             classes.insert(cls.to_string(), json!(lvl));
             m.insert("level".into(), json!(lvl));
@@ -2476,7 +2554,7 @@ impl WebArena {
         }
         m.insert("content".into(), json!(ru.content));
         m.insert("dead".into(), json!(unit.dead()));
-        m.insert("model".into(), present_text::model_recipe(&ru.content));
+        m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
         m.insert("marks".into(), json!(self.unit_marks(u)));
         m.insert("str_loss".into(), json!(unit.str_drain.unwrap_or(0)));
         if let Some(sheet) = present_text::unit_sheet(&ru.content, ru.t.pc, hp, ac) {
@@ -2502,7 +2580,7 @@ impl WebArena {
         let actor = if self.in_setup || self.finished {
             None
         } else {
-            self.fight.as_ref().map(|f| f.current())
+            self.fight.as_ref().map(|f| self.acting_unit(f))
         };
         let resources = self.resources_view(actor);
         let units: Vec<Value> = if self.in_setup {
@@ -2540,6 +2618,7 @@ impl WebArena {
             "turn_id": turn_id,
             "phase": self.phase(),
             "can_act": self.can_act(),
+            "champion_interrupt": self.interrupted_move.is_some(),
             "setup": {
                 "roster": setup_roster,
                 "placements": self.placements,

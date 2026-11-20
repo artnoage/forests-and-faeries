@@ -462,3 +462,27 @@ def test_move_penalty_applies_to_move_decisions_only():
     assert GeneralTrainer.move_penalty(trainer, other) == 0.
     trainer.args.move_penalty = 0.
     assert GeneralTrainer.move_penalty(trainer, move) == 0.
+
+
+def test_explicit_v2_weight_transfer_initializes_a_fresh_v3_learner(tmp_path):
+    from types import SimpleNamespace
+    import pytest
+    import torch
+    from ember_rl.general_duel import GeneralPolicies, load_general
+    from ember_rl.general_model import build_general, general_config
+    from ember_rl.model import save_checkpoint
+
+    config = general_config(d_model=16, heads=2, encoder_layers=1, decoder_layers=1,
+                            cnn_channels=8, cnn_layers=1)
+    source = build_general(config)
+    path = tmp_path / 'heroes.pt'
+    save_checkpoint(path, source, extra={'team': 'heroes', 'feature_version': 'ember-gen-v2'})
+    with pytest.raises(ValueError):
+        load_general(path, 'cpu', 'ember-gen-v3', 'heroes')
+    args = SimpleNamespace(transfer_v2_weights=True, init_heroes=str(path), init_monsters='',
+                           lr=0.001, teacher_kl=0)
+    learners = GeneralPolicies(args, 'cpu', config, 'ember-gen-v3')
+    assert not learners.optimizer['heroes'].state
+    assert not learners.initial
+    for name, value in learners.learner['heroes'].state_dict().items():
+        assert torch.equal(value, source.state_dict()[name])

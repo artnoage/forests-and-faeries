@@ -851,6 +851,8 @@
     $('pause-button').setAttribute('aria-label', paused ? 'Resume' : 'Pause');
     $('step-button').disabled = !state || busy || finished || (!computerTurn && !watching);
     $('end-button').disabled = !canAct();
+    $('end-button').querySelector('span').textContent = state?.champion_interrupt ? 'STAY HERE' : 'END TURN';
+    $('end-button').querySelector('small').textContent = state?.champion_interrupt ? 'Decline the free move' : 'Next creature →';
     $('new-button').disabled = busy || !state;
     $('again-button').disabled = busy;
     if (!state) return;
@@ -1282,7 +1284,8 @@
     window.EmberScene?.prepareAssets?.({ keys: castKeysFor(lv.preset) })?.catch?.(() => {});
     try {
       if (!state) state = await api('state');
-      let fresh = await api('new', { encounter: lv.group.id, preset: lv.preset.id });
+      const heroLevel = Number($('start-hero-level').value);
+      let fresh = await api('new', { encounter: lv.group.id, preset: lv.preset.id, ...(heroLevel && { hero_level: heroLevel }) });
       lastActionId = 0;
       if (quickFight) {
         fresh = await apiWith(fresh, 'setup', { placements: fresh.setup?.suggested_placements || [], monster_control: monsterControl });
@@ -1549,7 +1552,7 @@
   const newEncounter = () => {
     if (busy || !state?.level) return;
     watching = false; paused = true; clearTimer(); selectedGroup = null; choices = []; inspectedId = null;
-    request('new', { encounter: state.level.encounter, preset: state.level.id }, true);
+    request('new', { encounter: state.level.encounter, preset: state.level.id, ...(state.level.hero_level && { hero_level: state.level.hero_level }) }, true);
   };
   $('new-button').addEventListener('click', newEncounter);
   $('again-button').addEventListener('click', newEncounter);

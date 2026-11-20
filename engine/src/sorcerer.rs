@@ -823,7 +823,7 @@ impl Fight {
     }
 
     /// `single_target_attack_value`.
-    fn single_attack_value(&self, caster: usize, t: usize, dt: Dmg, hit: f64, crit: f64, range: i32) -> f64 {
+    fn single_attack_value(&self, caster: usize, t: usize, dt: Dmg, hit: f64, crit: f64, range: i32, cantrip: bool) -> f64 {
         if !self.opposing(caster, t) {
             return POINTLESS;
         }
@@ -832,7 +832,8 @@ impl Fight {
             return POINTLESS;
         }
         let (p_hit, p_crit) = self.spell_attack_estimate(caster, t, WeaponKind::spell_ranged(range));
-        let mut value = mult * ((p_hit - p_crit) * hit + p_crit * crit);
+        let miss = if cantrip && self.units[caster].t.potent_cantrip { hit / 2.0 } else { 0.0 };
+        let mut value = mult * ((p_hit - p_crit) * hit + p_crit * crit + (1.0 - p_hit) * miss);
         if !self.units[t].conscious() {
             value *= DOWNED_FOE_WEIGHT;
         }
@@ -878,7 +879,7 @@ impl Fight {
             if used.contains(&foe) || !self.units[foe].conscious() || !self.can_see(caster, foe) || self.feet(from, foe) > 30 {
                 continue;
             }
-            let v = self.single_attack_value(caster, foe, dt, hit, crit, 90);
+            let v = self.single_attack_value(caster, foe, dt, hit, crit, 90, false);
             if v > best_value {
                 best = Some(foe);
                 best_value = v;
@@ -1083,15 +1084,15 @@ impl Fight {
                 let cap = ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(0);
                 let hit = 4.5 * expected_dice(1, cap);
                 let crit = 4.5 * expected_dice(2, cap);
-                self.single_attack_value(u, t, c.dt.unwrap_or(Dmg::Acid), hit, crit, 120)
+                self.single_attack_value(u, t, c.dt.unwrap_or(Dmg::Acid), hit, crit, 120, true)
             }
             Firebolt => {
                 let Some(t) = t0 else { return POINTLESS };
-                self.single_attack_value(u, t, Dmg::Fire, 1.0 * 1.0 * 11.0 / 2.0, 1.0 * 2.0 * 11.0 / 2.0, 120)
+                self.single_attack_value(u, t, Dmg::Fire, 1.0 * 1.0 * 11.0 / 2.0, 1.0 * 2.0 * 11.0 / 2.0, 120, true)
             }
             RayOfFrost => {
                 let Some(t) = t0 else { return POINTLESS };
-                self.single_attack_value(u, t, Dmg::Cold, 1.0 * 1.0 * 9.0 / 2.0, 1.0 * 2.0 * 9.0 / 2.0, 60)
+                self.single_attack_value(u, t, Dmg::Cold, 1.0 * 1.0 * 9.0 / 2.0, 1.0 * 2.0 * 9.0 / 2.0, 60, true)
             }
             ChromaticOrb => {
                 let Some(t) = t0 else { return POINTLESS };
@@ -1099,7 +1100,7 @@ impl Fight {
                 let hit = (n * 1) as f64 * 4.5;
                 let crit = (n * 2) as f64 * 4.5;
                 let dt = c.dt.unwrap_or(Dmg::Acid);
-                let first = self.single_attack_value(u, t, dt, hit, crit, 90);
+                let first = self.single_attack_value(u, t, dt, hit, crit, 90, false);
                 if first <= 0.0 {
                     return first;
                 }
@@ -1122,7 +1123,7 @@ impl Fight {
             AcidSplash | Shatter => {
                 let Some(p) = c.point else { return POINTLESS };
                 let (radius, ab, full, dt, half) = if c.spell == AcidSplash {
-                    (5, Ability::Dex, 3.5, Dmg::Acid, false)
+                    (5, Ability::Dex, 3.5, Dmg::Acid, self.units[u].t.potent_cantrip)
                 } else {
                     (10, Ability::Con, (3 + (c.at_level - 2).max(0)) as f64 * 4.5, Dmg::Thunder, true)
                 };
@@ -1367,7 +1368,7 @@ impl Fight {
                 for d in dismiss {
                     items.push(Item::Dismiss(d.0, d.1));
                 }
-                if hit {
+                if hit || self.units[u].t.potent_cantrip {
                     match c.spell {
                         SorcerousBurst => {
                             let dt = c.dt.unwrap_or(Dmg::Acid);
@@ -1387,16 +1388,18 @@ impl Fight {
                             }
                             rolls.push(RollObj { sides: 8, rolls: faces, modifier: 0, halved: false, source: None });
                             let i = rolls.len() - 1;
-                            items.push(Item::RDamage(DmgRef { t, dt, crit: nat20, dmg: i, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                            items.push(Item::RDamage(DmgRef { t, dt, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
                         }
                         Firebolt => {
                             let i = self.new_roll(u, "spells.generic_damage", if nat20 { 2 } else { 1 }, 10, 0, rolls);
-                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: nat20, dmg: i, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
                         }
                         _ => {
                             let i = self.new_roll(u, "spells.ray_of_frost", if nat20 { 2 } else { 1 }, 8, 0, rolls);
-                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Cold, crit: nat20, dmg: i, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
-                            items.push(Item::RayOfFrost { t, action_t });
+                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Cold, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                            if hit {
+                                items.push(Item::RayOfFrost { t, action_t });
+                            }
                         }
                     }
                 } else {
@@ -1473,7 +1476,7 @@ impl Fight {
             AcidSplash | Shatter => {
                 let p = c.point.unwrap();
                 let (radius, ab, n, sides, dt, half, tag) = if c.spell == AcidSplash {
-                    (5, Ability::Dex, 1, 6, Dmg::Acid, false, "spells.acid_splash")
+                    (5, Ability::Dex, 1, 6, Dmg::Acid, self.units[u].t.potent_cantrip, "spells.acid_splash")
                 } else {
                     (10, Ability::Con, 3 + (c.at_level - 2).max(0), 8, Dmg::Thunder, true, "spells.shatter")
                 };

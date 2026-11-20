@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "9d09df739afd726e0b03024001903f5c4a07f7d1",
+  "natural20_commit": "0b3724742bcd329426653a152da36c9dba1b4ad9",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/characters/chruna.yml": "5a22639ab4d8007f22275e43733ee9cd75174e137d780eab29dc56a409b88d6b",
@@ -66,6 +66,7 @@
  },
  "condition_immunities": [],
  "passive_perception": 13,
+ "base_id": "chruna",
  "loadout": {
   "equipment": [
    {

@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "natural20_commit": "0b3724742bcd329426653a152da36c9dba1b4ad9",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/characters/curogana.yml": "8aa95365cf16f4b44bfe7f7840a493ee863254018a42ead6ef7c225d8986e879",
@@ -16,9 +16,9 @@
    "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
    "templates/items/spells.yml": "dd45c5e4f7e47e77c20ebb9da60bf5a548647e185c6f658818bfadca466b37d8",
    "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
-   "templates/rulesets/5e-2024/char_classes/sorcerer.yml": "df78ea1d8d020781c0412c91db4bdd70674d284fc9f05ca8c762453bd500a79d",
+   "templates/rulesets/5e-2024/char_classes/sorcerer.yml": "2b3a85ef2c17e0dc9bc0244ffe5a2efbb367938e817bd812515dc81fc2dc5d40",
    "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
-   "templates/rulesets/5e-2024/items/weapons.yml": "76cac4362188909c327083df110533ed046ef571e599c0dafb1646262512131a",
+   "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
    "templates/rulesets/5e-2024/races/elf.yml": "e2337d2f556b294faaabf70537761b1a491ea78b813a4e4aee18ecd20a0b52f3"
   }
  },
@@ -68,6 +68,7 @@
  },
  "condition_immunities": [],
  "passive_perception": 11,
+ "base_id": "curogana",
  "loadout": {
   "equipment": [
    {

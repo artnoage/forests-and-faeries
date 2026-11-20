@@ -108,6 +108,26 @@ def test_private_catalogue_adds_the_seven_mausoleum_rooms_with_neutral_names(pri
     assert all(len(e['presets']) >= 1 for e in rooms)
 
 
+@pytest.mark.parametrize('hero_level', [1, 2, 3])
+def test_play_at_selected_hero_level(ff_app, hero_level):
+    client = ff_app.test_client()
+    first = client.get('/api/state').get_json()
+    new = post(client, '/api/new', first, {'hero_level': hero_level})
+    assert new.status_code == 200, new.get_json()
+    setup = new.get_json()
+    party = setup['level']['party']
+    assert all(hero['level'] == hero_level for hero in party)
+    assert len({hero['base_id'] for hero in party}) == len(party)
+    for hero in party:
+        unit = next(u for u in setup['units'] if u['id'] == hero['content'])
+        assert (unit['base_id'], unit['level']) == (hero['base_id'], hero_level)
+    placed = post(client, '/api/setup', setup, {'revision': setup['revision'],
+                  'placements': setup['setup']['suggested_placements'], 'monster_control': 'ai'}).get_json()
+    started = post(client, '/api/start', placed, {'revision': placed['revision']})
+    assert started.status_code == 200, started.get_json()
+    assert started.get_json()['phase'] != 'setup'
+
+
 def test_every_level_builds_and_validates():
     levels = catalogue.load(include_private=True)
     assert len(levels) >= 6 + 2 + 7

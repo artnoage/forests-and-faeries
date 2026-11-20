@@ -893,7 +893,8 @@ fn feature_names_and_vocab() {
         assert_eq!(d.get("relations").copied().unwrap_or(0), v.relations());
     }
     assert_eq!(Version::default(), Version::V2);
-    assert!(Version::parse("ember-gen-v3").is_err());
+    assert_eq!(Version::parse("ember-gen-v3").unwrap(), Version::V3);
+    assert!(Version::parse("ember-gen-v4").is_err());
 }
 
 /// Golden digests: the first and last decision and the two final views of

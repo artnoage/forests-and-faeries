@@ -226,6 +226,13 @@ impl ContentPool {
         self.ids().into_iter().filter(|i| self.pool.template(self.pool.tid(i).unwrap()).pc).collect()
     }
 
+    /// Canonical sheet, shared hero identity, character level and display name.
+    fn hero_sheet(&self, content: &str) -> PyResult<(&str, &str, i32, &str)> {
+        let t = self.pool.tid(content).map(|id| self.pool.template(id))
+            .filter(|t| t.pc).ok_or_else(|| verr(format!("unknown hero {content}")))?;
+        Ok((t.id, t.base_id, t.level, t.name))
+    }
+
     #[getter]
     fn monsters(&self) -> Vec<String> {
         self.ids().into_iter().filter(|i| !self.pool.template(self.pool.tid(i).unwrap()).pc).collect()

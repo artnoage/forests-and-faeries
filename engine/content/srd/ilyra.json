@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "075821beecd4be1d81c938283ab679fafa20adef",
+  "natural20_commit": "0b3724742bcd329426653a152da36c9dba1b4ad9",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/characters/ilyra.yml": "eed3ce237c53ab5943dd6c08f0234484d5987f344f9a6356b5c824e0ff281331",
@@ -19,7 +19,7 @@
    "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
    "templates/rulesets/5e-2024/char_classes/wizard.yml": "8ad83f18d89eede8752039f59b8c76f2a553f44b846562947cbdae36eb7ff73b",
    "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
-   "templates/rulesets/5e-2024/items/weapons.yml": "76cac4362188909c327083df110533ed046ef571e599c0dafb1646262512131a",
+   "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
    "templates/rulesets/5e-2024/races/human.yml": "8fb26b79eda7e1ab395db2b3c912e04434d4c180922cf51666f06cc7a0c6c432"
   }
  },
@@ -68,6 +68,7 @@
  },
  "condition_immunities": [],
  "passive_perception": 13,
+ "base_id": "ilyra",
  "loadout": {
   "equipment": [
    {
