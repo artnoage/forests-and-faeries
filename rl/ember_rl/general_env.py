@@ -637,7 +637,8 @@ def resolve_party_weights(spec: Mapping[str, float], parties: Mapping[str, int])
     """{party: weight} for `parties` ({party key: size}) from --party-weights entries.
 
     An entry names a party ('guy+curogana', any order; weight 0 excludes it) or a party size ('2'): a size's
-    weight is split evenly over the parties of that size that no entry names. Parties no entry covers weigh 0.
+    weight is split evenly over the parties of that size that no entry names. An optional * gives every
+    remaining party the same fallback weight (default 0).
     Returns the weights and notes on entries that match no party (catalogs may still be incomplete)."""
     explicit, sizes, notes = {}, {}, []
     for key, weight in spec.items():
@@ -647,7 +648,8 @@ def resolve_party_weights(spec: Mapping[str, float], parties: Mapping[str, int])
             sizes[int(key)] = float(weight)
         else:
             explicit[party_key(key)] = float(weight)
-    out = {p: 0. for p in parties}
+    fallback = explicit.pop('*', 0.)
+    out = dict.fromkeys(parties, fallback)
     for p, w in explicit.items():
         if p in out:
             out[p] = w

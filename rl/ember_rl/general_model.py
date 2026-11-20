@@ -160,6 +160,8 @@ class GeneralActorCritic(nn.Module):
                             id_slots=dict(sorted((id_slots or vocab_id_slots()).items())))
         if relations:     # only then in the config, so ember-gen-v1 configs and checkpoints are unchanged
             self._config['relations'] = int(relations)
+        self.compile_policy = False
+        self.graph_leaves = False
         self.relations = int(relations)
         if set(self._config['id_slots']) != set(EMBEDDINGS):
             raise ValueError(f'id_slots must name exactly {sorted(EMBEDDINGS)}')
@@ -314,15 +316,22 @@ class GeneralActorCritic(nn.Module):
         the caller then checks `finite(logits, values, mask)` itself."""
         if check:
             self._check(batch, need_candidates=True)
+        if self.compile_policy and batch['cand_mask'].is_cuda:
+            from ember_rl.accelerated import compiled_policy
+            logits, values = compiled_policy(self, batch)
+        else:
+            logits, values = self._policy(batch)
+        if check and not bool(finite(logits, values, batch['cand_mask'])):
+            raise FloatingPointError('non-finite logits or values')
+        return logits, values
+
+    def _policy(self, batch):
         am = batch['cand_mask']
         with torch.autocast('cuda', dtype=torch.bfloat16, enabled=am.is_cuda):
             memory, pad, cells = self._encode(batch)
             logits = self._decode(batch, memory, pad, cells)
             values = self.value_head(memory[:, 0]).squeeze(-1)
-        logits, values = logits.float(), values.float()
-        if check and not bool(finite(logits, values, am)):
-            raise FloatingPointError('non-finite logits or values')
-        return logits.masked_fill(~am, -torch.inf), values
+        return logits.float().masked_fill(~am, -torch.inf), values.float()
 
     def value(self, batch: Mapping[str, Tensor], detach_trunk: bool = False, check: bool = True) -> Tensor:
         """State value only: needs no legal candidates (K may be 0, actor may be -1).
@@ -331,6 +340,12 @@ class GeneralActorCritic(nn.Module):
         check=False skips the input checks (see forward)."""
         if check:
             self._check(batch, need_candidates=False)
+        if batch['creature_mask'].is_cuda and (self.compile_policy or self.graph_leaves):
+            from ember_rl.accelerated import accelerated_value
+            return accelerated_value(self, batch, detach_trunk)
+        return self._value(batch, detach_trunk)
+
+    def _value(self, batch, detach_trunk=False):
         with torch.autocast('cuda', dtype=torch.bfloat16, enabled=batch['creature_mask'].is_cuda):
             with torch.set_grad_enabled(torch.is_grad_enabled() and not detach_trunk):
                 memory, _, _ = self._encode(batch)
@@ -447,6 +462,26 @@ def row_chunks(obs: Mapping[str, np.ndarray], max_rows: int | None = None) -> li
             start, wide = n, width
         widest = wide
     chunks.append(np.arange(start, len(k)))
+    return chunks
+
+
+def grouped_row_chunks(obs, max_rows=None):
+    """Group wide, heterogeneous search batches when trimming saves at least 20% of padded actions."""
+    mask = obs['cand_mask']
+    count, width = mask.shape
+    if count < 64 or width <= 32:
+        return row_chunks(obs, max_rows)
+    widths = mask.sum(axis=1)
+    codes = np.searchsorted((8, 32, 64, 128), widths)
+    groups = [np.flatnonzero(codes == code) for code in np.unique(codes)]
+    padded = sum(len(group) * int(widths[group].max()) for group in groups)
+    if padded >= .8 * count * width:
+        return row_chunks(obs, max_rows)
+    chunks = []
+    for group in groups:
+        # row_chunks needs just the mask. Keep every index in the original batch's coordinates.
+        for chunk in row_chunks({'cand_mask': mask[group]}, max_rows):
+            chunks.append(group[chunk])
     return chunks
 
 

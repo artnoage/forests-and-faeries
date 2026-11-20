@@ -79,6 +79,9 @@ def test_party_weights_split_sizes_and_exclude_named_parties():
         assert weights[party_key(pair)] == pytest.approx(.32 / 3)
     assert weights['guy'] == weights['curogana'] == pytest.approx(.04) and weights['elion'] == 0
     assert not notes
+    mixed, notes = resolve_party_weights({'*': 1, '2': .3, 'guy': 0}, {**parties, 'guy_l1': 1})
+    assert not notes and mixed['guy_l1'] == 1 and mixed['guy'] == 0
+    assert mixed[party_key(TRIO)] == 1 and mixed[party_key(PARTIES[1])] == pytest.approx(.1)
     # A trio-only catalog: the pair and solo weights match nothing and are reported, not fatal.
     weights, notes = resolve_party_weights({'3': .6, '2': .32, '1': .08, 'elion': 0}, {party_key(TRIO): 3})
     assert weights == {party_key(TRIO): .6} and len(notes) == 2

@@ -176,10 +176,12 @@ def root_hidden(obs: Mapping[str, np.ndarray], i: int) -> bool:
 class Lookahead:
     """Batched decision-time search with the policy as prior and the value head as leaf evaluator."""
 
-    def __init__(self, env, config: SearchConfig, device, *, seed: int = 0, threads: int | None = None, scratch=None):
+    def __init__(self, env, config: SearchConfig, device, *, seed: int = 0, threads: int | None = None, scratch=None,
+                 group_actions: bool = False):
         import torch
         self.torch, self.env_template = torch, env
         self.cfg, self.device = config, device
+        self.group_actions = group_actions and config.rollout == 'greedy'
         self.rng = np.random.default_rng(seed)
         self.scratch = scratch if scratch is not None else scratch_like(env, config.scratch, threads)
         self.stats = Counter()
@@ -298,7 +300,7 @@ class Lookahead:
 
     def _rollouts(self, env, roots, results, jobs, utility):
         torch, cfg, sc = self.torch, self.cfg, self.scratch
-        from ember_rl.general_model import row_chunks, select, to_batch
+        from ember_rl.general_model import grouped_row_chunks, row_chunks, select, to_batch
         n = len(jobs)
         dst = np.arange(n, dtype=np.int32)
         root_of = np.array([j[0] for j in jobs])
@@ -378,7 +380,8 @@ class Lookahead:
             step_slots, step_rows, step_own, step_move = [], [], [], []
             clock = time.time()
             with torch.no_grad():
-                for (mid, is_leaf), idx, part in self._chunks(obs, groups, row_chunks):
+                chunks = grouped_row_chunks if self.group_actions else row_chunks
+                for (mid, is_leaf), idx, part in self._chunks(obs, groups, chunks):
                     batch = to_batch(part, self.device)
                     model = models[mid]
                     if is_leaf:

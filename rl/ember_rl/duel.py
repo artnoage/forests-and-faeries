@@ -1210,6 +1210,12 @@ def add_ember_arguments(p):
                    help='ember PPO: extra environment slots that hold only evaluation and development games, so a '
                         'development round never waits for training games to end (0: they share --slots under '
                         '--eval-slot-fraction)')
+    g.add_argument('--group-search-actions', action='store_true',
+                   help='group greedy search forwards by legal action count to reduce decoder padding')
+    g.add_argument('--compile-policy', action='store_true',
+                   help='compile bucketed general-model policy, critic and PPO forwards on CUDA')
+    g.add_argument('--cuda-graph-leaves', action='store_true',
+                   help='replay small inference-only value batches with bounded CUDA graphs')
     g.add_argument('--env-scores', choices=('auto', 'on', 'off'), default='auto',
                    help='native scores at every decision; auto = on for distill or --native-kl > 0')
     g.add_argument('--catalog', nargs='*', default=[],
@@ -1218,7 +1224,7 @@ def add_ember_arguments(p):
     g.add_argument('--train-split', default='train')
     g.add_argument('--tier-weights', default='', help="training tier weights, e.g. 'T0=1,T1=2' (default: uniform over encounters)")
     g.add_argument('--party-weights', default='',
-                   help="nested training sampling by party: sizes and/or parties, e.g. '3=.6,2=.32,1=.08,elion=0' "
+                   help="nested training sampling by party (*=1 gives every training party equal weight): sizes and/or parties, e.g. '3=.6,2=.32,1=.08,elion=0' "
                         "(a size's weight is split evenly over its parties that are not named; see "
                         "general_env.SpecSource)")
     g.add_argument('--family-weights', default='',

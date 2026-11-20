@@ -264,3 +264,54 @@ def test_cuda_bf16_forward_backward(observation):
     (logits.masked_fill(~b['cand_mask'], 0).sum() + values.sum()).backward()
     assert all(p.grad is None or torch.isfinite(p.grad).all() for p in model.parameters())
     assert model.encoder.layers[0].self_attn.in_proj_weight.grad is not None
+
+
+def test_bucketed_inputs_preserve_policy_values_and_gradients(observation):
+    from ember_rl.accelerated import bucket_batch
+
+    model = small().train()
+    batch = batch_of(observation)
+    padded = bucket_batch(batch)
+    width = batch['cand_mask'].shape[1]
+    assert padded['creature_mask'].shape[1] % 8 == 0
+    assert padded['cand_mask'].shape[1] % 8 == 0
+    assert not padded['cand_mask'][:, width:].any()
+    outputs = []
+    for inputs in (batch, padded):
+        model.zero_grad(set_to_none=True)
+        logits, values = model(inputs)
+        (logits[inputs['cand_mask']].mean() + values.mean()).backward()
+        outputs.append((logits[:, :width].detach(), values.detach(), model.cand_proj[0].weight.grad.clone()))
+    for actual, expected in zip(*outputs):
+        torch.testing.assert_close(actual, expected, atol=2e-5, rtol=1e-4)
+    state = bucket_batch(batch, value_only=True)
+    assert 'cand_mask' not in state
+    torch.testing.assert_close(model._value(state), model.value(batch), atol=2e-5, rtol=1e-4)
+
+
+def test_search_width_groups_keep_every_slot_and_candidate_budget():
+    from ember_rl.general_model import grouped_row_chunks
+
+    widths = np.tile([7, 30, 55, 90, 140], 25)
+    masks = np.arange(140)[None, :] < widths[:, None]
+    chunks = grouped_row_chunks({'cand_mask': masks}, max_rows=700)
+    np.testing.assert_array_equal(np.sort(np.concatenate(chunks)), np.arange(len(widths)))
+    assert all(len(chunk) * widths[chunk].max() <= 700 for chunk in chunks)
+    assert all(len(set(widths[chunk])) == 1 for chunk in chunks)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA graph capture requires a GPU')
+def test_leaf_graph_replays_new_inputs_and_weights(observation):
+    model = small().cuda()
+    batch = to_batch(observation, 'cuda')
+    with torch.no_grad():
+        model.graph_leaves = True
+        expected = model._value(batch)
+        first = model.value(batch)
+        torch.testing.assert_close(first, expected, atol=.02, rtol=.02)
+        frozen = first.clone()
+        model.value_head[-1].bias.add_(1.)
+        smaller = {k: v[:max(1, len(v) - 1)].flip((0,)) for k, v in batch.items()}
+        second = model.value(smaller)
+        torch.testing.assert_close(second, model._value(smaller), atol=.02, rtol=.02)
+        torch.testing.assert_close(first, frozen, atol=0, rtol=0)

@@ -203,7 +203,7 @@ class GeneralPolicies(Policies):
             raise ValueError('--transfer-v2-weights requires an initial policy')
         self.initial = {} if transfer else {team: self.load_frozen(path, team)
                         for team, path in (('heroes', args.init_heroes), ('monsters', args.init_monsters)) if path}
-        self.make = lambda: build_general(config).to(device)
+        self.make = lambda: self.configure(build_general(config).to(device))
         self.learner = {team: self.make() for team in TEAMS}
         if transfer:
             for team, path in (('heroes', args.init_heroes), ('monsters', args.init_monsters)):
@@ -220,8 +220,13 @@ class GeneralPolicies(Policies):
         self.pool = {team: [] for team in TEAMS}
         self.frozen = {}
 
+    def configure(self, model):
+        model.compile_policy = getattr(self.args, 'compile_policy', False)
+        model.graph_leaves = getattr(self.args, 'cuda_graph_leaves', False)
+        return model
+
     def load_frozen(self, path, team):
-        return load_general(path, self.device, self.feature_version, team)
+        return self.configure(load_general(path, self.device, self.feature_version, team))
 
 
 def controller_names(controllers, units=None) -> dict:
@@ -286,7 +291,7 @@ class GeneralTrainer(Trainer):
             # The search scores the training return: the move penalty is part of it.
             self.search_config = replace(self.search_config, move_penalty=getattr(args, 'move_penalty', 0.))
             self.lookahead = Lookahead(self.env, self.search_config, self.device, seed=args.seed + 7919,
-                                       threads=args.env_threads)
+                                       group_actions=getattr(args, 'group_search_actions', False), threads=args.env_threads)
             if self._search_resume:
                 self.lookahead.rng.bit_generator.state = self._search_resume['rng']
                 self.lookahead.stats.update(self._search_resume['stats'])
