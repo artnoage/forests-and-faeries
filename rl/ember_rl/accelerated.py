@@ -56,19 +56,28 @@ def _policy(model, batch):
     return model._policy(batch)
 
 
+def _policy_for_update(model, batch):
+    # Dynamo caches by code object. PPO backward must have its own specialization budget
+    # after inference has seen differently shaped search forks and frozen opponents.
+    return model._policy(batch)
+
+
 def _value(model, batch, detach_trunk):
     return model._value(batch, detach_trunk)
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=3)
 def _compiled(function):
     # Model weights are inputs. Snapshots and freshly loaded policies can use the same kernels.
     # Explicit small-leaf graphs below own their buffers separately from PPO autograd.
-    return torch.compile(function, dynamic=True, fullgraph=True, options={'triton.cudagraphs': False})
+    # Keep serving cached variants when a new shape exceeds Dynamo's bounded cache.
+    # Its default graph-break mode runs such shapes eagerly, including their gradients.
+    return torch.compile(function, dynamic=True, fullgraph=False, options={'triton.cudagraphs': False})
 
 
 def compiled_policy(model, batch):
-    logits, values = _compiled(_policy)(model, bucket_batch(batch))
+    function = _policy_for_update if torch.is_grad_enabled() else _policy
+    logits, values = _compiled(function)(model, bucket_batch(batch))
     return logits[:, :batch['cand_mask'].shape[1]], values
 
 

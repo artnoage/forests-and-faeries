@@ -315,3 +315,52 @@ def test_leaf_graph_replays_new_inputs_and_weights(observation):
         second = model.value(smaller)
         torch.testing.assert_close(second, model._value(smaller), atol=.02, rtol=.02)
         torch.testing.assert_close(first, frozen, atol=0, rtol=0)
+
+
+def test_policy_specialization_limit_keeps_ppo_trainable(monkeypatch):
+    from torch._dynamo import config, reset_code
+    from ember_rl import accelerated
+
+    class Policy(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor(2.))
+            self.negate = False
+
+        def _policy(self, batch):
+            x = self.weight * batch['cands'][..., 0]
+            return (-x if self.negate else x), x.mean(1)
+
+    compiled = []
+    compile_fn = torch.compile
+
+    def counting_backend(graph, inputs):
+        compiled.append(graph)
+        return graph.forward
+
+    def fast_compile(function, **kwargs):
+        kwargs.pop('options')  # Inductor-specific; exercise the real Dynamo cache on CPU.
+        return compile_fn(function, backend=counting_backend, **kwargs)
+
+    monkeypatch.setattr(torch, 'compile', fast_compile)
+    model = Policy()
+    data = dict(creature_mask=torch.ones(2, 2, dtype=torch.bool), cand_mask=torch.ones(2, 5, dtype=torch.bool),
+                cand_tgt=torch.zeros(2, 5, 1, dtype=torch.long), cands=torch.ones(2, 5, 1))
+    accelerated._compiled.cache_clear()
+    try:
+        with config.patch(recompile_limit=1):
+            for gradients in (False, True):
+                with torch.set_grad_enabled(gradients):
+                    for model.negate in (False, True, False):
+                        logits, _ = accelerated.compiled_policy(model, data)
+                        sign = -1 if model.negate else 1
+                        torch.testing.assert_close(logits, torch.full((2, 5), float(sign * 2)))
+                        if gradients:
+                            model.zero_grad()
+                            logits.sum().backward()
+                            assert model.weight.grad.item() == sign * 10
+            assert len(compiled) == 2  # one inference graph and a separately compiled PPO graph
+    finally:
+        accelerated._compiled.cache_clear()
+        for function in (accelerated._policy, accelerated._policy_for_update):
+            reset_code(function.__code__)
