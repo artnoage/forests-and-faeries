@@ -57,7 +57,7 @@
    "file": "game/static/models/kobold_warrior.glb",
    "sha256": "46cbf51bb710879c35ac400c491fe166a30b547ac53a49549393a544ee50c79d",
    "bytes": 1239212,
-   "triangles": 18041,
+   "triangles": 18081,
    "bones": 23,
    "rigid_weapons": {
     "Kobold_Dagger": "Weapon.R"
