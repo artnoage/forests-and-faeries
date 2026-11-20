@@ -1,0 +1,128 @@
+{
+ "schema": 1,
+ "id": "kobold_warrior",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "3fee5e69e7955f9d528ea4d828b9f51436324380",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
+   "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
+   "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
+   "templates/rulesets/5e-2024/npcs/kobold_warrior.yml": "01c6082947c5b4e7544b0dba1468f2fd3db897a0fa98154313c43b7f416c8e98"
+  }
+ },
+ "side": "monsters",
+ "name": "Kobold Warrior",
+ "pc": false,
+ "size": "small",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "dragon"
+ ],
+ "ac": 14,
+ "max_hp": 7,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 7,
+  "dex": 15,
+  "con": 9,
+  "int": 8,
+  "wis": 7,
+  "cha": 8
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": -2,
+  "dex": 2,
+  "con": -1,
+  "int": -1,
+  "wis": -2,
+  "cha": -1
+ },
+ "initiative": {
+  "bonus": 2,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 8,
+ "attacks": [
+  {
+   "name": "dagger",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1d4+2",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "item": "dagger"
+  },
+  {
+   "name": "dagger",
+   "type": "melee_attack",
+   "range": 20,
+   "range_max": 60,
+   "to_hit": 4,
+   "damage": "1d4+2",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "item": "dagger",
+   "thrown": true
+  }
+ ],
+ "inventory": {
+  "dagger": 3
+ },
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    4.5
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [
+  {
+   "id": "pack_tactics"
+  },
+  {
+   "id": "sunlight_sensitivity"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

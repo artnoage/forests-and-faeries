@@ -591,3 +591,24 @@ def test_nonstandard_json_and_surrogates_match_live_400_messages(ff_app):
     r_human_act = raw_post('/api/action', f'{{"revision": {started["revision"]}, "action_id": "\\ud800"}}')
     assert r_human_act.status_code == 400 and r_human_act.get_json() == {'error': 'Unknown or unavailable action.'}
 
+
+@pytest.mark.parametrize('take_move', [False, True])
+def test_champion_choice_interrupts_an_enemy_move(take_move):
+    level = custom_level(['mara_l3'], ['zombie'], {'mara_l3': [3, 2], 'zombie-1': [4, 2]})
+    game = FFArena(level, seed=4)  # Mara scores a critical opportunity attack.
+    game.configure(level.suggested_placements(), 'manual')
+    state = game.start()
+    if state['turn_id'] != 'zombie-1':
+        state = game.end_turn()
+    away = next(a for a in state['actions'] if a['kind'] == 'move' and (a.get('x'), a.get('y')) == (6, 2))
+    state = game.perform(away['id'])
+    assert state['champion_interrupt'] and state['turn_id'] == 'mara_l3'
+    assert all(a['kind'] == 'move' for a in state['actions'])
+    if take_move:
+        free_move = next(a for a in state['actions'] if (a.get('x'), a.get('y')) == (2, 2))
+        state = game.perform(free_move['id'])
+    else:
+        state = game.end_turn()
+    assert not state['champion_interrupt'] and state['turn_id'] == 'zombie-1'
+    coords = {u['id']: [u['x'], u['y']] for u in state['units']}
+    assert coords == {'mara_l3': [2 if take_move else 3, 2], 'zombie-1': [6, 2]}

@@ -44,7 +44,8 @@ def verify_one(path: Path) -> dict:
     seed = doc['spec']['seed'] if 'spec' in doc else doc['seed']
     level = build_level(lvl_spec)
     draws = collect_all_draws(doc)
-    game = FFArena(level, seed=seed, revision=0, csrf_token='replay-csrf', replay_draws=draws)
+    game = FFArena(level, seed=seed, revision=0, csrf_token='replay-csrf', replay_draws=draws,
+                   replay_version=doc.get('replay_version', 1))
 
     try:
         assert_full_wire_parity(f'{path.stem}:initial', game.wire(game.state()), doc['initial_wire'])

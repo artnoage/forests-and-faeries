@@ -352,6 +352,10 @@ impl Fight {
 
     /// `spell_ai.save_fail_probability(target, save, dc, magical=True)`.
     pub fn save_fail_probability(&self, t: usize, ab: Ability, dc: i32) -> f64 {
+        self.save_fail_probability_with_disadvantage(t, ab, dc, false)
+    }
+
+    pub(crate) fn save_fail_probability_with_disadvantage(&self, t: usize, ab: Ability, dc: i32, dis: bool) -> f64 {
         let unit = &self.units[t];
         if matches!(ab, Ability::Str | Ability::Dex) {
             if unit.has(St::Paralyzed) {
@@ -365,7 +369,7 @@ impl Fight {
         let offsets = self.bless_offsets(t);
         let mut success = 0.0f64;
         for o in &offsets {
-            success += d20_at_least(dc - modifier - o, false, false);
+            success += d20_at_least(dc - modifier - o, false, dis);
         }
         success /= offsets.len() as f64;
         1.0 - success

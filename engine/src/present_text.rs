@@ -61,6 +61,8 @@ pub fn creature_description(content: &str) -> &'static str {
         "elion" => "A human priest of life in heavy plate.",
         "curogana" => "A high elf sorcerer with draconic scales.",
         "chruna" => "A human berserker in scale mail with a halberd, and a spare on her back.",
+        "animated_armor" => "An empty suit of plate armor that strikes with its gauntlets.",
+        "kobold_warrior" => "A small dragon that fights alongside its allies with daggers.",
         "ghast" => "A ghoul-like undead wreathed in a sickening stench.",
         "ghoul" => "A gaunt, ravenous undead with a paralyzing claw.",
         "goblin_boss" => "A goblin chief who fights with scimitar and shortbow and hides behind its underlings.",
@@ -80,6 +82,8 @@ pub fn creature_type_label(content: &str) -> &'static str {
     match content {
         "skeleton" | "zombie" | "ghoul" | "ghast" | "specter" | "shadow" | "wight" | "mummy" => "Undead",
         "goblin_minion" | "goblin_warrior" | "goblin_boss" => "Fey (goblinoid)",
+        "animated_armor" => "Construct",
+        "kobold_warrior" => "Dragon",
         _ => "Monster",
     }
 }
@@ -112,6 +116,10 @@ fn pairs(items: &[(&str, &str)]) -> Vec<Value> {
 }
 
 pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
+    unit_sheet_for_replay(content, pc, hp, ac, false)
+}
+
+pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, legacy_replay: bool) -> Option<Value> {
     if pc && content.contains("_l") {
         let pool = crate::content::ContentPool::global();
         let doc = &pool.docs[pool.tid(content)? as usize];
@@ -132,6 +140,11 @@ pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
         return Some(json!({"stats": format!("HP {hp} · AC {ac} · Speed {} ft", doc.speed), "features": features, "spells": spells}));
     }
     if pc {
+        let remarkable_athlete = if legacy_replay {
+            "Champion: Advantage on initiative."
+        } else {
+            "Advantage on initiative and Athletics. Immediately after a critical hit, move up to half your speed without provoking opportunity attacks."
+        };
         let (stats, features, spells): (&str, &[(&str, &str)], &[(&str, &str)]) = match content {
             "mara" => (
                 "Human · STR 17 DEX 14 CON 14 · Speed 30 ft",
@@ -173,7 +186,7 @@ pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
                     ("Second Wind", "Bonus action: regain 1d10+3 HP. Two uses."),
                     ("Action Surge", "Take one extra action this turn. One use."),
                     ("Improved Critical", "Champion: critical hits on a natural 19 or 20."),
-                    ("Remarkable Athlete", "Advantage on initiative and Athletics. Immediately after a critical hit, move up to half your speed without provoking opportunity attacks."),
+                    ("Remarkable Athlete", remarkable_athlete),
                     ("Alert", "Add your proficiency bonus to initiative."),
                 ],
                 &[],
@@ -254,6 +267,16 @@ pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
     }
 
     let features: &[(&str, &str)] = match content {
+        "animated_armor" => &[
+            ("Slam", "Two attacks, +4 to hit, 1d6+2 bludgeoning each."),
+            ("Blindsight", "Perceives creatures within 60 ft unless total cover blocks them."),
+            ("Immunities", "Poison and psychic damage. Immune to Charmed, Deafened, Exhaustion, Frightened, Paralyzed, Petrified and Poisoned."),
+        ],
+        "kobold_warrior" => &[
+            ("Dagger", "+4 to hit, 1d4+2 piercing, thrown 20/60 ft. Carries three."),
+            ("Pack Tactics", "Advantage on attacks against a target within 5 ft of an ally that can act."),
+            ("Sunlight Sensitivity", "Disadvantage on checks and attacks in sunlight."),
+        ],
         "mummy" => &[
             ("Rotting Fist (x2)", "+5, 1d10+3 bludgeoning plus 3d6 necrotic. The target is cursed: it cannot regain HP. A creature this attack drops to 0 HP dies."),
             ("Dreadful Glare", "One creature within 60 ft makes a WIS save (DC 11) or is Frightened until the end of the mummy's next turn. On a success it is immune to this mummy's Glare."),

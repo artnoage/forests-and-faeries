@@ -10,7 +10,7 @@ import ember_rs
 class FFArena:
     """One Forests and Faeries game session backed by ``ember_rs.WebGame``."""
 
-    def __init__(self, level, seed=None, revision=0, csrf_token=None, replay_draws=None):
+    def __init__(self, level, seed=None, revision=0, csrf_token=None, replay_draws=None, replay_version=1):
         self.level = level
         actual_seed = secrets.randbelow(2**31) if seed is None else int(seed)
         token = csrf_token or secrets.token_urlsafe(32)
@@ -23,6 +23,7 @@ class FFArena:
             csrf_token=token,
             encounter_id=encounter_token,
             replay_draws_json=replay_json,
+            **({'replay_version': replay_version} if replay_draws is not None and replay_version != 1 else {}),
         )
         self._in_setup = True
         counts: dict[str, int] = {}

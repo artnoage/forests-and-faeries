@@ -1083,7 +1083,7 @@ impl WebGame {
 #[pymethods]
 impl WebGame {
     #[new]
-    #[pyo3(signature = (level_json, seed=0, revision=0, csrf_token=String::new(), encounter_id=String::new(), replay_draws_json=None))]
+    #[pyo3(signature = (level_json, seed=0, revision=0, csrf_token=String::new(), encounter_id=String::new(), replay_draws_json=None, replay_version=1))]
     fn new(
         level_json: &str,
         seed: i64,
@@ -1091,6 +1091,7 @@ impl WebGame {
         csrf_token: String,
         encounter_id: String,
         replay_draws_json: Option<&str>,
+        replay_version: u8,
     ) -> PyResult<Self> {
         let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> PyResult<ember::present::WebArena> {
             let level: ember::present::LevelInput =
@@ -1100,7 +1101,7 @@ impl WebGame {
                     serde_json::from_str(raw_draws).map_err(|e| verr(format!("invalid replay_draws_json: {e}")))?;
                 let draws: Vec<ember::tape::Ev> =
                     arr.iter().map(ember::present::parse_draw_json).collect::<Result<_, _>>().map_err(verr)?;
-                ember::present::WebArena::with_replay_draws(level, draws, revision, csrf_token, encounter_id).map_err(verr)
+                ember::present::WebArena::with_versioned_replay_draws(level, draws, revision, csrf_token, encounter_id, replay_version).map_err(verr)
             } else {
                 let s = crate::seed(seed, "seed")?;
                 ember::present::WebArena::new(level, s, revision, csrf_token, encounter_id).map_err(verr)

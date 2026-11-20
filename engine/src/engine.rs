@@ -735,7 +735,8 @@ impl Fight {
             return true;
         }
         if let Some(stealth) = self.units[b].hidden_stealth {
-            if self.units[a].t.passive_perception < stealth {
+            let sense = self.units[a].t.blindsight;
+            if self.units[a].t.passive_perception < stealth && !(sense > 0 && self.dist(a, b) * 5 <= sense) {
                 return false;
             }
         }
@@ -878,6 +879,10 @@ impl Fight {
 
     /// `Entity.save_throw(save, battle, opts={'dc': dc})` returning `(total, formatted_roll)`.
     pub(crate) fn save_throw_fmt(&mut self, u: usize, ab: Ability) -> (i32, String) {
+        self.save_throw_disadvantage(u, ab, false)
+    }
+
+    pub(crate) fn save_throw_disadvantage(&mut self, u: usize, ab: Ability, disadvantage: bool) -> (i32, String) {
         if matches!(ab, Ability::Str | Ability::Dex) && self.units[u].has(St::Paralyzed) {
             // `DieRoll.roll("1")` -> `DieRoll([1], 0, 0)` -> `describe() == "0"`, `result() == 1`
             return (1, "0 = 1".to_string());
@@ -889,7 +894,7 @@ impl Fight {
             || (ab == Ability::Dex && self.units[u].t.danger_sense && !self.units[u].incapacitated());
         // Heightened Spell: the first opponent of the caster to save rolls
         // with Disadvantage (`metamagic.heightened_disadvantage`).
-        let mut dis = false;
+        let mut dis = disadvantage;
         if let Some((caster, used)) = self.heightened {
             if !used && caster != u && self.opposing(caster, u) {
                 self.heightened = Some((caster, true));
@@ -1614,7 +1619,9 @@ impl Fight {
     pub fn advantage_flags(&self, src: usize, tgt: usize, wk: WeaponKind) -> (bool, bool) {
         let s = &self.units[src];
         let t = &self.units[tgt];
-        let mut adv = false;
+        let mut adv = s.t.pack_tactics && self.units.iter().enumerate().any(|(i, ally)| {
+            i != src && self.allies(src, i) && !ally.incapacitated() && self.dist(i, tgt) <= 1
+        });
         let mut dis = false;
         // Guiding Bolt (`targeted_advantage_override`)
         if self.has_effect(tgt, EffKey::TargetedAdvantageOverride) {

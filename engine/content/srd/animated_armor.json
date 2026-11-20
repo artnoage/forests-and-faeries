@@ -1,0 +1,114 @@
+{
+ "schema": 1,
+ "id": "animated_armor",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "3fee5e69e7955f9d528ea4d828b9f51436324380",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/npcs/animated_armor.yml": "f42b1975037a40e8d9c21601c723d278a58b3d6dc6388afe4b1b5fbfb28346ff",
+   "templates/rulesets/5e-2024/npcs/animated_armor.yml": "3c056217b7e576dd3efa370942665b6358c58078be9f503e34a2b4ab681878d3"
+  }
+ },
+ "side": "monsters",
+ "name": "Animated Armor",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "construct"
+ ],
+ "ac": 18,
+ "max_hp": 33,
+ "speed": 25,
+ "fly": false,
+ "abilities": {
+  "str": 14,
+  "dex": 11,
+  "con": 13,
+  "int": 1,
+  "wis": 3,
+  "cha": 1
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 2,
+  "dex": 0,
+  "con": 1,
+  "int": -5,
+  "wis": -4,
+  "cha": -5
+ },
+ "initiative": {
+  "bonus": 2,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [
+   "poison",
+   "psychic"
+  ],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [
+  "charmed",
+  "deafened",
+  "exhaustion",
+  "frightened",
+  "paralyzed",
+  "petrified",
+  "poisoned"
+ ],
+ "passive_perception": 6,
+ "blindsight": 60,
+ "attacks": [
+  {
+   "name": "slam",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "1d6+2",
+   "damage_type": "bludgeoning",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [
+  [
+   "slam",
+   "slam"
+  ]
+ ],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    5.5
+   ]
+  ],
+  "count": 2
+ },
+ "traits": [],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

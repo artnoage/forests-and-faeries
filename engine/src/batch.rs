@@ -578,7 +578,8 @@ impl Game {
                 .into());
         }
         let e = &self.entry;
-        let fight = Fight::on_map(pool, e.grid.clone(), &e.units, &self.placed.placements, self.max_rounds, Trace::recording(self.spec.dice_seed))?;
+        let mut fight = Fight::on_map(pool, e.grid.clone(), &e.units, &self.placed.placements, self.max_rounds, Trace::recording(self.spec.dice_seed))?;
+        fight.champion_moves_enabled = self.env.fight.champion_moves_enabled;
         let control = self.env.control().clone();
         let mut env = Env::new(fight, control.clone(), true);
         let mut reseeds = 0;

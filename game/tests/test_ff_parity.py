@@ -133,6 +133,18 @@ def assert_full_wire_parity(ctx: str, got: dict, exp: dict) -> None:
         assert_exact_json(ctx, got_clean, exp_clean)
 
 
+def test_version_two_web_replay_preserves_selected_hero_level():
+    level = _all_levels()[('crypt', 'bone_patrol')].with_hero_level(3)
+    live = FFArena(level, seed=4)
+    initial = live.wire(live.state())
+    started = live.wire(live.start())
+    draws = collect_all_draws({'steps': [{'op': 'start', 'wire': started}]})
+    replay = FFArena(level, replay_draws=draws, replay_version=2)
+    assert_full_wire_parity('setup', replay.wire(replay.state()), initial)
+    assert_full_wire_parity('start', replay.wire(replay.start()), started)
+    assert replay.remaining_replay_draws() == 0
+
+
 def test_private_parity_fixtures_cover_all_seven_mausoleum_rooms():
     priv_dir = FIXTURES_DIR / 'private'
     priv_files = sorted(priv_dir.glob('*.json')) if priv_dir.is_dir() else []
@@ -155,7 +167,8 @@ def test_oracle_session_full_wire_lockstep_parity(fixture_path: Path):
     seed = doc['spec']['seed'] if 'spec' in doc else doc['seed']
     level = build_level(lvl_spec)
     draws = collect_all_draws(doc)
-    game = FFArena(level, seed=seed, revision=0, csrf_token='oracle-csrf', replay_draws=draws)
+    game = FFArena(level, seed=seed, revision=0, csrf_token='oracle-csrf', replay_draws=draws,
+                   replay_version=doc.get('replay_version', 1))
 
     init_got = game.wire(game.state())
     assert_full_wire_parity(f'{fixture_path.stem}:initial', init_got, doc['initial_wire'])

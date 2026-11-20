@@ -497,8 +497,11 @@ pub struct Template {
     /// attack data: (attack bonus or None for save attacks, average damage),
     /// attacks in the largest multiattack combo).
     pub erd: (Vec<(Option<i32>, f64)>, i32),
-    /// `passive_perception()`: an observer sees a hidden creature only with
-    /// at least its Stealth total (`Map.can_see`).
+    pub pack_tactics: bool,
+    pub construct: bool,
+    /// Blindsight range in feet (zero for ordinary vision).
+    pub blindsight: i32,
+    /// Stealth threshold for detecting hidden creatures with ordinary vision.
     pub passive_perception: i32,
     /// Nimble Escape (bonus-action Disengage or Hide): the Hide check's
     /// Stealth modifier.
@@ -598,6 +601,7 @@ impl Feature {
 /// NPC traits (`attributes`). Same convention as [`Feature`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Trait {
+    PackTactics,
     UndeadFortitude,
     Stench,
     /// Bonus action Disengage or Hide (`disengage_bonus`, `hide_bonus`).
@@ -611,6 +615,7 @@ impl Trait {
             "undead_fortitude" => Trait::UndeadFortitude,
             "stench" => Trait::Stench,
             "nimble_escape" => Trait::NimbleEscape,
+            "pack_tactics" => Trait::PackTactics,
             "incorporeal_movement" | "sunlight_sensitivity" | "sunlight_weakness" | "amorphous" | "shadow_stealth" => {
                 Trait::Inert
             }
@@ -841,6 +846,8 @@ pub struct ContentDoc {
     pub damage: DamageMods,
     pub condition_immunities: Vec<String>,
     pub passive_perception: i32,
+    #[serde(default)]
+    pub blindsight: i32,
     /// Heroes only (monsters: null).
     #[serde(default)]
     pub loadout: Option<LoadoutDoc>,
@@ -1011,6 +1018,9 @@ impl Template {
             spares: Vec::new(),
             wearing_armor: false,
             passive_perception: d.passive_perception,
+            pack_tactics: false,
+            construct: d.races.iter().any(|r| r == "construct"),
+            blindsight: d.blindsight,
             nimble_escape: None,
             barbarian: false,
             rage_uses: 0,
@@ -1152,6 +1162,7 @@ impl Template {
                     t.undead_fortitude = Some((param_i32(tr, "dc_base")?, dmg_bits(&bypass)?));
                 }
                 Trait::Stench => t.stench_dc = Some(param_i32(tr, "dc")?),
+                Trait::PackTactics => t.pack_tactics = true,
                 Trait::NimbleEscape => t.nimble_escape = Some(param_i32(tr, "stealth")?),
                 Trait::Inert => {}
             }

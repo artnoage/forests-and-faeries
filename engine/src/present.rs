@@ -92,6 +92,7 @@ struct InterruptedMove {
 
 pub struct WebArena {
     level: LevelInput,
+    legacy_replay: bool,
     grid: Arc<Grid>,
     roster: Vec<RosterUnit>,
     roster_by_id: HashMap<String, usize>,
@@ -205,7 +206,7 @@ impl WebArena {
         csrf_token: String,
         encounter_token: String,
     ) -> Result<Self, String> {
-        Self::with_trace(level, Trace::web_free(seed), revision, csrf_token, encounter_token)
+        Self::with_trace(level, Trace::web_free(seed), revision, csrf_token, encounter_token, false)
     }
 
     pub fn with_replay_draws(
@@ -215,16 +216,42 @@ impl WebArena {
         csrf_token: String,
         encounter_token: String,
     ) -> Result<Self, String> {
-        Self::with_trace(level, Trace::web_replay_draws(draws), revision, csrf_token, encounter_token)
+        Self::with_versioned_replay_draws(level, draws, revision, csrf_token, encounter_token, 1)
+    }
+
+    pub fn with_versioned_replay_draws(
+        level: LevelInput,
+        draws: Vec<Ev>,
+        revision: i64,
+        csrf_token: String,
+        encounter_token: String,
+        version: u8,
+    ) -> Result<Self, String> {
+        if !(1..=2).contains(&version) {
+            return Err(format!("unsupported web replay version {version}"));
+        }
+        Self::with_trace(level, Trace::web_replay_draws(draws), revision, csrf_token, encounter_token, version == 1)
     }
 
     fn with_trace(
-        level: LevelInput,
+        mut level: LevelInput,
         trace: Trace,
         revision: i64,
         csrf_token: String,
         encounter_token: String,
+        legacy_replay: bool,
     ) -> Result<Self, String> {
+        if legacy_replay {
+            if let Some(view) = level.level_view.as_object_mut() {
+                view.remove("hero_level");
+                if let Some(party) = view.get_mut("party").and_then(Value::as_array_mut) {
+                    for hero in party.iter_mut().filter_map(Value::as_object_mut) {
+                        hero.remove("base_id");
+                        hero.remove("level");
+                    }
+                }
+            }
+        }
         let pool = ContentPool::global();
         let grid = Arc::new(Grid::from_rows(&level.rows)?);
         let mut roster = Vec::new();
@@ -260,6 +287,7 @@ impl WebArena {
         let placements = level.suggested_placements.clone();
         let mut arena = WebArena {
             level,
+            legacy_replay,
             grid,
             roster,
             roster_by_id,
@@ -512,6 +540,7 @@ impl WebArena {
             crate::engine::MAX_ROUNDS,
             self.trace_init.clone(),
         )?;
+        fight.champion_moves_enabled = !self.legacy_replay;
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
         self.fight_to_roster = fight_to_roster;
@@ -2418,6 +2447,13 @@ impl WebArena {
         })
     }
 
+    fn with_interrupt_state(&self, mut state: Value) -> Value {
+        if !self.legacy_replay {
+            state["champion_interrupt"] = json!(self.interrupted_move.is_some());
+        }
+        state
+    }
+
     fn presentation_snapshot(&self) -> Value {
         let f = self.fight.as_ref().unwrap();
         let actor = if self.in_setup || self.finished { None } else { Some(self.acting_unit(f)) };
@@ -2449,7 +2485,7 @@ impl WebArena {
             }),
             None => json!({"action": 0, "bonus_action": 0, "reaction": 0, "movement": 0}),
         };
-        json!({
+        self.with_interrupt_state(json!({
             "units": units,
             "objects": [],
             "resources": base_res,
@@ -2458,10 +2494,9 @@ impl WebArena {
             "winner": self.winner,
             "phase": self.phase(),
             "can_act": self.can_act(),
-            "champion_interrupt": self.interrupted_move.is_some(),
             "log_id": self.log_counter,
             "forces": self.forces_view(),
-        })
+        }))
     }
 
     fn roster_unit_view(&self, ri: usize, position: Option<Pos>) -> Value {
@@ -2487,7 +2522,9 @@ impl WebArena {
         if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
             let lvl = ru.t.level;
             let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
-            m.insert("base_id".into(), json!(ru.t.base_id));
+            if !self.legacy_replay {
+                m.insert("base_id".into(), json!(ru.t.base_id));
+            }
             let mut classes = Map::new();
             classes.insert(cls.to_string(), json!(lvl));
             m.insert("level".into(), json!(lvl));
@@ -2504,7 +2541,7 @@ impl WebArena {
         m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
         m.insert("marks".into(), if ru.content == "ghast" { json!(["stench"]) } else { json!([]) });
         m.insert("str_loss".into(), json!(0));
-        if let Some(sheet) = present_text::unit_sheet(&ru.content, ru.t.pc, hp, ac) {
+        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.legacy_replay) {
             m.insert("sheet".into(), sheet);
         }
         Value::Object(m)
@@ -2540,7 +2577,9 @@ impl WebArena {
         if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
             let lvl = ru.t.level;
             let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
-            m.insert("base_id".into(), json!(ru.t.base_id));
+            if !self.legacy_replay {
+                m.insert("base_id".into(), json!(ru.t.base_id));
+            }
             let mut classes = Map::new();
             classes.insert(cls.to_string(), json!(lvl));
             m.insert("level".into(), json!(lvl));
@@ -2557,7 +2596,7 @@ impl WebArena {
         m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
         m.insert("marks".into(), json!(self.unit_marks(u)));
         m.insert("str_loss".into(), json!(unit.str_drain.unwrap_or(0)));
-        if let Some(sheet) = present_text::unit_sheet(&ru.content, ru.t.pc, hp, ac) {
+        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.legacy_replay) {
             m.insert("sheet".into(), sheet);
         }
         Value::Object(m)
@@ -2608,7 +2647,7 @@ impl WebArena {
         let tl_vec: Vec<Value> = self.timeline.iter().cloned().collect();
         let eff_vec: Vec<Value> = self.effects.iter().cloned().collect();
 
-        json!({
+        self.with_interrupt_state(json!({
             "revision": self.revision,
             "csrf_token": self.csrf_token,
             "encounter_id": self.encounter_id,
@@ -2618,7 +2657,6 @@ impl WebArena {
             "turn_id": turn_id,
             "phase": self.phase(),
             "can_act": self.can_act(),
-            "champion_interrupt": self.interrupted_move.is_some(),
             "setup": {
                 "roster": setup_roster,
                 "placements": self.placements,
@@ -2643,7 +2681,7 @@ impl WebArena {
             "forces": self.forces_view(),
             "initiative_draws": self.initiative_draws,
             "last_action_id": self.action_counter,
-        })
+        }))
     }
 
     pub fn wire(&self, mut state: Value) -> Value {
