@@ -54,9 +54,15 @@ def _all_levels():
     return catalogue.load(include_private=True)
 
 
-def build_level(spec_level: dict) -> catalogue.Level:
+def build_replay_level(doc: dict) -> catalogue.Level:
+    spec_level = doc['spec']['level'] if 'spec' in doc else doc['level_source']
     if spec_level['kind'] == 'catalogue':
-        return _all_levels()[(spec_level['encounter'], spec_level['preset'])]
+        level = _all_levels()[(spec_level['encounter'], spec_level['preset'])]
+        # Older recordings stored the catalogue label only in their initial state.
+        difficulty = (spec_level['difficulty'] if 'difficulty' in spec_level
+                      else doc['initial_wire']['level']['difficulty'])
+        preset = dict(level.preset, difficulty=difficulty)
+        return catalogue.Level(level.encounter, preset, level.rows, level.scene, level.map_name)
     encounter = (
         spec_level['encounter']
         if isinstance(spec_level.get('encounter'), dict)
@@ -145,6 +151,16 @@ def test_version_two_web_replay_preserves_selected_hero_level():
     assert replay.remaining_replay_draws() == 0
 
 
+def test_replay_difficulty_comes_from_the_recorded_spec():
+    live = _all_levels()[('crypt', 'ghoul_pack')]
+    current = live.preset['difficulty']
+    archived = next(label for label in catalogue.DIFFICULTIES if label != current)
+    source = {'kind': 'catalogue', 'encounter': 'crypt', 'preset': 'ghoul_pack', 'difficulty': archived}
+    replay = build_replay_level({'spec': {'level': source}, 'initial_wire': {'level': live.view()}})
+    assert replay.view()['difficulty'] == archived
+    assert live.view()['difficulty'] == current
+
+
 def test_private_parity_fixtures_cover_all_seven_mausoleum_rooms():
     priv_dir = FIXTURES_DIR / 'private'
     priv_files = sorted(priv_dir.glob('*.json')) if priv_dir.is_dir() else []
@@ -163,9 +179,8 @@ def test_private_parity_fixtures_cover_all_seven_mausoleum_rooms():
 @pytest.mark.parametrize('fixture_path', discover_fixtures(), ids=lambda p: f'{p.parent.name}/{p.stem}')
 def test_oracle_session_full_wire_lockstep_parity(fixture_path: Path):
     doc = json.loads(fixture_path.read_text(encoding='utf-8'))
-    lvl_spec = doc['spec']['level'] if 'spec' in doc else doc['level_source']
     seed = doc['spec']['seed'] if 'spec' in doc else doc['seed']
-    level = build_level(lvl_spec)
+    level = build_replay_level(doc)
     draws = collect_all_draws(doc)
     game = FFArena(level, seed=seed, revision=0, csrf_token='oracle-csrf', replay_draws=draws,
                    replay_version=doc.get('replay_version', 1))

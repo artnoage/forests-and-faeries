@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 from game.arena import FFArena  # noqa: E402
 from game.tests.test_ff_parity import (  # noqa: E402
     assert_full_wire_parity,
-    build_level,
+    build_replay_level,
     collect_all_draws,
 )
 
@@ -40,9 +40,8 @@ def iter_session_files(targets: list[str]) -> list[Path]:
 
 def verify_one(path: Path) -> dict:
     doc = json.loads(path.read_text(encoding='utf-8'))
-    lvl_spec = doc['spec']['level'] if 'spec' in doc else doc['level_source']
     seed = doc['spec']['seed'] if 'spec' in doc else doc['seed']
-    level = build_level(lvl_spec)
+    level = build_replay_level(doc)
     draws = collect_all_draws(doc)
     game = FFArena(level, seed=seed, revision=0, csrf_token='replay-csrf', replay_draws=draws,
                    replay_version=doc.get('replay_version', 1))

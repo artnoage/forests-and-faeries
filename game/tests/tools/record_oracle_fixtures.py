@@ -245,6 +245,8 @@ def _record_worker(args: tuple[str, dict]) -> tuple[str, str, dict]:
     _init_ref(ref_root)
     assert _REF_ARENA_CLS is not None
     level = level_of(spec['level'])
+    if spec['level']['kind'] == 'catalogue':
+        spec = dict(spec, level=dict(spec['level'], difficulty=level.preset['difficulty']))
     game = _REF_ARENA_CLS(level, seed=spec['seed'], revision=0, csrf_token='oracle-csrf')
     record_draws: list[dict] = []
     orig = game._record_action
