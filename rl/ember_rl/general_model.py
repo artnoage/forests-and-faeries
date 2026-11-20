@@ -432,14 +432,14 @@ def select(obs: Mapping[str, np.ndarray], index: Sequence[int] | np.ndarray) -> 
     n = max(1, int(obs['creature_mask'][index].sum(1).max()))
     out = {}
     for name, array in obs.items():
-        part = array[index]
+        # Basic slices are views. The row gather only copies the retained columns.
         if name in CAND_FIELDS:
-            part = part[:, :k]
+            array = array[:, :k]
         elif name in CREATURE_FIELDS:
-            part = part[:, :n]
+            array = array[:, :n]
         elif name in PAIR_FIELDS:
-            part = part[:, :n, :n]
-        out[name] = part
+            array = array[:, :n, :n]
+        out[name] = array[index]
     return out
 
 
