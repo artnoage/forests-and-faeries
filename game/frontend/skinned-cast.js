@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { versioned } from './asset-versions.js';
 
-// The 16 figures: rigged and animated (Blender). A static original until its rig exists would be
+// The project's rigged figures: animated in Blender. A static original until its rig exists would be
 // marked `static: true` (no skin or clips; the scene slides it, turns it and tips it over on death).
 // Presentation only: every unit position, HP, condition and outcome comes from Natural20.
 export const CAST_MODELS = Object.freeze({
@@ -13,7 +13,7 @@ export const CAST_MODELS = Object.freeze({
   elion:       Object.freeze({ file: 'models/elion.glb',       height: 1.30, group: 'hero' }),
   ilyra:       Object.freeze({ file: 'models/ilyra.glb',       height: 1.30, group: 'hero' }),
   curogana:    Object.freeze({ file: 'models/curogana.glb',    height: 1.27, group: 'hero' }),
-  // Chruna (level-3 Barbarian): halberd swings play `slash`, Rage and Reckless Attack `cast` (a roar)
+  // Chruna (Barbarian): halberd swings play `slash`, Rage and Reckless Attack `cast` (a roar)
   chruna:      Object.freeze({ file: 'models/chruna.glb',      height: 1.30, group: 'hero' }),
   // Undead (all 8 project-original SRD 5.2.1 figures)
   skeleton:    Object.freeze({ file: 'models/skeleton.glb',    height: 1.25, group: 'undead' }),
@@ -24,9 +24,10 @@ export const CAST_MODELS = Object.freeze({
   specter:     Object.freeze({ file: 'models/specter.glb',     height: 1.32, group: 'undead', ghost: 0.74, glow: '#8fc5ff', glowIntensity: 0.32 }),
   wight:       Object.freeze({ file: 'models/wight.glb',       height: 1.38, group: 'undead', glow: '#1a332b', glowIntensity: 0.14 }),
   mummy:       Object.freeze({ file: 'models/mummy.glb',       height: 1.34, group: 'undead' }),
-  // Goblins
-  goblin:      Object.freeze({ file: 'models/goblin.glb',      height: 0.98, group: 'monster' }),
-  goblin_boss: Object.freeze({ file: 'models/goblin_boss.glb', height: 1.08, group: 'monster' }),
+  // Goblins & constructs
+  goblin:         Object.freeze({ file: 'models/goblin.glb',         height: 0.98, group: 'monster' }),
+  goblin_boss:    Object.freeze({ file: 'models/goblin_boss.glb',    height: 1.08, group: 'monster' }),
+  animated_armor: Object.freeze({ file: 'models/animated_armor.glb', height: 1.36, group: 'monster' }),
 });
 
 export const CAST_KEYS = Object.freeze(Object.keys(CAST_MODELS));
@@ -51,17 +52,22 @@ const LOAD_TIMEOUT_MS = 20000;
 
 export function resolveCastKey(unit) {
   if (!unit) return null;
+  const baseId = String(unit.base_id || '').toLowerCase();
   const idBase = String(unit.id || '').split('-')[0].toLowerCase();
   const content = String(unit.content || '').toLowerCase();
   const kind = String(unit.kind || '').toLowerCase();
-  for (const candidate of [content, idBase, kind]) {
+  const stripLevel = s => s.replace(/_l[1-3]$/, '');
+  for (const candidate of [baseId, content, idBase, stripLevel(content), stripLevel(idBase), kind]) {
+    if (!candidate) continue;
     if (Object.hasOwn(CAST_MODELS, candidate)) return candidate;
     if (candidate === 'goblin_minion' || candidate === 'goblin_warrior' || candidate === 'vault_goblin') return 'goblin';
     if (candidate === 'vault_skeleton') return 'skeleton';
   }
   if (unit.team === 'heroes') {
-    if (kind === 'mage' || unit.model?.base === 'mage') return idBase === 'curogana' ? 'curogana' : 'ilyra';
-    return idBase === 'guy' ? 'guy' : idBase === 'elion' ? 'elion' : 'mara';
+    const hero = stripLevel(baseId || content || idBase);
+    if (Object.hasOwn(CAST_MODELS, hero)) return hero;
+    if (kind === 'mage' || unit.model?.base === 'mage') return hero === 'curogana' ? 'curogana' : 'ilyra';
+    return hero === 'guy' ? 'guy' : hero === 'elion' ? 'elion' : hero === 'chruna' ? 'chruna' : 'mara';
   }
   if (kind === 'skeleton') return 'skeleton';
   if (kind === 'goblin') return 'goblin';
@@ -116,7 +122,7 @@ const AREA_STYLES = new Set([
   'turn_undead', 'preserve_life', 'shatter', 'thunderwave', 'burning_hands',
   'dragons_breath', 'acid_splash', 'dreadful_glare',
 ]);
-const MELEE_STYLES = new Set(['slash', 'rotting_fist', 'draining_swipe', 'claw', 'bite']);
+const MELEE_STYLES = new Set(['slash', 'slam', 'rotting_fist', 'draining_swipe', 'claw', 'bite']);
 
 function findAnchor(root, names, fallbackPos) {
   for (const name of names) {

@@ -1,0 +1,43 @@
+{
+  "what": "3D miniatures for the SRD 5.2.1 progression monster batch (Animated Armor CR 1; Kobold Warrior CR 1/8 pending wallet top-up).",
+  "made": "2026-11-20, for Forests and Faeries, at the maintainer's request.",
+  "design": "Original, generic fantasy miniatures matching the SRD 5.2.1 stat blocks and the matte tabletop-miniature style of the existing heroes, undead and goblins. No third-party geometry, textures, armatures or animation data.",
+  "pipeline": [
+    "Reference images: original front and matching 180-degree back turnaround views generated via Gemini image generation in the project's stylized tabletop-miniature palette and neutral A-pose.",
+    "Meshes: Tripo API v3 multiview-to-model (front + back), model v3.1-20260211, standard geometry, detailed PBR texture, 40 credits each, on the maintainer's Tripo API account under a code-enforced 250-credit cumulative cap.",
+    "Rigged copies: Blender 5.2.3, welded single-shell mesh decimated to 18k triangles, 1024 px WebP Color/Normal/ORM textures, normalized to face glTF -Z with feet grounded at y=0, 20-bone armature with geodesic bone weights and 9 procedural combat clips."
+  ],
+  "rights": "Generated with the maintainer's own accounts under the terms that applied at the time; no third-party asset is included.",
+  "tripo_credits_total": 40.0,
+  "models": [
+    {
+      "kind": "animated_armor",
+      "file": "game/static/models/animated_armor.glb",
+      "sha256": "13dc51016a1fdc1f4a19bd62aaad1e86fd670944f1700c53cc8698de268ad824",
+      "bytes": 1201484,
+      "triangles": 18000,
+      "height": 1.36,
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": true,
+      "source_triangles": 1487614,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "04b60caa-8a60-4c61-aad9-264052255962",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "6f21a3cf79308c5b3421e9a7837002154077e53d79f84aef224b69d1c9b476ca",
+        "web_model_sha256": "5ac889af209c2fe28e5b7a5d59b1a3c3af14d78090588eb0addcc928087a8465"
+      },
+      "references": {
+        "front_sha256": "f3998e2301b805da6744aa251f86fe3365df05d119e5a4f64067ea39479edb2d",
+        "back_sha256": "f3514ed9ac82fe7fd0e63a6af91acf2eef7a24f96ac634bf0a34e0b3a760849d",
+        "subject": "Animated Armor (SRD 5.2.1 Medium Construct, CR 1): empty haunted full suit of weathered dark gunmetal-iron gothic plate armor with tarnished antique-bronze trim and rivets, fluted closed helmet with faint pale-cyan arcane glow deep inside the narrow visor slit, subtle etched arcane chest sigil, layered pauldrons, short articulated hip tassets over dark iron chainmail skirt (clean gap between legs), empty articulated gauntlets (Slam attacks), greaves, and stout iron sabatons. Generic fantasy construct, original design."
+      }
+    }
+  ]
+}

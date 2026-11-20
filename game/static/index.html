@@ -26,6 +26,10 @@
       <linearGradient id="goblin-skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9ab364"/><stop offset="1" stop-color="#4c5f3a"/></linearGradient>
       <linearGradient id="ghoul-skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#99a896"/><stop offset="1" stop-color="#49574b"/></linearGradient>
       <linearGradient id="linen-wrap" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dfcfa8"/><stop offset=".55" stop-color="#a8946b"/><stop offset="1" stop-color="#5d4f37"/></linearGradient>
+      <linearGradient id="dark-plate" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8b969c"/><stop offset=".42" stop-color="#485258"/><stop offset=".6" stop-color="#606a70"/><stop offset="1" stop-color="#1e2428"/></linearGradient>
+      <linearGradient id="bronze-trim" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dfc082"/><stop offset=".5" stop-color="#9c7641"/><stop offset="1" stop-color="#4e381c"/></linearGradient>
+      <linearGradient id="kobold-scale" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d4784d"/><stop offset=".55" stop-color="#a24e2d"/><stop offset="1" stop-color="#5d2817"/></linearGradient>
+      <linearGradient id="kobold-belly" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e3b685"/><stop offset="1" stop-color="#a8764c"/></linearGradient>
       <radialGradient id="spell-glow"><stop stop-color="#e3faff"/><stop offset=".35" stop-color="#7ce0eb" stop-opacity=".8"/><stop offset="1" stop-color="#63c5d2" stop-opacity="0"/></radialGradient>
       <radialGradient id="amber-glow"><stop stop-color="#fff4c4"/><stop offset=".4" stop-color="#f5a93b" stop-opacity=".85"/><stop offset="1" stop-color="#e06b22" stop-opacity="0"/></radialGradient>
 
@@ -148,6 +152,47 @@
         <circle cx="-5" cy="-80" r="3.4" fill="#ffbe3b"/><circle cx="6" cy="-80" r="3.4" fill="#ffbe3b"/>
       </symbol>
 
+      <symbol id="art-armor" viewBox="-44 -104 88 112">
+        <circle cx="0" cy="-64" r="30" fill="url(#spell-glow)" opacity=".32"/>
+        <path d="M-21-65Q-36-40-31 2L31 2Q36-40 21-65Z" fill="#23292e" stroke="#4f585e" stroke-width="1.6"/>
+        <path d="m-19-63-12 16 7 32 24 8 24-8 7-32-12-16Z" fill="url(#dark-plate)" stroke="url(#bronze-trim)" stroke-width="2.2"/>
+        <path d="M-24-61q-15 0-14 16l12 7 11-16M24-61q15 0 14 16l-12 7-11-16" fill="url(#dark-plate)" stroke="url(#bronze-trim)" stroke-width="2"/>
+        <circle cx="0" cy="-42" r="9" fill="none" stroke="#8ff3ff" stroke-width="1.4" opacity=".85"/>
+        <path d="M0-50 7-37-7-37ZM0-34 7-47-7-47Z" fill="none" stroke="#8ff3ff" stroke-width="1.2" opacity=".85"/>
+        <path d="M-15-83Q-14-102 0-103 14-102 15-83L13-65 0-60-13-65Z" fill="url(#dark-plate)" stroke="url(#bronze-trim)" stroke-width="2.2"/>
+        <path d="M0-103v43" stroke="url(#bronze-trim)" stroke-width="3"/>
+        <path d="M-12-82h24l-2 5H-10Z" fill="#081016"/>
+        <path d="M-10-80h8l-1 2.4h-6ZM10-80h-8l1 2.4h6Z" fill="#8df6ff"/>
+        <path d="M-8-73v8m4-8v9m8-9v9m4-9v8" stroke="#14191d" stroke-width="1.8"/>
+      </symbol>
+
+      <symbol id="art-kobold" viewBox="-44 -104 88 112">
+        <path d="M-18-62-28-6 26-6 18-62Z" fill="#63422b" stroke="#2d1e14" stroke-width="2"/>
+        <path d="M-24-60q-10 2-9 13l11 4 7-14M24-60q10 2 9 13l-11 4-7-14" fill="#704a30" stroke="#2d1e14" stroke-width="1.8"/>
+        <path d="M-16-24h32M-14-48 14-48M-12-38 12-38" stroke="#c89a66" stroke-width="2.4"/>
+        <path d="m26-26 6-38 5-10 4 11-8 38Z" fill="url(#steel)" stroke="#cfd8d4" stroke-width="1.2"/>
+        <path d="m22-26 16 2" stroke="#8d7864" stroke-width="3.6"/>
+        <path d="M-12-90q-9-9-6-15 6 4 11 10M12-90q9-9 6-15-6 4-11 10" fill="#5e493b" stroke="#2a1e16" stroke-width="1.8"/>
+        <path d="m-16-83-10-2 5 8-6 3 9 3M16-83l10-2-5 8 6 3-9 3" fill="url(#kobold-scale)" stroke="#441d10" stroke-width="1.6"/>
+        <path d="M-17-83q3-15 17-15 14 0 17 15l-3 15-14 8-14-8Z" fill="url(#kobold-scale)" stroke="#441d10" stroke-width="2"/>
+        <path d="M-12-69q12 6 24 0l-5 9-7 3-7-3Z" fill="url(#kobold-belly)"/>
+        <path d="M-12-80l9 3-8 4M12-80l-9 3 8 4" fill="#ffb838" stroke="#36160a" stroke-width="1.2"/>
+        <path d="M-11-69l11 4 11-4" fill="none" stroke="#38180d" stroke-width="1.8"/>
+        <path d="M-7-68 0-65l7-3" fill="none" stroke="#f6ecd6" stroke-width="1.8" stroke-dasharray="2 3"/>
+      </symbol>
+
+      <symbol id="art-barbarian" viewBox="-44 -104 88 112">
+        <path d="M-21-65Q-38-36-31 2L31 2Q37-38 20-65Z" fill="#2c4466" stroke="#7693b8" stroke-width="1.8"/>
+        <path d="m-16-62-8 32 16 14 16-14-8-32Z" fill="#6b452d" stroke="#2d1c12" stroke-width="2"/>
+        <path d="M-24-58q-12 2-10 15l12 4 8-15M24-58q12 2 10 15l-12 4-8-15" fill="#9c8a72" stroke="#3d3124" stroke-width="1.8"/>
+        <path d="M31-10V-94" stroke="#6c4d34" stroke-width="4.5"/>
+        <path d="M31-95 40-84 31-69Z" fill="url(#steel)" stroke="#dce4df" stroke-width="1.2"/>
+        <path d="M-16-84q-2-19 16-19 18 0 16 19l5 22-8-3-26 0-8 3Z" fill="#5e2a1d" stroke="#2b120d" stroke-width="1.6"/>
+        <path d="M-11-82q0-15 11-15 12 0 11 15l-3 15-16 0Z" fill="url(#skin)" stroke="#38241d" stroke-width="1.8"/>
+        <path d="M-12-84q1-15 12-15 12 0 12 15l-5-4-8-1-6 4Z" fill="#5e2a1d"/>
+        <path d="m-6-79 4 1m6-1 4-1" stroke="#261914" stroke-width="2"/>
+      </symbol>
+
       <!-- action-icons:start -->
       <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-move" viewBox="0 0 512 512"><path fill="currentColor" d="M272.5 18.906c-12.775.17-26.23 2.553-40.344 7.594-30.165 55.31-68.313 120.904-125.72 178.5-21.19 21.26-39.23 44.94-52.28 68.313 1.294 6.312 4.984 11.65 10.72 17.406 10.992 11.032 30.86 21.618 54.593 33.25 46.313 22.695 107.284 50.39 146.374 108.467l195.625.032c-20.198-70.834-100.276-101.12-159.064-83.94-.073.03-.145.066-.22.095-1.61.633-3.27 1.138-4.967 1.563-.024.005-.04.025-.064.03-8.86 2.204-18.82 1.68-29.125-.406-24.79-5.02-52.76-19.695-61.342-45.687-28.615-86.673 16.65-179.742 78.156-223.28 23.064-16.328 49.06-25.848 74.47-24.47.144.008.29.023.436.03-24.19-22.74-53.33-37.95-87.25-37.5zm81.75 56c-19.213.01-39.414 7.59-58.625 21.188-54.644 38.682-96.652 125.024-71.188 202.156 5.127 15.53 27.25 29.162 47.282 33.22 10.015 2.027 19.218 1.518 23.717-.283 2.25-.9 3.173-1.84 3.594-2.562.422-.72.81-1.663.25-4.375-9.08-44.167-2.743-84.61 22.533-114.47 23.586-27.863 62.753-45.462 117.406-50.686-15.014-47.145-37.47-71.226-61.314-80.03-6.407-2.368-13.032-3.706-19.812-4.064-1.272-.067-2.563-.094-3.844-.094zM43.78 294.22c-5.405 12.554-9.136 24.756-10.905 36.186 7.178 27.76 51.898 55.43 91.094 61.344 1.703-5.973 5.832-11.475 10.28-14.25 51.01 28.844 86.18 60.704 102 101h229.594c.697-9.613.44-18.712-.625-27.344l-204.314-.03h-5.125l-2.75-4.345c-35.405-55.575-93.93-82.58-141.78-106.03-23.925-11.724-45.17-22.336-59.625-36.844-2.978-2.99-5.618-6.225-7.844-9.687z" /></symbol>
       <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-attack" viewBox="0 0 512 512"><path fill="currentColor" d="M19.75 14.438c59.538 112.29 142.51 202.35 232.28 292.718l3.626 3.75.063-.062c21.827 21.93 44.04 43.923 66.405 66.25-18.856 14.813-38.974 28.2-59.938 40.312l28.532 28.53 68.717-68.717c42.337 27.636 76.286 63.646 104.094 105.81l28.064-28.06c-42.47-27.493-79.74-60.206-106.03-103.876l68.936-68.938-28.53-28.53c-11.115 21.853-24.413 42.015-39.47 60.593-43.852-43.8-86.462-85.842-130.125-125.47-.224-.203-.432-.422-.656-.625C183.624 122.75 108.515 63.91 19.75 14.437zm471.875 0c-83.038 46.28-154.122 100.78-221.97 161.156l22.814 21.562 56.81-56.812 13.22 13.187-56.438 56.44 24.594 23.186c61.802-66.92 117.6-136.92 160.97-218.72zm-329.53 125.906l200.56 200.53c-4.36 4.443-8.84 8.793-13.405 13.032L148.875 153.53l13.22-13.186zm-76.69 113.28l-28.5 28.532 68.907 68.906c-26.29 43.673-63.53 76.414-106 103.907l28.063 28.06c27.807-42.164 61.758-78.174 104.094-105.81l68.718 68.717 28.53-28.53c-20.962-12.113-41.08-25.5-59.937-40.313 17.865-17.83 35.61-35.433 53.157-52.97l-24.843-25.655-55.47 55.467c-4.565-4.238-9.014-8.62-13.374-13.062l55.844-55.844-24.53-25.374c-18.28 17.856-36.602 36.06-55.158 54.594-15.068-18.587-28.38-38.758-39.5-60.625z" /></symbol>
@@ -171,48 +216,59 @@
 
     <div class="cursor-tooltip" id="cursor-tooltip" hidden></div>
 
-    <!-- START SCREEN: choose a level -->
+    <!-- START SCREEN: choose difficulty, then a level -->
     <div class="start-screen" id="start-screen" role="dialog" aria-modal="true" aria-labelledby="start-screen-title">
       <div class="start-modal">
         <div class="start-header">
           <div>
             <span class="eyebrow">FORESTS AND FAERIES · A TACTICAL TABLETOP</span>
-            <h1 id="start-screen-title">Choose a level</h1>
-            <p class="start-subtitle">Each card is one fight. Your heroes are on the left of the board, the monsters on the right. Pick a level, then press Fight (or place the figures yourself).</p>
+            <h1 id="start-screen-title">Choose your difficulty</h1>
+            <p class="start-subtitle" id="start-screen-subtitle">Pick a difficulty to browse its fights — from quick skirmishes to deadly vaults.</p>
           </div>
           <div class="start-header-actions">
-            <button class="button quiet" id="close-start-btn" hidden>✕ Back to the game</button>
+            <button type="button" class="button quiet" id="back-difficulty-btn" hidden>← Difficulty</button>
+            <button type="button" class="button quiet" id="close-start-btn" hidden>✕ Back to the game</button>
           </div>
         </div>
 
-        <div class="level-grid" id="level-grid"><p class="loading-label">Loading the levels…</p></div>
-
-        <div class="start-theme-bar">
-          <div class="start-theme-label">
-            <span class="eyebrow">BOARD THEME</span>
-            <small id="start-theme-note">Each level comes with a theme.</small>
+        <section class="difficulty-step" id="difficulty-step" aria-label="Choose difficulty">
+          <div class="difficulty-grid" id="difficulty-grid" role="group" aria-label="Difficulty tiers">
+            <p class="loading-label">Loading the levels…</p>
           </div>
-          <div class="theme-swatch-row" id="start-theme-swatches" role="radiogroup" aria-label="Board theme"></div>
-        </div>
+        </section>
 
-        <div class="start-footer">
-          <div class="start-options">
-            <label for="start-hero-level" class="eyebrow">HERO LEVEL</label>
-            <select id="start-hero-level" class="hud-select lg">
-              <option value="">Preset levels</option>
-              <option value="1">Level 1</option>
-              <option value="2">Level 2</option>
-              <option value="3">Level 3</option>
-            </select>
-            <label for="start-monster-control" class="eyebrow">MONSTERS</label>
-            <select id="start-monster-control" class="hud-select lg">
-              <option value="ai">played by the engine</option>
-              <option value="manual">played by you too</option>
-            </select>
+        <div class="levels-step" id="levels-step" hidden>
+          <div class="difficulty-tabs" id="difficulty-tabs" role="tablist" aria-label="Difficulty filter"></div>
+
+          <div class="level-grid" id="level-grid"><p class="loading-label">Loading the levels…</p></div>
+
+          <div class="start-theme-bar">
+            <div class="start-theme-label">
+              <span class="eyebrow">BOARD THEME</span>
+              <small id="start-theme-note">Each level comes with a theme.</small>
+            </div>
+            <div class="theme-swatch-row" id="start-theme-swatches" role="radiogroup" aria-label="Board theme"></div>
           </div>
-          <div class="start-ctas">
-            <button class="button quiet" id="start-custom-place">Place the figures</button>
-            <button class="button primary start-launch-btn" id="start-quick-play">⚔ Fight →</button>
+
+          <div class="start-footer">
+            <div class="start-options">
+              <label for="start-hero-level" class="eyebrow">HERO LEVEL</label>
+              <select id="start-hero-level" class="hud-select lg">
+                <option value="">Preset levels</option>
+                <option value="1">Level 1</option>
+                <option value="2">Level 2</option>
+                <option value="3">Level 3</option>
+              </select>
+              <label for="start-monster-control" class="eyebrow">MONSTERS</label>
+              <select id="start-monster-control" class="hud-select lg">
+                <option value="ai">played by the engine</option>
+                <option value="manual">played by you too</option>
+              </select>
+            </div>
+            <div class="start-ctas">
+              <button type="button" class="button quiet" id="start-custom-place">Place the figures</button>
+              <button type="button" class="button primary start-launch-btn" id="start-quick-play">⚔ Fight →</button>
+            </div>
           </div>
         </div>
         <p class="start-tribute">Built on <a href="https://github.com/jedld/natural_20.py">Natural20</a>, the open-source 5e rules engine by Joseph Dayo. The game runs a Rust port of it, checked against his original roll by roll. Thank you, Joseph! Enjoying the game? <a href="https://github.com/jedld/natural_20.py">⭐ Star Natural20</a> and <a href="https://github.com/artnoage/forests-and-faeries">⭐ star Forests and Faeries</a> on GitHub, and <a href="https://github.com/artnoage/forests-and-faeries/issues">tell us what you would like next</a>.</p>
@@ -397,7 +453,7 @@
     </div>
     <h2 id="help-title">How to play</h2>
     <ol class="manual">
-      <li><b>Choose a level.</b> <code>✦ Levels</code> opens the level list. <b>Fight</b> uses the suggested layout and rolls initiative at once; <b>Place the figures</b> lets you put each figure on a square first (select it, then click a highlighted square), then press <b>Roll initiative and start</b>.</li>
+      <li><b>Choose a difficulty and level.</b> Pick <b>Easy</b>, <b>Medium</b> or <b>Hard</b>, then select a fight. <code>✦ Levels</code> reopens the chooser at any time. <b>Fight</b> uses the suggested layout and rolls initiative at once; <b>Place the figures</b> lets you put each figure on a square first (select it, then click a highlighted square), then press <b>Roll initiative and start</b>.</li>
       <li><b>Take your turn.</b> A turn has one action, one bonus action, movement and one reaction. The cards at the bottom are everything the engine allows right now. Pick a card, then a highlighted creature or square. Moving is a card too: the teal squares are the places you can reach, and the tooltip shows the cost. Several moves and a bonus action can follow one another. Press <b>End Turn</b> when you are done.</li>
       <li><b>Choices on a card.</b> A spell with several slot levels shows <b>Slot</b> pills; a sorcerer's Metamagic, or a feature with modes, shows <b>Metamagic</b> or <b>Mode</b> pills. Every choice shows its cost.</li>
       <li><b>Darts, rays and several targets.</b> Magic Missile, Scorching Ray and spells with several targets ask you to split them: click creatures (or use + and −) until the count is full, then press <b>Cast</b>.</li>

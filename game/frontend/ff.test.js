@@ -31,6 +31,13 @@ test('every hero and monster of the catalogue has a figure', () => {
   assert.equal(resolveCastKey({ content: 'goblin_minion', team: 'monsters' }), 'goblin');
   assert.equal(resolveCastKey({ content: 'goblin_warrior', team: 'monsters' }), 'goblin');
   assert.equal(resolveCastKey({ content: 'goblin_boss', team: 'monsters' }), 'goblin_boss');
+  assert.equal(resolveCastKey({ content: 'animated_armor', team: 'monsters', id: 'animated_armor-1' }), 'animated_armor');
+  for (const base of ['guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna']) {
+    for (const lv of [1, 2, 3]) {
+      assert.equal(resolveCastKey({ content: `${base}_l${lv}`, base_id: base, level: lv, team: 'heroes', id: `${base}_l${lv}` }), base);
+      assert.equal(resolveCastKey({ content: `${base}_l${lv}`, team: 'heroes', id: `${base}_l${lv}` }), base);
+    }
+  }
   assert.equal(resolveCastKey({ content: 'unknown_creature', team: 'monsters', id: 'unknown-1', kind: 'unknown' }), null);
 });
 
@@ -79,6 +86,9 @@ test('the page has no inline styles or scripts and no private paths', () => {
   assert.doesNotMatch(html, /\sstyle\s*=/i);
   assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)[^>]*>\s*\S/i);
   assert.doesNotMatch(html, /\son[a-z]+\s*=\s*["']/i);
+  for (const id of ['difficulty-step', 'levels-step', 'difficulty-tabs', 'art-armor', 'art-kobold', 'art-barbarian']) {
+    assert.ok(html.includes(`id="${id}"`), `index.html contains #${id}`);
+  }
   const app = read('static/app.js');
   assert.doesNotMatch(app, /\bstyle\s*=\s*\\?["'`]/i, 'no style="" built in app.js');
   for (const text of [html, app, read('static/style.css')]) {
@@ -86,7 +96,7 @@ test('the page has no inline styles or scripts and no private paths', () => {
   }
 });
 
-test('the release models are the sixteen figures the scene knows', () => {
+test('the release models match the figures the scene knows', () => {
   const models = readdirSync(path.join(ff, 'static/models')).sort();
   assert.deepEqual(models, Object.values(CAST_MODELS).map(m => path.basename(m.file)).sort());
 });
@@ -159,7 +169,7 @@ test('catalogue blurbs list three heroes with commas', () => {
 test('every figure is rigged with the clips the scene plays', async () => {
   const { createHash } = await import('node:crypto');
   const need = { mara: ['slash', 'cast', 'guard'], ilyra: ['cast', 'cast_area'], chruna: ['slash', 'cast', 'guard'], goblin: ['slash', 'arrow'],
-    goblin_boss: ['slash', 'arrow'], guy: ['slash'], elion: ['cast'], curogana: ['cast'] };
+    goblin_boss: ['slash', 'arrow'], animated_armor: ['slash', 'guard'], guy: ['slash'], elion: ['cast'], curogana: ['cast'] };
   for (const [key, spec] of Object.entries(CAST_MODELS)) {
     const bytes = readFileSync(path.join(ff, 'static', spec.file));
     const doc = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8'));

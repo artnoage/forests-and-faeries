@@ -28,11 +28,13 @@
   const niceName = k => NICE_NAMES[k] || String(k || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   // The strongest creature names a level card's portrait.
-  const LEAD_ORDER = ['mummy', 'wight', 'ghast', 'specter', 'ghoul', 'shadow', 'goblin_boss', 'zombie', 'skeleton',
-    'goblin_warrior', 'goblin_minion'];
+  const LEAD_ORDER = ['mummy', 'wight', 'ghast', 'specter', 'animated_armor', 'ghoul', 'shadow', 'goblin_boss',
+    'zombie', 'skeleton', 'goblin_warrior', 'kobold_warrior', 'goblin_minion'];
 
   function portraitSymbol(unit) {
-    const raw = [unit?.content, unit?.kind, unit?.class, unit?.id, unit?.name].filter(Boolean).join(' ').toLowerCase();
+    const raw = [unit?.base_id, unit?.content, unit?.kind, unit?.class, unit?.id, unit?.name].filter(Boolean).join(' ').toLowerCase();
+    if (raw.includes('animated_armor') || raw.includes('armor')) return 'armor';
+    if (raw.includes('kobold')) return 'kobold';
     if (raw.includes('mummy')) return 'mummy';
     if (raw.includes('wight')) return 'wight';
     if (raw.includes('specter') || raw.includes('shadow')) return 'specter';
@@ -40,6 +42,7 @@
     if (raw.includes('zombie')) return 'zombie';
     if (raw.includes('skeleton')) return 'skeleton';
     if (raw.includes('goblin')) return 'goblin';
+    if (raw.includes('barbarian') || raw.includes('chruna')) return 'barbarian';
     if (raw.includes('cleric') || raw.includes('elion')) return 'cleric';
     if (raw.includes('sorcerer') || raw.includes('curogana')) return 'sorcerer';
     if (raw.includes('wizard') || raw.includes('ilyra')) return 'mage';
@@ -259,7 +262,15 @@
   let selectedLevel = null, selectedOption = null, allocation = new Map(), preview = null, armed = null;
   let previewSet = new Set();
 
+  const DIFFICULTIES = [
+    { id: 'Easy', label: 'Easy', tagline: 'Skirmishes and openings', desc: 'Shorter fights to learn the board, positioning and spells.', fallbackLead: 'skeleton' },
+    { id: 'Medium', label: 'Medium', tagline: 'Balanced tactics', desc: 'Mixed threats with spellcasters, hazards and tougher foes.', fallbackLead: 'wight' },
+    { id: 'Hard', label: 'Hard', tagline: 'Deadly encounters', desc: 'Multi-threat battles built for a full party and sharp play.', fallbackLead: 'mummy' },
+  ];
+
   let startScreenOpen = true;
+  let startStep = 'difficulty';  // 'difficulty' | 'levels'
+  let selectedDifficulty = 'Easy';
   let launched = false;          // the start screen can be closed once a level was chosen
   let selectedStart = null;      // {encounter, preset}
   let selectedTheme = 'auto';
@@ -326,10 +337,15 @@
   }
   const currentLevel = () => state?.level ? levelByKey(state.level.encounter, state.level.id) : null;
 
-  function nativeClass(unit) {
+  function heroLevelBadge(unit, cls = 'roster-lv-pill') {
+    const lv = Number(unit?.level);
+    if (unit?.team !== 'heroes' || !lv) return '';
+    return `<b class="${cls}" aria-label="Level ${escape(lv)}">Lv ${escape(lv)}</b>`;
+  }
+  function nativeClass(unit, includeLevel = true) {
     const sub = unit.subclass ? String(unit.subclass).replace(/_/g, ' ') : '';
     const cls = unit.class || niceName(unit.content || unit.kind || (unit.team === 'heroes' ? 'adventurer' : 'creature'));
-    return `${unit.level ? 'Lv ' + unit.level + ' · ' : ''}${sub ? sub.charAt(0).toUpperCase() + sub.slice(1) + ' ' : ''}${cls}`;
+    return `${includeLevel && unit.level ? 'Lv ' + unit.level + ' · ' : ''}${sub ? sub.charAt(0).toUpperCase() + sub.slice(1) + ' ' : ''}${cls}`;
   }
   function lifeText(unit) {
     if (unit.alive !== false) return null;
@@ -595,7 +611,7 @@
     const roster = state.setup?.roster || [], placements = state.setup?.placements || [];
     $('setup-roster').innerHTML = roster.map(unit => {
       const placed = placements.find(p => p.id === unit.id);
-      return `<div class="setup-figure"><button class="setup-select ${setupFigure === unit.id ? 'selected' : ''}" data-figure="${escape(unit.id)}" aria-pressed="${setupFigure === unit.id}" ${busy ? 'disabled' : ''}>${portrait(unit)}<span>${escape(unit.name)}<small>${escape(nativeClass(unit))} · ${placed ? escape(cellName(placed.x, placed.y)) : 'not placed'}</small></span></button><button class="setup-remove" data-remove="${escape(unit.id)}" aria-label="Remove ${escape(unit.name)}" ${busy || !placed ? 'disabled' : ''}>×</button></div>`;
+      return `<div class="setup-figure"><button class="setup-select ${setupFigure === unit.id ? 'selected' : ''}" data-figure="${escape(unit.id)}" aria-pressed="${setupFigure === unit.id}" ${busy ? 'disabled' : ''}>${portrait(unit)}<span><span class="roster-title"><span class="roster-title-name">${escape(unit.name)}</span>${heroLevelBadge(unit, 'setup-lv-pill')}</span><small>${escape(nativeClass(unit, unit.team !== 'heroes'))} · ${placed ? escape(cellName(placed.x, placed.y)) : 'not placed'}</small></span></button><button class="setup-remove" data-remove="${escape(unit.id)}" aria-label="Remove ${escape(unit.name)}" ${busy || !placed ? 'disabled' : ''}>×</button></div>`;
     }).join('');
     const level = currentLevel();
     const presets = level?.group.presets || [];
@@ -647,9 +663,10 @@
     const hp = u.hp ?? u.max_hp ?? 1, maxHp = u.max_hp ?? 1;
     const conds = [...(u.conditions || []).filter(c => !['dead', 'unconscious'].includes(c)), ...(u.marks || [])].filter(Boolean);
     const placed = state.units.some(p => p.id === u.id);
-    const meta = !placed && state.phase === 'setup' ? `${nativeClass(u)} · not placed`
-      : lifeText(u) || (conds.length ? conds.join(' · ') : nativeClass(u));
-    return `<button class="roster-unit ${extra} ${u.alive === false ? 'fallen' : ''} ${u.id === activeUnit()?.id ? 'active' : ''} ${u.id === inspectedId ? 'inspected' : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${placed ? escape(u.id) : ''}">${portrait(u)}<span class="roster-info"><span class="roster-name"><span>${escape(u.name)}</span><span>${u.ac ? `<b class="roster-ac-pill">AC ${escape(u.ac)}</b> ` : ''}${escape(hp)}/${escape(maxHp)}</span></span><span class="roster-meta">${escape(meta)}</span>${hpBar({ ...u, hp, max_hp: maxHp })}</span></button>`;
+    const clsText = nativeClass(u, u.team !== 'heroes');
+    const meta = !placed && state.phase === 'setup' ? `${clsText} · not placed`
+      : lifeText(u) || (conds.length ? conds.join(' · ') : clsText);
+    return `<button class="roster-unit ${extra} ${u.alive === false ? 'fallen' : ''} ${u.id === activeUnit()?.id ? 'active' : ''} ${u.id === inspectedId ? 'inspected' : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${placed ? escape(u.id) : ''}">${portrait(u)}<span class="roster-info"><span class="roster-name"><span class="roster-title"><span class="roster-title-name">${escape(u.name)}</span>${heroLevelBadge(u)}</span><span>${u.ac ? `<b class="roster-ac-pill">AC ${escape(u.ac)}</b> ` : ''}${escape(hp)}/${escape(maxHp)}</span></span><span class="roster-meta">${escape(meta)}</span>${hpBar({ ...u, hp, max_hp: maxHp })}</span></button>`;
   }
 
   function renderRoster() {
@@ -666,7 +683,7 @@
     const unit = activeUnit();
     $('active-actor').classList.toggle('monster', unit?.team === 'monsters');
     $('active-actor').innerHTML = unit
-      ? `<div class="actor-identity">${portrait(unit)}<div><span class="actor-class">${escape(nativeClass(unit))}</span><h2>${escape(unit.name)}</h2><div class="actor-hp"><strong>${escape(unit.hp)}</strong>/${escape(unit.max_hp)} HP${unit.ac ? ` · AC ${escape(unit.ac)}` : ''}</div></div></div>${hpBar(unit)}`
+      ? `<div class="actor-identity">${portrait(unit)}<div><span class="actor-class">${escape(nativeClass(unit, unit.team !== 'heroes'))}</span><h2>${escape(unit.name)}${heroLevelBadge(unit, 'actor-lv-pill')}</h2><div class="actor-hp"><strong>${escape(unit.hp)}</strong>/${escape(unit.max_hp)} HP${unit.ac ? ` · AC ${escape(unit.ac)}` : ''}</div></div></div>${hpBar(unit)}`
       : '<p class="map-tag">The fight is over.</p>';
 
     const res = state.resources || {};
@@ -681,7 +698,7 @@
     $('zoom-inspected-btn').disabled = !inspected || sceneUnavailable;
     if (inspected) {
       const condText = [lifeText(inspected), ...(inspected.conditions || []).filter(c => !['dead', 'unconscious'].includes(c)), ...(inspected.marks || [])].filter(Boolean).join(' · ') || 'No conditions';
-      $('inspect-content').innerHTML = `<h3>${escape(inspected.name)}</h3><p>${escape(nativeClass(inspected))}</p>${inspected.description ? `<p class="inspect-description">${escape(inspected.description)}</p>` : ''}<div class="inspection-stats"><span>HP ${escape(inspected.hp)}/${escape(inspected.max_hp)}</span>${inspected.ac ? `<span>AC ${escape(inspected.ac)}</span>` : ''}<span>${escape(cellName(inspected.x || 0, inspected.y || 0))}</span>${inspected.str_loss ? `<span>STR −${escape(inspected.str_loss)}</span>` : ''}${inspected.id === state.turn_id ? '<span class="acting">acting now</span>' : ''}</div><span class="inspection-conditions">${escape(condText)}</span>${sheetHtml(inspected, true)}`;
+      $('inspect-content').innerHTML = `<h3>${escape(inspected.name)}${heroLevelBadge(inspected, 'actor-lv-pill')}</h3><p>${escape(nativeClass(inspected, inspected.team !== 'heroes'))}</p>${inspected.description ? `<p class="inspect-description">${escape(inspected.description)}</p>` : ''}<div class="inspection-stats"><span>HP ${escape(inspected.hp)}/${escape(inspected.max_hp)}</span>${inspected.ac ? `<span>AC ${escape(inspected.ac)}</span>` : ''}<span>${escape(cellName(inspected.x || 0, inspected.y || 0))}</span>${inspected.str_loss ? `<span>STR −${escape(inspected.str_loss)}</span>` : ''}${inspected.id === state.turn_id ? '<span class="acting">acting now</span>' : ''}</div><span class="inspection-conditions">${escape(condText)}</span>${sheetHtml(inspected, true)}`;
     } else {
       $('inspect-content').innerHTML = '<h3>Inspector</h3><p>Click a figure or portrait to see its traits, attacks and spells.</p>';
     }
@@ -1179,26 +1196,79 @@
   }
 
   // ===========================================================================
-  // START SCREEN: the encounter catalogue
+  // START SCREEN: opening difficulty choice and filtered encounter catalogue
   // ===========================================================================
   function leadOf(level) {
     const kinds = (level.roster || []).map(r => r.content);
     return LEAD_ORDER.find(k => kinds.includes(k)) || kinds[0] || 'skeleton';
   }
+  function normalizeDifficulty(value) {
+    const match = DIFFICULTIES.find(d => d.id.toLowerCase() === String(value || '').toLowerCase());
+    return match ? match.id : 'Medium';
+  }
+  function levelsForDifficulty(diff) {
+    const target = normalizeDifficulty(diff).toLowerCase();
+    const out = [];
+    for (const group of catalogue) {
+      for (const preset of group.presets || []) {
+        if (String(preset.difficulty || '').toLowerCase() === target) out.push({ group, preset });
+      }
+    }
+    return out;
+  }
+  function difficultyLead(diff) {
+    const info = DIFFICULTIES.find(d => d.id === diff) || DIFFICULTIES[0];
+    const list = levelsForDifficulty(diff);
+    const kinds = list.flatMap(item => (item.preset.roster || []).map(r => r.content));
+    return LEAD_ORDER.find(k => kinds.includes(k)) || info.fallbackLead;
+  }
+  function partyLabelHtml(party) {
+    const override = Number($('start-hero-level')?.value) || null;
+    return (party || []).map(h => {
+      const lv = override || Number(h.level) || null;
+      return `${escape(h.name)}${lv ? ` <span class="party-lv-tag">Lv ${escape(lv)}</span>` : ''}`;
+    }).join(', ');
+  }
 
   function buildStartScreenCatalog() {
-    $('level-grid').innerHTML = catalogue.map(group => `<section class="level-group" aria-labelledby="group-${escape(group.id)}">
+    $('difficulty-grid').innerHTML = DIFFICULTIES.map(d => {
+      const list = levelsForDifficulty(d.id);
+      const count = list.length;
+      const previewNames = list.slice(0, 3).map(item => item.preset.name).join(' · ');
+      const more = count > 3 ? ` · +${count - 3} more` : '';
+      const tier = d.id.toLowerCase();
+      return `<button type="button" class="difficulty-card tier-${escape(tier)}" data-difficulty="${escape(d.id)}" ${count ? '' : 'disabled'}>
+        <div class="difficulty-card-head"><span class="level-tier ${escape(tier)}">${escape(d.label)}</span><span class="difficulty-count">${escape(count)} ${count === 1 ? 'level' : 'levels'}</span></div>
+        <div class="difficulty-card-body">${portrait({ team: 'monsters', content: difficultyLead(d.id) })}<div><h2 class="difficulty-card-title">${escape(d.label)}</h2><p class="difficulty-card-tagline">${escape(d.tagline)}</p></div></div>
+        <p class="difficulty-card-desc">${escape(d.desc)}</p>
+        <p class="difficulty-card-preview">${escape(count ? previewNames + more : 'No levels available')}</p>
+        <div class="difficulty-card-cta"><span>${count ? 'Browse levels' : 'Unavailable'}</span><span>→</span></div>
+      </button>`;
+    }).join('');
+
+    $('difficulty-tabs').innerHTML = DIFFICULTIES.map(d => {
+      const count = levelsForDifficulty(d.id).length;
+      const tier = d.id.toLowerCase();
+      return `<button type="button" class="difficulty-tab tier-${escape(tier)}" data-difficulty-tab="${escape(d.id)}" role="tab" aria-selected="false" ${count ? '' : 'disabled'}><span>${escape(d.label)}</span><span class="difficulty-tab-count">${escape(count)}</span></button>`;
+    }).join('');
+
+    $('level-grid').innerHTML = catalogue.map(group => `<section class="level-group" data-group="${escape(group.id)}" aria-labelledby="group-${escape(group.id)}">
         <header class="level-group-head"><h2 id="group-${escape(group.id)}">${escape(group.name)}${group.private ? ' <small class="private-tag">private preview</small>' : ''}</h2><p>${escape(group.blurb)}</p></header>
         <div class="level-row" role="listbox" aria-label="${escape(group.name)} levels">
         ${group.presets.map(lv => {
           const th = themeInfo(lv.theme);
           const on = selectedStart?.encounter === group.id && selectedStart?.preset === lv.id;
-          const foes = lv.roster.map(r => `${r.count} ${r.name}${r.count > 1 && !/s$/.test(r.name) ? 's' : ''}`).join(' · ');
-          return `<button type="button" class="level-card ${on ? 'is-selected' : ''}" data-encounter="${escape(group.id)}" data-preset="${escape(lv.id)}" role="option" aria-selected="${on}">
+          const foes = lv.roster.map(r => {
+            if (r.count <= 1) return `${r.count} ${r.name}`;
+            const plural = /[^aeiou]y$/i.test(r.name) ? `${r.name.slice(0, -1)}ies`
+              : /(s|x|z|ch|sh)$/i.test(r.name) ? `${r.name}es` : `${r.name}s`;
+            return `${r.count} ${plural}`;
+          }).join(' · ');
+          return `<button type="button" class="level-card ${on ? 'is-selected' : ''}" data-encounter="${escape(group.id)}" data-preset="${escape(lv.id)}" data-difficulty="${escape(normalizeDifficulty(lv.difficulty))}" role="option" aria-selected="${on}">
             <div class="level-card-top"><span class="level-tier ${escape(lv.difficulty.toLowerCase())}">${escape(lv.difficulty)}</span><span class="level-map">${escape(lv.map.width)}×${escape(lv.map.height)}</span></div>
             <div class="level-card-body">${portrait({ team: 'monsters', content: leadOf(lv) })}<div><h3 class="level-card-title">${escape(lv.name)}</h3><div class="level-card-foes">${escape(foes)}</div></div></div>
             <p class="level-card-blurb">${escape(lv.blurb)}</p>
-            <p class="level-card-party">Party: ${escape(lv.party.map(h => h.name).join(', '))}</p>
+            <p class="level-card-party">Party: ${partyLabelHtml(lv.party)}</p>
             <div class="level-theme-badge"><span class="level-theme-dot th-${escape(th.id)}"></span><span>${escape(th.label)}</span></div>
           </button>`;
         }).join('')}
@@ -1211,11 +1281,37 @@
 
   function renderStartScreen() {
     $('start-screen').hidden = !startScreenOpen;
+    $('difficulty-step').hidden = startStep !== 'difficulty';
+    $('levels-step').hidden = startStep !== 'levels';
+    $('back-difficulty-btn').hidden = startStep !== 'levels';
     $('close-start-btn').hidden = !state || !launched;
-    for (const card of $('level-grid').querySelectorAll('[data-preset]')) {
-      const on = card.dataset.encounter === selectedStart?.encounter && card.dataset.preset === selectedStart?.preset;
-      card.classList.toggle('is-selected', on);
-      card.setAttribute('aria-selected', String(on));
+    $('start-screen-title').textContent = startStep === 'difficulty' ? 'Choose your difficulty' : `${selectedDifficulty} levels`;
+    $('start-screen-subtitle').textContent = startStep === 'difficulty'
+      ? 'Pick a difficulty to browse its fights — from quick skirmishes to deadly vaults.'
+      : 'Each card is one fight. Your heroes are on the left of the board, the monsters on the right. Pick a level, then press Fight (or place the figures yourself).';
+
+    for (const card of $('difficulty-grid').querySelectorAll('[data-difficulty]')) {
+      card.classList.toggle('is-active', card.dataset.difficulty === selectedDifficulty);
+    }
+    for (const tab of $('difficulty-tabs').querySelectorAll('[data-difficulty-tab]')) {
+      const on = tab.dataset.difficultyTab === selectedDifficulty;
+      tab.classList.toggle('is-active', on);
+      tab.setAttribute('aria-selected', String(on));
+    }
+    for (const section of $('level-grid').querySelectorAll('.level-group')) {
+      let visibleCount = 0;
+      for (const card of section.querySelectorAll('[data-preset]')) {
+        const show = card.dataset.difficulty === selectedDifficulty;
+        card.hidden = !show;
+        if (show) visibleCount++;
+        const on = show && card.dataset.encounter === selectedStart?.encounter && card.dataset.preset === selectedStart?.preset;
+        card.classList.toggle('is-selected', on);
+        card.setAttribute('aria-selected', String(on));
+        const lv = levelByKey(card.dataset.encounter, card.dataset.preset);
+        const partyEl = card.querySelector('.level-card-party');
+        if (lv && partyEl) partyEl.innerHTML = `Party: ${partyLabelHtml(lv.preset.party)}`;
+      }
+      section.hidden = visibleCount === 0;
     }
     const shownTheme = themeManualOverride ? selectedTheme : 'auto';
     for (const sw of $('start-theme-swatches').querySelectorAll('[data-theme-id]')) {
@@ -1239,19 +1335,50 @@
     renderStartScreen();
   }
 
+  function selectDifficulty(diff, { openLevels = true } = {}) {
+    const norm = normalizeDifficulty(diff);
+    const list = levelsForDifficulty(norm);
+    if (!list.length) return;
+    selectedDifficulty = norm;
+    const current = selectedStart ? levelByKey(selectedStart.encounter, selectedStart.preset) : null;
+    if (!current || normalizeDifficulty(current.preset.difficulty) !== norm) {
+      selectedStart = { encounter: list[0].group.id, preset: list[0].preset.id };
+    }
+    if (openLevels) startStep = 'levels';
+    viewer?.setBiome?.(themeFor());
+    renderStartScreen();
+    if (openLevels) $('level-grid').querySelector('[data-preset].is-selected:not([hidden]), [data-preset]:not([hidden])')?.focus();
+  }
+
+  function showDifficultyStep() {
+    startStep = 'difficulty';
+    renderStartScreen();
+    $('difficulty-grid').querySelector('.is-active, [data-difficulty]')?.focus();
+  }
+
   function selectStartLevel(encounter, preset) {
-    if (!levelByKey(encounter, preset)) return;
+    const lv = levelByKey(encounter, preset);
+    if (!lv) return;
     selectedStart = { encounter, preset };
+    selectedDifficulty = normalizeDifficulty(lv.preset.difficulty);
+    startStep = 'levels';
     viewer?.setBiome?.(themeFor());
     renderStartScreen();
   }
 
-  function openStartScreen() {
+  function openStartScreen(step = 'difficulty') {
     clearTimer(); watching = false;
+    const active = currentLevel();
+    if (active) {
+      selectedDifficulty = normalizeDifficulty(active.preset.difficulty);
+      selectedStart = { encounter: active.group.id, preset: active.preset.id };
+    }
+    startStep = step;
     startScreenOpen = true;
     viewer?.setBiome?.(themeFor());
     renderStartScreen();
-    $('level-grid').querySelector('.is-selected, [data-preset]')?.focus();
+    if (startStep === 'difficulty') $('difficulty-grid').querySelector('.is-active, [data-difficulty]')?.focus();
+    else $('level-grid').querySelector('[data-preset].is-selected:not([hidden]), [data-preset]:not([hidden])')?.focus();
   }
   function closeStartScreen() {
     if (!startScreenOpen || !state) return;
@@ -1264,7 +1391,7 @@
   function castKeysFor(level) {
     const resolve = window.EmberScene?.resolveCastKey;
     if (typeof resolve !== 'function' || !level) return [];
-    const units = [...level.party.map(h => ({ content: h.content, team: 'heroes' })), ...level.roster.map(r => ({ content: r.content, team: 'monsters' }))];
+    const units = [...level.party.map(h => ({ content: h.content, base_id: h.base_id, team: 'heroes' })), ...level.roster.map(r => ({ content: r.content, team: 'monsters' }))];
     return [...new Set(units.map(u => resolve(u)).filter(Boolean))];
   }
 
@@ -1322,6 +1449,24 @@
   // ===========================================================================
   // EVENTS
   // ===========================================================================
+  $('difficulty-grid').addEventListener('click', e => {
+    const card = e.target.closest('[data-difficulty]');
+    if (card && !card.disabled) selectDifficulty(card.dataset.difficulty, { openLevels: true });
+  });
+  $('difficulty-grid').addEventListener('keydown', e => {
+    const card = e.target.closest('[data-difficulty]');
+    if (!card) return;
+    const cards = [...$('difficulty-grid').querySelectorAll('[data-difficulty]:not(:disabled)')];
+    const i = cards.indexOf(card);
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (step && cards.length) { e.preventDefault(); cards[(i + step + cards.length) % cards.length].focus(); }
+  });
+  $('difficulty-tabs').addEventListener('click', e => {
+    const tab = e.target.closest('[data-difficulty-tab]');
+    if (tab && !tab.disabled) selectDifficulty(tab.dataset.difficultyTab, { openLevels: true });
+  });
+  $('back-difficulty-btn').addEventListener('click', () => showDifficultyStep());
+  $('start-hero-level').addEventListener('change', () => renderStartScreen());
   $('level-grid').addEventListener('click', e => {
     const card = e.target.closest('[data-preset]');
     if (card) selectStartLevel(card.dataset.encounter, card.dataset.preset);
@@ -1333,10 +1478,10 @@
   $('level-grid').addEventListener('keydown', e => {
     const card = e.target.closest('[data-preset]');
     if (!card) return;
-    const cards = [...$('level-grid').querySelectorAll('[data-preset]')];
+    const cards = [...$('level-grid').querySelectorAll('[data-preset]:not([hidden])')];
     const i = cards.indexOf(card);
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-    if (step) { e.preventDefault(); const next = cards[(i + step + cards.length) % cards.length]; next.focus(); selectStartLevel(next.dataset.encounter, next.dataset.preset); }
+    if (step && cards.length) { e.preventDefault(); const next = cards[(i + step + cards.length) % cards.length]; next.focus(); selectStartLevel(next.dataset.encounter, next.dataset.preset); }
     else if (e.key === 'Enter') { e.preventDefault(); selectStartLevel(card.dataset.encounter, card.dataset.preset); launchSelectedLevel(true); }
   });
   $('start-theme-swatches').addEventListener('click', e => {
@@ -1589,7 +1734,11 @@
   document.addEventListener('keydown', e => {
     if (e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || help.open) return;
     if (startScreenOpen) {
-      if (e.key === 'Escape' && state) { e.preventDefault(); closeStartScreen(); }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (startStep === 'levels' && (!state || !launched)) showDifficultyStep();
+        else if (state && launched) closeStartScreen();
+      }
       return;  // no game shortcuts behind the start screen
     }
     if (e.key === 'Escape') {
@@ -1629,7 +1778,11 @@
     getViewer: () => viewer,
     isSceneUnavailable: () => sceneUnavailable,
     isStartScreenOpen: () => startScreenOpen,
+    getStartStep: () => startStep,
+    getDifficulty: () => selectedDifficulty,
     getCatalogue: () => catalogue,
+    selectDifficulty,
+    showDifficultyStep,
     selectStartLevel,
     launchSelectedLevel,
   };
@@ -1646,9 +1799,26 @@
     }
     const params = new URLSearchParams(window.location.search);
     const wanted = params.get('level')?.split('/') || [];
-    const first = catalogue[0]?.presets[0];
-    selectedStart = levelByKey(wanted[0], wanted[1]) ? { encounter: wanted[0], preset: wanted[1] }
-      : first ? { encounter: catalogue[0].id, preset: first.id } : null;
+    const wantedLevel = levelByKey(wanted[0], wanted[1]);
+    const wantedDiff = params.get('difficulty');
+    if (wantedLevel) {
+      selectedStart = { encounter: wantedLevel.group.id, preset: wantedLevel.preset.id };
+      selectedDifficulty = normalizeDifficulty(wantedLevel.preset.difficulty);
+      startStep = 'levels';
+    } else if (wantedDiff && levelsForDifficulty(wantedDiff).length) {
+      selectedDifficulty = normalizeDifficulty(wantedDiff);
+      const firstInDiff = levelsForDifficulty(selectedDifficulty)[0];
+      selectedStart = { encounter: firstInDiff.group.id, preset: firstInDiff.preset.id };
+      startStep = 'levels';
+    } else {
+      const firstDiff = DIFFICULTIES.find(d => levelsForDifficulty(d.id).length)?.id || 'Easy';
+      selectedDifficulty = firstDiff;
+      const firstInDiff = levelsForDifficulty(firstDiff)[0];
+      const fallback = catalogue[0]?.presets[0];
+      selectedStart = firstInDiff ? { encounter: firstInDiff.group.id, preset: firstInDiff.preset.id }
+        : fallback ? { encounter: catalogue[0].id, preset: fallback.id } : null;
+      startStep = 'difficulty';
+    }
     buildStartScreenCatalog();
     renderStartScreen();
     const probe = document.createElement('canvas').getContext('webgl2');
