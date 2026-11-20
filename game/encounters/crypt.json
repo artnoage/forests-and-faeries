@@ -103,7 +103,7 @@
   {
    "id": "ghoul_pack",
    "name": "Ghoul Pack",
-   "difficulty": "Medium",
+   "difficulty": "Easy",
    "blurb": "A ghast and four ghouls against Guy and Curogana. Paralysing claws and a sickening stench.",
    "theme": "catacombs",
    "party": [
@@ -161,7 +161,7 @@
   {
    "id": "haunting",
    "name": "Haunting",
-   "difficulty": "Medium",
+   "difficulty": "Easy",
    "blurb": "Four specters and five shadows. They drain life and strength.",
    "theme": "caverns",
    "party": [
@@ -244,7 +244,7 @@
   {
    "id": "wights_retinue",
    "name": "Wight's Retinue",
-   "difficulty": "Medium",
+   "difficulty": "Easy",
    "blurb": "A wight with sixteen zombies. Life Drain lowers maximum HP.",
    "theme": "reliquary",
    "party": [
@@ -367,7 +367,7 @@
   {
    "id": "two_wights",
    "name": "Two Wights",
-   "difficulty": "Hard",
+   "difficulty": "Medium",
    "blurb": "Two wights and three ghouls. Life Drain and paralysing claws.",
    "theme": "sanctum",
    "party": [
@@ -503,7 +503,7 @@
   {
    "id": "mummies_tomb",
    "name": "The Mummies' Tomb",
-   "difficulty": "Hard",
+   "difficulty": "Medium",
    "blurb": "Two mummies, a wight, a ghast and a zombie, against four heroes with Chruna the berserker.",
    "theme": "reliquary",
    "party": [
