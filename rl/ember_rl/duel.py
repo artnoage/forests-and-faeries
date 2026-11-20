@@ -89,6 +89,9 @@ class Trainer:
         self.args = args
         self.torch = torch
         self.device = torch.device(args.device)
+        if self.device.type == 'cuda':
+            # Variable rollout shapes otherwise trigger repeated cuDNN attention planning.
+            torch.backends.cuda.enable_cudnn_sdp(getattr(args, 'cudnn_sdp', False))
         torch.manual_seed(args.seed)
         self.rng = random.Random(args.seed)
         self.np_rng = np.random.default_rng(args.seed)
@@ -1214,6 +1217,9 @@ def add_ember_arguments(p):
                    help='group greedy search forwards by legal action count to reduce decoder padding')
     g.add_argument('--compile-policy', action='store_true',
                    help='compile bucketed general-model policy, critic and PPO forwards on CUDA')
+    g.add_argument('--cudnn-sdp', action='store_true',
+                   help='allow cuDNN attention for CUDA PPO (default off for variable rollout shapes). '
+                        'Use a fresh Inductor cache when changing this option.')
     g.add_argument('--cuda-graph-leaves', action='store_true',
                    help='replay small inference-only value batches with bounded CUDA graphs')
     g.add_argument('--env-scores', choices=('auto', 'on', 'off'), default='auto',
