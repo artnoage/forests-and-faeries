@@ -11,7 +11,7 @@
   "chruna": "2026-11-18 (rigged from the raw Tripo mesh, mesh_source.tripo.raw_model_sha256)",
   "animated_armor": "2026-11-20 (SRD 5.2.1 Medium Construct, rigged from the raw Tripo mesh)",
   "kobold_warrior": "2026-11-20 (SRD 5.2.1 Small Dragon, rigid bone-parented Kobold_Dagger on Weapon.R + Tail.1/Tail.2)",
-  "six-hero polish (guy, mara, elion, ilyra, curogana, chruna)": "2026-11-20 (rigid bone-parented weapons/shields/staves, two-handed Chruna halberd IK, zero-slide Leg-IK walk/run cycles, smooth clip crossfading in skinned-cast.js)"
+  "six-hero polish (guy, mara, elion, ilyra, curogana, chruna)": "2026-11-20 (watertight --weld meshes from raw Tripo masters with 0 UV-seam cracks, rigid bone-parented weapons/shields/staves, two-handed Chruna halberd IK, zero-slide Leg-IK walk/run cycles, smooth clip crossfading in skinned-cast.js)"
  },
  "figures": [
   {
@@ -98,9 +98,9 @@
   {
    "kind": "chruna",
    "file": "game/static/models/chruna.glb",
-   "sha256": "64fa164692e5f3a2dbc73c2d03642d4e4fc7a4a7a3fa5b32005d9cd0843507c3",
-   "bytes": 1522184,
-   "triangles": 18060,
+   "sha256": "347b288c695ab9e31274aca11073d0d365d4c0268e9249645429944105a4535c",
+   "bytes": 1430080,
+   "triangles": 18089,
    "bones": 23,
    "clips": [
     "arrow",
@@ -141,9 +141,9 @@
   {
    "kind": "curogana",
    "file": "game/static/models/curogana.glb",
-   "sha256": "5e7af2fab0a630cb21bf06b98a8092b90698912673a3e724a45302bcd13e1381",
-   "bytes": 1298776,
-   "triangles": 17999,
+   "sha256": "180adead51bbfdf3886668c795298520086fec31e79bf28fdbf99fc81ff3f288",
+   "bytes": 1157788,
+   "triangles": 18000,
    "bones": 20,
    "clips": [
     "cast",
@@ -180,9 +180,9 @@
   {
    "kind": "elion",
    "file": "game/static/models/elion.glb",
-   "sha256": "81fc8635f4bcbe53aac1dccdca57eeddb5745fa3b116f20ca632b40c393a90f8",
-   "bytes": 1426336,
-   "triangles": 18028,
+   "sha256": "d414f7cd003f075b1401539e12d7088ee5b117742899a094a64ba92bc7b703fb",
+   "bytes": 1287476,
+   "triangles": 18133,
    "bones": 22,
    "clips": [
     "cast",
@@ -373,9 +373,9 @@
   {
    "kind": "guy",
    "file": "game/static/models/guy.glb",
-   "sha256": "bf311be295d0e94b8c0c678ccce2aa4ccc3aecf5c666a8047e2a962da700bd95",
-   "bytes": 1378316,
-   "triangles": 18040,
+   "sha256": "9138b31a949ed020f70afbf9c454a0e058b91ec387a297d8c9f8035494995f8e",
+   "bytes": 1280876,
+   "triangles": 18074,
    "bones": 21,
    "clips": [
     "arrow",
@@ -415,9 +415,9 @@
   {
    "kind": "ilyra",
    "file": "game/static/models/ilyra.glb",
-   "sha256": "b7bedfab1762f9ce3d6cfa62b98ec5e447829358585c4c5ce3a69b9d20aabee5",
-   "bytes": 1251904,
-   "triangles": 17604,
+   "sha256": "37695163ffe08347c12ca34cc425fd88d3f7a0e082ac79b96e07b651bd21c825",
+   "bytes": 1195776,
+   "triangles": 17641,
    "bones": 21,
    "clips": [
     "arrow",
@@ -458,9 +458,9 @@
   {
    "kind": "mara",
    "file": "game/static/models/mara.glb",
-   "sha256": "a13fa8048911f6e8e9a5babe09796d66e84d5846b7fbd44ac24d7ca2c3b05f48",
-   "bytes": 1293828,
-   "triangles": 17042,
+   "sha256": "d88651957ab413cb48ed699b0b13a1e38a23528540602c5da91bc32782e6966a",
+   "bytes": 1256368,
+   "triangles": 17064,
    "bones": 22,
    "clips": [
     "arrow",
