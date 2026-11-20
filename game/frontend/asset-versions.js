@@ -5,7 +5,7 @@ export const ASSET_VERSIONS = Object.freeze({
   'models/animated_armor.glb': '13dc51016a1f',
   'models/chruna.glb': '347b288c695a',
   'models/curogana.glb': '180adead51bb',
-  'models/elion.glb': 'd414f7cd003f',
+  'models/elion.glb': 'b60f30dc2841',
   'models/ghast.glb': '6371391d8711',
   'models/ghoul.glb': '16aa31da33b2',
   'models/goblin.glb': 'f73621e500a9',

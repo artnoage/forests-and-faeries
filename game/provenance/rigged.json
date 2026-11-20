@@ -180,7 +180,7 @@
   {
    "kind": "elion",
    "file": "game/static/models/elion.glb",
-   "sha256": "d414f7cd003f075b1401539e12d7088ee5b117742899a094a64ba92bc7b703fb",
+   "sha256": "b60f30dc284151ee18f7e53745bd33a4dcf9e1e1d7ad569f3cfde44ab79fda84",
    "bytes": 1287476,
    "triangles": 18133,
    "bones": 22,
