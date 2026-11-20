@@ -12,6 +12,7 @@ export const ASSET_VERSIONS = Object.freeze({
   'models/goblin_boss.glb': '5c70d30fc977',
   'models/guy.glb': 'd0dd7e6d0f8d',
   'models/ilyra.glb': '1fbf3a329c80',
+  'models/kobold_warrior.glb': '46cbf51bb710',
   'models/mara.glb': '4377ee6a4f73',
   'models/mummy.glb': 'e5329cfb5594',
   'models/shadow.glb': '2f42b2566caa',

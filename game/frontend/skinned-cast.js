@@ -24,10 +24,11 @@ export const CAST_MODELS = Object.freeze({
   specter:     Object.freeze({ file: 'models/specter.glb',     height: 1.32, group: 'undead', ghost: 0.74, glow: '#8fc5ff', glowIntensity: 0.32 }),
   wight:       Object.freeze({ file: 'models/wight.glb',       height: 1.38, group: 'undead', glow: '#1a332b', glowIntensity: 0.14 }),
   mummy:       Object.freeze({ file: 'models/mummy.glb',       height: 1.34, group: 'undead' }),
-  // Goblins & constructs
+  // Goblins, kobolds & constructs
   goblin:         Object.freeze({ file: 'models/goblin.glb',         height: 0.98, group: 'monster' }),
   goblin_boss:    Object.freeze({ file: 'models/goblin_boss.glb',    height: 1.08, group: 'monster' }),
   animated_armor: Object.freeze({ file: 'models/animated_armor.glb', height: 1.36, group: 'monster' }),
+  kobold_warrior: Object.freeze({ file: 'models/kobold_warrior.glb', height: 0.94, group: 'monster' }),
 });
 
 export const CAST_KEYS = Object.freeze(Object.keys(CAST_MODELS));

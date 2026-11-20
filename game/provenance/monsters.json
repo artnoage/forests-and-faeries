@@ -1,14 +1,14 @@
 {
-  "what": "3D miniatures for the SRD 5.2.1 progression monster batch (Animated Armor CR 1; Kobold Warrior CR 1/8 pending wallet top-up).",
+  "what": "3D miniatures for the SRD 5.2.1 progression monster batch (Animated Armor CR 1 and Kobold Warrior CR 1/8).",
   "made": "2026-11-20, for Forests and Faeries, at the maintainer's request.",
   "design": "Original, generic fantasy miniatures matching the SRD 5.2.1 stat blocks and the matte tabletop-miniature style of the existing heroes, undead and goblins. No third-party geometry, textures, armatures or animation data.",
   "pipeline": [
     "Reference images: original front and matching 180-degree back turnaround views generated via Gemini image generation in the project's stylized tabletop-miniature palette and neutral A-pose.",
-    "Meshes: Tripo API v3 multiview-to-model (front + back), model v3.1-20260211, standard geometry, detailed PBR texture, 40 credits each, on the maintainer's Tripo API account under a code-enforced 250-credit cumulative cap.",
-    "Rigged copies: Blender 5.2.3, welded single-shell mesh decimated to 18k triangles, 1024 px WebP Color/Normal/ORM textures, normalized to face glTF -Z with feet grounded at y=0, 20-bone armature with geodesic bone weights and 9 procedural combat clips."
+    "Meshes: Tripo API v3 multiview-to-model (front + back), model v3.1-20260211, standard geometry, detailed PBR texture, 40 credits each, on the maintainer's Tripo API account under a code-enforced 250-credit cumulative cap (80.0 / 250.0 spent).",
+    "Rigged copies: Blender 5.2.3, welded single-shell mesh decimated to ~18k triangles, 1024 px WebP Color/Normal/ORM textures, normalized to face glTF -Z with feet grounded at y=0, geodesic bone weights, rigid bone-parented weapon sockets where held (Kobold_Dagger on Weapon.R), and 9 procedural combat clips."
   ],
   "rights": "Generated with the maintainer's own accounts under the terms that applied at the time; no third-party asset is included.",
-  "tripo_credits_total": 40.0,
+  "tripo_credits_total": 80.0,
   "models": [
     {
       "kind": "animated_armor",
@@ -37,6 +37,38 @@
         "front_sha256": "f3998e2301b805da6744aa251f86fe3365df05d119e5a4f64067ea39479edb2d",
         "back_sha256": "f3514ed9ac82fe7fd0e63a6af91acf2eef7a24f96ac634bf0a34e0b3a760849d",
         "subject": "Animated Armor (SRD 5.2.1 Medium Construct, CR 1): empty haunted full suit of weathered dark gunmetal-iron gothic plate armor with tarnished antique-bronze trim and rivets, fluted closed helmet with faint pale-cyan arcane glow deep inside the narrow visor slit, subtle etched arcane chest sigil, layered pauldrons, short articulated hip tassets over dark iron chainmail skirt (clean gap between legs), empty articulated gauntlets (Slam attacks), greaves, and stout iron sabatons. Generic fantasy construct, original design."
+      }
+    },
+    {
+      "kind": "kobold_warrior",
+      "file": "game/static/models/kobold_warrior.glb",
+      "sha256": "46cbf51bb710879c35ac400c491fe166a30b547ac53a49549393a544ee50c79d",
+      "bytes": 1239212,
+      "triangles": 18041,
+      "height": 0.94,
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "rigid_weapons": {
+        "Kobold_Dagger": "Weapon.R"
+      },
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": true,
+      "source_triangles": 1462258,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "d276f95d-7605-4c30-9dec-7bbf340cfca3",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "cd0803957af78e9bc3807294466216527010fe5d573c53cf44080f83e356806e",
+        "web_model_sha256": "b6f693392941c37e950ad010a442a894b451f6c73f52a1cc0f90a175f19bf2ae"
+      },
+      "references": {
+        "front_sha256": "8afb8e099b82e50073a36adfdeee2072f21d1f570e6780778d2ab17a524ce4c6",
+        "back_sha256": "727cd86da7ff7a8d733d1d793dad858c11806acb2a2f1e4987e35bfb5fdfe0b6",
+        "subject": "Kobold Warrior (SRD 5.2.1 Small Dragon, CR 1/8): small wiry reptilian dragonkin warrior about two-thirds human height with burnt-sienna / terracotta scales, paler tan belly scales, short snout with small sharp teeth, two swept-back dark bone horns, bright amber eyes, and a sturdy scaly tail hanging straight down centered behind its legs. Wears a riveted dark-brown leather vest with shoulder pads over a tattered taupe loincloth, buckled leather belt with two sheathed hip daggers, cloth bracers and shin wraps, bare clawed feet, holding one broad-bladed iron dagger in its right hand (3 daggers total per SRD 5.2.1). Generic fantasy kobold, original design."
       }
     }
   ]

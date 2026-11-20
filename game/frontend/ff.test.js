@@ -32,6 +32,7 @@ test('every hero and monster of the catalogue has a figure', () => {
   assert.equal(resolveCastKey({ content: 'goblin_warrior', team: 'monsters' }), 'goblin');
   assert.equal(resolveCastKey({ content: 'goblin_boss', team: 'monsters' }), 'goblin_boss');
   assert.equal(resolveCastKey({ content: 'animated_armor', team: 'monsters', id: 'animated_armor-1' }), 'animated_armor');
+  assert.equal(resolveCastKey({ content: 'kobold_warrior', team: 'monsters', id: 'kobold_warrior-1' }), 'kobold_warrior');
   for (const base of ['guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna']) {
     for (const lv of [1, 2, 3]) {
       assert.equal(resolveCastKey({ content: `${base}_l${lv}`, base_id: base, level: lv, team: 'heroes', id: `${base}_l${lv}` }), base);
@@ -169,7 +170,8 @@ test('catalogue blurbs list three heroes with commas', () => {
 test('every figure is rigged with the clips the scene plays', async () => {
   const { createHash } = await import('node:crypto');
   const need = { mara: ['slash', 'cast', 'guard'], ilyra: ['cast', 'cast_area'], chruna: ['slash', 'cast', 'guard'], goblin: ['slash', 'arrow'],
-    goblin_boss: ['slash', 'arrow'], animated_armor: ['slash', 'guard'], guy: ['slash'], elion: ['cast'], curogana: ['cast'] };
+    goblin_boss: ['slash', 'arrow'], animated_armor: ['slash', 'guard'], kobold_warrior: ['slash', 'arrow', 'guard'],
+    guy: ['slash'], elion: ['cast'], curogana: ['cast'] };
   for (const [key, spec] of Object.entries(CAST_MODELS)) {
     const bytes = readFileSync(path.join(ff, 'static', spec.file));
     const doc = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8'));
@@ -181,6 +183,13 @@ test('every figure is rigged with the clips the scene plays', async () => {
     // The scene asks for the content-hashed URL, so a new figure is never a cached old one.
     const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
     assert.equal(versioned(spec.file), `${spec.file}?v=${digest}`, `${key} URL carries its hash`);
+    if (key === 'kobold_warrior') {
+      const nodes = doc.nodes || [];
+      const weap = nodes.find(n => n.name === 'Weapon.R');
+      const dag = nodes.find(n => n.name === 'Kobold_Dagger');
+      assert.ok(weap && dag && dag.mesh !== undefined && dag.skin === undefined, 'Kobold_Dagger is a rigid non-skinned mesh');
+      assert.ok((weap.children || []).map(i => nodes[i]?.name).includes('Kobold_Dagger'), 'Kobold_Dagger is parented under Weapon.R');
+    }
   }
   assert.equal(versioned('not/listed.glb'), 'not/listed.glb');
 });
