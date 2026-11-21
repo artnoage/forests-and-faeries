@@ -115,3 +115,27 @@ def test_magic_initiate_and_a_slot_spell_in_either_order():
     state = game.perform(cast_action(state, 'sanctuary', 'guy')['id'])
     assert state['resources']['action'] == 1
     assert all(a.get('spell') != 'guiding_bolt' for a in state['actions'])
+
+
+def test_defensive_spells_report_the_reaction_and_both_ward_outcomes():
+    outcomes = set()
+    for hero in ('elion', 'ilyra_l3'):
+        game, state = arena(hero, seed=1)
+        if hero == 'elion':
+            ward = next(a for a in state['actions'] if a.get('spell') == 'sanctuary' and a.get('target_id') == hero)
+            state = game.perform(ward['id'])
+        for _ in range(22):
+            for entry in state['log']:
+                text = entry['text']
+                if 'makes the Wisdom save against Sanctuary' in text and 'The attack proceeds.' in text:
+                    outcomes.add('ward passed')
+                if 'fails the Wisdom save against Sanctuary' in text and 'The attack is lost.' in text:
+                    outcomes.add('ward failed')
+                if 'casts Shield as a reaction, spending a level 1 slot for +5 AC.' in text:
+                    outcomes.add('shield')
+            if state['winner'] or state['phase'] == 'finished':
+                break
+            attack = next((a for a in state['actions'] if state['turn_id'].startswith('goblin_minion')
+                           and a.get('target_id') == hero and 'dagger' in a['label'].lower()), None)
+            state = game.perform(attack['id']) if attack else game.end_turn()
+    assert outcomes == {'shield', 'ward passed', 'ward failed'}
