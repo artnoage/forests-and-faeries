@@ -83,6 +83,13 @@ pub enum WebEv {
     ShieldCast {
         u: usize,
         pos: Pos,
+        slot_level: i32,
+    },
+    SanctuarySave {
+        attacker: usize,
+        warded: usize,
+        total: i32,
+        dc: i32,
     },
     DragonsBreathBuff {
         caster: usize,

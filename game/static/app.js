@@ -348,6 +348,11 @@
     const cls = unit.class || niceName(unit.content || unit.kind || (unit.team === 'heroes' ? 'adventurer' : 'creature'));
     return `${includeLevel && unit.level ? 'Lv ' + unit.level + ' · ' : ''}${sub ? sub.charAt(0).toUpperCase() + sub.slice(1) + ' ' : ''}${cls}`;
   }
+  function conditionLabels(unit) {
+    const conditions = (unit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c));
+    return [...new Set([...conditions, ...(unit.marks || [])].filter(Boolean))];
+  }
+
   function lifeText(unit) {
     if (unit.alive !== false) return null;
     return unit.dead || (unit.conditions || []).includes('dead') ? 'Dead' : 'Unconscious';
@@ -390,7 +395,7 @@
     if (!hoveredUnit && !matchingAct) { tip.hidden = true; return; }
     const parts = [];
     if (hoveredUnit) {
-      const conds = [lifeText(hoveredUnit), ...(hoveredUnit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c)), ...(hoveredUnit.marks || [])].filter(Boolean).join(', ');
+      const conds = [lifeText(hoveredUnit), ...conditionLabels(hoveredUnit)].filter(Boolean).join(', ');
       parts.push(`<div class="tt-head"><span>${escape(hoveredUnit.name)}</span><span class="tt-coord">${escape(cellName(x, y))}</span></div>`);
       parts.push(`<div class="tt-sub">HP <b>${escape(hoveredUnit.hp)}/${escape(hoveredUnit.max_hp)}</b>${hoveredUnit.ac ? ` · AC <b>${escape(hoveredUnit.ac)}</b>` : ''}${conds ? ` · ${escape(conds)}` : ''}</div>`);
     } else {
@@ -669,7 +674,7 @@
 
   function rosterButton(u, extra = '') {
     const hp = u.hp ?? u.max_hp ?? 1, maxHp = u.max_hp ?? 1;
-    const conds = [...(u.conditions || []).filter(c => !['dead', 'unconscious'].includes(c)), ...(u.marks || [])].filter(Boolean);
+    const conds = conditionLabels(u);
     const placed = state.units.some(p => p.id === u.id);
     const clsText = nativeClass(u, u.team !== 'heroes');
     const meta = !placed && state.phase === 'setup' ? `${clsText} · not placed`
@@ -705,7 +710,7 @@
     const inspected = targets().find(u => u.id === inspectedId) || unit;
     $('zoom-inspected-btn').disabled = !inspected || sceneUnavailable;
     if (inspected) {
-      const condText = [lifeText(inspected), ...(inspected.conditions || []).filter(c => !['dead', 'unconscious'].includes(c)), ...(inspected.marks || [])].filter(Boolean).join(' · ') || 'No conditions';
+      const condText = [lifeText(inspected), ...conditionLabels(inspected)].filter(Boolean).join(' · ') || 'No conditions';
       $('inspect-content').innerHTML = `<h3>${escape(inspected.name)}${heroLevelBadge(inspected, 'actor-lv-pill')}</h3><p>${escape(nativeClass(inspected, inspected.team !== 'heroes'))}</p>${inspected.description ? `<p class="inspect-description">${escape(inspected.description)}</p>` : ''}<div class="inspection-stats"><span>HP ${escape(inspected.hp)}/${escape(inspected.max_hp)}</span>${inspected.ac ? `<span>AC ${escape(inspected.ac)}</span>` : ''}<span>${escape(cellName(inspected.x || 0, inspected.y || 0))}</span>${inspected.str_loss ? `<span>STR −${escape(inspected.str_loss)}</span>` : ''}${inspected.id === state.turn_id ? '<span class="acting">acting now</span>' : ''}</div><span class="inspection-conditions">${escape(condText)}</span>${sheetHtml(inspected, true)}`;
     } else {
       $('inspect-content').innerHTML = '<h3>Inspector</h3><p>Click a figure or portrait to see its traits, attacks and spells.</p>';

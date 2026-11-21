@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-const CURRENT_WEB_REPLAY_VERSION: u8 = 4;
+const CURRENT_WEB_REPLAY_VERSION: u8 = 5;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -543,6 +543,7 @@ impl WebArena {
         )?;
         fight.champion_moves_enabled = self.replay_version >= 2;
         fight.creature_space_rules = self.replay_version >= 3;
+        fight.legacy_v4_rules = self.replay_version < 5;
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
         self.fight_to_roster = fight_to_roster;
@@ -1232,7 +1233,20 @@ impl WebArena {
                         }
                     }
                 }
-                WebEv::ShieldCast { u, pos } => {
+                WebEv::SanctuarySave { attacker, warded, total, dc } => {
+                    if self.replay_version >= 5 {
+                        let name = self.unit_display_name(attacker);
+                        let target = self.unit_display_name(warded);
+                        let result = if total >= dc { "makes" } else { "fails" };
+                        let effect = if total >= dc { "the attack proceeds" } else { "the attack is lost" };
+                        self.push_log(&format!("{name} {result} the Wisdom save against Sanctuary on {target} ({total} vs DC {dc}). {effect}."), "status", round);
+                    }
+                }
+                WebEv::ShieldCast { u, pos, slot_level } => {
+                    if self.replay_version >= 5 {
+                        let name = self.unit_display_name(u);
+                        self.push_log(&format!("{name} casts Shield as a reaction, spending a level {slot_level} slot for +5 AC."), "status", round);
+                    }
                     let uid = self.fight.as_ref().unwrap().units[u].id.clone();
                     let mut m = Map::new();
                     m.insert("type".into(), json!("attack"));

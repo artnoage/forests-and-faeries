@@ -1702,6 +1702,7 @@ impl Fight {
         let able = self.units[t].has_reaction()
             && self.units[t].conscious()
             && !self.has_spell_effect(t, EffKey::AcBonus, SpellId::Shield)
+            && (self.legacy_v4_rules || !self.spent_slot_this_turn(t))
             && self.next_slot(t, 1).is_some();
         // not offered on a natural 20 (still hits) or a natural 1 (N20-011)
         if nat20 || nat1 {
@@ -1728,17 +1729,20 @@ impl Fight {
         chosen.as_ref()?;
         let unit = &mut self.units[t];
         unit.reaction = (unit.reaction - 1).max(0);
-        unit.slots[at_level as usize] = (unit.slots[at_level as usize] - 1).max(0);
+        unit.slots[at_level as usize] -= 1;
+        if !self.legacy_v4_rules {
+            unit.last_slot_turn = Some((self.round, self.turn_idx));
+        }
         Some((!nat20 && total < ac + 5, at_level))
     }
 
     /// `ShieldSpell.apply` (at the attack's commit).
-    pub fn apply_shield(&mut self, t: usize) {
+    pub fn apply_shield(&mut self, t: usize, slot_level: i32) {
         let obj = self.new_obj(SpellId::Shield, ObjKind::Spell, t, vec![t], false);
         self.add_casted(t, t, obj, None);
         self.register_effect(t, EffKey::AcBonus, obj, Some(8 * 60 * 60));
         self.register_hook(t, HookEv::StartOfTurn, HookKind::ShieldStart, obj, None);
         let pos = self.units[t].pos;
-        self.emit_web(crate::web_events::WebEv::ShieldCast { u: t, pos });
+        self.emit_web(crate::web_events::WebEv::ShieldCast { u: t, pos, slot_level });
     }
 }

@@ -570,6 +570,10 @@ impl Fight {
         (min_level.max(1)..=2).find(|&l| slots[l as usize] > 0)
     }
 
+    pub(crate) fn spent_slot_this_turn(&self, u: usize) -> bool {
+        self.units[u].last_slot_turn == Some((self.round, self.turn_idx))
+    }
+
     /// `SpellAction.can_cast` (and the `spell_list` disable reasons).
     fn can_cast(&self, u: usize, spell: SpellId) -> bool {
         let unit = &self.units[u];
@@ -583,8 +587,8 @@ impl Fight {
         if spell == SpellId::Shield {
             return false;
         }
-        // 2024: one spell slot per turn (free casts count as level-1 casts)
-        if level > 0 && unit.casted_spells.iter().any(|&l| l > 0) {
+        let needs_slot = level > 0 && (self.legacy_v4_rules || !unit.free_casts.contains(&spell));
+        if needs_slot && self.spent_slot_this_turn(u) {
             return false;
         }
         if spell.bonus_action() {
@@ -1564,15 +1568,18 @@ impl Fight {
             unit.action = (unit.action - 1).max(0);
         }
         let level = if c.spell.level() > 0 { c.at_level } else { 0 };
-        unit.casted_spells.push(level);
         if c.free {
+            if self.legacy_v4_rules {
+                unit.last_slot_turn = Some((self.round, self.turn_idx));
+            }
             if let Some(i) = unit.free_casts.iter().position(|&s| s == c.spell) {
                 unit.free_casts.remove(i);
             }
         } else if level > 0 {
             let l = if unit.slots[level as usize] >= 1 { Some(level) } else { (level.max(1)..=2).find(|&x| unit.slots[x as usize] > 0) };
             if let Some(l) = l {
-                unit.slots[l as usize] = (unit.slots[l as usize] - 1).max(0);
+                unit.slots[l as usize] -= 1;
+                unit.last_slot_turn = Some((self.round, self.turn_idx));
             }
         }
         if c.spell.consumed_holy_water() {

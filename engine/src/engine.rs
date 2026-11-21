@@ -112,8 +112,8 @@ pub struct Unit {
     pub holy_water: i32,
     pub sorcery_points: i32,
     pub innate_sorcery: i32,
-    /// `battle.entity_state_for(e)['casted_spells']` levels this turn.
-    pub casted_spells: Vec<i32>,
+    /// Battle turn on which this creature last expended a slot to cast a spell.
+    pub last_slot_turn: Option<(i32, usize)>,
     pub concentration: Option<u32>,
     /// `entity.effects` (key order as inserted, as in the Python dict).
     pub effects: Vec<(EffKey, Vec<EffEntry>)>,
@@ -519,6 +519,8 @@ pub struct Fight {
     pub champion_moves_enabled: bool,
     /// Version 3 movement costs and occupied-space crossings.
     pub creature_space_rules: bool,
+    /// Web recordings through v4 used the old native movement and casting policies.
+    pub(crate) legacy_v4_rules: bool,
     pub(crate) interactive_champion: Option<usize>,
     /// The map, shared by every fight on it.
     pub grid: Arc<Grid>,
@@ -631,7 +633,7 @@ impl Fight {
                 holy_water: t.caster.as_ref().map_or(0, |c| c.holy_water),
                 sorcery_points: t.caster.as_ref().map_or(0, |c| c.sorcery_points),
                 innate_sorcery: t.caster.as_ref().map_or(0, |c| c.innate_sorcery),
-                casted_spells: Vec::new(),
+                last_slot_turn: None,
                 concentration: None,
                 effects: Vec::new(),
                 hooks: Vec::new(),
@@ -678,6 +680,7 @@ impl Fight {
             pool,
             champion_moves_enabled: true,
             creature_space_rules: true,
+            legacy_v4_rules: false,
             interactive_champion: None,
             grid,
             units,
@@ -1175,7 +1178,6 @@ impl Fight {
         unit.disengage = false;
         unit.ma_started = false;
         unit.two_weapon = false;
-        unit.casted_spells.clear();
         unit.cleave = None;
         unit.cleave_used = false;
         self.expire_mastery(u);
@@ -1919,6 +1921,7 @@ impl Fight {
             if let Some(obj) = self.last_effect(tgt, EffKey::TargetingWard) {
                 if let crate::effects::ObjKind::Sanctuary { dc, .. } = self.objs[obj as usize].kind {
                     let total = self.save_throw(src, Ability::Wis);
+                    self.emit_web(crate::web_events::WebEv::SanctuarySave { attacker: src, warded: tgt, total, dc });
                     if total < dc {
                         self.spend_attack(src, atk, reaction, cleave);
                         return;
@@ -2039,8 +2042,8 @@ impl Fight {
         for (holder, obj) in std::mem::take(&mut dismiss) {
             self.dismiss_effect(holder, obj);
         }
-        if shield_cast.is_some() {
-            self.apply_shield(tgt);
+        if let Some(slot_level) = shield_cast {
+            self.apply_shield(tgt, slot_level);
         }
         if !hit {
             // `consume_resource` of the miss item (an attack roll was made)

@@ -322,7 +322,7 @@ impl Game {
         cfg: &EnvConfig,
         pool: &'static ContentPool,
     ) -> Result<Game, String> {
-        Self::with_rule_version(entry, spec, teams, units, cfg, pool, 3)
+        Self::with_rule_version(entry, spec, teams, units, cfg, pool, 4)
     }
 
     /// Start on the rules of a recorded game, before the first decision.
@@ -353,6 +353,7 @@ impl Game {
         let mut fight = Fight::on_map(pool, entry.grid.clone(), &entry.units, &placed.placements, max_rounds, Trace::free(spec.dice_seed))?;
         fight.champion_moves_enabled = version >= 2;
         fight.creature_space_rules = version >= 3;
+        fight.legacy_v4_rules = version < 4;
         let start_hp = fight.units.iter().map(|u| u.hp).collect();
         let env = Env::new(fight, Control { teams, external_units }, cfg.scores);
         let mut game = Game {
@@ -667,7 +668,7 @@ impl Game {
         });
         let s = &self.spec;
         let header = Header {
-            version: if self.env.fight.creature_space_rules { 3 } else if self.env.fight.champion_moves_enabled { 2 } else { 1 },
+            version: if !self.env.fight.legacy_v4_rules { 4 } else if self.env.fight.creature_space_rules { 3 } else if self.env.fight.champion_moves_enabled { 2 } else { 1 },
             n20_commit: NATURAL20_COMMIT.trim().to_string(),
             units: e.units.clone(),
             placements: self.placed.placements.clone(),

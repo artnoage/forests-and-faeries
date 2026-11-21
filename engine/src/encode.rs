@@ -1579,7 +1579,7 @@ fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
     let ma_left = if t.multiattack.is_empty() { 0 } else { u.ma_groups.iter().map(|(_, v)| v.len()).max().unwrap_or(0) };
     row[ci!("multiattack_left_div3")] = ma_left as f32 / 3.0;
     row[ci!("action_surge_active")] = b(u.action_surge_flag);
-    row[ci!("slot_spell_cast")] = b(u.casted_spells.iter().any(|&l| l > 0));
+    row[ci!("slot_spell_cast")] = b(f.spent_slot_this_turn(i));
     // class resources
     row[ci!("slots_l1_div4")] = u.slots[1] as f32 / 4.0;
     row[ci!("slots_l2_div4")] = u.slots[2] as f32 / 4.0;

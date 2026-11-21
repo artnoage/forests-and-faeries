@@ -12,11 +12,16 @@
 //! probability or mean. Candidates are scored in canonical order, so the
 //! draw sequence is reproducible.
 
+use std::collections::VecDeque;
+
 use crate::dice::{expected, expected_die, plus_string_modifier, prob_at_least, save_fail_chance};
 use crate::engine::{Act, Fight};
 use crate::map::Pos;
 use crate::path::PathCompute;
 use crate::tape::Ev;
+
+// A legal option that the native monster policy will never choose.
+const SKIP_NATIVE: f64 = -1000.0;
 
 /// What `_observe_enemies` sees: visible conscious enemies with a path.
 pub struct Observed {
@@ -58,6 +63,9 @@ pub struct MoveCache {
     mask: crate::map::Bits,
     /// By cell: the destination's `min_steps_to_multiple`, once computed.
     steps: Vec<Option<Option<i32>>>,
+    occupied: crate::map::Bits,
+    pursuit: Vec<u16>,
+
 }
 
 impl Fight {
@@ -497,6 +505,44 @@ impl Fight {
         hit_chance * avg
     }
 
+    /// Shortest placeable one-square path to a visible enemy or its last known square.
+    /// Start at the targets so a single traversal covers every candidate, including detours.
+    fn pursuit_distances(&self, targets: &[Pos], occupied: &crate::map::Bits) -> Vec<u16> {
+        let mut distances = vec![u16::MAX; self.grid.cells()];
+        let mut queue = VecDeque::new();
+        for &(x, y) in targets {
+            let i = self.grid.index(x, y);
+            distances[i] = 0;
+            queue.push_back(i);
+        }
+        while let Some(i) = queue.pop_front() {
+            let (x, y) = self.grid.pos_of(i);
+            for nx in x - 1..=x + 1 {
+                for ny in y - 1..=y + 1 {
+                    if self.grid.is_wall(nx, ny) {
+                        continue;
+                    }
+                    let j = self.grid.index(nx, ny);
+                    if distances[j] == u16::MAX && !occupied.get(j) {
+                        distances[j] = distances[i] + 1;
+                        queue.push_back(j);
+                    }
+                }
+            }
+        }
+        distances
+    }
+
+    fn throws_last_melee_weapon(&self, u: usize, atk: usize) -> bool {
+        let unit = &self.units[u];
+        let attack = &unit.t.attacks[atk];
+        let Some(item) = attack.npc_item else { return false };
+        attack.thrown && attack.melee_type && unit.items[item as usize] == 1
+            && !unit.t.attacks.iter().enumerate().any(|(i, other)| {
+                !other.ranged && other.melee_type && other.npc_item != Some(item) && self.attack_available(u, i)
+            })
+    }
+
     /// `GenericController._sort_actions_with_scores` then the
     /// `UndeadController` adjustments. Returns the final list (candidate
     /// index into `cands`, score) and the native scores. With `rows`, also
@@ -541,9 +587,39 @@ impl Fight {
             cache.flying = flying;
             cache.targets.clone_from(&targets);
             cache.mask.clone_from(&mask);
+            cache.pursuit.clear();
             cache.steps.clear();
             cache.steps.resize(self.grid.cells(), None);
         }
+        let pursuit = !self.legacy_v4_rules && !self.units[u].t.pc
+            && cands.iter().any(|a| matches!(a, Act::Dash | Act::Move(_)));
+        if pursuit {
+            let mut occupied = crate::map::Bits::new(self.grid.cells());
+            for (i, other) in self.units.iter().enumerate() {
+                if i != u && self.token_at(other.pos) == Some(i) {
+                    occupied.set(self.grid.index(other.pos.0, other.pos.1));
+                }
+            }
+            if cache.pursuit.is_empty() || cache.occupied != occupied {
+                cache.pursuit = self.pursuit_distances(&targets, &occupied);
+                cache.occupied = occupied;
+            }
+        }
+        let closes_distance = |p: Pos| {
+            let current = cache.pursuit[self.grid.index(upos.0, upos.1)];
+            let next = cache.pursuit[self.grid.index(p.0, p.1)];
+            current != u16::MAX && current > 1 && next > 0 && next < current
+        };
+        let ordinary_progress = pursuit && cands.iter().any(|a| matches!(a, Act::Move(path) if path.last().is_some_and(|p| closes_distance(*p))));
+        let can_pursue_with_dash = pursuit && !ordinary_progress && cands.iter().any(|a| matches!(a, Act::Dash))
+            && self.speed_of(u) > 0 && (-1..=1).any(|dx| (-1..=1).any(|dy| {
+                let dest = (upos.0 + dx, upos.1 + dy);
+                if !self.placeable(u, dest) || !closes_distance(dest) {
+                    return false;
+                }
+                let budget = (self.units[u].available_movement() + self.speed_of(u)) / 5;
+                self.compute_actual_moves(u, &[upos, dest], budget).0.len() == 2
+            }));
         let grid = self.grid.clone();
         let mut pc = PathCompute::new(&grid, prone, flying, mask);
         if !targets.is_empty() && has_moves {
@@ -574,8 +650,11 @@ impl Fight {
         let mut scores = Vec::with_capacity(cands.len());
         for act in cands {
             let s = match act {
+                Act::Attack { atk, .. } | Act::BlindAttack { atk, .. }
+                    if !self.legacy_v4_rules && self.throws_last_melee_weapon(u, *atk) => SKIP_NATIVE,
                 Act::Attack { atk, target, .. } => self.ai_attack_value(u, *atk, *target),
                 Act::BlindAttack { atk, heard, .. } => self.ai_blind_value(u, *atk, *heard),
+                Act::Move(path) if pursuit && !path.last().is_some_and(|p| closes_distance(*p)) => SKIP_NATIVE,
                 Act::Move(path) => {
                     if path.len() < 2 {
                         -2.0
@@ -616,9 +695,10 @@ impl Fight {
                         if !self.opportunity_attacks(u, path).is_empty() {
                             s -= 1.0;
                         }
-                        s
+                        if pursuit { s.max(0.2) } else { s }
                     }
                 }
+                Act::Dash if pursuit && !can_pursue_with_dash => SKIP_NATIVE,
                 Act::SecondWind => self.score_second_wind(u),
                 Act::Dash | Act::Dodge => 0.1,
                 // `DisengageBonusAction` has no `ai_value`: 0 (the action
@@ -652,7 +732,7 @@ impl Fight {
             if matches!(cands[i], Act::ActionSurge) {
                 s = if self.enemy_within(u, 1) && self.units[u].action <= 0 { 1.0 } else { -1.0 };
             }
-            let dropped = s < 0.0 && !matches!(cands[i], Act::Move(_) | Act::Attack { .. } | Act::BlindAttack { .. });
+            let dropped = s == SKIP_NATIVE || (s < 0.0 && !matches!(cands[i], Act::Move(_) | Act::Attack { .. } | Act::BlindAttack { .. }));
             if let Some(r) = rows.as_deref_mut() {
                 r[i] = (s, dropped);
             }
