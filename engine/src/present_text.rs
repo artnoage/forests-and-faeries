@@ -214,7 +214,11 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, r
                     ("Sanctuary", "Level 1, bonus action. Attackers must save before targeting the warded creature."),
                     ("Aid", "Level 2. Up to three allies raise their maximum and current HP by 5."),
                     ("Lesser Restoration", "Level 2, bonus action. End a condition."),
-                    ("Spiritual Weapon", "Level 2, bonus action. A force weapon strikes (1d8 + WIS force); strike again each turn as a bonus action."),
+                    ("Spiritual Weapon", if replay_version >= 7 {
+                        "Level 2, bonus action, concentration. A force weapon strikes for 1d8 + WIS force damage. Strike again each turn as a bonus action."
+                    } else {
+                        "Level 2, bonus action. A force weapon strikes (1d8 + WIS force); strike again each turn as a bonus action."
+                    }),
                     ("Spare the Dying", "Cantrip. Stabilise a dying creature."),
                 ],
             ),

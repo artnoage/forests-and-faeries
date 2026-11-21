@@ -225,7 +225,7 @@ impl Fight {
                 if !self.grid.in_bounds(square.0, square.1) || self.grid.is_wall(square.0, square.1) || square == here {
                     continue;
                 }
-                if crate::map::distance(here, square) * 5 > def.range_max {
+                if self.square_distance(here, square) * 5 > def.range_max {
                     continue;
                 }
                 if !self.grid.line_of_effect(here, square) {
@@ -307,6 +307,7 @@ impl Fight {
         if unit.action > 0 {
             acts.push(Act::Dodge);
             acts.push(Act::Dash);
+            if self.rule_version >= 6 { acts.push(Act::Disengage); }
         }
         if unit.t.second_wind_uses > 0 && unit.bonus > 0 && unit.second_wind_count > 0 && unit.hp < self.max_hp_of(u) {
             acts.push(Act::SecondWind);
@@ -321,6 +322,9 @@ impl Fight {
             acts.push(Act::HideBonus);
         }
         self.move_candidates(u, &mut acts);
+        if self.rule_version >= 6 && !self.units[u].t.pc {
+            acts.extend(crate::batch::movement_paths(self, u, 0, true, None).into_iter().map(Act::Move));
+        }
         // `StandAction.can`: prone, speed > 0, movement for half the speed
         let speed = self.speed_of(u);
         if self.units[u].prone() && speed > 0 && self.units[u].available_movement() >= speed / 2 {
@@ -568,14 +572,15 @@ impl Fight {
         let mut kind_enemy = !targets.is_empty();
         let mut kind_investigate = false;
         let sense_pursuit = self.rule_version >= 5 && !self.units[u].t.pc;
-        if sense_pursuit && targets.is_empty() {
-            // An unseen combatant may already have been heard around a wall.
+        if sense_pursuit && (self.rule_version >= 6 || targets.is_empty()) {
+            // Keep all perceived opponents across a sight boundary. Otherwise a
+            // newly visible enemy can reverse the shortest path every square.
             for (enemy, pos) in self.sensed_split(u).0 {
                 if self.opposing(u, enemy) && self.units[enemy].conscious() && !targets.contains(&pos) {
                     targets.push(pos);
                 }
             }
-            kind_investigate = !targets.is_empty();
+            kind_investigate = !kind_enemy && !targets.is_empty();
         }
         if targets.is_empty() && !self.units[u].mem.investigate.is_empty() {
             targets = self.units[u].mem.investigate.iter().map(|(p, _)| *p).collect();
@@ -606,7 +611,8 @@ impl Fight {
         if pursuit {
             let mut occupied = crate::map::Bits::new(self.grid.cells());
             for (i, other) in self.units.iter().enumerate() {
-                if i != u && self.token_at(other.pos) == Some(i) {
+                if i != u && self.token_at(other.pos) == Some(i)
+                    && (self.rule_version < 6 || !self.passable(u, other.pos)) {
                     occupied.set(self.grid.index(other.pos.0, other.pos.1));
                 }
             }
@@ -614,7 +620,7 @@ impl Fight {
                 let unvisited: Vec<_> = (0..self.grid.cells()).map(|i| self.grid.pos_of(i))
                     .filter(|&p| {
                         let i = self.grid.index(p.0, p.1);
-                        p != upos && !self.grid.is_wall(p.0, p.1) && !occupied.get(i) && !self.units[u].mem.visited.get(i)
+                        p != upos && !self.grid.is_wall(p.0, p.1) && !occupied.get(i) && (self.rule_version < 6 || self.placeable(u, p)) && !self.units[u].mem.visited.get(i)
                     }).collect();
                 cache.pursuit = self.pursuit_distances(&unvisited, &occupied);
                 cache.occupied = occupied;
@@ -631,14 +637,16 @@ impl Fight {
         };
         let ordinary_progress = pursuit && cands.iter().any(|a| matches!(a, Act::Move(path) if path.last().is_some_and(|p| closes_distance(*p))));
         let can_pursue_with_dash = pursuit && !exploring && !ordinary_progress && cands.iter().any(|a| matches!(a, Act::Dash))
-            && self.speed_of(u) > 0 && (-1..=1).any(|dx| (-1..=1).any(|dy| {
+            && self.speed_of(u) > 0 && ((-1..=1).any(|dx| (-1..=1).any(|dy| {
                 let dest = (upos.0 + dx, upos.1 + dy);
                 if !self.placeable(u, dest) || !closes_distance(dest) {
                     return false;
                 }
                 let budget = (self.units[u].available_movement() + self.speed_of(u)) / 5;
                 self.compute_actual_moves(u, &[upos, dest], budget).0.len() == 2
-            }));
+            })) || (self.rule_version >= 6 && crate::batch::movement_paths_with_budget(
+                self, u, 0, true, None, (self.units[u].available_movement() + self.speed_of(u)) / 5
+            ).iter().any(|path| path.last().is_some_and(|p| closes_distance(*p)))));
         let mut pc = PathCompute::new(&grid, prone, flying, mask);
         if !targets.is_empty() && has_moves {
             let paths = pc.compute_paths_to_multiple(upos, &targets);
@@ -721,7 +729,7 @@ impl Fight {
                 Act::Dash | Act::Dodge => 0.1,
                 // `DisengageBonusAction` has no `ai_value`: 0 (the action
                 // versions get 0.1); `HideBonusAction.ai_value` (N20-040)
-                Act::DisengageBonus => 0.0,
+                Act::Disengage | Act::DisengageBonus => 0.0,
                 Act::HideBonus => self.ai_hide_value(u),
                 // `RedirectAttackAction.ai_value`: the ally's current HP
                 Act::RedirectAttack { ally } => self.units[*ally].hp as f64,
@@ -738,6 +746,24 @@ impl Fight {
             scores.push(s);
         }
         self.move_cache = cache;
+        if self.rule_version >= 6 && cands.iter().any(|a| matches!(a, Act::Disengage | Act::DisengageBonus)) {
+            let mut intended = None;
+            for (i, action) in cands.iter().enumerate() {
+                if !matches!(action, Act::Disengage | Act::DisengageBonus)
+                    && intended.map_or(true, |best| scores[i] > scores[best]) { intended = Some(i); }
+            }
+            let withdrawal = intended.and_then(|i| match &cands[i] {
+                Act::Move(path) if scores[i] > SKIP_NATIVE && !self.opportunity_attacks(u, path).is_empty() => Some(scores[i]),
+                _ => None,
+            });
+            for (action, score) in cands.iter().zip(&mut scores) {
+                match action {
+                    Act::Disengage => *score = withdrawal.map_or(SKIP_NATIVE, |v| v + 0.01),
+                    Act::DisengageBonus => *score = withdrawal.map_or(SKIP_NATIVE, |v| v + 0.02),
+                    _ => {}
+                }
+            }
+        }
         // sort desc (stable), then age the investigation markers
         let mut generic: Vec<(usize, f64)> = scores.iter().copied().enumerate().collect();
         generic.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -948,7 +974,8 @@ impl Fight {
     /// `GenericController.opportunity_attack_listener` -> `select_action`.
     pub fn opportunity_attack_listener(&mut self, reactor: usize, target: usize) -> Option<Act> {
         let mut actions = Vec::new();
-        if self.units[reactor].conscious() {
+        let preserve_turn = self.rule_version >= 6 && self.active_turners(target).iter().any(|&cleric| self.allies(reactor, cleric));
+        if self.units[reactor].conscious() && !preserve_turn {
             self.attack_candidates(reactor, true, &mut actions);
         }
         // every candidate that may target the mover is retargeted at it

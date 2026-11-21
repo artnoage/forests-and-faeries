@@ -52,7 +52,8 @@
    "rage": 18,
    "extend_rage": 19,
    "reckless_attack": 20,
-   "cleave": 21
+   "cleave": 21,
+   "disengage": 22
   },
   "effects": {
    "bless": 0,

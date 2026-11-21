@@ -83,10 +83,17 @@ fn native_dash_needs_an_affordable_step_towards_a_known_enemy() {
     let choice = f.external_decision(1, true, 0);
     assert!(matches!(&choice.legal[choice.native_choice.unwrap()], Act::Move(path) if path.last() == Some(&(4, 1))));
 
-    let mut trapped = fight(&["HHHHHHHH", "H......H", "HHHHHHHH"],
-                            &[("guy", 1, 1), ("animated_armor-1", 5, 1), ("skeleton-1", 4, 1)]);
-    trapped.units[2].hp = 0;
-    trapped.units[2].statuses.push(St::Dead);
+    let mut crossing = fight(&["HHHHHHHH", "H......H", "HHHHHHHH"],
+                             &[("guy", 1, 1), ("animated_armor-1", 5, 1), ("skeleton-1", 4, 1)]);
+    crossing.units[2].hp = 0;
+    crossing.units[2].statuses.push(St::Dead);
+    crossing.units[1].action = 1;
+    crossing.units[1].movement = 25;
+    let d = crossing.external_decision(1, true, 0);
+    assert!(matches!(&d.legal[d.native_choice.unwrap()], Act::Move(path) if path.contains(&(4, 1)) && path.last().unwrap().0 < 4));
+
+    let mut trapped = fight(&["HHHHHHHH", "H...H..H", "HHHHHHHH"],
+                            &[("guy", 1, 1), ("animated_armor-1", 5, 1)]);
     trapped.units[1].action = 1;
     trapped.units[1].movement = 25;
     let d = trapped.external_decision(1, true, 0);
@@ -95,6 +102,78 @@ fn native_dash_needs_an_affordable_step_towards_a_known_enemy() {
     trapped.units[1].action = 0;
     let d = trapped.external_decision(1, true, 0);
     assert!(matches!(d.legal[d.native_choice.unwrap()], Act::EndTurn));
+}
+
+#[test]
+fn last_wick_ranges_and_reactions_are_versioned() {
+    let rows = ["HHHHHHHHHHHHH", "H...........H", "H...........H", "H...........H",
+                "H...........H", "H...........H", "H...........H", "H...........H", "HHHHHHHHHHHHH"];
+    let mut f = fight(&rows, &[("elion_l2", 11, 2), ("wight-1", 5, 7), ("wight-2", 6, 7)]);
+    assert_eq!((f.feet(0, 1), f.feet(0, 2)), (30, 25));
+    assert!(f.units.iter().all(|u| u.has_reaction()));
+    f.set_rule_version(5);
+    assert_eq!((f.feet(0, 1), f.feet(0, 2)), (35, 35));
+    assert!(f.units.iter().all(|u| !u.has_reaction()));
+}
+
+#[test]
+fn disengage_protects_a_hero_and_native_reactors_spare_turned_creatures() {
+    let mut f = fight(&["HHHHHHHH", "H......H", "H......H", "HHHHHHHH"],
+                      &[("guy", 3, 1), ("elion_l2", 2, 1), ("ghoul-1", 4, 1)]);
+    let path = [(3, 1), (2, 2), (1, 2)];
+    let hero = 0;
+    f.units[hero].action = 1;
+    f.units[hero].bonus = 1;
+    assert!(!f.opportunity_attacks(hero, &path).is_empty());
+    let d = f.external_decision(hero, true, 0);
+    assert!(d.legal.iter().any(|act| matches!(act, Act::Disengage)));
+    f.order = vec![hero, 1, 2];
+    f.execute(Act::Disengage);
+    assert_eq!((f.units[hero].action, f.units[hero].bonus), (0, 1));
+    assert!(f.opportunity_attacks(hero, &path).is_empty());
+    f.units[2].turned_by.push((1, 600, true));
+    assert!(f.opportunity_attack_listener(hero, 2).is_none());
+    assert!(f.units[hero].has_reaction());
+}
+
+#[test]
+fn dodge_and_prone_depend_on_perception_and_distance() {
+    let mut f = fight(&["HHHHHHHH", "H......H", "H......H", "HHHHHHHH"],
+                      &[("guy", 2, 1), ("skeleton-1", 6, 1)]);
+    let bow = f.units[1].t.attacks.iter().find(|a| a.ranged).unwrap();
+    f.units[0].dodge = true;
+    assert_eq!(f.advantage(1, 0, bow), (false, true));
+    f.units[1].hidden_stealth = Some(40);
+    assert_eq!(f.advantage(1, 0, bow), (true, false));
+    f.units[1].hidden_stealth = None;
+    f.units[0].statuses.extend([St::Unconscious, St::Prone]);
+    assert_eq!(f.advantage(1, 0, bow), (true, true));
+}
+
+#[test]
+fn preserve_life_shares_healing_between_two_downed_allies() {
+    let mut f = fight(&["HHHHHHHH", "H......H", "HHHHHHHH"],
+                      &[("elion", 1, 1), ("guy", 2, 1), ("chruna", 3, 1), ("ghoul-1", 6, 1)]);
+    for u in [1, 2] {
+        f.units[u].hp = 0;
+        f.units[u].statuses.push(St::Unconscious);
+    }
+    let mut splits = f.preserve_life_allocation(0);
+    splits.sort_unstable();
+    assert_eq!(splits.len(), 2);
+    assert_eq!(splits[0].1 + splits[1].1, 15);
+    assert!((splits[0].1 - splits[1].1).abs() <= 1);
+}
+
+#[test]
+fn turned_creature_can_cross_a_plateau_on_its_way_to_safety() {
+    let rows = ["HHHHHHHHH", "H.......H", "HH.HHHHHH", "HH.HHHHHH", "HH.HHHHHH", "HHHHHHHHH"];
+    let mut f = fight(&rows, &[("elion_l2", 2, 4), ("ghoul-1", 4, 1)]);
+    f.units[1].turned_by.push((0, 600, true));
+    f.units[1].movement = 30;
+    let retreat = f.flee_step(1).unwrap();
+    assert_eq!(retreat[..2], [(4, 1), (5, 1)]);
+    assert_eq!(retreat.last(), Some(&(7, 1)));
 }
 
 #[test]

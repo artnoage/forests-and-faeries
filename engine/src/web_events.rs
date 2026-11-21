@@ -90,6 +90,10 @@ pub enum WebEv {
         u: usize,
         pos: Pos,
         slot_level: i32,
+        attacker: usize,
+        attack_name: &'static str,
+        total: i32,
+        ac: i32,
     },
     SanctuarySave {
         attacker: usize,
@@ -103,12 +107,17 @@ pub enum WebEv {
         src_pos: Pos,
         tgt_pos: Pos,
     },
+    MassiveDamage { target: usize, excess: i32, maximum: i32 },
+    ConcentrationSave { target: usize, spell: SpellId, roll: String, dc: i32, passed: bool },
+    OrbLeap { from: usize, to: usize },
+    RayAtCorpse { src: usize, target: usize },
     Graze {
         src: usize,
         tgt: usize,
         src_pos: Pos,
         tgt_pos: Pos,
         dmg: i32,
+        dt: Dmg,
     },
     SecondWind {
         u: usize,
@@ -123,6 +132,7 @@ pub enum WebEv {
         tgt_pos: Pos,
         style_key: &'static str,
         healed: i32,
+        roll: Option<String>,
     },
     TurnUndeadNoTargets {
         cleric: usize,
@@ -148,6 +158,8 @@ pub enum WebEv {
         u: usize,
         pos: Pos,
         success: bool,
+        roll: String,
+        dc: i32,
     },
     StrengthDrain {
         attacker: usize,

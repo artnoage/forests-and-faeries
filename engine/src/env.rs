@@ -270,7 +270,7 @@ impl Fight {
             }
         }
         let mut legal: Vec<Act> = first.iter().map(|&i| cands[i].clone()).collect();
-        if self.creature_space_rules {
+        if self.creature_space_rules && (self.rule_version < 6 || self.units[u].t.pc) {
             legal.extend(crate::batch::movement_paths(self, u, 0, true, None).into_iter().map(Act::Move));
         }
         legal.push(Act::EndTurn);

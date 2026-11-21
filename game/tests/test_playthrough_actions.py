@@ -37,7 +37,7 @@ def test_area_preview_uses_living_targets_and_the_spells_caster_rule():
     assert pools(after)['Level 1 slots'] == pools(before)['Level 1 slots']
     assert next(u for u in after['units'] if u['id'] == 'goblin_minion-1')['dead']
     lines = [entry['text'] for entry in after['log']]
-    darts = [j for j, line in enumerate(lines) if 'magic missile hits Goblin Minion 1' in line]
+    darts = [j for j, line in enumerate(lines) if 'Magic Missile hits Goblin Minion 1' in line]
     assert len(darts) == 3 and max(darts) < lines.index('Goblin Minion 1 falls dead.')
     game.end_turn()
     state = turn(game, 'ilyra_l3')
@@ -57,6 +57,9 @@ def test_area_preview_uses_living_targets_and_the_spells_caster_rule():
             self_hits.add(spell)
     assert {'shatter', 'burning_hands'} <= seen
     assert 'shatter' in self_hits
+    assert any(a.get('spell') == 'acid_splash' and (a.get('x'), a.get('y')) == (1, 1)
+               and a.get('hits') == [] and 'ilyra_l3' in a.get('allies', [])
+               for a in state['actions'])
     paid = next(a for a in state['actions'] if a.get('spell') == 'magic_missile')
     assert 'level 1 slot' in paid['cost']
 
@@ -134,7 +137,9 @@ def test_defensive_spells_report_the_reaction_and_both_ward_outcomes():
                     outcomes.add('ward passed')
                 if 'fails the Wisdom save against Sanctuary' in text and 'The attack is lost.' in text:
                     outcomes.add('ward failed')
-                if 'casts Shield as a reaction, spending a level 1 slot for +5 AC.' in text:
+                if 'casts Shield against' in text:
+                    assert 'attack ' in text and 'vs AC ' in text
+                    assert 'spending a level 1 slot. AC rises to ' in text
                     outcomes.add('shield')
             if state['winner'] or state['phase'] == 'finished':
                 break
@@ -142,3 +147,17 @@ def test_defensive_spells_report_the_reaction_and_both_ward_outcomes():
                            and a.get('target_id') == hero and 'dagger' in a['label'].lower()), None)
             state = game.perform(attack['id']) if attack else game.end_turn()
     assert outcomes == {'shield', 'ward passed', 'ward failed'}
+
+
+def test_potent_cantrip_miss_reports_half_damage_and_the_roll_modifiers():
+    for seed in range(1, 20):
+        game, state = arena('ilyra_l3', seed)
+        bolt = next(a for a in state['actions'] if a.get('spell') == 'firebolt' and a.get('target_id') == 'goblin_minion-1')
+        state = game.perform(bolt['id'])
+        effect = next(e for e in reversed(state['effects']) if e.get('attack') == 'firebolt')
+        if effect['outcome'] == 'miss':
+            assert effect['amount'] > 0
+            assert any('Fire Bolt misses' in l['text'] and 'Potent Cantrip deals' in l['text']
+                       and 'enemy in close combat' in l['text'] for l in state['log'])
+            return
+    raise AssertionError('the fixed seeds should include a Potent Cantrip miss')

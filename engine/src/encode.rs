@@ -53,7 +53,7 @@ use crate::dice::{expected, plus_string_modifier, prob_at_least, save_fail_chanc
 use crate::effects::{EffKey, ObjKind};
 use crate::engine::{Act, Fight, St, WeaponKind};
 use crate::env::{Env, Unscored};
-use crate::map::{within_melee, Pos, STATIC_PLANES};
+use crate::map::{Pos, STATIC_PLANES};
 use crate::spells::{Cast, Mm};
 use crate::trace::RollMode;
 
@@ -193,7 +193,7 @@ impl Version {
 }
 
 /// The `action_kinds` vocabulary names, in `Act` order of [`act_kind_index`].
-pub const ACTION_KINDS: [&str; 22] = [
+pub const ACTION_KINDS: [&str; 23] = [
     "move",
     "attack",
     "dash",
@@ -218,6 +218,7 @@ pub const ACTION_KINDS: [&str; 22] = [
     "extend_rage",
     "reckless_attack",
     "cleave",
+    "disengage",
 ];
 
 // ----------------------------------------------------------------------------
@@ -582,6 +583,7 @@ pub fn act_kind_index(a: &Act) -> usize {
         Act::ExtendRage => 19,
         Act::RecklessAttack => 20,
         Act::Cleave { .. } => 21,
+        Act::Disengage => 22,
     }
 }
 
@@ -1111,7 +1113,7 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
                 let (x0, y0) = unit.pos;
                 for y in (y0 - r).max(0)..=(y0 + r).min(g.h - 1) {
                     for x in (x0 - r).max(0)..=(x0 + r).min(g.w - 1) {
-                        if within_melee(unit.pos, (x, y), reach) {
+                        if f.within_reach(unit.pos, (x, y), reach) {
                             let i = g.index(x, y);
                             sc.threat[i] = sc.threat[i].saturating_add(1);
                         }
@@ -1762,7 +1764,7 @@ fn encode_relations(cx: &Ctx, out: &mut [u8]) {
             if placed && !cx.masked(j) {
                 row[rel::SEES] = f.can_see(i, j) as u8;
                 if let Some(reach) = uj.t.melee_ft {
-                    row[rel::IN_REACH] = (reach > 0 && within_melee(uj.pos, ui.pos, reach)) as u8;
+                    row[rel::IN_REACH] = (reach > 0 && f.within_reach(uj.pos, ui.pos, reach)) as u8;
                 }
             }
         }
@@ -1846,7 +1848,7 @@ fn position_features(cx: &Ctx, i: usize, row: &mut [f32]) {
         let (dx, dy) = (u.pos.0 - ap.0, u.pos.1 - ap.1);
         row[ci!("dx_div32")] = dx as f32 / 32.0;
         row[ci!("dy_div32")] = dy as f32 / 32.0;
-        row[ci!("dist_div32")] = crate::map::distance(ap, u.pos) as f32 / 32.0;
+        row[ci!("dist_div32")] = f.square_distance(ap, u.pos) as f32 / 32.0;
         row[ci!("cheb_div32")] = dx.abs().max(dy.abs()) as f32 / 32.0;
         let cost = if i == a {
             Some(0)
@@ -1872,7 +1874,7 @@ fn position_features(cx: &Ctx, i: usize, row: &mut [f32]) {
         }
         if i != a {
             if let Some(reach) = f.units[a].t.melee_ft {
-                row[ci!("in_actor_reach")] = b(within_melee(ap, u.pos, reach));
+                row[ci!("in_actor_reach")] = b(f.within_reach(ap, u.pos, reach));
             }
         }
         row[ci!("actor_sees")] = b(f.can_see(a, i));
@@ -2112,8 +2114,8 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
                     continue;
                 }
                 if let Some(reach) = eu.t.melee_ft {
-                    let before = within_melee(eu.pos, from, reach);
-                    let after = within_melee(eu.pos, dest, reach);
+                    let before = f.within_reach(eu.pos, from, reach);
+                    let after = f.within_reach(eu.pos, dest, reach);
                     leaves |= before && !after;
                     enters |= !before && after;
                 }
@@ -2166,6 +2168,9 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
         Act::Dash => {
             row[ai!("uses_action")] = 1.0;
             row[ai!("dash_squares_div12")] = (f.speed_of(a) / 5) as f32 / 12.0;
+        }
+        Act::Disengage => {
+            row[ai!("uses_action")] = 1.0;
         }
         Act::Dodge => {
             row[ai!("uses_action")] = 1.0;

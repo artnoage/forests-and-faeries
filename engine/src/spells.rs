@@ -13,7 +13,7 @@ use crate::web_events::SaveOutcome;
 use crate::content::{ability_mod, Ability, Dmg, SpellId};
 use crate::effects::{EffKey, HookEv, HookKind, ObjKind};
 use crate::engine::{Act, Fight, HitState, St, WeaponKind};
-use crate::map::{distance, Pos};
+use crate::map::Pos;
 use crate::sorcerer::{DmgRef, RollObj};
 use crate::trace::RollMode;
 
@@ -93,7 +93,8 @@ pub(crate) enum Item {
     Force { t: usize, pos: Pos, level: i32, modifier: i32 },
     Bless(usize),
     ShieldOfFaith(usize),
-    Heal { t: usize, amount: i32, bonus: i32 },
+    Heal { t: usize, amount: i32, bonus: i32, roll: Option<String> },
+    OrbLeap { from: usize, to: usize },
     Aid { t: usize, bonus: i32 },
     Command { t: usize, grovel: bool },
     Pfeg(usize),
@@ -518,7 +519,7 @@ impl Fight {
         spell: SpellId,
         wk: WeaponKind,
     ) -> (bool, bool, Vec<(usize, u32)>, usize, Option<String>) {
-        let (adv, dis) = self.advantage_flags(caster, t, wk);
+        let ((adv, dis), reasons) = self.attack_roll_modifiers(caster, t, wk);
         let mode = Fight::mode_of(adv, dis);
         // a spell attack roll spends the caster's Sap marker too (N20-029)
         if self.units[caster].sap.is_some() {
@@ -537,7 +538,7 @@ impl Fight {
             None
         };
         let atk_fmt = if self.web_events.is_some() {
-            Some(crate::web_events::fmt_d20_roll(dv, mode, modifier, bless))
+            Some(crate::web_events::fmt_d20_roll(dv, mode, modifier, bless) + &reasons)
         } else {
             None
         };
@@ -822,6 +823,16 @@ impl Fight {
                 .then(ka.1.partial_cmp(&kb.1).unwrap())
                 .then(self.units[a.0].id.cmp(&self.units[b.0].id))
         });
+        if self.rule_version >= 6 {
+            let mut amounts = vec![0; wounded.len()];
+            for _ in 0..pool {
+                let next = wounded.iter().enumerate().filter(|(i, (_, room))| amounts[*i] < *room)
+                    .min_by_key(|(i, _)| amounts[*i]).map(|(i, _)| i);
+                let Some(i) = next else { break };
+                amounts[i] += 1;
+            }
+            return wounded.into_iter().zip(amounts).filter(|(_, n)| *n > 0).map(|((c, _), n)| (c, n)).collect();
+        }
         let mut out = Vec::new();
         for (c, room) in wounded {
             if pool <= 0 {
@@ -850,7 +861,8 @@ impl Fight {
         let ObjKind::Force { pos, .. } = obj.kind else { return Vec::new() };
         let src = obj.source;
         (0..self.units.len())
-            .filter(|&c| !self.units[c].dead() && self.opposing(src, c) && distance(pos, self.units[c].pos) <= 5)
+            .filter(|&c| !self.units[c].dead() && self.opposing(src, c) && self.square_distance(pos, self.units[c].pos) <= 5
+                && (self.rule_version < 6 || !self.units[c].hidden() || self.can_see(src, c)))
             .collect()
     }
 
@@ -1329,7 +1341,7 @@ impl Fight {
         if self.units[t].turned_by.is_empty() && added {
             self.units[t].statuses.retain(|s| *s != St::Incapacitated);
         }
-        if any_removed {
+        if any_removed && !(self.rule_version >= 6 && self.units[t].dead()) {
             self.emit_web(crate::web_events::WebEv::TurnEnded { u: t, reason });
         }
     }
@@ -1513,8 +1525,7 @@ impl Fight {
         }
     }
 
-    /// `flee_step`: the one-square move that ends farthest (Chebyshev) from
-    /// the nearest turning cleric, if it gains distance.
+    /// Choose a legal retreat that increases distance from the nearest turning cleric.
     pub fn flee_step(&mut self, t: usize) -> Option<Vec<Pos>> {
         if self.units[t].turned_by.is_empty() || !self.can_flee(t) {
             return None;
@@ -1531,6 +1542,13 @@ impl Fight {
         let here = self.units[t].pos;
         let mut best: Option<Vec<Pos>> = None;
         let mut best_d = dist(here);
+        if self.rule_version >= 6 {
+            for path in crate::batch::movement_paths(self, t, 0, false, None) {
+                let d = dist(*path.last().unwrap());
+                if d > best_d { best_d = d; best = Some(path); }
+            }
+            return best;
+        }
         let budget = self.units[t].available_movement().div_euclid(5);
         for dx in -1..=1 {
             for dy in -1..=1 {
@@ -1696,7 +1714,9 @@ impl Fight {
                 let amount: i32 = rolls.iter().sum::<i32>() + self.spell_mod(u);
                 // Disciple of Life (not on a free cast, nor on undead)
                 let bonus = if !self.units[u].t.disciple_of_life || c.free || self.units[t].t.undead { 0 } else { 2 + c.at_level };
-                items.push(Item::Heal { t, amount, bonus });
+                let roll = self.web_events.as_ref().filter(|_| self.rule_version >= 6).map(|_|
+                    crate::web_events::fmt_dice_roll(sides, &rolls, self.spell_mod(u), false, amount));
+                items.push(Item::Heal { t, amount, bonus, roll });
             }
             Aid => {
                 let bonus = 5 * (1 + (c.at_level - 2).max(0));
@@ -1744,9 +1764,9 @@ impl Fight {
             if self.units[u].sorcery_points >= mm.cost() {
                 self.units[u].sorcery_points -= mm.cost();
             }
-            if mm == Mm::Empowered {
+            if mm == Mm::Empowered && (self.rule_version < 6 || c.spell != ChromaticOrb) {
                 let dmgs: Vec<DmgRef> = items.iter().filter_map(|i| if let Item::RDamage(d) = i { Some(d.clone()) } else { None }).collect();
-                self.empower(u, &dmgs, &mut rolls);
+                self.empower(u, &dmgs, &mut rolls, ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(1) as usize);
             }
         }
         // concentration_replaced, consume, the caster's `spell_cast` trigger
@@ -1777,6 +1797,7 @@ impl Fight {
                         amount,
                         dt,
                         crit,
+                        true,
                         save,
                         spell_atk_name,
                         spell_style_name,
@@ -1799,6 +1820,7 @@ impl Fight {
                         amount,
                         d.dt,
                         d.crit,
+                        !(self.rule_version >= 6 && r.halved && d.save.is_none() && d.atk_roll_fmt.is_some()),
                         d.save,
                         spell_atk_name,
                         spell_style_name,
@@ -1869,7 +1891,8 @@ impl Fight {
                     }
                     self.register_effect(t, EffKey::AcBonus, obj, Some(600));
                 }
-                Item::Heal { t, amount, bonus } => {
+                Item::OrbLeap { from, to } => self.emit_web(crate::web_events::WebEv::OrbLeap { from, to }),
+                Item::Heal { t, amount, bonus, roll } => {
                     let total_amt = amount + bonus;
                     let emit = !self.units[t].dead() && !self.units[t].cursed && total_amt > 0;
                     let sp = self.units[u].pos;
@@ -1884,6 +1907,7 @@ impl Fight {
                             src_pos: sp,
                             tgt_pos: tp,
                             style_key: spell_style_name,
+                            roll: roll.map(|r| if bonus > 0 { format!("{r}, plus {bonus} from Disciple of Life") } else { r }),
                             healed,
                         });
                     }
@@ -2005,7 +2029,7 @@ impl Fight {
                 if (dx == 0 && dy == 0) || x < 0 || y < 0 || x >= self.grid.w || y >= self.grid.h {
                     continue;
                 }
-                let gap = distance(origin, (x, y));
+                let gap = self.square_distance(origin, (x, y));
                 if let Some(m) = max_squares {
                     if gap > m {
                         continue;
@@ -2037,6 +2061,7 @@ impl Fight {
         amount: i32,
         dt: Dmg,
         crit: bool,
+        hit: bool,
         save: Option<SaveOutcome>,
         attack_name: &'static str,
         spell_style: &'static str,
@@ -2047,24 +2072,28 @@ impl Fight {
         let sp = self.units[src].pos;
         let tp = self.units[t].pos;
         let ev_idx = self.web_events.as_ref().map(|b| b.len());
-        self.emit_web(crate::web_events::WebEv::AttackOutcome {
-            src,
-            tgt: Some(t),
-            src_pos: sp,
-            tgt_pos: tp,
-            attack_name,
-            spell_style: Some(spell_style),
-            ranged_weapon: false,
-            hit: true,
-            crit,
-            reaction: false,
-            save,
-            dt: Some(dt),
-            raw_damage: amount,
-            applied_damage: 0,
-            atk_roll_fmt,
-            dmg_roll_fmt,
-        });
+        if self.rule_version >= 6 && spell_style == "scorching_ray" && self.units[t].dead() {
+            self.emit_web(crate::web_events::WebEv::RayAtCorpse { src, target: t });
+        } else {
+            self.emit_web(crate::web_events::WebEv::AttackOutcome {
+                src,
+                tgt: Some(t),
+                src_pos: sp,
+                tgt_pos: tp,
+                attack_name,
+                spell_style: Some(spell_style),
+                ranged_weapon: false,
+                hit,
+                crit,
+                reaction: false,
+                save,
+                dt: Some(dt),
+                raw_damage: amount,
+                applied_damage: 0,
+                atk_roll_fmt,
+                dmg_roll_fmt,
+            });
+        }
         let app = self.damage_event(src, t, amount, dt, crit, hs);
         if crit {
             self.offer_champion_movement(src);
@@ -2148,7 +2177,7 @@ impl Fight {
                             target: t,
                             src_pos: sp,
                             tgt_pos: tp,
-                            style_key: "divine_spark",
+                            style_key: "divine_spark", roll: None,
                             healed,
                         });
                     }
@@ -2163,6 +2192,7 @@ impl Fight {
                         amount,
                         *dt,
                         false,
+                        true,
                         Some(SaveOutcome::from_check(saved, true)),
                         "divine_spark",
                         "divine_spark",
@@ -2191,7 +2221,7 @@ impl Fight {
                                 target: c,
                                 src_pos: sp,
                                 tgt_pos: tp,
-                                style_key: "preserve_life",
+                                style_key: "preserve_life", roll: None,
                                 healed,
                             });
                         }
@@ -2203,7 +2233,7 @@ impl Fight {
                 let Some(force) = self.active_force(u) else { return };
                 let ObjKind::Force { pos, level, modifier, .. } = self.objs[force as usize].kind else { return };
                 let mut position = pos;
-                if distance(pos, self.units[t].pos) > 1 {
+                if self.square_distance(pos, self.units[t].pos) > 1 {
                     position = self.landing_square(t, pos, Some(4)).unwrap_or(self.units[t].pos);
                 }
                 let (hit, nat20, dismiss, t, atk_fmt) = self.evaluate_spell_attack(u, t, SpellId::SpiritualWeapon, WeaponKind::melee());
@@ -2236,6 +2266,7 @@ impl Fight {
                         amount,
                         Dmg::Force,
                         crit,
+                        true,
                         None,
                         "spell.spiritual_weapon",
                         "spiritual_weapon",

@@ -152,20 +152,27 @@ pub enum RowKind {
 /// The pending decision with destination rows (`MoveMode::Dest`) and what
 /// each row does: first the destinations ([`destinations`] order), then the
 /// decision's other rows in their order, End Turn last. The native arrays
-/// follow their rows: a destination one step away carries the score of the
-/// native one-square move to it, the farther ones -inf (natural20 never
-/// takes them as one action), never dropped.
+/// follow their rows. Native moves, including occupied-space crossings,
+/// retain their scores. Routes built only for the external controller have no score.
 pub fn dest_decision(env: &Env) -> Option<(Decision, Vec<RowKind>)> {
     let d = env.decision()?;
     let f = &env.fight;
-    let step_row = |to: Pos| d.legal.iter().position(|a| matches!(a, Act::Move(p) if p.len() == 2 && p[1] == to));
+    let native_row = |path: &[Pos]| d.legal.iter().position(|a| matches!(a, Act::Move(p) if p.as_slice() == path));
     let dests = destinations(f, d.actor, d.team, &d.legal);
     let mut legal = Vec::with_capacity(dests.len() + d.legal.len());
     let mut kinds = Vec::with_capacity(legal.capacity());
     let mut native: Vec<Option<usize>> = Vec::with_capacity(legal.capacity());
-    for path in dests {
-        let to = *path.last().unwrap();
-        native.push(if path.len() == 2 { step_row(to) } else { None });
+    let chosen_path = d.native_choice.and_then(|i| match &d.legal[i] {
+        Act::Move(path) if f.rule_version() >= 6 && !f.units[d.actor].t.pc => Some(path),
+        _ => None,
+    });
+    for mut path in dests {
+        // One row per endpoint. Retain the controller's exact chosen route
+        // when a cheaper path could reach the same tile with different reactions.
+        if let Some(chosen) = chosen_path.filter(|p| p.last() == path.last() && **p != path) {
+            path.clone_from(chosen);
+        }
+        native.push(if path.len() == 2 || f.rule_version() >= 6 && !f.units[d.actor].t.pc { native_row(&path) } else { None });
         legal.push(Act::Move(path.clone()));
         kinds.push(RowKind::Walk(path));
     }
@@ -194,12 +201,15 @@ const DIRECTIONS: [Pos; 8] = [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1
 /// first free square after occupied space ends the atomic move. Free
 /// neighbours are already represented by the native one-square rows.
 pub(crate) fn movement_paths(f: &Fight, a: usize, masked: u32, crossings_only: bool, first_rows: Option<&[Act]>) -> Vec<Vec<Pos>> {
+    movement_paths_with_budget(f, a, masked, crossings_only, first_rows, f.units[a].available_movement() / 5)
+}
+
+pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, crossings_only: bool, first_rows: Option<&[Act]>, budget: i32) -> Vec<Vec<Pos>> {
     use std::cmp::Reverse;
     use std::collections::BinaryHeap;
     let g = &f.grid;
     let u = &f.units[a];
     let start = u.pos;
-    let budget = u.available_movement() / 5;
     if budget < if crossings_only { 2 } else { 1 } {
         return Vec::new();
     }

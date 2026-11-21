@@ -97,8 +97,8 @@ fn goblin_content() {
 }
 
 /// Nimble Escape offers both bonus actions (Disengage first in canonical
-/// order). In plain view the native AI scores both 0 and Disengage wins the
-/// tie; out of every enemy's sight it scores Hide P(success) x the gain from
+/// order). In plain view with no withdrawal planned the native AI skips
+/// Disengage. Out of every enemy's sight it scores Hide P(success) x the gain from
 /// Advantage on the next attack (`HideBonusAction.ai_value`, N20-040 fixed)
 /// and hides.
 #[test]
@@ -112,7 +112,9 @@ fn nimble_escape_rows_and_the_native_hide_value() {
     let rh = row_of(&env, &Act::HideBonus).expect("hide_bonus row");
     assert!(rd < rh, "canonical order: disengage_bonus first");
     let raw = d.native_raw.as_ref().unwrap();
-    assert_eq!((raw[rd], raw[rh]), (0.0, 0.0));
+    assert!(d.native_dropped.as_ref().unwrap()[rd]);
+    assert!(raw[rd] < raw[rh]);
+    assert_eq!(raw[rh], 0.0);
     // spent: no Nimble Escape rows any more this turn
     env.step(rd).unwrap();
     assert!(row_of(&env, &Act::HideBonus).is_none() && row_of(&env, &Act::DisengageBonus).is_none());

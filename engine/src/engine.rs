@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 5;
+pub const CURRENT_RULE_VERSION: i32 = 6;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -295,6 +295,7 @@ pub enum Act {
     /// confidence 1.0) or remembered there (0.35).
     BlindAttack { atk: usize, square: Pos, heard: bool },
     Dash,
+    Disengage,
     Dodge,
     SecondWind,
     ActionSurge,
@@ -367,6 +368,7 @@ impl Act {
             Act::Move(_) => "move",
             Act::Attack { .. } | Act::BlindAttack { .. } => "attack",
             Act::Dash => "dash",
+            Act::Disengage => "disengage",
             Act::Dodge => "dodge",
             Act::SecondWind => "second_wind",
             Act::ActionSurge => "action_surge",
@@ -610,7 +612,7 @@ impl Fight {
                 death_fails: 0,
                 action: 0,
                 bonus: 0,
-                reaction: 0,
+                reaction: 1,
                 movement: 0,
                 dodge: false,
                 disengage: false,
@@ -753,7 +755,16 @@ impl Fight {
 
     #[inline]
     pub fn dist(&self, a: usize, b: usize) -> i32 {
-        distance(self.units[a].pos, self.units[b].pos)
+        self.square_distance(self.units[a].pos, self.units[b].pos)
+    }
+
+    /// SRD square-grid ranges count the shortest sequence of adjacent squares.
+    pub fn square_distance(&self, a: Pos, b: Pos) -> i32 {
+        if self.rule_version >= 6 { (a.0 - b.0).abs().max((a.1 - b.1).abs()) } else { distance(a, b) }
+    }
+
+    pub(crate) fn within_reach(&self, a: Pos, b: Pos, feet: i32) -> bool {
+        if self.rule_version >= 6 { self.square_distance(a, b) * 5 <= feet } else { within_melee(a, b, feet) }
     }
 
     #[inline]
@@ -770,6 +781,11 @@ impl Fight {
 
     /// Select the recorded combat rules before initiative or any controller choice.
     pub fn set_rule_version(&mut self, version: i32) {
+        if !self.started {
+            for unit in &mut self.units {
+                unit.reaction = i32::from(version >= 6);
+            }
+        }
         self.champion_moves_enabled = version >= 2;
         self.creature_space_rules = version >= 3;
         self.rule_version = version;
@@ -915,7 +931,8 @@ impl Fight {
         // Rage: Advantage on Strength saves; Danger Sense: on Dexterity saves
         // unless Incapacitated (2024)
         let adv = (ab == Ability::Str && self.is_raging(u))
-            || (ab == Ability::Dex && self.units[u].t.danger_sense && !self.units[u].incapacitated());
+            || (ab == Ability::Dex && (self.units[u].t.danger_sense && !self.units[u].incapacitated()
+                || self.rule_version >= 6 && self.benefits_from_dodge(u)));
         // Heightened Spell: the first opponent of the caster to save rolls
         // with Disadvantage (`metamagic.heightened_disadvantage`).
         let mut dis = disadvantage;
@@ -1155,7 +1172,7 @@ impl Fight {
                 o != u
                     && self.units[o].t.stench_dc.is_some()
                     && !self.units[o].dead()
-                    && distance(self.units[o].pos, pos) * 5 <= 5
+                    && self.square_distance(self.units[o].pos, pos) * 5 <= 5
             })
             .collect();
         if sources.is_empty() || self.units[u].t.immune_poisoned {
@@ -1361,6 +1378,11 @@ impl Fight {
                 let s = self.speed_of(src);
                 let u = &mut self.units[src];
                 u.movement += s;
+                u.action -= 1;
+            }
+            Act::Disengage => {
+                let u = &mut self.units[src];
+                u.disengage = true;
                 u.action -= 1;
             }
             Act::Dodge => {
@@ -1575,7 +1597,7 @@ impl Fight {
                     continue;
                 }
                 let Some(reach) = self.units[e].t.melee_ft else { continue };
-                if within_melee(self.units[e].pos, p, reach) {
+                if self.within_reach(self.units[e].pos, p, reach) {
                     entered[e] = true;
                 } else if entered[e] {
                     left.push((e, index));
@@ -1638,86 +1660,77 @@ impl Fight {
 
     /// `compute_advantages_and_disadvantages` for the scenario's attacks.
     pub fn advantage_flags(&self, src: usize, tgt: usize, wk: WeaponKind) -> (bool, bool) {
+        self.attack_modifiers(src, tgt, wk, |_| {}, |_| {})
+    }
+
+    /// Compute the dice and their annotations from the same pre-roll state.
+    pub(crate) fn attack_roll_modifiers(&self, src: usize, tgt: usize, wk: WeaponKind) -> ((bool, bool), String) {
+        if self.web_events.is_none() || self.rule_version < 6 {
+            return (self.advantage_flags(src, tgt, wk), String::new());
+        }
+        let (mut advantages, mut disadvantages) = (Vec::new(), Vec::new());
+        let flags = self.attack_modifiers(src, tgt, wk, |r| advantages.push(r), |r| disadvantages.push(r));
+        let mut reasons = Vec::new();
+        if !advantages.is_empty() { reasons.push(format!("Advantage from {}", advantages.join(", "))); }
+        if !disadvantages.is_empty() { reasons.push(format!("Disadvantage from {}", disadvantages.join(", "))); }
+        if flags == (true, true) { reasons.push("the two cancel".to_string()); }
+        let note = if reasons.is_empty() { String::new() } else { format!(" [{}]", reasons.join("; ")) };
+        (flags, note)
+    }
+
+    fn attack_modifiers(&self, src: usize, tgt: usize, wk: WeaponKind, mut on_adv: impl FnMut(&'static str),
+                        mut on_dis: impl FnMut(&'static str)) -> (bool, bool) {
+        let (mut advantageous, mut disadvantageous) = (false, false);
+        let mut adv = |reason| { advantageous = true; on_adv(reason); };
+        let mut dis = |reason| { disadvantageous = true; on_dis(reason); };
         let s = &self.units[src];
         let t = &self.units[tgt];
-        let mut adv = s.t.pack_tactics && self.units.iter().enumerate().any(|(i, ally)| {
-            i != src && self.allies(src, i) && !ally.incapacitated() && self.dist(i, tgt) <= 1
-        });
-        let mut dis = false;
-        // Guiding Bolt (`targeted_advantage_override`)
-        if self.has_effect(tgt, EffKey::TargetedAdvantageOverride) {
-            adv = true;
+        let current = self.rule_version >= 6;
+        if s.t.pack_tactics && self.units.iter().enumerate().any(|(i, ally)|
+            i != src && self.allies(src, i) && !ally.incapacitated() && self.dist(i, tgt) <= 1) {
+            adv("Pack Tactics");
         }
-        // Innate Sorcery: Advantage on the sorcerer's spell attack rolls
-        if wk.spell && self.innate_active(src) {
-            adv = true;
-        }
-        // Protection from Evil and Good, Blur (`attacked_advantage_modifier`, stacked)
+        if self.has_effect(tgt, EffKey::TargetedAdvantageOverride) { adv("Guiding Bolt"); }
+        if wk.spell && self.innate_active(src) { adv("Innate Sorcery"); }
         for obj in self.active_effects(tgt, EffKey::AttackedAdvantageModifier) {
             let o = &self.objs[obj as usize];
-            if o.spell == SpellId::ProtectionFromEvilAndGood && s.t.pfeg_protected {
-                dis = true;
-            }
-            if matches!(o.kind, crate::effects::ObjKind::Blur) && !self.ignores_blur(src, tgt) {
-                dis = true;
-            }
+            if o.spell == SpellId::ProtectionFromEvilAndGood && s.t.pfeg_protected { dis("Protection from Evil and Good"); }
+            if matches!(o.kind, crate::effects::ObjKind::Blur) && !self.ignores_blur(src, tgt) { dis("Blur"); }
         }
-        // Frightened while a source of the fear is in sight
-        if !s.frightened_by.is_empty() {
-            let gt = self.gt();
-            if s.frightened_by.iter().any(|&(f, until)| gt < until && !self.units[f].dead() && self.can_see(src, f)) {
-                dis = true;
-            }
+        let gt = self.gt();
+        if s.frightened_by.iter().any(|&(f, until)| gt < until && !self.units[f].dead() && self.can_see(src, f))
+            || s.source_fear.iter().any(|&(f, _)| !self.units[f].dead() && self.can_see(src, f)) { dis("Frightened"); }
+        if s.prone() { dis("attacker prone"); }
+        if s.poisoned() { dis("attacker poisoned"); }
+        if t.has(St::Paralyzed) { adv("target paralyzed"); }
+        if current && t.unconscious() { adv("target unconscious"); }
+        if t.prone() {
+            let adjacent = self.feet(src, tgt) <= 5;
+            if (current && adjacent) || (!current && wk.melee) { adv("target prone"); }
+            if (current && !adjacent) || (!current && wk.ranged) { dis("target prone at range"); }
         }
-        if s.source_fear.iter().any(|&(f, _)| !self.units[f].dead() && self.can_see(src, f)) {
-            dis = true;
-        }
-        if s.prone() {
-            dis = true;
-        }
-        if t.has(St::Paralyzed) {
-            adv = true;
-        }
-        if s.poisoned() {
-            dis = true;
-        }
-        if wk.melee && t.prone() {
-            adv = true;
-        }
-        if wk.ranged && t.prone() {
-            dis = true;
-        }
-        if t.dodge {
-            dis = true;
-        }
-        if !self.can_see(tgt, src) {
-            adv = true;
-        }
-        if !self.can_see(src, tgt) {
-            dis = true;
-        }
-        // Sap: the creature hit has Disadvantage on its own next attack roll,
-        // whoever it attacks (N20-029; AI estimates see it, N20-030)
-        if s.sap.is_some() {
-            dis = true;
-        }
+        let visible_to_target = self.can_see(tgt, src);
+        if t.dodge && (!current || self.benefits_from_dodge(tgt) && visible_to_target) { dis("target dodging"); }
+        if !visible_to_target { adv("unseen attacker"); }
+        if !self.can_see(src, tgt) { dis("unseen target"); }
+        if s.sap.is_some() { dis("Sap"); }
         if wk.ranged {
-            if self.enemy_in_melee_range(src) {
-                dis = true;
-            }
-            if self.dist(src, tgt) * 5 > wk.range {
-                dis = true;
-            }
+            if self.ranged_attack_threatened(src) { dis("enemy in close combat"); }
+            if self.feet(src, tgt) > wk.range { dis("long range"); }
         }
-        // Reckless Attack: Advantage on the barbarian's Strength attack
-        // rolls, and on attack rolls against it (melee or ranged: every kind)
-        if wk.str_attack && s.reckless {
-            adv = true;
-        }
-        if t.reckless {
-            adv = true;
-        }
-        (adv, dis)
+        if wk.str_attack && s.reckless { adv("Reckless Attack"); }
+        if t.reckless { adv("target used Reckless Attack"); }
+        (advantageous, disadvantageous)
+    }
+
+    pub(crate) fn benefits_from_dodge(&self, u: usize) -> bool {
+        self.units[u].dodge && !self.units[u].incapacitated() && self.speed_of(u) > 0
+    }
+
+    fn ranged_attack_threatened(&self, src: usize) -> bool {
+        if self.rule_version < 6 { return self.enemy_in_melee_range(src); }
+        self.units.iter().enumerate().any(|(i, unit)| self.opposing(i, src) && !unit.incapacitated()
+            && self.feet(i, src) <= 5 && self.can_see(i, src))
     }
 
     #[inline]
@@ -1921,7 +1934,7 @@ impl Fight {
         let count;
         let mut dismiss: Vec<(usize, u32)> = Vec::new();
         let mut force_miss = false;
-        let mut shield_cast: Option<i32> = None;
+        let mut shield_cast = None;
         let mut atk_roll_fmt: Option<String> = None;
         // the roll had Advantage and no Disadvantage (`advantage_mod > 0`):
         // `condition: advantage` riders apply
@@ -1986,7 +1999,7 @@ impl Fight {
             count = dmg.count;
             base = if dmg.sides > 0 { self.roll_dice(src, "damage", count, dmg.sides) } else { vec![dmg.count] };
         } else {
-            let (adv, dis) = self.advantage(src, tgt, def);
+            let ((adv, dis), reasons) = self.attack_roll_modifiers(src, tgt, self.weapon_kind(src, def));
             had_adv = adv && !dis;
             // the real attack roll spends a Sap marker (`consume_sap_disadvantage`)
             if self.units[src].sap.is_some() {
@@ -2005,7 +2018,7 @@ impl Fight {
                 None
             };
             if self.web_events.is_some() {
-                atk_roll_fmt = Some(crate::web_events::fmt_d20_roll(dv, mode, mod_val, bless));
+                atk_roll_fmt = Some(crate::web_events::fmt_d20_roll(dv, mode, mod_val, bless) + &reasons);
             }
             self.resolve_trigger(src, HookEv::AttackResolved);
             // the target's attack-roll reactions (`npc_reactions`: Redirect
@@ -2025,7 +2038,7 @@ impl Fight {
             // the target's reaction spells (`ShieldSpell.after_attack_roll`)
             if let Some((blocks, at_level)) = self.shield_reaction(tgt, total, ac, nat20, nat1) {
                 force_miss = blocks;
-                shield_cast = Some(at_level);
+                shield_cast = Some((at_level, total, ac));
             }
             let mut c = nat20 || (t.improved_critical && face >= 19);
             let critical_roll = c;
@@ -2055,8 +2068,11 @@ impl Fight {
         for (holder, obj) in std::mem::take(&mut dismiss) {
             self.dismiss_effect(holder, obj);
         }
-        if let Some(slot_level) = shield_cast {
-            self.apply_shield(tgt, slot_level);
+        if let Some((slot_level, total, ac)) = shield_cast {
+            self.apply_shield(tgt);
+            self.emit_web(crate::web_events::WebEv::ShieldCast {
+                u: tgt, pos: self.units[tgt].pos, slot_level, attacker: src, attack_name: atk_name, total, ac,
+            });
         }
         if !hit {
             // `consume_resource` of the miss item (an attack roll was made)
@@ -2091,8 +2107,14 @@ impl Fight {
                     // `attack_action.py:404-421`: `take_damage` (Undead Fortitude / dissolve) runs BEFORE `weapon_mastery` (`GRAZE`)!
                     let sp2 = self.units[src].pos;
                     let tp2 = self.units[tgt].pos;
-                    self.take_damage(tgt, m, def.damage_type, false, None, None);
-                    self.emit_web(crate::web_events::WebEv::Graze { src, tgt, src_pos: sp2, tgt_pos: tp2, dmg: m });
+                    let index = self.web_events.as_ref().map(Vec::len);
+                    let applied = self.take_damage(tgt, m, def.damage_type, false, None, None).unwrap_or(0).max(0);
+                    if let (Some(i), Some(events)) = (index, &mut self.web_events) {
+                        let current = self.rule_version >= 6;
+                        let effect = crate::web_events::WebEv::Graze { src, tgt, src_pos: sp2, tgt_pos: tp2,
+                            dmg: if current { applied } else { m }, dt: def.damage_type };
+                        if current { events.insert(i, effect); } else { events.push(effect); }
+                    }
                 }
             }
             return;
@@ -2173,6 +2195,7 @@ impl Fight {
         let amount: i32 = base.iter().sum::<i32>() + frenzy + dmg.modifier;
         let mut hs = HitState { kill_at_zero: def.kill_at_zero, ..HitState::default() };
         // a `no_damage` action has no damage event (`damage_event` skipped)
+        let mut rider_offset = self.web_events.as_ref().map(|events| events.len() + usize::from(!def.no_damage));
         let applied = if def.no_damage {
             None
         } else {
@@ -2245,7 +2268,11 @@ impl Fight {
             let applied = self.take_damage(tgt, amount, dt, crit, Some(&mut hs), Some(src));
             if let (Some(before), Some(amount), Some(events)) = (before, applied, &mut self.web_events) {
                 let event = crate::web_events::WebEv::RiderDamage { tgt, applied_damage: amount.max(0), dt };
-                if self.rule_version >= 5 {
+                if self.rule_version >= 6 {
+                    let next = rider_offset.as_mut().unwrap();
+                    events.insert(*next, event);
+                    *next += 1;
+                } else if self.rule_version >= 5 {
                     events.insert(before, event);
                 } else {
                     events.push(event);
@@ -2635,6 +2662,7 @@ impl Fight {
             self.notes.kill_at_zero += 1;
             self.make_dead(u);
         } else if hp < 0 && overflow >= max_now {
+            self.emit_web(crate::web_events::WebEv::MassiveDamage { target: u, excess: overflow, maximum: max_now });
             self.make_dead(u);
         } else if hp <= 0 {
             if already_down {
@@ -2649,7 +2677,9 @@ impl Fight {
         } else if let Some(c) = self.units[u].concentration {
             // concentration check: DC max(10, half the damage taken)
             let dc = 10.max(total.div_euclid(2));
-            let save = self.save_throw(u, Ability::Con);
+            let (save, roll) = self.save_throw_fmt(u, Ability::Con);
+            let spell = self.objs[c as usize].spell;
+            self.emit_web(crate::web_events::WebEv::ConcentrationSave { target: u, spell, roll, dc, passed: save >= dc });
             if save < dc {
                 self.dismiss_effect(u, c);
             }
@@ -2671,13 +2701,13 @@ impl Fight {
             return false;
         }
         let dc = dc_base + damage;
-        let total = self.save_throw(u, Ability::Con);
+        let (total, roll) = self.save_throw_fmt(u, Ability::Con);
         let success = total >= dc;
         if success {
             self.units[u].hp = 1;
         }
         let pos = self.units[u].pos;
-        self.emit_web(crate::web_events::WebEv::UndeadFortitude { u, pos, success });
+        self.emit_web(crate::web_events::WebEv::UndeadFortitude { u, pos, success, roll, dc });
         success
     }
 

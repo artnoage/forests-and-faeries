@@ -16,7 +16,7 @@ use ember_rs::encode::{self, find, Obs, Objective, Version, CAND_FEATURES, CELLS
                        F_C_V1, F_G, F_G_V1, GLOBAL_FEATURES, MAP_C, MAP_C_V1, MAP_CHANNELS, N, R, RELATIONS, S, T};
 use ember_rs::engine::{Act, Fight, MAX_ROUNDS};
 use ember_rs::env::{Chooser, Controller, Env};
-use ember_rs::map::{within_melee, Grid, Pos};
+use ember_rs::map::{Grid, Pos};
 use ember_rs::replay::fight_for;
 use ember_rs::tape::{Placement, Tape};
 use ember_rs::trace::Trace;
@@ -354,7 +354,7 @@ fn check_reference(env: &Env, o: &Obs) {
             for &e in &enemies {
                 let u = &f.units[e];
                 if let Some(r) = u.t.melee_ft {
-                    if r > 0 && u.has_reaction() && within_melee(u.pos, (x, y), r) {
+                    if r > 0 && u.has_reaction() && (u.pos.0 - x).abs().max((u.pos.1 - y).abs()) * 5 <= r {
                         threat += 1;
                     }
                 }
@@ -591,7 +591,8 @@ fn check_relations(env: &Env, o: &Obs) {
                         }
                         "sees" => !hid(i) && !hid(j) && f.can_see(i, j),
                         "in_reach" => {
-                            !hid(i) && !hid(j) && uj.t.melee_ft.is_some_and(|rch| rch > 0 && within_melee(uj.pos, ui.pos, rch))
+                            !hid(i) && !hid(j) && uj.t.melee_ft.is_some_and(|rch| rch > 0 &&
+                                (uj.pos.0 - ui.pos.0).abs().max((uj.pos.1 - ui.pos.1).abs()) * 5 <= rch)
                         }
                         other => panic!("{other}"),
                     };

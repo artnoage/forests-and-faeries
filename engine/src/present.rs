@@ -25,14 +25,14 @@ use serde_json::{json, Map, Value};
 use crate::content::{ContentPool, SpellId, Template};
 use crate::effects::{EffKey, MarkSlot, ObjKind};
 use crate::engine::{Act, Fight, St};
-use crate::map::{distance, Grid, Pos};
+use crate::map::{Grid, Pos};
 use crate::present_text;
 use crate::spells::Cast;
 use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 6;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 7;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -767,6 +767,7 @@ impl WebArena {
             Act::ActionSurge => self.push_log(&format!("{who} uses Action Surge."), "spell", round),
             Act::DragonsBreathExhale => self.push_log(&format!("{who} uses Dragon's Breath: exhale."), "spell", round),
             Act::SpiritualWeaponAttack { .. } => self.push_log(&format!("{who} uses Spiritual Weapon: strike."), "spell", round),
+            Act::Disengage => self.push_log(&format!("{who} uses Disengage."), "info", round),
             Act::DisengageBonus => self.push_log(&format!("{who} uses Disengage (bonus action)."), "info", round),
             Act::HideBonus => self.push_log(&format!("{who} uses Hide (bonus action)."), "info", round),
             Act::Rage => self.push_log(&format!("{who} uses Rage (bonus action)."), "info", round),
@@ -822,6 +823,12 @@ impl WebArena {
             let oa_act = self.fight.as_mut().unwrap().opportunity_attack_listener(reactor, mover);
             if let Some(Act::Attack { atk, target, .. }) = oa_act {
                 let oa = Act::Attack { atk, target, reaction: true };
+                if self.replay_version >= 7 && !self.concealed_from_heroes(mover) && !self.concealed_from_heroes(reactor) {
+                    let (x, y) = moves[index - 1];
+                    let name = self.unit_display_name(mover);
+                    let enemy = self.unit_display_name(reactor);
+                    self.push_log(&format!("{enemy} makes an opportunity attack as {name} tries to leave [{x}, {y}]."), "info", self.current_round());
+                }
                 let oa_before = self.presentation_snapshot();
                 let oa_first_effect = self.effect_counter;
                 let interactive = self.human_controlled_fight(reactor);
@@ -887,7 +894,7 @@ impl WebArena {
             if o == victim || f.units[o].t.stench_dc.is_none() || f.units[o].dead() {
                 continue;
             }
-            let d = distance(f.units[o].pos, vpos);
+            let d = f.square_distance(f.units[o].pos, vpos);
             if best.map_or(true, |b| d < b.0) {
                 best = Some((d, o));
             }
@@ -901,7 +908,7 @@ impl WebArena {
         let mut best: Option<(i32, usize)> = None;
         for o in 0..f.units.len() {
             if f.units[o].team == 0 && f.units[o].conscious() && self.unit_content(o) == "elion" {
-                let d = distance(f.units[o].pos, vpos);
+                let d = f.square_distance(f.units[o].pos, vpos);
                 if best.map_or(true, |b| d < b.0) {
                     best = Some((d, o));
                 }
@@ -1148,6 +1155,11 @@ impl WebArena {
                 WebEv::BlindHitTarget { target } => {
                     blind_hit_target = Some(target);
                 }
+                WebEv::RayAtCorpse { src, target } => {
+                    let caster = self.unit_display_name(src);
+                    let name = self.unit_display_name(target);
+                    self.push_log(&format!("{caster}'s next Scorching Ray strikes {name}, who is already dead."), "info", round);
+                }
                 WebEv::AttackOutcome {
                     src,
                     tgt,
@@ -1168,7 +1180,9 @@ impl WebArena {
                 } => {
                     let src_name = self.unit_display_name(src).to_string();
                     let tgt_name = tgt.map(|t| self.unit_display_name(t).to_string()).unwrap_or_else(|| "creature".to_string());
-                    let pretty_atk = attack_name.replace('_', " ");
+                    let pretty_atk = if self.replay_version >= 7 && spell_style.is_some() {
+                        present_text::spell_display_name(spell_style.unwrap())
+                    } else { attack_name.replace('_', " ") };
                     let check = atk_roll_fmt.as_deref().map(|r| format!(" (attack {r})")).unwrap_or_default();
                     let current_text = self.replay_version >= 4;
                     if let Some(result) = save.filter(|_| current_text) {
@@ -1183,6 +1197,10 @@ impl WebArena {
                             format!(" and takes {applied_damage} {} damage{roll}", ty.name())
                         }).unwrap_or_default();
                         self.push_log(&format!("{tgt_name} {verb} against {src_name}'s {name}{damage}."), if hit { "hit" } else { "miss" }, round);
+                    } else if !hit && dt.is_some() && self.replay_version >= 7 {
+                        let damage_type = dt.unwrap().name();
+                        let roll = dmg_roll_fmt.as_deref().unwrap_or("");
+                        self.push_log(&format!("{src_name}: {pretty_atk} misses {tgt_name}{check}. Potent Cantrip deals {applied_damage} {damage_type} damage ({roll})."), "miss", round);
                     } else if hit {
                         let dt_str = dt.map_or("", |d| d.name());
                         let dmg_str = dmg_roll_fmt.as_deref().unwrap_or("");
@@ -1213,10 +1231,10 @@ impl WebArena {
                         m.insert("target_id".into(), json!(tgt_id));
                         m.insert("style".into(), json!(style));
                         m.insert("outcome".into(), json!(if hit { "hit" } else { "miss" }));
-                        m.insert("amount".into(), json!(if hit { applied_damage.max(0) } else { 0 }));
+                        m.insert("amount".into(), json!(applied_damage.max(0)));
                         m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
                         m.insert("target".into(), json!({"x": tgt_pos.0, "y": tgt_pos.1}));
-                        m.insert("damage_type".into(), json!(if hit { dt.map_or("", |d| d.name()) } else { "" }));
+                        m.insert("damage_type".into(), json!(dt.map_or("", |d| d.name())));
                         m.insert("attack".into(), json!(attack_name));
                         if style == "command" {
                             m.insert("text".into(), json!(if hit { "GROVEL" } else { "RESISTS" }));
@@ -1279,8 +1297,13 @@ impl WebArena {
                         self.push_log(&format!("{name} {result} the Wisdom save against Sanctuary on {target} ({total} vs DC {dc}). {effect}."), "status", round);
                     }
                 }
-                WebEv::ShieldCast { u, pos, slot_level } => {
-                    if self.replay_version >= 5 {
+                WebEv::ShieldCast { u, pos, slot_level, attacker, attack_name, total, ac } => {
+                    if self.replay_version >= 7 {
+                        let name = self.unit_display_name(u);
+                        let source = self.unit_display_name(attacker);
+                        let attack = present_text::title_words(attack_name);
+                        self.push_log(&format!("{name} casts Shield against {source}'s {attack} (attack {total} vs AC {ac}), spending a level {slot_level} slot. AC rises to {}.", ac + 5), "status", round);
+                    } else if self.replay_version >= 5 {
                         let name = self.unit_display_name(u);
                         self.push_log(&format!("{name} casts Shield as a reaction, spending a level {slot_level} slot for +5 AC."), "status", round);
                     }
@@ -1315,7 +1338,24 @@ impl WebArena {
                     m.insert("target".into(), json!({"x": tgt_pos.0, "y": tgt_pos.1}));
                     self.push_effect(m);
                 }
-                WebEv::Graze { src, tgt, src_pos, tgt_pos, dmg } => {
+                WebEv::MassiveDamage { target, excess, maximum } if self.replay_version >= 7 => {
+                    let name = self.unit_display_name(target);
+                    self.push_log(&format!("{name} suffers massive damage ({excess} damage beyond 0 HP, maximum {maximum} HP)."), "damage", round);
+                }
+                WebEv::ConcentrationSave { target, spell, roll, dc, passed } if self.replay_version >= 7 => {
+                    let who = self.unit_display_name(target);
+                    let name = present_text::spell_display_name(spell.key());
+                    let outcome = if passed { "maintains" } else { "loses" };
+                    self.push_log(&format!("{who} {outcome} concentration on {name} (CON save {roll} vs DC {dc})."), "status", round);
+                }
+                WebEv::OrbLeap { from, to } if self.replay_version >= 7 => {
+                    self.push_log(&format!("Chromatic Orb leaps from {} to {}.", self.unit_display_name(from), self.unit_display_name(to)), "spell", round);
+                }
+                WebEv::Graze { src, tgt, src_pos, tgt_pos, dmg, dt } => {
+                    if self.replay_version >= 7 {
+                        self.push_log(&format!("{} deals {dmg} {} damage to {} with Graze on the miss.",
+                            self.unit_display_name(src), dt.name(), self.unit_display_name(tgt)), "hit", round);
+                    }
                     let (src_id, tgt_id) = {
                         let f = self.fight.as_ref().unwrap();
                         (f.units[src].id.clone(), f.units[tgt].id.clone())
@@ -1349,11 +1389,12 @@ impl WebArena {
                     m.insert("target".into(), json!({"x": pos.0, "y": pos.1}));
                     self.push_effect(m);
                 }
-                WebEv::SpellHeal { caster, target, src_pos, tgt_pos, style_key, healed } => {
+                WebEv::SpellHeal { caster, target, src_pos, tgt_pos, style_key, healed, roll } => {
                     if self.replay_version >= 6 {
                         let name = self.unit_display_name(target);
                         let spell = present_text::title_words(style_key);
-                        self.push_log(&format!("{name} regains {healed} HP from {spell}."), "spell", round);
+                        let roll = roll.map(|r| format!(" ({r})")).unwrap_or_default();
+                        self.push_log(&format!("{name} regains {healed} HP from {spell}{roll}."), "spell", round);
                     }
                     let style = match style_key {
                         "divine_spark" => "divine_spark",
@@ -1416,7 +1457,12 @@ impl WebArena {
                     let name = self.unit_display_name(u).to_string();
                     self.push_log(&format!("{name} recovers from being turned ({reason})."), "info", round);
                 }
-                WebEv::UndeadFortitude { u, pos, success } => {
+                WebEv::UndeadFortitude { u, pos, success, roll, dc } => {
+                    if self.replay_version >= 7 {
+                        let name = self.unit_display_name(u);
+                        let outcome = if success { "succeeds and stays at 1 HP" } else { "fails" };
+                        self.push_log(&format!("{name} {outcome} on Undead Fortitude (CON save {roll} vs DC {dc})."), "status", round);
+                    }
                     if success {
                         let uid = self.fight.as_ref().unwrap().units[u].id.clone();
                         let mut m = Map::new();
@@ -1485,7 +1531,11 @@ impl WebArena {
                         let name = self.unit_display_name(u).to_string();
                         let a = cells[0];
                         let b = *cells.last().unwrap();
-                        self.push_log(&format!("{name} moves from [{}, {}] to [{}, {}].", a[0], a[1], b[0], b[1]), "info", round);
+                        if self.replay_version >= 7 && !self.fight.as_ref().unwrap().units[u].conscious() {
+                            self.push_log(&format!("{name}'s movement ended at [{}, {}].", b[0], b[1]), "info", round);
+                        } else {
+                            self.push_log(&format!("{name} moves from [{}, {}] to [{}, {}].", a[0], a[1], b[0], b[1]), "info", round);
+                        }
                     }
                     let uid = self.fight.as_ref().unwrap().units[u].id.clone();
                     moves.push(json!({"source_id": uid, "path": cells}));
@@ -1745,6 +1795,7 @@ impl WebArena {
         match act {
             Act::Dodge => items.push((src, "dodge", "DODGE")),
             Act::Dash => items.push((src, "dash", "DASH")),
+            Act::Disengage => items.push((src, "disengage", "DISENGAGE")),
             Act::DisengageBonus => items.push((src, "disengage_bonus", "DISENGAGE")),
             Act::HideBonus => items.push((src, "hide_bonus", "HIDE")),
             Act::Stand => items.push((src, "stand", "STAND")),
@@ -1959,7 +2010,7 @@ impl WebArena {
                                 if !f.grid.in_bounds(sq.0, sq.1) || f.grid.is_wall(sq.0, sq.1) || sq == here {
                                     continue;
                                 }
-                                if distance(here, sq) * 5 > def.range_max || !f.grid.line_of_effect(here, sq) {
+                                if f.square_distance(here, sq) * 5 > def.range_max || !f.grid.line_of_effect(here, sq) {
                                     continue;
                                 }
                                 non_spell.push(Act::BlindAttack { atk: ai, square: sq, heard });
@@ -1972,6 +2023,7 @@ impl WebArena {
                 if unit.action > 0 {
                     non_spell.push(Act::Dodge);
                     non_spell.push(Act::Dash);
+                    if f.rule_version() >= 6 { non_spell.push(Act::Disengage); }
                 }
                 if unit.t.second_wind_uses > 0 && unit.bonus > 0 && unit.second_wind_count > 0 && unit.hp < f.max_hp_of(actor) {
                     non_spell.push(Act::SecondWind);
@@ -2155,8 +2207,9 @@ impl WebArena {
                 }
             };
 
-            // `_human_filter`: area options need at least one opposing token on the map in the area!
-            if let Some(pt) = point {
+            // Earlier recordings filtered aim points by actual enemy occupancy.
+            // Current players can aim at any legal square without learning who is hidden there.
+            if let Some(pt) = point.filter(|_| self.replay_version < 7) {
                 if matches!(cand.act, Act::Spell(_) | Act::DragonsBreathExhale) && spell_opt != Some(SpellId::DragonsBreath) {
                     if let Some((_, cells)) = self.action_area_info(actor, &cand.act, Some(pt)) {
                         let f = self.fight.as_ref().unwrap();
@@ -2234,11 +2287,18 @@ impl WebArena {
             "action_surge" => "Action Surge".to_string(),
             "divine_spark" => "Divine Spark".to_string(),
             "channel_divinity_turn_undead" => "Turn Undead".to_string(),
+            "preserve_life" if self.replay_version >= 7 => {
+                if let Act::PreserveLife(alloc) = &cand.act {
+                    let splits = alloc.iter().map(|&(target, hp)| format!("{} +{hp} HP", self.unit_display_name(target)))
+                        .collect::<Vec<_>>().join(", ");
+                    format!("Preserve Life ({splits})")
+                } else { "Preserve Life".to_string() }
+            }
             "preserve_life" => "Preserve Life".to_string(),
             "innate_sorcery" => "Innate Sorcery".to_string(),
             "dragons_breath_exhale" => "Dragon's Breath: exhale".to_string(),
             "spiritual_weapon_attack" => "Spiritual Weapon: strike".to_string(),
-            "disengage_bonus" => "Disengage".to_string(),
+            "disengage" | "disengage_bonus" => "Disengage".to_string(),
             "hide_bonus" => "Hide".to_string(),
             "rage" => "Rage".to_string(),
             "extend_rage" => "Extend Rage".to_string(),
@@ -2249,6 +2309,15 @@ impl WebArena {
             _ => present_text::title_words(kind),
         };
 
+        if self.replay_version >= 7 {
+            if let Act::BlindAttack { square: (x, y), heard, .. } = &cand.act {
+                let sense = if *heard { "heard" } else { "last known" };
+                label.push_str(&format!(" at unseen square {x},{y} ({sense})"));
+            }
+            if let Some(c) = spell_opt.filter(|c| matches!(c.spell, SpellId::ChromaticOrb | SpellId::SorcerousBurst)) {
+                if let Some(dt) = c.dt { label.push_str(&format!(" ({})", dt.name())); }
+            }
+        }
         if self.replay_version >= 6 && spell_key == Some("mage_armor") {
             let f = self.fight.as_ref().unwrap();
             if targets.first().is_some_and(|&t| f.has_spell_effect(t, EffKey::AcOverride, SpellId::MageArmor)) {
@@ -2350,7 +2419,11 @@ impl WebArena {
             label = format!("{label} (thrown)");
         }
 
-        let aim = point.or_else(|| if kind == "move" { dest } else { None });
+        let aim = match &cand.act {
+            Act::BlindAttack { square, .. } if self.replay_version >= 7 => Some(*square),
+            Act::Move(_) => dest,
+            _ => point,
+        };
         let mut view = Map::new();
         view.insert("id".into(), json!(format!("r{}-{index}", self.revision)));
         view.insert("kind".into(), json!(kind));
@@ -2418,10 +2491,10 @@ impl WebArena {
                     .filter(|&&u| f.opposing(actor, u) && (self.replay_version < 6 || !f.units[u].hidden() || f.can_see(actor, u)))
                     .map(|&u| f.units[u].id.clone()).collect();
                 let allies: Vec<String> = caught.iter().filter(|&&u| !f.opposing(actor, u)).map(|&u| f.units[u].id.clone()).collect();
-                if !hits.is_empty() {
+                if self.replay_version >= 7 || !hits.is_empty() {
                     view.insert("hits".into(), json!(hits));
                 }
-                if !allies.is_empty() {
+                if self.replay_version >= 7 || !allies.is_empty() {
                     view.insert("allies".into(), json!(allies));
                 }
             }

@@ -561,6 +561,13 @@ impl Fight {
                     _ => 90,
                 };
                 for t in self.acquire_targets(u, range, TargetTypes::Enemies) {
+                    if self.rule_version >= 6 {
+                        let choices: &[Dmg] = match spell { ChromaticOrb => &ORB_TYPES, SorcerousBurst => &BURST_TYPES, _ => &[] };
+                        if !choices.is_empty() {
+                            for &dt in choices { out.push((vec![t], false, None, Some(dt))); }
+                            continue;
+                        }
+                    }
                     let dt = match spell {
                         SorcerousBurst => Some(self.best_damage_type(&[t], &BURST_TYPES)),
                         ChromaticOrb => Some(self.best_damage_type(&[t], &ORB_TYPES)),
@@ -1419,6 +1426,9 @@ impl Fight {
                 let mut target = t0.unwrap();
                 let dt = c.dt.unwrap_or(Dmg::Acid);
                 let mut leaps_left = c.at_level.max(1);
+                let mut rerolls_left = if self.rule_version >= 6 && c.mm == Some(Mm::Empowered) {
+                    ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(1) as usize
+                } else { 0 };
                 let mut used = vec![target];
                 let n = 3 + (c.at_level - 1).max(0);
                 let hit_dmg = (n * 1) as f64 * 4.5;
@@ -1437,7 +1447,11 @@ impl Fight {
                         break;
                     }
                     let i = self.new_roll(u, "spells.chromatic_orb", if nat20 { 2 * n } else { n }, 8, 0, rolls);
-                    items.push(Item::RDamage(DmgRef { t: target, dt, crit: nat20, dmg: i, droll: i, save: None, atk_roll_fmt: atk_fmt }));
+                    let damage = DmgRef { t: target, dt, crit: nat20, dmg: i, droll: i, save: None, atk_roll_fmt: atk_fmt };
+                    if rerolls_left > 0 {
+                        rerolls_left -= self.empower(u, std::slice::from_ref(&damage), rolls, rerolls_left);
+                    }
+                    items.push(Item::RDamage(damage));
                     let faces = &rolls[i].rolls;
                     let mut seen = faces.clone();
                     seen.sort();
@@ -1448,6 +1462,7 @@ impl Fight {
                     }
                     let (next, _) = self.orb_leap(u, target, &used, dt, hit_dmg, crit_dmg);
                     let Some(next) = next else { break };
+                    if self.rule_version >= 6 && self.web_events.is_some() { items.push(Item::OrbLeap { from: target, to: next }); }
                     used.push(next);
                     target = next;
                     leaps_left -= 1;
@@ -1551,8 +1566,7 @@ impl Fight {
     /// casting's distinct damage rolls, by identity (N20-016): a halved copy
     /// shares the roll it halves, separate rolls stay separate even with
     /// equal faces. Rerolls go in candidate order (value, roll, die).
-    pub(crate) fn empower(&mut self, u: usize, dmgs: &[DmgRef], rolls: &mut [RollObj]) {
-        let k = ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(1) as usize;
+    pub(crate) fn empower(&mut self, u: usize, dmgs: &[DmgRef], rolls: &mut [RollObj], limit: usize) -> usize {
         let canonical = |rolls: &[RollObj], mut i: usize| {
             while let Some(s) = rolls[i].source {
                 i = s;
@@ -1587,7 +1601,7 @@ impl Fight {
         }
         cands.sort();
         let mut changed: Vec<usize> = Vec::new();
-        for &(_, gi, di) in cands.iter().take(k) {
+        for &(_, gi, di) in cands.iter().take(limit) {
             let g = groups[gi];
             let new = self.roll_dice(u, "empowered_spell", 1, rolls[g].sides)[0];
             self.emit_web(crate::web_events::WebEv::EmpoweredReroll {
@@ -1604,6 +1618,7 @@ impl Fight {
                 rolls[copy].rolls = faces;
             }
         }
+        limit.min(cands.len())
     }
 
     /// Commit one of the sorcerer's own items.
@@ -1666,7 +1681,7 @@ impl Fight {
                 crate::web_events::fmt_dice_roll(r.sides, &r.rolls, r.modifier, r.halved, amount)
             });
             let mut hs = crate::engine::HitState::default();
-            self.spell_damage_with_web(u, t, amount, dt, false, Some(save), "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
+            self.spell_damage_with_web(u, t, amount, dt, false, true, Some(save), "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
         }
     }
 
@@ -1740,12 +1755,10 @@ impl Fight {
     }
 
     /// `ShieldSpell.apply` (at the attack's commit).
-    pub fn apply_shield(&mut self, t: usize, slot_level: i32) {
+    pub(crate) fn apply_shield(&mut self, t: usize) {
         let obj = self.new_obj(SpellId::Shield, ObjKind::Spell, t, vec![t], false);
         self.add_casted(t, t, obj, None);
         self.register_effect(t, EffKey::AcBonus, obj, Some(8 * 60 * 60));
         self.register_hook(t, HookEv::StartOfTurn, HookKind::ShieldStart, obj, None);
-        let pos = self.units[t].pos;
-        self.emit_web(crate::web_events::WebEv::ShieldCast { u: t, pos, slot_level });
     }
 }

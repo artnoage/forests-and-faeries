@@ -108,7 +108,11 @@ fn check_presented(game: &Game) -> (usize, usize) {
         }
         for (r, k) in kinds.iter().enumerate() {
             match k {
-                RowKind::Walk(path) if path.len() > 2 => assert_eq!(raw[r], f64::NEG_INFINITY),
+                RowKind::Walk(path) if path.len() > 2 => {
+                    let expected = d.legal.iter().position(|a| matches!(a, Act::Move(p) if p == path))
+                        .map_or(f64::NEG_INFINITY, |q| d.native_raw.as_ref().unwrap()[q]);
+                    assert_eq!(raw[r], expected);
+                }
                 RowKind::Native(q) => assert_eq!(raw[r].to_bits(), d.native_raw.as_ref().unwrap()[*q].to_bits()),
                 _ => {}
             }

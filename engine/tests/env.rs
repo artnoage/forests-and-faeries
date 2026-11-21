@@ -100,8 +100,8 @@ fn check_decision(env: &Env, d: &Decision) {
             }
             assert!(!dropped.last().unwrap());
             for (k, v) in raw.iter().enumerate().take(raw.len() - 1) {
-                if matches!(&d.legal[k], Act::Move(path) if path.len() > 2) {
-                    assert_eq!(*v, f64::NEG_INFINITY, "occupied-space crossings have no native score");
+                if matches!(&d.legal[k], Act::Move(path) if path.len() > 2 && (f.units[d.actor].t.pc || f.rule_version() < 6)) {
+                    assert_eq!(*v, f64::NEG_INFINITY, "external-only paths have no native score");
                 } else {
                     assert!(v.is_finite(), "row {k} {} score {v}", descs[k]);
                 }
