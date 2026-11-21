@@ -1,4 +1,5 @@
 """The grading catalog and the game must describe the same fixed encounters."""
+from collections import Counter
 import json
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from scripts.build_level_catalog import game_levels
     ('candidates-v2', 'game-levels-candidates-v2.jsonl'),
     ('candidates-v2-round2', 'game-levels-candidates-v2-round2.jsonl'),
     ('candidates-v2/hard', 'game-levels-candidates-v2-hard.jsonl'),
+    ('candidates-v3', 'game-levels-candidates-v3.jsonl'),
 ])
 def test_candidate_pool_matches_presets_and_stays_test_only(monkeypatch, pool, catalog_name):
     root = Path(__file__).resolve().parents[2]
@@ -57,14 +59,25 @@ def test_each_round_two_variant_changes_one_figure(monkeypatch):
             assert old_kind == new_kind or old_cell == new_cell, variant['id']
 
 
-def test_plus_one_preserves_the_parent_and_adds_one_monster(monkeypatch):
+@pytest.mark.parametrize(('pool', 'parent_pools', 'suffix'), [
+    ('candidates-v2/hard', ['candidates-v2'], '_plus1'),
+    ('candidates-v3', ['candidates-v2', 'candidates-v2/hard'], '_v3'),
+])
+def test_plus_one_preserves_the_parent_and_adds_one_monster(monkeypatch, pool, parent_pools, suffix):
     monkeypatch.chdir(Path(__file__).resolve().parents[2])
-    source = Path('game/encounters/candidates-v2')
-    parents = {row['id']: row for row in game_levels(source)}
-    for child in game_levels(source / 'hard'):
+    source = Path('game/encounters')
+    parents = {row['id']: row for directory in parent_pools for row in game_levels(source / directory)}
+    children = game_levels(source / pool)
+    if suffix == '_plus1':
+        assert all(row['difficulty'] == 'Hard' for row in children)
+    else:
+        assert Counter((row['hero_level'], row['difficulty']) for row in children) == {
+            (level, grade): 4 for level in (1, 2, 3) for grade in ('Easy', 'Medium', 'Hard')
+        }
+        assert sum(row['variant_of'].endswith('_plus1') for row in children) == 12
+    for child in children:
         parent = parents[child['variant_of']]
-        assert child['id'] == parent['id'] + '_plus1'
-        assert child['difficulty'] == 'Hard'
+        assert child['id'] == parent['id'] + suffix
         for field in ('map', 'party', 'hero_level', 'max_rounds'):
             assert child[field] == parent[field], (child['id'], field)
         assert child['roster'][:-1] == parent['roster']

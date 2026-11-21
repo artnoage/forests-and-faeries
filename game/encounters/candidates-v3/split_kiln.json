@@ -1,0 +1,206 @@
+{
+ "id": "split_kiln",
+ "name": "Split Kiln",
+ "order": 6,
+ "map": "split_kiln",
+ "theme": "crucible",
+ "blurb": "Two banks of kiln walls shelter the outer aisles. Short passages connect them through the middle.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_brick_stack_v3",
+   "name": "The Brick Stack (+1 monster)",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The raised kilns leave passages along both outer walls.",
+   "party": ["guy_l1", "elion_l1"],
+   "roster": ["goblin_boss", "kobold_warrior", "goblin_minion"],
+   "placements": {
+    "guy_l1": [13, 4],
+    "elion_l1": [14, 6],
+    "goblin_boss-1": [4, 1],
+    "kobold_warrior-1": [4, 7],
+    "goblin_minion-1": [4, 6]
+   },
+   "variant_of": "split_kiln/l1_the_brick_stack"
+  },
+  {
+   "id": "l1_the_open_vent_v3",
+   "name": "The Open Vent (+1 monster)",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The gaps between the furnaces are narrower than the loading aisles.",
+   "party": ["elion_l1", "curogana_l1"],
+   "roster": ["ghoul", "zombie", "zombie", "zombie"],
+   "placements": {
+    "elion_l1": [11, 1],
+    "curogana_l1": [13, 3],
+    "ghoul-1": [4, 8],
+    "zombie-1": [3, 6],
+    "zombie-2": [5, 6],
+    "zombie-3": [2, 7]
+   },
+   "variant_of": "split_kiln/l1_the_open_vent"
+  },
+  {
+   "id": "l1_the_measuring_rod_plus1_v3",
+   "name": "The Measuring Rod (+2 monsters)",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The kiln walls break the diagonal across the workshop.",
+   "party": ["guy_l1", "mara_l1", "ilyra_l1"],
+   "roster": ["goblin_boss", "goblin_warrior", "goblin_warrior", "kobold_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "guy_l1": [4, 4],
+    "mara_l1": [6, 2],
+    "ilyra_l1": [5, 4],
+    "goblin_boss-1": [13, 5],
+    "goblin_warrior-1": [10, 8],
+    "goblin_warrior-2": [12, 5],
+    "kobold_warrior-1": [10, 7],
+    "goblin_warrior-3": [11, 6],
+    "kobold_warrior-2": [10, 6]
+   },
+   "variant_of": "split_kiln/l1_the_measuring_rod_plus1"
+  },
+  {
+   "id": "l2_the_kilnmasters_mark_v3",
+   "name": "The Kilnmaster’s Mark (+1 monster)",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The three central firebricks screen the opposite aisle.",
+   "party": ["guy_l2", "ilyra", "chruna_l2"],
+   "roster": ["animated_armor", "skeleton", "skeleton", "skeleton", "animated_armor"],
+   "placements": {
+    "guy_l2": [4, 1],
+    "ilyra": [12, 3],
+    "chruna_l2": [2, 2],
+    "animated_armor-1": [7, 8],
+    "skeleton-1": [10, 8],
+    "skeleton-2": [7, 7],
+    "skeleton-3": [10, 9],
+    "animated_armor-2": [8, 8]
+   },
+   "variant_of": "split_kiln/l2_the_kilnmasters_mark"
+  },
+  {
+   "id": "l2_the_draught_shaft_v3",
+   "name": "The Draught Shaft (+1 monster)",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The stoking aisles meet in the open space between the kilns.",
+   "party": ["elion_l2", "ilyra", "chruna_l2"],
+   "roster": ["ghast", "ghast", "ghoul", "skeleton", "skeleton"],
+   "placements": {
+    "elion_l2": [11, 4],
+    "ilyra": [12, 9],
+    "chruna_l2": [9, 3],
+    "ghast-1": [2, 5],
+    "ghast-2": [3, 7],
+    "ghoul-1": [1, 5],
+    "skeleton-1": [4, 5],
+    "skeleton-2": [2, 6]
+   },
+   "variant_of": "split_kiln/l2_the_draught_shaft"
+  },
+  {
+   "id": "l2_the_draught_shaft_plus1_v3",
+   "name": "The Draught Shaft (+2 monsters)",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The stoking aisles meet in the open space between the kilns.",
+   "party": ["elion_l2", "ilyra", "chruna_l2"],
+   "roster": ["ghast", "ghast", "ghoul", "skeleton", "ghoul", "skeleton"],
+   "placements": {
+    "elion_l2": [11, 4],
+    "ilyra": [12, 9],
+    "chruna_l2": [9, 3],
+    "ghast-1": [2, 5],
+    "ghast-2": [3, 7],
+    "ghoul-1": [1, 5],
+    "skeleton-1": [4, 5],
+    "ghoul-2": [3, 6],
+    "skeleton-2": [2, 6]
+   },
+   "variant_of": "split_kiln/l2_the_draught_shaft_plus1"
+  },
+  {
+   "id": "l3_the_shattered_glaze_v3",
+   "name": "The Shattered Glaze (+1 monster)",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The gaps between the furnaces are narrower than the loading aisles.",
+   "party": ["curogana", "mara_l3", "ilyra_l3"],
+   "roster": ["ghast", "ghast", "ghast", "goblin_minion", "goblin_minion", "goblin_minion", "kobold_warrior", "skeleton", "kobold_warrior"],
+   "placements": {
+    "curogana": [11, 1],
+    "mara_l3": [13, 3],
+    "ilyra_l3": [9, 2],
+    "ghast-1": [4, 8],
+    "ghast-2": [3, 6],
+    "ghast-3": [5, 6],
+    "goblin_minion-1": [3, 5],
+    "goblin_minion-2": [4, 9],
+    "goblin_minion-3": [2, 7],
+    "kobold_warrior-1": [6, 9],
+    "skeleton-1": [1, 5],
+    "kobold_warrior-2": [5, 9]
+   },
+   "variant_of": "split_kiln/l3_the_shattered_glaze"
+  },
+  {
+   "id": "l3_the_fallen_chimney_v3",
+   "name": "The Fallen Chimney (+1 monster)",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The long way around the firebox opens onto the far aisle.",
+   "party": ["guy", "elion", "chruna"],
+   "roster": ["goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_minion", "goblin_minion", "goblin_warrior", "goblin_warrior", "kobold_warrior", "goblin_warrior"],
+   "placements": {
+    "guy": [2, 8],
+    "elion": [4, 8],
+    "chruna": [2, 7],
+    "goblin_boss-1": [12, 2],
+    "goblin_boss-2": [14, 3],
+    "goblin_boss-3": [10, 1],
+    "goblin_boss-4": [14, 4],
+    "goblin_boss-5": [12, 1],
+    "goblin_minion-1": [12, 4],
+    "goblin_minion-2": [12, 3],
+    "goblin_warrior-1": [14, 2],
+    "goblin_warrior-2": [10, 4],
+    "kobold_warrior-1": [14, 5],
+    "goblin_warrior-3": [11, 4]
+   },
+   "variant_of": "split_kiln/l3_the_fallen_chimney"
+  },
+  {
+   "id": "l3_the_fallen_chimney_plus1_v3",
+   "name": "The Fallen Chimney (+2 monsters)",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The long way around the firebox opens onto the far aisle.",
+   "party": ["guy", "elion", "chruna"],
+   "roster": ["goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_minion", "goblin_minion", "goblin_warrior", "goblin_warrior", "kobold_warrior", "goblin_warrior", "goblin_warrior"],
+   "placements": {
+    "guy": [2, 8],
+    "elion": [4, 8],
+    "chruna": [2, 7],
+    "goblin_boss-1": [12, 2],
+    "goblin_boss-2": [14, 3],
+    "goblin_boss-3": [10, 1],
+    "goblin_boss-4": [14, 4],
+    "goblin_boss-5": [12, 1],
+    "goblin_minion-1": [12, 4],
+    "goblin_minion-2": [12, 3],
+    "goblin_warrior-1": [14, 2],
+    "goblin_warrior-2": [10, 4],
+    "kobold_warrior-1": [14, 5],
+    "goblin_warrior-3": [13, 4],
+    "goblin_warrior-4": [11, 4]
+   },
+   "variant_of": "split_kiln/l3_the_fallen_chimney_plus1"
+  }
+ ]
+}

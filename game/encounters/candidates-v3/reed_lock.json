@@ -1,0 +1,214 @@
+{
+ "id": "reed_lock",
+ "name": "Reed Lock",
+ "order": 5,
+ "map": "reed_lock",
+ "theme": "catacombs",
+ "blurb": "Two crossings lead between the banks of a stone lock. A central divide screens the opposite towpath.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_loose_mooring_v3",
+   "name": "The Loose Mooring (+1 monster)",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["guy_l1", "elion_l1", "chruna_l1"],
+   "roster": ["ghast", "skeleton", "skeleton"],
+   "placements": {
+    "guy_l1": [4, 2],
+    "elion_l1": [8, 3],
+    "chruna_l1": [5, 2],
+    "ghast-1": [11, 9],
+    "skeleton-1": [6, 9],
+    "skeleton-2": [10, 9]
+   },
+   "variant_of": "reed_lock/l1_the_loose_mooring"
+  },
+  {
+   "id": "l1_the_towpath_v3",
+   "name": "The Towpath (+1 monster)",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "Both towpaths reach the two crossings over the lock.",
+   "party": ["mara_l1", "ilyra_l1"],
+   "roster": ["ghoul", "skeleton", "skeleton", "ghoul"],
+   "placements": {
+    "mara_l1": [2, 3],
+    "ilyra_l1": [2, 7],
+    "ghoul-1": [12, 3],
+    "skeleton-1": [13, 7],
+    "skeleton-2": [11, 3],
+    "ghoul-2": [12, 7]
+   },
+   "variant_of": "reed_lock/l1_the_towpath"
+  },
+  {
+   "id": "l1_the_loose_mooring_plus1_v3",
+   "name": "The Loose Mooring (+2 monsters)",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["guy_l1", "elion_l1", "chruna_l1"],
+   "roster": ["ghast", "skeleton", "ghast", "skeleton"],
+   "placements": {
+    "guy_l1": [4, 2],
+    "elion_l1": [8, 3],
+    "chruna_l1": [5, 2],
+    "ghast-1": [11, 9],
+    "skeleton-1": [6, 9],
+    "ghast-2": [10, 8],
+    "skeleton-2": [10, 9]
+   },
+   "variant_of": "reed_lock/l1_the_loose_mooring_plus1"
+  },
+  {
+   "id": "l2_the_lockkeepers_shift_v3",
+   "name": "The Lockkeeper’s Shift (+1 monster)",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "Both towpaths reach the two crossings over the lock.",
+   "party": ["elion_l2", "curogana_l2", "ilyra"],
+   "roster": ["ghast", "ghoul", "ghoul", "ghoul"],
+   "placements": {
+    "elion_l2": [12, 3],
+    "curogana_l2": [13, 7],
+    "ilyra": [11, 3],
+    "ghast-1": [2, 3],
+    "ghoul-1": [2, 7],
+    "ghoul-2": [2, 4],
+    "ghoul-3": [3, 5]
+   },
+   "variant_of": "reed_lock/l2_the_lockkeepers_shift"
+  },
+  {
+   "id": "l2_the_water_mark_v3",
+   "name": "The Water Mark (+1 monster)",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The lower crossing is only one square wide.",
+   "party": ["elion_l2", "ilyra"],
+   "roster": ["ghast", "ghast", "ghast"],
+   "placements": {
+    "elion_l2": [4, 8],
+    "ilyra": [2, 6],
+    "ghast-1": [10, 2],
+    "ghast-2": [13, 3],
+    "ghast-3": [12, 2]
+   },
+   "variant_of": "reed_lock/l2_the_water_mark"
+  },
+  {
+   "id": "l2_the_gauge_room_plus1_v3",
+   "name": "The Gauge Room (+2 monsters)",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The central divide hides part of the opposite approach.",
+   "party": ["elion_l2", "curogana_l2", "mara"],
+   "roster": ["animated_armor", "animated_armor", "goblin_minion", "goblin_minion", "goblin_minion", "goblin_minion", "goblin_warrior", "kobold_warrior", "kobold_warrior", "goblin_warrior", "goblin_minion"],
+   "placements": {
+    "elion_l2": [12, 6],
+    "curogana_l2": [9, 8],
+    "mara": [11, 6],
+    "animated_armor-1": [4, 4],
+    "animated_armor-2": [5, 2],
+    "goblin_minion-1": [3, 4],
+    "goblin_minion-2": [6, 4],
+    "goblin_minion-3": [4, 2],
+    "goblin_minion-4": [6, 2],
+    "goblin_warrior-1": [2, 4],
+    "kobold_warrior-1": [5, 4],
+    "kobold_warrior-2": [4, 6],
+    "goblin_warrior-2": [5, 3],
+    "goblin_minion-5": [4, 3]
+   },
+   "variant_of": "reed_lock/l2_the_gauge_room_plus1"
+  },
+  {
+   "id": "l2_the_upper_weir_plus1_v3",
+   "name": "The Upper Weir (+2 monsters)",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["curogana_l2", "mara", "chruna_l2"],
+   "roster": ["ghoul", "mummy", "skeleton", "zombie", "ghoul", "skeleton"],
+   "placements": {
+    "curogana_l2": [11, 9],
+    "mara": [6, 9],
+    "chruna_l2": [11, 8],
+    "ghoul-1": [4, 2],
+    "mummy-1": [8, 3],
+    "skeleton-1": [5, 2],
+    "zombie-1": [9, 1],
+    "ghoul-2": [6, 3],
+    "skeleton-2": [9, 2]
+   },
+   "variant_of": "reed_lock/l2_the_upper_weir_plus1"
+  },
+  {
+   "id": "l3_the_final_passage_v3",
+   "name": "The Final Passage (+1 monster)",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The long banks turn a diagonal crossing into a choice of bridges.",
+   "party": ["elion", "chruna"],
+   "roster": ["goblin_boss", "goblin_minion", "goblin_minion", "goblin_warrior", "goblin_warrior", "goblin_warrior", "kobold_warrior", "goblin_warrior"],
+   "placements": {
+    "elion": [2, 8],
+    "chruna": [4, 9],
+    "goblin_boss-1": [11, 2],
+    "goblin_minion-1": [13, 3],
+    "goblin_minion-2": [10, 2],
+    "goblin_warrior-1": [13, 4],
+    "goblin_warrior-2": [11, 4],
+    "goblin_warrior-3": [13, 2],
+    "kobold_warrior-1": [9, 2],
+    "goblin_warrior-4": [12, 2]
+   },
+   "variant_of": "reed_lock/l3_the_final_passage"
+  },
+  {
+   "id": "l3_the_sunken_toll_v3",
+   "name": "The Sunken Toll (+1 monster)",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The long bank links the landing to either crossing.",
+   "party": ["curogana", "mara_l3", "chruna"],
+   "roster": ["mummy", "mummy", "mummy", "mummy"],
+   "placements": {
+    "curogana": [2, 6],
+    "mara_l3": [3, 8],
+    "chruna": [2, 5],
+    "mummy-1": [10, 3],
+    "mummy-2": [11, 8],
+    "mummy-3": [9, 3],
+    "mummy-4": [11, 7]
+   },
+   "variant_of": "reed_lock/l3_the_sunken_toll"
+  },
+  {
+   "id": "l3_the_stone_sill_plus1_v3",
+   "name": "The Stone Sill (+2 monsters)",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The lower crossing is only one square wide.",
+   "party": ["guy", "curogana", "mara_l3"],
+   "roster": ["mummy", "mummy", "mummy", "shadow", "shadow", "zombie", "shadow", "zombie"],
+   "placements": {
+    "guy": [10, 2],
+    "curogana": [13, 3],
+    "mara_l3": [11, 2],
+    "mummy-1": [4, 8],
+    "mummy-2": [2, 6],
+    "mummy-3": [4, 9],
+    "shadow-1": [4, 6],
+    "shadow-2": [6, 8],
+    "zombie-1": [2, 7],
+    "shadow-3": [5, 8],
+    "zombie-2": [5, 7]
+   },
+   "variant_of": "reed_lock/l3_the_stone_sill_plus1"
+  }
+ ]
+}
