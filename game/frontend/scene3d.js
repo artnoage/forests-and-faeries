@@ -434,7 +434,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
   // Props drawn over wall cells (presentation only; the rules see plain walls).
   const PROP_KINDS = new Set(['pillar', 'brazier', 'table', 'bench', 'shelf', 'barrel', 'crate', 'rug',
-    'sarcophagus', 'altar', 'stained_glass']);
+    'sarcophagus', 'altar', 'stained_glass', 'bell', 'lantern_post', 'ore_vein', 'water_lock', 'kiln']);
   const PROP_MODELS = { sarcophagus: 'props/sarcophagus.glb', brazier: 'props/brazier.glb' };
 
   function instanced(geom, mat, transforms, castShadow = true) {
@@ -471,6 +471,227 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     mesh(group, box, stone, 0, 0.12, 0, w - 0.08, 0.24, d - 0.08);
     mesh(group, box, stone, 0, 0.42, 0, w * 0.7, 0.36, d * 0.6);
     mesh(group, box, trim, 0, 0.63, 0, w * 0.76, 0.05, d * 0.66);
+  }
+
+  // Bell Court: cast-bronze sanctuary bell(s) suspended in a timber-and-iron belfry frame.
+  function belfryBell(group, prop, theme) {
+    const w = Number(prop.width) || 1, d = Number(prop.depth) || 1;
+    const h = Math.max(1.05, Math.min(1.9, Number(prop.height) || 1.48));
+    const stone = material(theme.wallCap || '#444056', 0.08, 0.82);
+    const darkStone = material(theme.wallJoint || '#1c1828', 0.12, 0.86);
+    const oak = timber('#523929'), iron = material('#282f34', 0.82, 0.36);
+    const bronze = material('#b88b48', 0.86, 0.28), bronzeTrim = material('#dfb66d', 0.90, 0.24);
+    const bellProfile = geometry('bell_body', () => new THREE.LatheGeometry([
+      new THREE.Vector2(0.01, 0.98), new THREE.Vector2(0.32, 0.95), new THREE.Vector2(0.46, 0.78),
+      new THREE.Vector2(0.54, 0.48), new THREE.Vector2(0.72, 0.18), new THREE.Vector2(0.95, 0.04),
+      new THREE.Vector2(1.0, 0.0), new THREE.Vector2(0.84, 0.0), new THREE.Vector2(0.68, 0.15),
+    ], 18));
+
+    // Stepped stone belfry plinth
+    mesh(group, box, darkStone, 0, 0.08, 0, w - 0.06, 0.16, d - 0.06);
+    mesh(group, box, stone, 0, 0.22, 0, w - 0.22, 0.14, d - 0.22);
+
+    // Timber uprights, iron collars, and heavy top yoke beam
+    const span = Math.max(0.62, w - 0.34);
+    const postH = h - 0.28;
+    for (const sx of [-span / 2, span / 2]) {
+      mesh(group, box, oak, sx, 0.28 + postH / 2, 0, 0.14, postH, 0.14);
+      mesh(group, box, iron, sx, 0.36, 0, 0.16, 0.07, 0.16);
+      mesh(group, box, iron, sx, h - 0.12, 0, 0.16, 0.07, 0.16);
+    }
+    mesh(group, box, oak, 0, h - 0.04, 0, span + 0.32, 0.14, 0.18);
+    mesh(group, box, stone, 0, h + 0.06, 0, span + 0.42, 0.08, 0.28);
+
+    // Hang 1 grand bell (width < 2.5) or 3 graduated bells across a wide belfry pier
+    const slots = w >= 2.5 ? [[-0.78, 0.22, 0.42], [0, 0.33, 0.60], [0.78, 0.22, 0.42]] : [[0, 0.28, 0.52]];
+    for (const [bx, rad, bh] of slots) {
+      const topY = h - 0.12;
+      mesh(group, box, iron, bx, topY - 0.05, 0, rad * 1.1, 0.07, 0.08);
+      mesh(group, cylinder, iron, bx, topY - 0.12, 0, 0.045, 0.14, 0.045);
+      mesh(group, bellProfile, bronze, bx, topY - 0.14 - bh, 0, rad, bh, rad);
+      mesh(group, cylinder, bronzeTrim, bx, topY - 0.14 - bh * 0.22, 0, rad * 0.72, 0.035, rad * 0.72);
+      mesh(group, sphere, iron, bx, topY - 0.14 - bh - 0.03, 0, 0.055, 0.055, 0.055);
+    }
+  }
+
+  // Lantern Mine & Reed Lock: timber gallery post with hanging glowing iron lantern.
+  function lanternPost(group, prop, theme, addLight) {
+    const h = Math.max(0.95, Math.min(1.7, Number(prop.height) || 1.32));
+    const stone = material(theme.wallCap || '#445863', 0.08, 0.86);
+    const oak = timber('#593f2b'), iron = material('#252c30', 0.82, 0.36);
+    const warmAmber = (theme.base || theme.id) === 'caverns' ? '#ffbe63' : (theme.torchColor || '#ffae4a');
+    const coreColor = '#fff3cf';
+
+    // Rough stone footing + timber beam + iron base collar
+    mesh(group, box, stone, 0, 0.14, 0, 0.72, 0.28, 0.72);
+    mesh(group, box, oak, -0.06, 0.26 + (h - 0.26) / 2, 0, 0.16, h - 0.26, 0.16);
+    mesh(group, box, iron, -0.06, 0.34, 0, 0.19, 0.08, 0.19);
+    // Horizontal cross-arm & diagonal strut
+    mesh(group, box, oak, 0.12, h - 0.06, 0, 0.50, 0.10, 0.11);
+    const strut = mesh(group, box, iron, 0.08, h - 0.20, 0, 0.28, 0.045, 0.045);
+    strut.rotation.z = Math.PI / 4;
+    // Hanging iron cage lantern
+    const lx = 0.28, ly = h - 0.30;
+    mesh(group, cylinder, iron, lx, h - 0.14, 0, 0.018, 0.14, 0.018);
+    mesh(group, cone, iron, lx, ly + 0.13, 0, 0.14, 0.10, 0.14);
+    mesh(group, cylinder, iron, lx, ly - 0.10, 0, 0.11, 0.04, 0.11);
+    const glass = mesh(group, cylinder, glow(warmAmber, 0.94), lx, ly + 0.01, 0, 0.088, 0.17, 0.088);
+    glass.castShadow = false; glass.userData.keep = true;
+    const core = mesh(group, sphere, glow(coreColor, 0.98), lx, ly + 0.01, 0, 0.045, 0.065, 0.045);
+    core.castShadow = false; core.userData.keep = true;
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+      mesh(group, cylinder, iron, lx + Math.cos(a) * 0.095, ly + 0.01, Math.sin(a) * 0.095, 0.012, 0.19, 0.012);
+    }
+    let pLight = null;
+    if (addLight) {
+      pLight = new THREE.PointLight(warmAmber, 5.4, 7.6, 1.9);
+      pLight.position.set(lx, ly, 0);
+      group.add(pLight);
+    }
+    torchFlames.push({ flame: core, light: pLight, baseY: ly + 0.01, baseScaleY: 0.065, baseIntensity: 5.4, phase: prop.x * 2.3 + prop.y * 1.7 });
+  }
+
+  // Lantern Mine: craggy uncut rock boulder studded with glowing mineral crystal veins.
+  function oreVein(group, prop, theme) {
+    const w = Number(prop.width) || 1, d = Number(prop.depth) || 1;
+    const h = Math.max(0.75, Math.min(1.25, Number(prop.height) || 1.02));
+    const rock = material('#26353e', 0.12, 0.92);
+    const darkRock = material('#172229', 0.16, 0.94);
+    const crystalHex = theme.crystalColor || '#4ce6ff';
+    const crystalGlow = glow(crystalHex, 0.94);
+    const crystalCore = glow('#e2fcff', 0.98);
+
+    // Jagged multi-angled dark cavern boulder crags (reads as uncut rock seam, not a cube)
+    const yaw = ((prop.x * 5 + prop.y * 7) % 6) * 0.42;
+    const base = mesh(group, cone, darkRock, 0, h * 0.36, 0, Math.min(w, d) * 0.56, h * 0.72, Math.min(w, d) * 0.56);
+    base.rotation.y = yaw;
+    const cragA = mesh(group, box, rock, -w * 0.14, h * 0.32, d * 0.10, w * 0.56, h * 0.64, d * 0.52);
+    cragA.rotation.set(0.12, yaw + 0.48, -0.10);
+    const cragB = mesh(group, box, darkRock, w * 0.16, h * 0.28, -d * 0.14, w * 0.52, h * 0.54, d * 0.50);
+    cragB.rotation.set(-0.14, yaw - 0.36, 0.12);
+    const spire = mesh(group, cone, rock, w * 0.05, h * 0.74, -d * 0.04, Math.min(w, d) * 0.36, h * 0.54, Math.min(w, d) * 0.36);
+    spire.rotation.set(0.08, yaw, -0.14);
+
+    // Bold translucent glowing crystal ore clusters erupting from the rock cracks
+    const shards = [
+      [w * 0.18, h * 0.76, d * 0.12, 0.115, 0.68, 0.34, -0.20],
+      [-w * 0.18, h * 0.70, -d * 0.14, 0.105, 0.60, -0.36, 0.24],
+      [w * 0.02, h * 0.96, d * 0.02, 0.095, 0.58, 0.12, 0.14],
+      [-w * 0.24, h * 0.46, d * 0.20, 0.085, 0.46, -0.48, -0.32],
+      [w * 0.24, h * 0.44, -d * 0.20, 0.080, 0.44, 0.46, 0.28],
+    ];
+    for (const [sx, sy, sz, sr, sh, rz, rx] of shards) {
+      const shMesh = mesh(group, cone, crystalGlow, sx, sy, sz, sr, sh, sr);
+      shMesh.rotation.set(rx, 0, rz); shMesh.castShadow = false;
+      const tip = mesh(group, cone, crystalCore, sx, sy + sh * 0.16, sz, sr * 0.46, sh * 0.50, sr * 0.46);
+      tip.rotation.set(rx, 0, rz); tip.castShadow = false;
+    }
+  }
+
+  // Reed Lock: mossy stone canal channel, dark shimmering water, timber sluice weir, and bankside reeds.
+  function waterLock(group, prop, theme) {
+    const w = Number(prop.width) || 2, d = Number(prop.depth) || 2;
+    const h = Math.max(0.45, Math.min(1.15, Number(prop.height) || 0.78));
+    const stone = material(theme.wallCap || '#485449', 0.08, 0.84);
+    const mossStone = material('#3c5738', 0.06, 0.88);
+    const oak = timber('#4d3827'), iron = material('#262d30', 0.78, 0.38);
+    const wKey = 'water:lock';
+    if (!materials.has(wKey)) materials.set(wKey, new THREE.MeshStandardMaterial({ color: '#1b585c', emissive: '#0e363a', emissiveIntensity: 0.75, metalness: 0.38, roughness: 0.12 }));
+    const water = materials.get(wKey);
+    const reedStem = material('#5d7d40', 0.04, 0.86), cattail = material('#6e462a', 0.04, 0.90);
+
+    // Mossy stone coping curbs framing the west and east banks of the lock channel
+    const curbW = 0.20;
+    mesh(group, box, stone, -w / 2 + curbW / 2, 0.11, 0, curbW, 0.22, d - 0.04);
+    mesh(group, box, stone, w / 2 - curbW / 2, 0.11, 0, curbW, 0.22, d - 0.04);
+    mesh(group, box, mossStone, -w / 2 + curbW / 2, 0.23, 0, curbW + 0.04, 0.04, d - 0.06);
+    mesh(group, box, mossStone, w / 2 - curbW / 2, 0.23, 0, curbW + 0.04, 0.04, d - 0.06);
+
+    // Shimmering emerald-teal canal water surface recessed slightly between the curbs
+    const surf = mesh(group, box, water, 0, 0.04, 0, Math.max(0.4, w - curbW * 1.8), 0.04, d - 0.06);
+    surf.castShadow = false;
+
+    // Central timber & stone sluice weir / dividing lock gate (tall when h >= 0.8 to signal sightline block)
+    const gateThick = h >= 0.8 ? Math.min(0.42, d * 0.28) : 0.22;
+    mesh(group, box, oak, 0, h * 0.50, 0, w - 0.16, h, gateThick);
+    mesh(group, box, stone, 0, h + 0.04, 0, w - 0.08, 0.09, gateThick + 0.08);
+    const ribs = Math.max(2, Math.round(w * 2));
+    for (let i = 0; i < ribs; i++) {
+      const rx = -w / 2 + 0.28 + (i + 0.5) * (w - 0.56) / ribs;
+      mesh(group, box, iron, rx, h * 0.52, 0, 0.055, h + 0.08, gateThick + 0.05);
+    }
+    if (h >= 0.8) {
+      for (const sz of [-d / 2 + 0.24, d / 2 - 0.24]) {
+        mesh(group, box, stone, 0, h * 0.42, sz, w - 0.24, h * 0.84, 0.28);
+      }
+    }
+
+    // Lush bankside reed & cattail tufts sprouting along both mossy coping edges
+    const reedCount = Math.max(6, Math.round(d * 4));
+    for (let i = 0; i < reedCount; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const rx = side * (w / 2 - 0.21) + (((i * 7) % 5) - 2) * 0.035;
+      const rz = -d / 2 + 0.16 + ((i + 0.5) / reedCount) * (d - 0.32);
+      const rh = 0.58 + (i % 3) * 0.16;
+      const stalk = mesh(group, cylinder, reedStem, rx, 0.16 + rh / 2, rz, 0.026, rh, 0.026);
+      stalk.rotation.z = side * -0.16; stalk.rotation.x = ((i % 3) - 1) * 0.11;
+      if (i % 2 === 0) {
+        const head = mesh(group, cylinder, cattail, rx - side * 0.05, 0.16 + rh * 0.88, rz, 0.046, 0.15, 0.046);
+        head.rotation.z = side * -0.16;
+      }
+    }
+  }
+
+  // Split Kiln: vaulted basalt-and-brick furnace bank with glowing arched ember fireboxes & flue.
+  function kilnFurnace(group, prop, theme, addLight) {
+    const w = Number(prop.width) || 2, d = Number(prop.depth) || 2;
+    const h = Math.max(0.95, Math.min(1.55, Number(prop.height) || 1.26));
+    const brick = material('#523730', 0.10, 0.86);
+    const soot = material('#241a18', 0.14, 0.90);
+    const iron = material('#282a2d', 0.82, 0.38);
+    const ember = glow('#ff5514', 0.94), core = glow('#ffda7a', 0.98);
+
+    // Stepped basalt foundation + massive brick kiln body + vaulted top dome
+    mesh(group, box, soot, 0, 0.08, 0, w - 0.06, 0.16, d - 0.06);
+    mesh(group, box, brick, 0, 0.16 + (h * 0.62) / 2, 0, w - 0.14, h * 0.62, d - 0.14);
+    mesh(group, box, soot, 0, 0.16 + h * 0.62 + 0.09, 0, w - 0.30, 0.18, d - 0.30);
+    for (const sy of [0.34, 0.68]) {
+      mesh(group, box, iron, 0, sy, 0, w - 0.10, 0.055, d - 0.10);
+    }
+    // Iron-banded chimney flue with glowing ember crown
+    const flueH = Math.max(0.32, h * 0.34);
+    const flueY = 0.16 + h * 0.62 + 0.14 + flueH / 2;
+    mesh(group, cylinder, soot, 0, flueY, 0, 0.25, flueH, 0.25);
+    mesh(group, cylinder, iron, 0, flueY + flueH * 0.44, 0, 0.29, 0.06, 0.29);
+    const flueGlow = mesh(group, cylinder, ember, 0, flueY + flueH * 0.50, 0, 0.19, 0.06, 0.19);
+    flueGlow.castShadow = false; flueGlow.userData.keep = true;
+    const flueFlame = mesh(group, cone, core, 0, flueY + flueH * 0.62, 0, 0.11, 0.24, 0.11);
+    flueFlame.castShadow = false; flueFlame.userData.keep = true;
+
+    // Glowing barred ember fireboxes on both north (-Z) and south (+Z) kiln faces
+    const mouths = w >= 2.5 ? [-0.62, 0.62] : [0];
+    let mainGlow = flueFlame;
+    for (const mx of mouths) {
+      for (const side of [-1, 1]) {
+        const mz = side * (d / 2 - 0.065);
+        mesh(group, box, iron, mx, 0.40, mz, 0.54, 0.46, 0.05);
+        const fb = mesh(group, box, ember, mx, 0.38, mz + side * 0.012, 0.44, 0.36, 0.03);
+        fb.castShadow = false; fb.userData.keep = true;
+        const fc = mesh(group, box, core, mx, 0.32, mz + side * 0.020, 0.30, 0.20, 0.02);
+        fc.castShadow = false; fc.userData.keep = true;
+        for (const gx of [-0.12, 0, 0.12]) {
+          mesh(group, box, iron, mx + gx, 0.38, mz + side * 0.028, 0.028, 0.36, 0.024);
+        }
+      }
+    }
+    let pLight = null;
+    if (addLight) {
+      pLight = new THREE.PointLight('#ff6a22', 6.0, 8.4, 1.9);
+      pLight.position.set(0, 0.65, d / 2 + 0.35);
+      group.add(pLight);
+    }
+    torchFlames.push({ flame: mainGlow, light: pLight, baseY: flueY + flueH * 0.62, baseScaleY: 0.24, baseIntensity: 6.0, phase: prop.x * 1.7 + prop.y * 2.9 });
   }
 
   // A lancet window on the floor-facing side of a wall cell: an emissive pane.
@@ -685,14 +906,24 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         placePropModel(group, prop, 'sarcophagus');
       } else if (prop.kind === 'altar') {
         altar(group, prop, theme);
+      } else if (prop.kind === 'bell') {
+        belfryBell(group, prop, theme);
+      } else if (prop.kind === 'lantern_post') {
+        lanternPost(group, prop, theme, lights++ < 3);
+      } else if (prop.kind === 'ore_vein') {
+        oreVein(group, prop, theme);
+      } else if (prop.kind === 'water_lock') {
+        waterLock(group, prop, theme);
+      } else if (prop.kind === 'kiln') {
+        kilnFurnace(group, prop, theme, lights++ < 3);
       } else {
         furnish(group, prop);
       }
-      if (!['brazier', 'table', 'sarcophagus'].includes(prop.kind)) batchProp(group);
+      if (!['brazier', 'table', 'sarcophagus', 'lantern_post', 'kiln'].includes(prop.kind)) batchProp(group);
       if (object) group.traverse(child => { child.userData.objectId = object.id; });
     }
 
-    if (!props.some(p => p.kind === 'brazier')) {
+    if (!props.some(p => ['brazier', 'lantern_post', 'kiln'].includes(p.kind))) {
       const candidates = interiorWalls.length ? interiorWalls : [
         { x: 0, y: 0, h: 0.42 }, { x: width - 1, y: 0, h: 0.42 },
         { x: 0, y: height - 1, h: 0.42 }, { x: width - 1, y: height - 1, h: 0.42 },

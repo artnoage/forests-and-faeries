@@ -16,5 +16,138 @@
    "H......H......H",
    "HHHHHHHHHHHHHHH"
   ]
+ },
+ "scene": {
+  "wall_height": 1.05,
+  "props": [
+   {
+    "kind": "stained_glass",
+    "x": 3,
+    "y": 0,
+    "facing": "s"
+   },
+   {
+    "kind": "stained_glass",
+    "x": 5,
+    "y": 0,
+    "facing": "s"
+   },
+   {
+    "kind": "stained_glass",
+    "x": 9,
+    "y": 0,
+    "facing": "s"
+   },
+   {
+    "kind": "stained_glass",
+    "x": 11,
+    "y": 0,
+    "facing": "s"
+   },
+   {
+    "kind": "bell",
+    "x": 6,
+    "y": 1,
+    "width": 3,
+    "depth": 1,
+    "height": 1.68
+   },
+   {
+    "kind": "bell",
+    "x": 7,
+    "y": 9,
+    "width": 1,
+    "depth": 1,
+    "height": 1.42
+   },
+   {
+    "kind": "pillar",
+    "x": 4,
+    "y": 3,
+    "width": 1,
+    "depth": 1,
+    "height": 1.55
+   },
+   {
+    "kind": "pillar",
+    "x": 10,
+    "y": 3,
+    "width": 1,
+    "depth": 1,
+    "height": 1.55
+   },
+   {
+    "kind": "brazier",
+    "x": 4,
+    "y": 4,
+    "width": 1,
+    "depth": 1,
+    "height": 0.72
+   },
+   {
+    "kind": "brazier",
+    "x": 10,
+    "y": 4,
+    "width": 1,
+    "depth": 1,
+    "height": 0.72
+   },
+   {
+    "kind": "altar",
+    "x": 1,
+    "y": 5,
+    "width": 2,
+    "depth": 1,
+    "height": 0.68
+   },
+   {
+    "kind": "altar",
+    "x": 12,
+    "y": 5,
+    "width": 2,
+    "depth": 1,
+    "height": 0.68
+   },
+   {
+    "kind": "pillar",
+    "x": 4,
+    "y": 7,
+    "width": 1,
+    "depth": 1,
+    "height": 1.55
+   },
+   {
+    "kind": "brazier",
+    "x": 5,
+    "y": 7,
+    "width": 1,
+    "depth": 1,
+    "height": 0.72
+   },
+   {
+    "kind": "brazier",
+    "x": 9,
+    "y": 7,
+    "width": 1,
+    "depth": 1,
+    "height": 0.72
+   },
+   {
+    "kind": "pillar",
+    "x": 10,
+    "y": 7,
+    "width": 1,
+    "depth": 1,
+    "height": 1.55
+   },
+   {
+    "kind": "rug",
+    "x": 6,
+    "y": 3,
+    "width": 3,
+    "depth": 5,
+    "height": 0.025
+   }
+  ]
  }
 }

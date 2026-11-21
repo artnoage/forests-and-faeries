@@ -36,7 +36,7 @@ THEMES = ('ossuary', 'catacombs', 'caverns', 'reliquary', 'sanctum', 'crucible',
           'mausoleum', 'mausoleum_crypt', 'mausoleum_caves')
 DIFFICULTIES = ('Easy', 'Medium', 'Hard')
 PROP_KINDS = ('pillar', 'brazier', 'table', 'bench', 'shelf', 'barrel', 'crate', 'rug',
-              'sarcophagus', 'altar', 'stained_glass')
+              'sarcophagus', 'altar', 'stained_glass', 'bell', 'lantern_post', 'ore_vein', 'water_lock', 'kiln')
 MAX_SIZE = 32
 MAX_CREATURES = 24
 CONTENT_NAMES = {'goblin_minion': 'Goblin Minion', 'goblin_warrior': 'Goblin Warrior', 'goblin_boss': 'Goblin Boss'}
