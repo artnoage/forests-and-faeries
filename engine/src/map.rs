@@ -74,6 +74,7 @@ pub struct Grid {
     /// The rows as given (`H` / `.`).
     pub rows: Vec<String>,
     wall: Vec<bool>,
+    pub(crate) symmetric_sight: bool,
     /// 8-connected floor components under the A* neighbour rule (-1: wall).
     comp: Vec<i32>,
     /// Line of sight from each source cell, computed on first use.
@@ -161,6 +162,7 @@ impl Grid {
             h,
             rows: rows.iter().map(|r| r.as_ref().to_string()).collect(),
             wall,
+            symmetric_sight: true,
             comp: Vec::new(),
             los: (0..n).map(|_| OnceLock::new()).collect(),
             nbr_start: Vec::new(),
@@ -227,13 +229,19 @@ impl Grid {
     /// The map for these rows, shared by every fight on it (a process-wide
     /// cache, so line of sight computed once serves every tape on the map).
     pub fn shared<S: AsRef<str>>(rows: &[S]) -> Result<Arc<Grid>, String> {
-        static CACHE: OnceLock<Mutex<HashMap<Vec<String>, Arc<Grid>>>> = OnceLock::new();
-        let key: Vec<String> = rows.iter().map(|r| r.as_ref().to_string()).collect();
+        Self::shared_for_rules(rows, true)
+    }
+
+    pub(crate) fn shared_for_rules<S: AsRef<str>>(rows: &[S], symmetric: bool) -> Result<Arc<Grid>, String> {
+        static CACHE: OnceLock<Mutex<HashMap<(Vec<String>, bool), Arc<Grid>>>> = OnceLock::new();
+        let key = (rows.iter().map(|r| r.as_ref().to_string()).collect::<Vec<_>>(), symmetric);
         let cache = CACHE.get_or_init(Default::default);
         if let Some(g) = cache.lock().unwrap().get(&key) {
             return Ok(g.clone());
         }
-        let g = Arc::new(Grid::from_rows(&key)?);
+        let mut grid = Grid::from_rows(&key.0)?;
+        grid.symmetric_sight = symmetric;
+        let g = Arc::new(grid);
         let mut c = cache.lock().unwrap();
         if c.len() >= 256 {
             c.clear();
@@ -377,6 +385,14 @@ impl Grid {
     }
 
     fn compute_los(&self, a: Pos, b: Pos) -> bool {
+        if self.symmetric_sight {
+            return self.clear_ray(a, b, true);
+        }
+        self.layout_los(a, b)
+    }
+
+    /// Visibility used to select placements by the published map generator versions.
+    pub(crate) fn layout_los(&self, a: Pos, b: Pos) -> bool {
         let squares = squares_in_path(a, b, true);
         let mut prev = a;
         for s in squares {
@@ -391,6 +407,9 @@ impl Grid {
     /// `Map.line_of_sight(..., inclusive=False) is not None`
     /// (`unseen_targets.has_line_of_effect`).
     pub fn line_of_effect(&self, a: Pos, b: Pos) -> bool {
+        if self.symmetric_sight {
+            return self.clear_ray(a, b, false);
+        }
         let squares = squares_in_path(a, b, false);
         let mut prev = a;
         for s in squares {
@@ -400,6 +419,22 @@ impl Grid {
             prev = s;
         }
         true
+    }
+
+    // Cross vertical and horizontal cell boundaries in order along the ray.
+    // At an exact grid vertex the ray enters the diagonal cell directly.
+    fn clear_ray(&self, a: Pos, b: Pos, inclusive: bool) -> bool {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let (mut x, mut y) = a;
+        let (mut ix, mut iy) = (0, 0);
+        while (x, y) != b {
+            if self.is_wall(x, y) { return false; }
+            let cross = (2 * ix + 1) * dy.abs() - (2 * iy + 1) * dx.abs();
+            if cross == 0 && self.is_wall(x + dx.signum(), y) && self.is_wall(x, y + dy.signum()) { return false; }
+            if cross <= 0 { x += dx.signum(); ix += 1; }
+            if cross >= 0 { y += dy.signum(); iy += 1; }
+        }
+        !inclusive || !self.is_wall(x, y)
     }
 
     /// Step distances from `start` over the floor (A* neighbour rule), as
@@ -429,6 +464,10 @@ impl Grid {
     /// ratio, the double-sweep diameter, the zone layout's anchor distance
     /// (which must be reachable, §3.5) and the openness.
     pub fn measure(&self) -> Result<MapStats, String> {
+        if self.symmetric_sight {
+            // Map statistics are part of the versioned generator output.
+            return Grid::shared_for_rules(&self.rows, false)?.measure();
+        }
         let floor: Vec<usize> = (0..self.cells()).filter(|&i| !self.wall[i]).collect();
         if floor.len() < 2 {
             return Err("fewer than two floor squares".into());

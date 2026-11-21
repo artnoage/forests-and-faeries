@@ -64,6 +64,8 @@ pub struct MoveCache {
     /// By cell: the destination's `min_steps_to_multiple`, once computed.
     steps: Vec<Option<Option<i32>>>,
     occupied: crate::map::Bits,
+    landings: crate::map::Bits,
+    reach: i32,
     pursuit: Vec<u16>,
 }
 
@@ -113,6 +115,7 @@ impl Fight {
                 k.ids = vec![self.units[*target].id.clone()];
                 k.mode = if *heal { "heal" } else { "harm" };
             }
+            Act::SpiritualWeaponMove { to } => k.point = vec![to.0, to.1],
             Act::SpiritualWeaponAttack { target } => k.ids = vec![self.units[*target].id.clone()],
             Act::RedirectAttack { ally } => k.ids = vec![self.units[*ally].id.clone()],
             // `CleaveAttackAction.using` is the weapon
@@ -624,16 +627,32 @@ impl Fight {
                     }).collect();
                 cache.pursuit = self.pursuit_distances(&unvisited, &occupied);
                 cache.occupied = occupied;
+            } else if self.rule_version >= 7 {
+                let reach = self.units[u].t.melee_ft.unwrap_or_else(|| self.units[u].t.attacks.iter()
+                    .map(|a| a.range).max().unwrap_or(5)).max(5);
+                let mut landings = crate::map::Bits::new(self.grid.cells());
+                for (i, unit) in self.units.iter().enumerate() {
+                    if i != u && self.token_at(unit.pos) == Some(i) { landings.set(self.grid.index(unit.pos.0, unit.pos.1)); }
+                }
+                if cache.pursuit.is_empty() || cache.occupied != occupied || cache.landings != landings || cache.reach != reach {
+                    let goals: Vec<_> = (0..self.grid.cells()).filter(|&i| !landings.get(i)).map(|i| self.grid.pos_of(i))
+                        .filter(|&p| self.placeable(u, p) && targets.iter().any(|&t| self.within_reach(p, t, reach) && self.grid.los(p, t))).collect();
+                    cache.pursuit = self.pursuit_distances(&goals, &occupied);
+                    cache.occupied = occupied;
+                    cache.landings = landings;
+                    cache.reach = reach;
+                }
             } else if cache.pursuit.is_empty() || cache.occupied != occupied {
                 cache.pursuit = self.pursuit_distances(&targets, &occupied);
                 cache.occupied = occupied;
             }
         }
         let grid = self.grid.clone();
+        let can_land_on_goal = self.rule_version >= 7 || exploring;
         let closes_distance = |p: Pos| {
             let current = cache.pursuit[grid.index(upos.0, upos.1)];
             let next = cache.pursuit[grid.index(p.0, p.1)];
-            current != u16::MAX && next < current && (exploring || next > 0)
+            current != u16::MAX && next < current && (can_land_on_goal || next > 0)
         };
         let ordinary_progress = pursuit && cands.iter().any(|a| matches!(a, Act::Move(path) if path.last().is_some_and(|p| closes_distance(*p))));
         let can_pursue_with_dash = pursuit && !exploring && !ordinary_progress && cands.iter().any(|a| matches!(a, Act::Dash))
@@ -730,7 +749,10 @@ impl Fight {
                 // `DisengageBonusAction` has no `ai_value`: 0 (the action
                 // versions get 0.1); `HideBonusAction.ai_value` (N20-040)
                 Act::Disengage | Act::DisengageBonus => 0.0,
-                Act::HideBonus => self.ai_hide_value(u),
+                Act::HideBonus => {
+                    let value = self.ai_hide_value(u);
+                    if self.rule_version >= 7 && value == 0.0 { SKIP_NATIVE } else { value }
+                },
                 // `RedirectAttackAction.ai_value`: the ally's current HP
                 Act::RedirectAttack { ally } => self.units[*ally].hp as f64,
                 Act::ActionSurge => 0.0,

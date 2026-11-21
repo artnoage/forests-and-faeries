@@ -32,7 +32,7 @@ OUTCOMES = ('win', 'loss', 'draw', 'horizon_win', 'horizon_loss', 'horizon_draw'
 KIND_NAMES = dict(enumerate(('move', 'attack', 'dash', 'dodge', 'stand', 'second_wind', 'action_surge', 'spell',
                              'turn_undead', 'divine_spark', 'preserve_life', 'spiritual_weapon', 'innate_sorcery',
                              'dragons_breath', 'end_turn', 'disengage_bonus', 'hide_bonus', 'redirect_attack',
-                             'rage', 'extend_rage', 'reckless_attack', 'cleave', 'disengage')))
+                             'rage', 'extend_rage', 'reckless_attack', 'cleave', 'disengage', 'spiritual_weapon_move')))
 MODES = ('native', 'net', 'search')
 
 

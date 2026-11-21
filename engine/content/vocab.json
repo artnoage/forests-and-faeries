@@ -53,7 +53,8 @@
    "extend_rage": 19,
    "reckless_attack": 20,
    "cleave": 21,
-   "disengage": 22
+   "disengage": 22,
+   "spiritual_weapon_move": 23
   },
   "effects": {
    "bless": 0,

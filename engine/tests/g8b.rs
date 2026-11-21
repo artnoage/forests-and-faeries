@@ -113,8 +113,8 @@ fn nimble_escape_rows_and_the_native_hide_value() {
     assert!(rd < rh, "canonical order: disengage_bonus first");
     let raw = d.native_raw.as_ref().unwrap();
     assert!(d.native_dropped.as_ref().unwrap()[rd]);
-    assert!(raw[rd] < raw[rh]);
-    assert_eq!(raw[rh], 0.0);
+    assert!(d.native_dropped.as_ref().unwrap()[rh]);
+    assert_eq!(raw[rd], raw[rh]);
     // spent: no Nimble Escape rows any more this turn
     env.step(rd).unwrap();
     assert_eq!(env.fight.notes.disengage_bonus, 1);
@@ -138,9 +138,11 @@ fn nimble_escape_rows_and_the_native_hide_value() {
         let d = env.decision().unwrap();
         let rh = row_of(&env, &Act::HideBonus).unwrap();
         let got = d.native_raw.as_ref().unwrap()[rh];
-        assert!((got - want).abs() < 1e-12, "{id} {daggers:?}: {got} vs {want}");
         if want > 0.0 {
+            assert!((got - want).abs() < 1e-12, "{id} {daggers:?}: {got} vs {want}");
             assert_eq!(d.native_choice, Some(rh), "{id} hides first");
+        } else {
+            assert!(d.native_dropped.as_ref().unwrap()[rh]);
         }
     }
 

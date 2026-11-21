@@ -282,7 +282,7 @@ impl Fight {
         let mut out = Vec::new();
         for x in x0..=x1 {
             for y in y0..=y1 {
-                if self.grid.in_bounds(x, y) && (x, y) != origin {
+                if self.grid.in_bounds(x, y) && (x, y) != origin && (self.rule_version < 7 || self.grid.los(origin, (x, y))) {
                     out.push((x, y));
                 }
             }
@@ -595,7 +595,13 @@ impl Fight {
                     pool.push(u);
                 }
                 for t in pool {
-                    out.push((vec![t], false, None, None));
+                    if self.rule_version >= 7 {
+                        for dt in [Dmg::Acid, Dmg::Cold, Dmg::Fire, Dmg::Lightning, Dmg::Poison] {
+                            out.push((vec![t], false, None, Some(dt)));
+                        }
+                    } else {
+                        out.push((vec![t], false, None, None));
+                    }
                 }
             }
             AcidSplash | Shatter => {
@@ -1369,7 +1375,8 @@ impl Fight {
     }
 
     /// Resolve one of Curogana's spells: the draws, as result items.
-    pub(crate) fn resolve_sorcerer(&mut self, u: usize, c: &Cast, items: &mut Vec<crate::spells::Item>, rolls: &mut Vec<RollObj>) {
+    pub(crate) fn resolve_sorcerer(&mut self, u: usize, c: &Cast, items: &mut Vec<crate::spells::Item>, rolls: &mut Vec<RollObj>) -> usize {
+        let mut rerolled = 0;
         use crate::spells::Item;
         use SpellId::*;
         let t0 = c.targets.first().copied();
@@ -1449,7 +1456,9 @@ impl Fight {
                     let i = self.new_roll(u, "spells.chromatic_orb", if nat20 { 2 * n } else { n }, 8, 0, rolls);
                     let damage = DmgRef { t: target, dt, crit: nat20, dmg: i, droll: i, save: None, atk_roll_fmt: atk_fmt };
                     if rerolls_left > 0 {
-                        rerolls_left -= self.empower(u, std::slice::from_ref(&damage), rolls, rerolls_left);
+                        let count = self.empower(u, std::slice::from_ref(&damage), rolls, rerolls_left);
+                        rerolls_left -= count;
+                        rerolled += count;
                     }
                     items.push(Item::RDamage(damage));
                     let faces = &rolls[i].rolls;
@@ -1541,25 +1550,34 @@ impl Fight {
                 let roll = self.new_roll(u, "spells.generic_damage", n, 8, 0, rolls);
                 let dc = self.spell_dc(u);
                 let mut claimed: Vec<Pos> = Vec::new();
+                let mut pushes = Vec::new();
                 for t in targets {
                     let (passed, rolled) = self.save_check(t, Ability::Con, dc, false);
                     let dmg = if passed { Fight::half_of(rolls, roll) } else { roll };
                     items.push(Item::RDamage(DmgRef { t, dt: Dmg::Thunder, crit: false, dmg, droll: roll, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None }));
-                    if !passed {
+                    if !passed && self.rule_version >= 7 {
+                        pushes.push(t);
+                    } else if !passed {
                         let to = self.push_square(t, origin, &claimed);
                         claimed.push(to);
                         items.push(Item::Push { t, to });
                     }
                 }
+                pushes.sort_by_key(|&t| {
+                    let (x, y) = self.units[t].pos;
+                    std::cmp::Reverse((x - origin.0).abs().max((y - origin.1).abs()))
+                });
+                items.extend(pushes.into_iter().map(|t| Item::PushFrom { t, origin }));
             }
             DragonsBreath => {
                 let b = t0.unwrap_or(u);
-                let dt = self.breath_type(u);
+                let dt = c.dt.unwrap_or_else(|| self.breath_type(u));
                 items.push(Item::Breath { t: b, dt, dice: 3 + (c.at_level - 2).max(0) });
             }
             Blur => items.push(Item::Blur),
             _ => {}
         }
+        rerolled
     }
 
     /// `metamagic._empower`: reroll up to CHA-mod dice below average over the
@@ -1634,6 +1652,10 @@ impl Fight {
                 self.register_hook(u, HookEv::StartOfTurn, HookKind::RayOfFrostStart, obj, None);
             }
             &Item::Push { t, to } => self.move_to(t, to),
+            &Item::PushFrom { t, origin } => {
+                let to = self.push_square(t, origin, &[]);
+                self.move_to(t, to);
+            }
             &Item::Breath { t, dt, dice } => {
                 let obj = self.new_obj(SpellId::DragonsBreath, ObjKind::Breath { target: t, dt, dice }, u, Vec::new(), true);
                 self.register_effect(t, EffKey::DragonsBreath, obj, Some(60));

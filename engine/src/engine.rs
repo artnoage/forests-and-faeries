@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 6;
+pub const CURRENT_RULE_VERSION: i32 = 7;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -304,6 +304,7 @@ pub enum Act {
     DivineSpark { target: usize, heal: bool, dt: Dmg },
     PreserveLife(Vec<(usize, i32)>),
     SpiritualWeaponAttack { target: usize },
+    SpiritualWeaponMove { to: Pos },
     /// Innate Sorcery (bonus action).
     InnateSorcery,
     /// Dragon's Breath exhale (unaimed: the best cone at resolve).
@@ -377,6 +378,7 @@ impl Act {
             Act::DivineSpark { .. } => "divine_spark",
             Act::PreserveLife(_) => "preserve_life",
             Act::SpiritualWeaponAttack { .. } => "spiritual_weapon_attack",
+            Act::SpiritualWeaponMove { .. } => "spiritual_weapon_move",
             Act::InnateSorcery => "innate_sorcery",
             Act::DragonsBreathExhale => "dragons_breath_exhale",
             Act::Stand => "stand",
@@ -788,6 +790,9 @@ impl Fight {
         }
         self.champion_moves_enabled = version >= 2;
         self.creature_space_rules = version >= 3;
+        if self.grid.symmetric_sight != (version >= 7) {
+            self.grid = Grid::shared_for_rules(&self.grid.rows, version >= 7).expect("validated map");
+        }
         self.rule_version = version;
     }
 
@@ -1461,6 +1466,10 @@ impl Fight {
     /// `compute_actual_moves(entity, path, map, battle, budget)` for paths of
     /// 1x1 creatures without jumps; returns (moves, remaining budget).
     pub fn compute_actual_moves(&self, u: usize, path: &[Pos], budget: i32) -> (Vec<Pos>, i32) {
+        self.move_prefix(u, path, budget, false)
+    }
+
+    fn move_prefix(&self, u: usize, path: &[Pos], budget: i32, in_transit: bool) -> (Vec<Pos>, i32) {
         let mut moves: Vec<Pos> = Vec::with_capacity(path.len());
         let mut budget = budget;
         let frightened = !self.units[u].frightened_by.is_empty() || !self.units[u].source_fear.is_empty();
@@ -1476,17 +1485,18 @@ impl Fight {
             if !self.passable(u, m) || (self.rule_version >= 5 && !self.grid.clears_corner(path[i - 1], m)) {
                 break;
             }
-            budget -= self.step_cost(u, m);
-            if budget < 0 {
-                break;
-            }
+            let cost = self.step_cost(u, m);
+            if self.rule_version >= 7 && budget < cost { break; }
+            budget -= cost;
+            if budget < 0 { break; }
             moves.push(m);
         }
         while let Some(&last) = moves.last() {
-            if self.placeable(u, last) {
+            if in_transit || self.placeable(u, last) {
                 break;
             }
             moves.pop();
+            if self.rule_version >= 7 { budget += self.step_cost(u, last); }
         }
         (moves, budget)
     }
@@ -1527,6 +1537,10 @@ impl Fight {
     }
 
     pub(crate) fn commit_move_segment(&mut self, src: usize, moves: Vec<Pos>) {
+        self.commit_move_prefix(src, moves, false);
+    }
+
+    pub(crate) fn commit_move_prefix(&mut self, src: usize, moves: Vec<Pos>, in_transit: bool) {
         if self.units[src].unconscious() {
             self.units[src].movement = 0;
             return;
@@ -1535,10 +1549,10 @@ impl Fight {
             return;
         }
         let budget = self.units[src].available_movement().div_euclid(5);
-        let (mut seg, rest) = self.compute_actual_moves(src, &moves, budget);
+        let (mut seg, rest) = self.move_prefix(src, &moves, budget, in_transit);
         let mut cost = budget - rest;
         while let Some(&last) = seg.last() {
-            if self.placeable(src, last) {
+            if in_transit || self.placeable(src, last) {
                 break;
             }
             seg.pop();
@@ -1578,7 +1592,10 @@ impl Fight {
         let from = self.units[u].pos;
         let fi = self.grid.index(from.0, from.1);
         let di = self.grid.index(dest.0, dest.1);
-        self.occ[fi] = None;
+        if self.rule_version >= 7 && self.occ[fi] == Some(u as u8) {
+            // An interrupted legal crossing can temporarily share a creature's square.
+            self.occ[fi] = self.units.iter().enumerate().find(|(i, unit)| *i != u && unit.pos == from).map(|(i, _)| i as u8);
+        } else if self.rule_version < 7 { self.occ[fi] = None; }
         self.occ[di] = Some(u as u8);
         self.units[u].pos = dest;
     }
@@ -1623,9 +1640,14 @@ impl Fight {
     /// `MoveAction.check_opportunity_attacks`.
     fn check_opportunity_attacks(&mut self, mover: usize, moves: Vec<Pos>) -> Vec<Pos> {
         let oas = self.opportunity_attacks(mover, &moves);
+        let mut cursor = 0;
         for (reactor, index) in oas {
+            if self.rule_version >= 7 && index - 1 > cursor {
+                self.commit_move_prefix(mover, moves[cursor..index].to_vec(), true);
+                cursor = index - 1;
+            }
             let was_prone = self.units[mover].prone();
-            let original: Vec<Pos> = moves[..index].to_vec();
+            let original: Vec<Pos> = moves[cursor..index].to_vec();
             if let Some(act) = self.opportunity_attack_listener(reactor, mover) {
                 if let Act::Attack { atk, target, .. } = act {
                     self.execute_oa_attack(reactor, atk, target);
@@ -1638,7 +1660,7 @@ impl Fight {
                 return original;
             }
         }
-        moves
+        moves[cursor..].to_vec()
     }
 
     // ------------------------------------------------------------------
@@ -2151,18 +2173,21 @@ impl Fight {
         let window = if cleave || def.save_attack.is_some() { None } else { self.cleave_window(src, atk, tgt) };
         // `_on_hit_riders`: additional damage dice (`condition: advantage`
         // ones only if the roll had Advantage; never on a save attack)
-        let mut riders: Vec<(i32, Dmg)> = Vec::new();
+        let mut riders: Vec<(i32, Dmg, Option<String>)> = Vec::new();
         for (d, dt) in &def.additional {
             let n = if crit { d.count * 2 } else { d.count };
             let rolls = self.roll_dice(src, "additional_damage", n, d.sides);
-            riders.push((rolls.iter().sum::<i32>() + d.modifier, *dt));
+            riders.push((rolls.iter().sum::<i32>() + d.modifier, *dt, None));
         }
         if had_adv && !def.additional_adv.is_empty() {
             self.notes.adv_riders += 1;
             for (d, dt) in &def.additional_adv {
                 let n = if crit { d.count * 2 } else { d.count };
                 let rolls = self.roll_dice(src, "additional_damage", n, d.sides);
-                riders.push((rolls.iter().sum::<i32>() + d.modifier, *dt));
+                let value = rolls.iter().sum::<i32>() + d.modifier;
+                let detail = (self.rule_version >= 7 && self.web_events.is_some()).then(||
+                    crate::web_events::fmt_dice_roll(d.sides, &rolls, d.modifier, false, value));
+                riders.push((value, *dt, detail));
             }
         }
         // `resolve_mastery_on_hit`: Sap marks the creature hit (one marker;
@@ -2195,6 +2220,8 @@ impl Fight {
         let amount: i32 = base.iter().sum::<i32>() + frenzy + dmg.modifier;
         let mut hs = HitState { kill_at_zero: def.kill_at_zero, ..HitState::default() };
         // a `no_damage` action has no damage event (`damage_event` skipped)
+        let combined = self.rule_version >= 7 && !def.no_damage && !riders.is_empty();
+        let mut rider_applied = Vec::new();
         let mut rider_offset = self.web_events.as_ref().map(|events| events.len() + usize::from(!def.no_damage));
         let applied = if def.no_damage {
             None
@@ -2232,7 +2259,34 @@ impl Fight {
                 atk_roll_fmt,
                 dmg_roll_fmt,
             });
-            let app = self.damage_event(src, tgt, amount, def.damage_type, crit, &mut hs);
+            let app = if combined {
+                // Apply resistance to each damage type once, before the hit changes the target.
+                let base = self.adjusted_damage(tgt, amount, def.damage_type).unwrap_or(0);
+                let mut raw = vec![(def.damage_type, amount.max(0))];
+                let mut total = base;
+                let mut temp = (self.units[tgt].temp_hp - base).max(0);
+                let mut fortitude_type = def.damage_type;
+                for &(value, dt, _) in &riders {
+                    let before = raw.iter().find(|(d, _)| *d == dt).map_or(0, |(_, n)| *n);
+                    let after = before + value.max(0);
+                    let delta = self.adjusted_damage(tgt, after, dt).unwrap_or(0)
+                        - self.adjusted_damage(tgt, before, dt).unwrap_or(0);
+                    if let Some((_, n)) = raw.iter_mut().find(|(d, _)| *d == dt) { *n = after; }
+                    else { raw.push((dt, after)); }
+                    rider_applied.push((delta - temp).max(0));
+                    temp = (temp - delta).max(0);
+                    total += delta;
+                    if delta > 0 && self.units[tgt].t.undead_fortitude.is_some_and(|(_, bypass)| bypass & dt.bit() != 0) {
+                        fortitude_type = dt;
+                    }
+                }
+                let base_applied = (base - self.units[tgt].temp_hp).max(0);
+                if amount != 0 && src != tgt { self.resolve_trigger(src, HookEv::DealtDamage); }
+                if total > 0 { self.apply_adjusted_damage(tgt, total, fortitude_type, crit, Some(&mut hs), Some(src)); }
+                Some(base_applied)
+            } else {
+                self.damage_event(src, tgt, amount, def.damage_type, crit, &mut hs)
+            };
             if let (Some(idx), Some(buf)) = (ev_idx, &mut self.web_events) {
                 if let crate::web_events::WebEv::AttackOutcome { applied_damage, .. } = &mut buf[idx] {
                     *applied_damage = app.unwrap_or(0).max(0);
@@ -2260,14 +2314,14 @@ impl Fight {
             self.notes.cleave_windows += 1;
             self.units[src].cleave = Some((atk, cands));
         }
-        for (amount, dt) in riders {
-            if self.units[tgt].dead() {
+        for (index, (amount, dt, advantage_roll)) in riders.into_iter().enumerate() {
+            if !combined && self.units[tgt].dead() {
                 continue;
             }
             let before = self.web_events.as_ref().map(Vec::len);
-            let applied = self.take_damage(tgt, amount, dt, crit, Some(&mut hs), Some(src));
+            let applied = if combined { Some(rider_applied[index]) } else { self.take_damage(tgt, amount, dt, crit, Some(&mut hs), Some(src)) };
             if let (Some(before), Some(amount), Some(events)) = (before, applied, &mut self.web_events) {
-                let event = crate::web_events::WebEv::RiderDamage { tgt, applied_damage: amount.max(0), dt };
+                let event = crate::web_events::WebEv::RiderDamage { tgt, applied_damage: amount.max(0), dt, advantage_roll };
                 if self.rule_version >= 6 {
                     let next = rider_offset.as_mut().unwrap();
                     events.insert(*next, event);
@@ -2581,26 +2635,24 @@ impl Fight {
         hit_state: Option<&mut HitState>,
         attacker: Option<usize>,
     ) -> Option<i32> {
+        let total = self.adjusted_damage(u, dmg, dt)?;
+        self.apply_adjusted_damage(u, total, dt, critical, hit_state, attacker)
+    }
+
+    fn adjusted_damage(&self, u: usize, dmg: i32, dt: Dmg) -> Option<i32> {
         let t = self.units[u].t;
-        if t.immune & dt.bit() != 0 {
-            return None;
-        }
-        let resistant = self.resists(u, dt);
-        let vulnerable = t.vulnerable & dt.bit() != 0;
-        let mut total = if resistant && vulnerable {
-            dmg
-        } else if resistant {
-            dmg.div_euclid(2)
-        } else if vulnerable {
-            dmg * 2
-        } else {
-            dmg
+        if t.immune & dt.bit() != 0 { return None; }
+        let amount = match (self.resists(u, dt), t.vulnerable & dt.bit() != 0) {
+            (true, false) => dmg.div_euclid(2),
+            (false, true) => dmg * 2,
+            _ => dmg,
         };
-        // `total_damage < damage_threshold()` (0): a negative total (an
-        // unarmed strike at Strength 5 deals 1 - 3) does nothing.
-        if total < 0 {
-            total = 0;
-        }
+        Some(amount.max(0))
+    }
+
+    fn apply_adjusted_damage(&mut self, u: usize, mut total: i32, dt: Dmg, critical: bool,
+                             hit_state: Option<&mut HitState>, attacker: Option<usize>) -> Option<i32> {
+        let t = self.units[u].t;
         // temporary hit points
         let temp_before = self.units[u].temp_hp;
         if total > 0 && temp_before > 0 {
@@ -2655,6 +2707,12 @@ impl Fight {
             }
         }
         let hp = self.units[u].hp;
+        if self.rule_version >= 7 && hp <= 0 {
+            if let Some(c) = self.units[u].concentration {
+                let spell = self.objs[c as usize].spell;
+                self.emit_web(crate::web_events::WebEv::ConcentrationEnded { target: u, spell });
+            }
+        }
         // massive damage compares with the current maximum (N20-014)
         let max_now = self.max_hp_of(u);
         if self.units[u].dead() {
@@ -2674,7 +2732,7 @@ impl Fight {
             if let Some(c) = self.units[u].concentration {
                 self.dismiss_effect(u, c);
             }
-        } else if let Some(c) = self.units[u].concentration {
+        } else if let Some(c) = self.units[u].concentration.filter(|_| total > 0 || self.rule_version < 7) {
             // concentration check: DC max(10, half the damage taken)
             let dc = 10.max(total.div_euclid(2));
             let (save, roll) = self.save_throw_fmt(u, Ability::Con);
@@ -2948,6 +3006,7 @@ impl Fight {
             Act::DivineSpark { target, heal, .. } => {
                 format!("divine_spark:mode={}:>{}", if *heal { "heal" } else { "harm" }, self.units[*target].id)
             }
+            Act::SpiritualWeaponMove { to } => format!("spiritual_weapon_move:@{},{}", to.0, to.1),
             Act::SpiritualWeaponAttack { target } => format!("spiritual_weapon_attack:>{}", self.units[*target].id),
             Act::RedirectAttack { ally } => format!("redirect_attack:>{}:reaction", self.units[*ally].id),
             Act::Cleave { target, .. } => format!("cleave:>{}", self.units[*target].id),

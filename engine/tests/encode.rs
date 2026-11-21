@@ -189,7 +189,9 @@ fn check_obs_v1(env: &Env, o: &Obs, off: (i32, i32)) {
     // included: a goblin that dies while hidden keeps the status, and natural20
     // does not see it either (reachable in native play since N20-040).
     let masked = env.decision().map_or(0, |d| ember_rs::encode::masked_from(f, d.team));
-    let dead = f.units.iter().enumerate().filter(|&(i, u)| u.dead() && masked & (1 << i) == 0).count();
+    // A fatal reaction can leave two bodies on one transit square. The plane marks cells.
+    let dead = f.units.iter().enumerate().filter(|&(i, u)| u.dead() && masked & (1 << i) == 0)
+        .map(|(_, u)| u.pos).collect::<std::collections::HashSet<_>>().len();
     assert_eq!(ones(10), dead, "corpses");
     match env.decision() {
         None => {

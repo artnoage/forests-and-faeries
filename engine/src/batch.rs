@@ -227,7 +227,7 @@ pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, cross
     // Seed the walk with actual native rows and whole legal crossings.
     // A hidden token can mask a later square, never the first action.
     let mut initial = vec![None; g.cells()];
-    if let Some(rows) = first_rows {
+    if let Some(rows) = first_rows.filter(|_| masked == 0 || f.rule_version < 7) {
         let mut seeds: Vec<_> = rows.iter().filter_map(|act| match act {
             Act::Move(p) if p.len() > 1 && p[0] == start => Some(p),
             _ => None,
@@ -482,6 +482,13 @@ impl Game {
         let mut moved = 0;
         let mut start = 0;
         let mut attempted = false;
+        let hidden = if self.env.fight.rule_version() >= 7 {
+            masked_from(&self.env.fight, self.env.fight.units[a].team)
+        } else { 0 };
+        let contact = |f: &Fight, p: Pos| f.token_at(p).is_some_and(|u| hidden & (1 << u) != 0);
+        let limit = path.iter().skip(1).position(|&p| contact(&self.env.fight, p)).map_or(path.len(), |i| i + 1);
+        let blocked = limit < path.len();
+        let path = &path[..limit];
         while start + 1 < path.len() {
             let Some(d) = self.env.decision() else { break };
             if d.actor != a { break; }
@@ -511,7 +518,7 @@ impl Game {
                 break;
             }
         }
-        if !attempted {
+        if !attempted && !blocked {
             return Err("a destination row whose first step is not a row".into());
         }
         self.last = counts;

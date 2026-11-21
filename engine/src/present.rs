@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 7;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 8;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -766,6 +766,7 @@ impl WebArena {
             Act::InnateSorcery => self.push_log(&format!("{who} uses Innate Sorcery."), "spell", round),
             Act::ActionSurge => self.push_log(&format!("{who} uses Action Surge."), "spell", round),
             Act::DragonsBreathExhale => self.push_log(&format!("{who} uses Dragon's Breath: exhale."), "spell", round),
+            Act::SpiritualWeaponMove { to } => self.push_log(&format!("{who} moves Spiritual Weapon to [{}, {}].", to.0, to.1), "spell", round),
             Act::SpiritualWeaponAttack { .. } => self.push_log(&format!("{who} uses Spiritual Weapon: strike."), "spell", round),
             Act::Disengage => self.push_log(&format!("{who} uses Disengage."), "info", round),
             Act::DisengageBonus => self.push_log(&format!("{who} uses Disengage (bonus action)."), "info", round),
@@ -803,7 +804,13 @@ impl WebArena {
 
     fn execute_move_with_oas(&mut self, mover: usize, path: &[Pos]) {
         self.fight.as_mut().unwrap().decisions += 1;
-        let moves = self.fight.as_ref().unwrap().prepare_move(mover, path);
+        let f = self.fight.as_ref().unwrap();
+        let contact = if self.replay_version >= 8 && f.units[mover].team == 0 {
+            path.iter().skip(1).position(|&p| f.token_at(p).is_some_and(|i| self.concealed_from_heroes(i)))
+        } else { None };
+        let limit = contact.map_or(path.len(), |i| i + 1);
+        let moves = f.prepare_move(mover, &path[..limit]);
+        if contact.is_some() { self.push_log("The route is blocked.", "info", self.current_round()); }
         let f = self.fight.as_mut().unwrap();
         let oas = if f.champion_move_fits(mover, path) {
             Vec::new()
@@ -816,9 +823,22 @@ impl WebArena {
     }
 
     fn continue_move(&mut self, mover: usize, path: &[Pos], mut moves: Vec<Pos>, oas: Vec<(usize, usize)>) {
+        let mut cursor = 0;
         let mut oas = oas.into_iter();
         while let Some((reactor, index)) = oas.next() {
-            let original: Vec<Pos> = moves[..index].to_vec();
+            if self.replay_version >= 8 && index - 1 > cursor {
+                let before = self.presentation_snapshot();
+                let effect = self.effect_counter;
+                let prefix = moves[cursor..index].to_vec();
+                let action = Act::Move(prefix.clone());
+                let f = self.fight.as_mut().unwrap();
+                f.commit_move_prefix(mover, prefix, true);
+                let events = f.take_web_events();
+                let (trail, hidden) = self.process_action_events(mover, &action, None, events);
+                self.record_action(mover, &action, None, hidden, before, effect, trail, false);
+                cursor = index - 1;
+            }
+            let original: Vec<Pos> = moves[cursor..index].to_vec();
             let was_prone = self.fight.as_ref().unwrap().units[mover].prone();
             let oa_act = self.fight.as_mut().unwrap().opportunity_attack_listener(reactor, mover);
             if let Some(Act::Attack { atk, target, .. }) = oa_act {
@@ -845,17 +865,17 @@ impl WebArena {
                 !f.units[mover].conscious() || (f.units[mover].prone() && (!was_prone || !f.creature_space_rules))
             };
             if self.fight.as_ref().unwrap().units[reactor].champion_movement > 0 {
-                let remaining = if stop { Vec::new() } else { oas.collect() };
+                let remaining = if stop { Vec::new() } else { oas.map(|(r, i)| (r, i - cursor)).collect() };
                 self.interrupted_move = Some(InterruptedMove {
                     champion: reactor, mover, requested: path.to_vec(),
-                    moves: if stop { original } else { moves }, opportunities: remaining,
+                    moves: if stop { original } else { moves[cursor..].to_vec() }, opportunities: remaining,
                 });
                 let name = self.unit_display_name(reactor).to_owned();
                 self.push_log(&format!("{name} can move up to half speed after the critical hit."), "info", self.current_round());
                 return;
             }
             if stop {
-                moves = original;
+                moves.truncate(index);
                 break;
             }
         }
@@ -873,7 +893,7 @@ impl WebArena {
         {
             let f = self.fight.as_mut().unwrap();
             f.lapse_cleave(mover);
-            f.commit_move_segment(mover, moves);
+            f.commit_move_segment(mover, moves[cursor..].to_vec());
             f.expire_timed_conditions();
         }
         let mv_evs = self.fight.as_mut().unwrap().take_web_events();
@@ -1267,10 +1287,11 @@ impl WebArena {
                         }
                     }
                 }
-                WebEv::RiderDamage { tgt, applied_damage, dt } => {
+                WebEv::RiderDamage { tgt, applied_damage, dt, advantage_roll } => {
                     if self.replay_version >= 4 {
                         let name = self.unit_display_name(tgt);
-                        self.push_log(&format!("{name} takes {applied_damage} additional {} damage.", dt.name()), "hit", round);
+                        let rider = advantage_roll.map_or_else(String::new, |roll| format!(" from the advantage rider ({roll})"));
+                        self.push_log(&format!("{name} takes {applied_damage} additional {} damage{rider}.", dt.name()), "hit", round);
                     }
                     if let Some(&eid) = last_hit_effect_id.get(&tgt) {
                         for eff in self.effects.iter_mut().rev() {
@@ -1341,6 +1362,11 @@ impl WebArena {
                 WebEv::MassiveDamage { target, excess, maximum } if self.replay_version >= 7 => {
                     let name = self.unit_display_name(target);
                     self.push_log(&format!("{name} suffers massive damage ({excess} damage beyond 0 HP, maximum {maximum} HP)."), "damage", round);
+                }
+                WebEv::ConcentrationEnded { target, spell } => {
+                    let who = self.unit_display_name(target);
+                    let name = present_text::spell_display_name(spell.key());
+                    self.push_log(&format!("{who} loses concentration on {name} at 0 HP."), "status", round);
                 }
                 WebEv::ConcentrationSave { target, spell, roll, dc, passed } if self.replay_version >= 7 => {
                     let who = self.unit_display_name(target);
@@ -1877,7 +1903,10 @@ impl WebArena {
             return Vec::new();
         }
         if self.replay_version >= 3 {
-            return crate::batch::movement_paths(f, actor, 0, false, None).into_iter().map(Act::Move).collect();
+            let masked = if self.replay_version >= 8 && f.units[actor].team == 0 {
+                (0..f.units.len()).filter(|&i| self.concealed_from_heroes(i)).fold(0, |m, i| m | 1 << i)
+            } else { 0 };
+            return crate::batch::movement_paths(f, actor, masked, false, None).into_iter().map(Act::Move).collect();
         }
         let origin = f.units[actor].pos;
         let mut results: Vec<Vec<Pos>> = Vec::new();
@@ -2177,6 +2206,7 @@ impl WebArena {
                         "None".into(),
                         "None".into(),
                     ),
+                    Act::SpiritualWeaponMove { to } => (Vec::new(), Vec::new(), None, "", Some(*to), None, "None".into(), "None".into(), "None".into(), "None".into(), "None".into()),
                     Act::SpiritualWeaponAttack { target } => (
                         vec![*target],
                         vec![f.units[*target].id.clone()],
@@ -2275,7 +2305,7 @@ impl WebArena {
         let category = match kind {
             "move" => "move",
             "attack" | "cleave" => "attack",
-            "spell" | "dragons_breath_exhale" | "spiritual_weapon_attack" => "spell",
+            "spell" | "dragons_breath_exhale" | "spiritual_weapon_attack" | "spiritual_weapon_move" => "spell",
             "dodge" => "dodge",
             "dash" => "dash",
             "stand" => "stand",
@@ -2298,6 +2328,7 @@ impl WebArena {
             "innate_sorcery" => "Innate Sorcery".to_string(),
             "dragons_breath_exhale" => "Dragon's Breath: exhale".to_string(),
             "spiritual_weapon_attack" => "Spiritual Weapon: strike".to_string(),
+            "spiritual_weapon_move" => "Spiritual Weapon: move".to_string(),
             "disengage" | "disengage_bonus" => "Disengage".to_string(),
             "hide_bonus" => "Hide".to_string(),
             "rage" => "Rage".to_string(),
@@ -2314,7 +2345,7 @@ impl WebArena {
                 let sense = if *heard { "heard" } else { "last known" };
                 label.push_str(&format!(" at unseen square {x},{y} ({sense})"));
             }
-            if let Some(c) = spell_opt.filter(|c| matches!(c.spell, SpellId::ChromaticOrb | SpellId::SorcerousBurst)) {
+            if let Some(c) = spell_opt.filter(|c| matches!(c.spell, SpellId::ChromaticOrb | SpellId::SorcerousBurst) || self.replay_version >= 8 && c.spell == SpellId::DragonsBreath) {
                 if let Some(dt) = c.dt { label.push_str(&format!(" ({})", dt.name())); }
             }
         }
@@ -2360,7 +2391,7 @@ impl WebArena {
             "disengage_bonus" | "hide_bonus" | "rage" | "extend_rage" => "bonus action".to_string(),
             "reckless_attack" | "cleave" => "free".to_string(),
             _ => {
-                let bonus = matches!(kind, "second_wind" | "spiritual_weapon_attack" | "innate_sorcery")
+                let bonus = matches!(kind, "second_wind" | "spiritual_weapon_attack" | "spiritual_weapon_move" | "innate_sorcery")
                     || (self.replay_version < 3 && kind == "dragons_breath_exhale")
                     || (self.replay_version >= 3 && spell_opt.is_some_and(|c| c.spell.bonus_action()));
                 let mut text = if bonus {
@@ -2805,7 +2836,15 @@ impl WebArena {
         m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
         m.insert("marks".into(), json!(self.unit_marks(u)));
         m.insert("str_loss".into(), json!(unit.str_drain.unwrap_or(0)));
-        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version) {
+        if let Some(mut sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version) {
+            if self.replay_version >= 8 && unit.str_drain.unwrap_or(0) > 0 {
+                if let Some(stats) = sheet["stats"].as_str() {
+                    let old = format!("STR {}", unit.t.abil[0]);
+                    sheet["stats"] = json!(if stats.contains(&old) {
+                        stats.replacen(&old, &format!("STR {}", unit.strength()), 1)
+                    } else { format!("{stats} · STR {}", unit.strength()) });
+                }
+            }
             m.insert("sheet".into(), sheet);
         }
         Value::Object(m)
@@ -2952,5 +2991,40 @@ impl WebArena {
         obj.insert("actions".into(), Value::Array(rows));
         obj.insert("action_defs".into(), Value::Array(defs));
         state
+    }
+}
+
+#[cfg(test)]
+mod movement_preview_tests {
+    use super::*;
+
+    #[test]
+    fn concealed_adjacent_token_has_the_same_routes_as_empty_floor() {
+        let level = LevelInput {
+            encounter_id: "preview".into(), preset_id: "test".into(), theme: "ossuary".into(),
+            map_name: "room".into(), rows: vec!["........".into(); 8], scene: json!({}), level_view: json!({}),
+            heroes: vec!["ilyra_l1".into()],
+            monsters: vec![("goblin_warrior-1".into(), "goblin_warrior".into(), "Goblin".into())],
+            suggested_placements: vec![Placement { id: "ilyra_l1".into(), x: 3, y: 3 },
+                                       Placement { id: "goblin_warrior-1".into(), x: 4, y: 4 }],
+        };
+        let mut game = WebArena::new(level, 1, 0, "csrf".into(), "enc".into()).unwrap();
+        game.start().unwrap();
+        let f = game.fight.as_mut().unwrap();
+        let actor = f.units.iter().position(|u| u.id == "ilyra_l1").unwrap();
+        let goblin = 1 - actor;
+        f.units[goblin].statuses.push(St::Hidden);
+        f.units[goblin].hidden_stealth = Some(30);
+        f.units[actor].movement = 30;
+        let offered = game.movement_candidates(actor);
+        assert!(offered.contains(&Act::Move(vec![(3, 3), (4, 4)])));
+        game.fight.as_mut().unwrap().move_to(goblin, (7, 7));
+        assert_eq!(offered, game.movement_candidates(actor));
+        game.fight.as_mut().unwrap().move_to(goblin, (4, 4));
+        game.execute_move_with_oas(actor, &[(3, 3), (4, 4), (5, 5)]);
+        let f = game.fight.as_ref().unwrap();
+        assert_eq!(f.units[actor].pos, (3, 3));
+        assert_eq!(f.token_at((4, 4)), Some(goblin));
+        assert_eq!(f.units[actor].movement, 30);
     }
 }

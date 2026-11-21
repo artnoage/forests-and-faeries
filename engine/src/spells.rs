@@ -103,6 +103,7 @@ pub(crate) enum Item {
     Restore(usize),
     RayOfFrost { t: usize, action_t: usize },
     Push { t: usize, to: Pos },
+    PushFrom { t: usize, origin: Pos },
     Breath { t: usize, dt: Dmg, dice: i32 },
     Blur,
     MageArmor(usize),
@@ -766,7 +767,11 @@ impl Fight {
                 if let ObjKind::Force { cast_turn, last_attack_turn, .. } = self.objs[force as usize].kind {
                     let key = (self.round, self.turn_idx);
                     if key != cast_turn && Some(key) != last_attack_turn {
-                        for t in self.force_targets_in_reach(force) {
+                        let targets = self.force_targets_in_reach(force);
+                        if self.rule_version >= 7 && targets.is_empty() {
+                            for to in self.force_moves(force) { out.push(Act::SpiritualWeaponMove { to }); }
+                        }
+                        for t in targets {
                             out.push(Act::SpiritualWeaponAttack { target: t });
                         }
                     }
@@ -855,6 +860,12 @@ impl Fight {
         }
     }
 
+    fn force_moves(&self, force: u32) -> Vec<Pos> {
+        let ObjKind::Force { pos, .. } = self.objs[force as usize].kind else { return Vec::new() };
+        let distances = self.grid.bfs(pos);
+        (0..self.grid.cells()).filter(|&i| (1..=4).contains(&distances[i])).map(|i| self.grid.pos_of(i)).collect()
+    }
+
     /// `SpiritualForce.targets_in_reach`.
     fn force_targets_in_reach(&self, force: u32) -> Vec<usize> {
         let obj = &self.objs[force as usize];
@@ -862,7 +873,9 @@ impl Fight {
         let src = obj.source;
         (0..self.units.len())
             .filter(|&c| !self.units[c].dead() && self.opposing(src, c) && self.square_distance(pos, self.units[c].pos) <= 5
-                && (self.rule_version < 6 || !self.units[c].hidden() || self.can_see(src, c)))
+                && (self.rule_version < 6 || !self.units[c].hidden() || self.can_see(src, c))
+                && (self.rule_version < 7 || (self.square_distance(pos, self.units[c].pos) <= 1 && self.grid.los(pos, self.units[c].pos))
+                    || self.landing_square(c, pos, Some(4)).is_some()))
             .collect()
     }
 
@@ -1234,6 +1247,14 @@ impl Fight {
                 } else {
                     -1.0
                 }
+            }
+            Act::SpiritualWeaponMove { to } => {
+                let Some(force) = self.active_force(u) else { return POINTLESS };
+                let ObjKind::Force { pos, .. } = self.objs[force as usize].kind else { return POINTLESS };
+                let enemies: Vec<_> = (0..self.units.len()).filter(|&t| self.opposing(u, t) && self.units[t].conscious() && self.can_see(u, t)).collect();
+                let nearest = |p| enemies.iter().map(|&t| self.square_distance(p, self.units[t].pos)).min().unwrap_or(0);
+                let gain = nearest(pos) - nearest(*to);
+                if gain > 0 { gain as f64 / 10.0 } else { POINTLESS }
             }
             Act::SpiritualWeaponAttack { target } => {
                 let Some(force) = self.active_force(u) else { return POINTLESS };
@@ -1620,6 +1641,7 @@ impl Fight {
         // resolve: the spell's draws, collected as result items
         let mut items: Vec<Item> = Vec::new();
         let mut rolls: Vec<RollObj> = Vec::new();
+        let mut rerolled = 0;
         let t0 = c.targets.first().copied();
         if c.mm == Some(Mm::Heightened) {
             self.heightened = Some((u, false));
@@ -1756,17 +1778,17 @@ impl Fight {
             SpareTheDying => items.push(Item::Stabilize(t0.unwrap())),
             LesserRestoration => items.push(Item::Restore(t0.unwrap_or(u))),
             MageArmor => items.push(Item::MageArmor(t0.unwrap())),
-            _ => self.resolve_sorcerer(u, c, &mut items, &mut rolls),
+            _ => rerolled = self.resolve_sorcerer(u, c, &mut items, &mut rolls),
         }
         // `metamagic.finish`: disarm Heightened, spend Sorcery Points, Empowered rerolls
         self.heightened = None;
         if let Some(mm) = c.mm {
-            if self.units[u].sorcery_points >= mm.cost() {
-                self.units[u].sorcery_points -= mm.cost();
-            }
             if mm == Mm::Empowered && (self.rule_version < 6 || c.spell != ChromaticOrb) {
                 let dmgs: Vec<DmgRef> = items.iter().filter_map(|i| if let Item::RDamage(d) = i { Some(d.clone()) } else { None }).collect();
-                self.empower(u, &dmgs, &mut rolls, ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(1) as usize);
+                rerolled = self.empower(u, &dmgs, &mut rolls, ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(1) as usize);
+            }
+            if (self.rule_version < 7 || mm != Mm::Empowered || rerolled > 0) && self.units[u].sorcery_points >= mm.cost() {
+                self.units[u].sorcery_points -= mm.cost();
             }
         }
         // concentration_replaced, consume, the caster's `spell_cast` trigger
@@ -1851,7 +1873,7 @@ impl Fight {
                         dmg_roll_fmt: None,
                     });
                 }
-                ref other @ (Item::RayOfFrost { .. } | Item::Push { .. } | Item::Breath { .. } | Item::Blur) => {
+                ref other @ (Item::RayOfFrost { .. } | Item::Push { .. } | Item::PushFrom { .. } | Item::Breath { .. } | Item::Blur) => {
                     self.commit_sorcerer_item(u, other);
                 }
                 Item::Dismiss(holder, obj) => self.dismiss_effect(holder, obj),
@@ -2022,6 +2044,7 @@ impl Fight {
     /// `landing_square(map, creature, origin, max_squares)`.
     fn landing_square(&self, t: usize, origin: Pos, max_squares: Option<i32>) -> Option<Pos> {
         let (sx, sy) = self.units[t].pos;
+        let distances = max_squares.filter(|_| self.rule_version >= 7).map(|_| self.grid.bfs(origin));
         let mut best: Option<((i32, i32, i32, i32), Pos)> = None;
         for dx in -1..=1 {
             for dy in -1..=1 {
@@ -2029,7 +2052,11 @@ impl Fight {
                 if (dx == 0 && dy == 0) || x < 0 || y < 0 || x >= self.grid.w || y >= self.grid.h {
                     continue;
                 }
+                if self.rule_version >= 7 && (!self.grid.los((x, y), (sx, sy)) || self.grid.is_wall(x, y)) { continue; }
                 let gap = self.square_distance(origin, (x, y));
+                if let Some(dist) = &distances {
+                    if !(0..=max_squares.unwrap()).contains(&dist[self.grid.index(x, y)]) { continue; }
+                }
                 if let Some(m) = max_squares {
                     if gap > m {
                         continue;
@@ -2228,12 +2255,25 @@ impl Fight {
                     }
                 }
             }
+            Act::SpiritualWeaponMove { to } => {
+                let Some(force) = self.active_force(u) else { return };
+                let key = (self.round, self.turn_idx);
+                if self.units[u].bonus > 0 && self.force_moves(force).contains(to) {
+                    if let ObjKind::Force { pos, cast_turn, last_attack_turn, .. } = &mut self.objs[force as usize].kind {
+                        if *cast_turn != key && *last_attack_turn != Some(key) {
+                            *pos = *to;
+                            *last_attack_turn = Some(key);
+                            self.units[u].bonus -= 1;
+                        }
+                    }
+                }
+            }
             Act::SpiritualWeaponAttack { target } => {
                 let t = *target;
                 let Some(force) = self.active_force(u) else { return };
                 let ObjKind::Force { pos, level, modifier, .. } = self.objs[force as usize].kind else { return };
                 let mut position = pos;
-                if self.square_distance(pos, self.units[t].pos) > 1 {
+                if self.square_distance(pos, self.units[t].pos) > 1 || (self.rule_version >= 7 && !self.grid.los(pos, self.units[t].pos)) {
                     position = self.landing_square(t, pos, Some(4)).unwrap_or(self.units[t].pos);
                 }
                 let (hit, nat20, dismiss, t, atk_fmt) = self.evaluate_spell_attack(u, t, SpellId::SpiritualWeapon, WeaponKind::melee());

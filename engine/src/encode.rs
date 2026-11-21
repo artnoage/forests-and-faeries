@@ -193,7 +193,7 @@ impl Version {
 }
 
 /// The `action_kinds` vocabulary names, in `Act` order of [`act_kind_index`].
-pub const ACTION_KINDS: [&str; 23] = [
+pub const ACTION_KINDS: [&str; 24] = [
     "move",
     "attack",
     "dash",
@@ -219,6 +219,7 @@ pub const ACTION_KINDS: [&str; 23] = [
     "reckless_attack",
     "cleave",
     "disengage",
+    "spiritual_weapon_move",
 ];
 
 // ----------------------------------------------------------------------------
@@ -584,6 +585,7 @@ pub fn act_kind_index(a: &Act) -> usize {
         Act::RecklessAttack => 20,
         Act::Cleave { .. } => 21,
         Act::Disengage => 22,
+        Act::SpiritualWeaponMove { .. } => 23,
     }
 }
 
@@ -2307,6 +2309,11 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
                 tg.add(c);
                 est.ally(c, regained(f, c, amount as f64));
             }
+        }
+        Act::SpiritualWeaponMove { to } => {
+            row[ai!("uses_bonus_action")] = 1.0;
+            spell_id = cx.ids.spell(SpellId::SpiritualWeapon);
+            cell = cx.canvas(*to) as i16;
         }
         Act::SpiritualWeaponAttack { target } => {
             row[ai!("uses_bonus_action")] = 1.0;

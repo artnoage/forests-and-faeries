@@ -82,6 +82,7 @@ pub enum WebEv {
         target: usize,
     },
     RiderDamage {
+        advantage_roll: Option<String>,
         tgt: usize,
         applied_damage: i32,
         dt: Dmg,
@@ -108,6 +109,7 @@ pub enum WebEv {
         tgt_pos: Pos,
     },
     MassiveDamage { target: usize, excess: i32, maximum: i32 },
+    ConcentrationEnded { target: usize, spell: SpellId },
     ConcentrationSave { target: usize, spell: SpellId, roll: String, dc: i32, passed: bool },
     OrbLeap { from: usize, to: usize },
     RayAtCorpse { src: usize, target: usize },

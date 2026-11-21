@@ -69,7 +69,7 @@ pub fn any_hero_sees_monster(grid: &Grid, sides: &[u8], pos: &[Option<Pos>]) -> 
         let (Some(hp), 0) = (hp, sides[h]) else { continue };
         for (m, mp) in pos.iter().enumerate() {
             if let (Some(mp), 1) = (mp, sides[m]) {
-                if grid.los(*hp, *mp) {
+                if grid.layout_los(*hp, *mp) {
                     return true;
                 }
             }
