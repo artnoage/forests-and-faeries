@@ -87,7 +87,7 @@ test('the page has no inline styles or scripts and no private paths', () => {
   assert.doesNotMatch(html, /\sstyle\s*=/i);
   assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)[^>]*>\s*\S/i);
   assert.doesNotMatch(html, /\son[a-z]+\s*=\s*["']/i);
-  for (const id of ['difficulty-step', 'levels-step', 'difficulty-tabs', 'art-armor', 'art-kobold', 'art-barbarian']) {
+  for (const id of ['difficulty-step', 'levels-step', 'difficulty-tabs', 'hero-level-tabs', 'art-armor', 'art-kobold', 'art-barbarian']) {
     assert.ok(html.includes(`id="${id}"`), `index.html contains #${id}`);
   }
   const app = read('static/app.js');
