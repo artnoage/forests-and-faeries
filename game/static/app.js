@@ -248,7 +248,7 @@
   // APPLICATION STATE
   // ===========================================================================
   const RECOVERY_LIMIT = 3, RECOVERY_WINDOW_MS = 60000, RECOVERY_DELAY_MS = 1500;
-  const NEEDS_CONFIRM = new Set(['channel_divinity_turn_undead', 'preserve_life', 'innate_sorcery', 'action_surge', 'rage']);
+  const NEEDS_CONFIRM = new Set(['channel_divinity_turn_undead', 'preserve_life', 'innate_sorcery', 'action_surge', 'rage', 'create_spell_slot', 'convert_spell_slot']);
   const SHORTCUT_KEY = 'ff-shortcuts';
   const IDLE_KEY = 'ff-idle-animation';
 
@@ -367,17 +367,29 @@
       return;
     }
     const { x, y, unitId, clientX, clientY } = info;
-    const hoveredUnit = unitId ? targets().find(u => u.id === unitId) : targets().find(u => atCell(u, x, y) && u.alive !== false);
+    const cellUnits = (state.units || []).filter(u => atCell(u, x, y) && (u.alive !== false || u.team === 'heroes'));
+    const hoveredUnit = (unitId ? targets().find(u => u.id === unitId) : null)
+      || cellUnits.find(u => u.alive !== false)
+      || cellUnits[0]
+      || targets().find(u => atCell(u, x, y) && u.alive !== false);
+    const coLocated = cellUnits.filter(u => u.id !== hoveredUnit?.id);
     const actor = activeUnit();
     const cur = currentActions();
     const moves = movesTo(x, y);
     const matchingAct = moves.length ? cheapestMove(moves)
-      : cur.find(a => targetsCell(a, x, y) || (hoveredUnit && targetsUnit(a, hoveredUnit)));
+      : cur.find(a => targetsCell(a, x, y) || (hoveredUnit && targetsUnit(a, hoveredUnit)))
+      || cur.find(a => coLocated.some(u => targetsUnit(a, u)));
     let pathCells = null, arcFrom = null, arcTo = null, arcColor = '#ffd478', hoverColor = '#ffe194', areaCells = null, areaColor = '#ff7a3d';
     if (matchingAct && actor) {
       if (matchingAct.kind === 'move') {
         hoverColor = '#5be2ca';
         pathCells = Array.isArray(matchingAct.path) ? matchingAct.path : null;
+      } else if (matchingAct.kind === 'spiritual_weapon_move') {
+        hoverColor = '#7cc4ff';
+        arcColor = '#7cc4ff';
+        const force = (state.forces || []).find(f => f.owner_id === actor.id) || (state.forces || [])[0] || actor;
+        arcFrom = { x: force.x, y: force.y };
+        arcTo = { x, y };
       } else {
         hoverColor = matchingAct.allies?.length ? '#ff6454' : (matchingAct.kind === 'spell' ? '#c29eff' : '#ff8c6e');
         arcColor = hoverColor;
@@ -398,14 +410,20 @@
       const conds = [lifeText(hoveredUnit), ...conditionLabels(hoveredUnit)].filter(Boolean).join(', ');
       parts.push(`<div class="tt-head"><span>${escape(hoveredUnit.name)}</span><span class="tt-coord">${escape(cellName(x, y))}</span></div>`);
       parts.push(`<div class="tt-sub">HP <b>${escape(hoveredUnit.hp)}/${escape(hoveredUnit.max_hp)}</b>${hoveredUnit.ac ? ` · AC <b>${escape(hoveredUnit.ac)}</b>` : ''}${conds ? ` · ${escape(conds)}` : ''}</div>`);
+      for (const other of coLocated) {
+        const oLife = lifeText(other) || 'Standing';
+        parts.push(`<div class="tt-sub">+ ${escape(other.name)} · HP <b>${escape(other.hp)}/${escape(other.max_hp)}</b> · ${escape(oLife)}</div>`);
+      }
     } else {
       parts.push(`<div class="tt-head"><span>Floor</span><span class="tt-coord">${escape(cellName(x, y))}</span></div>`);
     }
     if (matchingAct) {
       const text = matchingAct.kind === 'move'
         ? `Move here · ${matchingAct.cost || ''}`
-        : `${matchingAct.label}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`;
-      parts.push(`<div class="tt-action ${matchingAct.kind !== 'move' ? 'attack' : ''}">${escape(text)}</div>`);
+        : matchingAct.kind === 'spiritual_weapon_move'
+          ? `Move Spiritual Weapon → ${cellName(x, y)}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`
+          : `${matchingAct.label}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`;
+      parts.push(`<div class="tt-action ${matchingAct.kind !== 'move' && matchingAct.kind !== 'spiritual_weapon_move' ? 'attack' : ''}">${escape(text)}</div>`);
       const hits = hitsLabel(matchingAct);
       if (hits) parts.push(`<div class="tt-hits${matchingAct.allies?.length ? ' friendly-fire' : ''}">${escape(hits)}</div>`);
     }
@@ -596,7 +614,11 @@
         cells.push(`<g class="tile${isLeg ? ' is-legal' : ''}${isAtk ? ' target-tile' : ''}${previewSet.has(x + ',' + y) ? ' is-preview' : ''}" data-x="${x}" data-y="${y}" role="button" tabindex="${tab}" aria-label="${escape(label)}"><rect class="tile-face" x="${x}" y="${y}" width="1" height="1"/><rect class="focus-ring" x="${x + 0.05}" y="${y + 0.05}" width=".9" height=".9"/></g>`);
       }
     }
-    const unitTokens = (state.units || []).map(u => {
+    const livingCells = new Set((state.units || []).filter(u => u.alive !== false).map(u => `${u.x},${u.y}`));
+    const sortedUnits = [...(state.units || [])]
+      .filter(u => u.alive !== false || u.team === 'heroes' || !livingCells.has(`${u.x},${u.y}`))
+      .sort((a, b) => (a.alive === false ? 0 : 1) - (b.alive === false ? 0 : 1));
+    const unitTokens = sortedUnits.map(u => {
       const cx = u.x + 0.5, cy = u.y + 0.5, life = lifeText(u);
       const words = String(u.name || u.id).split(/[\s_-]+/).filter(Boolean);
       const initial = escape(words.length > 1
@@ -764,7 +786,10 @@
         const selected = g.key === selectedGroup;
         const rawCost = g.kind === 'move' ? 'Move' : (g.actions[0]?.cost?.replace(/ \+ sorcery points$/, '') || 'Action');
         const shortCost = rawCost.replace('Magic Initiate free cast', 'Free cast').replace('level ', 'Lv').replace('bonus action', 'Bonus').replace('action', 'Action');
-        return `<button class="ability-card kind-${escape(g.kind)} ${selected ? 'selected' : ''}" data-group="${escape(g.key)}" aria-pressed="${selected}" title="${escape(g.label)} (${escape(rawCost)})" ${!canAct() ? 'disabled' : ''}>${idx < 9 ? `<span class="ability-hotkey">${idx + 1}</span>` : ''}${icon(g.kind, g.label)}<span class="ability-name">${escape(g.label)}</span><span class="ability-cost">${escape(shortCost)}</span></button>`;
+        const cardName = g.label
+          .replace(/^Font of Magic: create level (\d+) spell slot \((\d+) sorcery points\)$/i, 'Create Lv$1 Slot ($2 SP)')
+          .replace(/^Font of Magic: convert level (\d+) spell slot to sorcery points$/i, 'Lv$1 Slot → SP');
+        return `<button class="ability-card kind-${escape(g.kind)} ${selected ? 'selected' : ''}" data-group="${escape(g.key)}" aria-pressed="${selected}" title="${escape(g.label)} (${escape(rawCost)})" ${!canAct() ? 'disabled' : ''}>${idx < 9 ? `<span class="ability-hotkey">${idx + 1}</span>` : ''}${icon(g.kind, g.label)}<span class="ability-name">${escape(cardName)}</span><span class="ability-cost">${escape(shortCost)}</span></button>`;
       }).join('');
     }
     renderHotbarPopbar(groups);
@@ -831,6 +856,23 @@
           chips.push(`<button class="target-chip move-chip" data-action="${escape(a.id)}">→ ${escape(cellName(a.x, a.y))} · ${escape(a.cost || '')}${dir ? ' · ' + escape(dir) : ''}</button>`);
         }
       }
+    } else if (cur.length && cur.every(a => a.kind === 'spiritual_weapon_move')) {
+      const actor = activeUnit();
+      const foes = (state.units || []).filter(u => u.alive !== false && actor && u.team !== actor.team);
+      const nearestFoe = a => {
+        let best = null, dist = 999;
+        for (const f of foes) {
+          const d = Math.max(Math.abs(a.x - f.x), Math.abs(a.y - f.y)) * 5;
+          if (d < dist) { dist = d; best = f; }
+        }
+        return { foe: best, dist };
+      };
+      const ordered = [...cur].sort((a, b) => nearestFoe(a).dist - nearestFoe(b).dist || (a.y - b.y) || (a.x - b.x));
+      for (const a of ordered) {
+        const near = nearestFoe(a);
+        const suffix = near.foe ? ` · ${near.dist} ft to ${near.foe.name}` : '';
+        chips.push(`<button class="target-chip move-chip" data-action="${escape(a.id)}">→ ${escape(cellName(a.x, a.y))}${escape(suffix)}</button>`);
+      }
     } else if (!isSplit(cur)) {
       const seen = new Set();
       if (armed && cur.some(a => a.id === armed.id)) {
@@ -849,7 +891,9 @@
     pop.hidden = !optParts.length && !chips.length;
     $('action-hint').textContent = group.kind === 'move'
       ? `${group.label}: click a highlighted square${sceneUnavailable ? ' on the map or a square below' : ''}.`
-      : `${group.label}: click a highlighted creature or a choice above.`;
+      : cur[0]?.kind === 'spiritual_weapon_move'
+        ? `${group.label}: click a highlighted square on the map or a square above.`
+        : `${group.label}: click a highlighted creature or a choice above.`;
   }
 
   function renderLog() {
@@ -1198,21 +1242,32 @@
       }
       return;
     }
-    const unit = unitId ? targets().find(u => u.id === unitId) : targets().find(u => atCell(u, x, y) && u.alive !== false);
+    const cellUnits = (state.units || []).filter(u => atCell(u, x, y) && (u.alive !== false || u.team === 'heroes'));
+    const unit = (unitId ? targets().find(u => u.id === unitId) : null)
+      || cellUnits.find(u => u.alive !== false)
+      || cellUnits[0]
+      || targets().find(u => atCell(u, x, y) && u.alive !== false);
+    const coLocated = cellUnits.filter(u => u.id !== unit?.id);
     if (unit) inspectedId = unit.id;
     const cur = currentActions();
     if (isSplit(cur)) {
       const total = Math.max(...cur.map(a => a.target_ids.length));
       const cap = id => Math.max(...cur.map(a => a.target_ids.filter(v => v === id).length));
-      if (unit && cap(unit.id) > (allocation.get(unit.id) || 0) && allocationIds().length < total) {
-        allocation.set(unit.id, (allocation.get(unit.id) || 0) + 1);
+      const splitTarget = (unit && cap(unit.id) > (allocation.get(unit.id) || 0))
+        ? unit
+        : coLocated.find(u => cap(u.id) > (allocation.get(u.id) || 0));
+      if (splitTarget && allocationIds().length < total) {
+        allocation.set(splitTarget.id, (allocation.get(splitTarget.id) || 0) + 1);
       }
       render();
       return;
     }
     const moves = cur.filter(a => a.kind === 'move' && targetsCell(a, x, y));
     if (moves.length) { executeAction(cheapestMove(moves).id); return; }
-    const matches = cur.filter(a => targetsCell(a, x, y) || (unit && targetsUnit(a, unit)));
+    let matches = cur.filter(a => targetsCell(a, x, y) || (unit && targetsUnit(a, unit)));
+    if (!matches.length && coLocated.length) {
+      matches = cur.filter(a => coLocated.some(u => targetsUnit(a, u)));
+    }
     if (matches.length === 1 && matches[0].cells) { armed = matches[0]; preview = null; render(); return; }
     if (matches.length === 1) executeAction(matches[0].id);
     else { choices = matches.length > 1 ? matches : []; render(); }

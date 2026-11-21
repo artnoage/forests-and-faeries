@@ -1257,7 +1257,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   function applyUnitState(entry, data) {
     entry.active.visible = Boolean(data.active && data.alive);
     entry.inspect.visible = data.id === inspectedId;
-    const markNames = data.alive ? [...(data.marks || [])] : [];
+    const markNames = data.alive
+      ? [...new Set([...(data.marks || []), ...((data.conditions || []).filter(c => MARKS[c]))])]
+      : [];
     for (const name of markNames) if (!entry.markGroups[name] && MARKS[name]) entry.markGroups[name] = MARKS[name](entry.root, data);
     for (const [name, group] of Object.entries(entry.markGroups)) group.visible = markNames.includes(name);
     if (entry.markGroups.strength_drain) {
@@ -1282,6 +1284,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       entry.downRing.visible = data.team === 'heroes' && !dead;
       entry.deadRing.visible = data.team === 'heroes' && dead;
       entry.picker.visible = data.team === 'heroes';
+      entry.picker.scale.y = 0.22;
+      entry.picker.position.y = 0.14;
     } else {
       entry.body.rotation.z = 0;
       entry.body.position.y = 0;
@@ -1289,6 +1293,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       entry.downRing.visible = false;
       entry.deadRing.visible = false;
       entry.picker.visible = true;
+      entry.picker.scale.y = 1;
+      entry.picker.position.y = 0.65;
     }
 
     entry.data = { ...data };
@@ -1357,6 +1363,21 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     }
     for (const [id, entry] of units) if (!aliveIds.has(id)) { removeUnit(entry); units.delete(id); }
 
+    // If a living figure stands on the same square as a fallen hero (corpse or OA knockout),
+    // nudge the collapsed hero neatly aside so the standing figure stays centered and legible.
+    const livingCells = new Set();
+    for (const entry of units.values()) if (entry.data.alive !== false) livingCells.add(`${entry.data.x},${entry.data.y}`);
+    for (const entry of units.values()) {
+      const sharedDown = entry.data.alive === false && entry.data.team === 'heroes' && livingCells.has(`${entry.data.x},${entry.data.y}`);
+      const ox = sharedDown ? 0.24 : 0, oz = sharedDown ? -0.22 : 0;
+      entry.body.position.x = ox;
+      entry.body.position.z = oz;
+      entry.downRing.position.set(ox, 0.03, oz);
+      entry.deadRing.position.set(ox, 0.031, oz);
+      entry.picker.position.x = ox;
+      entry.picker.position.z = oz;
+    }
+
     // Conjured Spiritual Weapons
     const forceIds = new Set();
     for (const force of nextState.forces || []) {
@@ -1377,9 +1398,11 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
     clearGroup(overlays);
     const destinations = new Set();
+    const forceDestinations = new Set();
     const targetIds = new Set();
     for (const action of options.selectedActions || []) {
       if (action.kind === 'move' && Number.isInteger(action.x) && Number.isInteger(action.y)) destinations.add(`${action.x},${action.y}`);
+      else if (action.kind === 'spiritual_weapon_move' && Number.isInteger(action.x) && Number.isInteger(action.y)) forceDestinations.add(`${action.x},${action.y}`);
       for (const id of action.target_ids || []) targetIds.add(id);
       if (action.target_id) targetIds.add(action.target_id);
     }
@@ -1390,18 +1413,22 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         }
       }
     }
-    for (const key of destinations) {
-      const [x, y] = key.split(',').map(Number);
-      const tile = mesh(overlays, planeGeometry, glow('#59d8c3', busy ? 0.12 : 0.25), x, 0.058, y, 0.84, 0.84, 1);
-      tile.rotation.x = -Math.PI / 2; tile.castShadow = false;
-      const rim = mesh(overlays, geometry('move-rim', () => {
-        const shape = new THREE.Shape();
-        shape.moveTo(-0.435, -0.435); shape.lineTo(0.435, -0.435); shape.lineTo(0.435, 0.435); shape.lineTo(-0.435, 0.435); shape.closePath();
-        const hole = new THREE.Path(); hole.moveTo(-0.405, -0.405); hole.lineTo(-0.405, 0.405); hole.lineTo(0.405, 0.405); hole.lineTo(0.405, -0.405); hole.closePath(); shape.holes.push(hole);
-        return new THREE.ShapeGeometry(shape);
-      }), glow('#8cf0de', busy ? 0.35 : 0.88), x, 0.061, y);
-      rim.rotation.x = -Math.PI / 2; rim.castShadow = false;
-    }
+    const drawDestSet = (set, fillHex, rimHex) => {
+      for (const key of set) {
+        const [x, y] = key.split(',').map(Number);
+        const tile = mesh(overlays, planeGeometry, glow(fillHex, busy ? 0.12 : 0.25), x, 0.058, y, 0.84, 0.84, 1);
+        tile.rotation.x = -Math.PI / 2; tile.castShadow = false;
+        const rim = mesh(overlays, geometry('move-rim', () => {
+          const shape = new THREE.Shape();
+          shape.moveTo(-0.435, -0.435); shape.lineTo(0.435, -0.435); shape.lineTo(0.435, 0.435); shape.lineTo(-0.435, 0.435); shape.closePath();
+          const hole = new THREE.Path(); hole.moveTo(-0.405, -0.405); hole.lineTo(-0.405, 0.405); hole.lineTo(0.405, 0.405); hole.lineTo(0.405, -0.405); hole.closePath(); shape.holes.push(hole);
+          return new THREE.ShapeGeometry(shape);
+        }), glow(rimHex, busy ? 0.35 : 0.88), x, 0.061, y);
+        rim.rotation.x = -Math.PI / 2; rim.castShadow = false;
+      }
+    };
+    drawDestSet(destinations, '#59d8c3', '#8cf0de');
+    drawDestSet(forceDestinations, '#7cc4ff', '#bfe4ff');
     for (const id of targetIds) { const entry = units.get(id); if (entry) entry.target.visible = true; }
     const previewColor = options.previewFriendlyFire ? '#ff4a38' : '#ff7a3d';
     for (const cell of options.previewCells || []) {
@@ -1969,6 +1996,20 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     for (const entry of units.values()) if (entry.picker.visible && entry.root.visible) list.push(entry.picker);
     return list;
   }
+  function bestFigureHit(hits) {
+    const unitHits = hits.filter(item => item.object.userData.unitId != null);
+    if (!unitHits.length) return null;
+    const first = unitHits[0];
+    const firstEntry = units.get(first.object.userData.unitId);
+    if (firstEntry && firstEntry.data.alive === false) {
+      const standingSameCell = unitHits.find(item => {
+        const e = units.get(item.object.userData.unitId);
+        return e && e.data.alive !== false && e.data.x === firstEntry.data.x && e.data.y === firstEntry.data.y;
+      });
+      if (standingSameCell) return standingSameCell;
+    }
+    return first;
+  }
 
   function pointerDown(event) {
     pointers.add(event.pointerId);
@@ -1987,7 +2028,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     mouse.set((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2);
     camera.updateMatrixWorld(); scene.updateMatrixWorld(true);
     raycaster.setFromCamera(mouse, camera);
-    const figHit = raycaster.intersectObjects(pickTargets(), false).find(item => item.object.userData.unitId != null);
+    const figHit = bestFigureHit(raycaster.intersectObjects(pickTargets(), false));
     if (figHit) {
       const entry = units.get(figHit.object.userData.unitId);
       if (entry) {
@@ -1999,7 +2040,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     if (raycaster.ray.intersectPlane(floorPlane, hitPoint)) {
       const hx = Math.floor(hitPoint.x + 0.5), hy = Math.floor(hitPoint.z + 0.5);
       if (hx >= 0 && hy >= 0 && hx < width && hy < height) {
-        const u = (state.units || []).find(item => item.x === hx && item.y === hy && item.alive !== false);
+        const u = (state.units || []).find(item => item.x === hx && item.y === hy && item.alive !== false)
+          || (state.units || []).find(item => item.x === hx && item.y === hy && item.team === 'heroes');
         const obj = (state.objects || []).find(o => !o.destroyed && footprintContains(o, hx, hy));
         const hk = `c:${hx}:${hy}:${u?.id || obj?.id || ''}:${event.clientX >> 2}:${event.clientY >> 2}`;
         if (hk !== lastHoverKey) { lastHoverKey = hk; onHover({ x: hx, y: hy, unitId: u?.id || obj?.id || null, clientX: event.clientX, clientY: event.clientY }); }
@@ -2023,7 +2065,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     camera.updateMatrixWorld(); scene.updateMatrixWorld(true);
     raycaster.setFromCamera(mouse, camera);
     const hits = raycaster.intersectObjects(pickTargets(), false);
-    const hit = hits.find(item => item.object.userData.unitId != null);
+    const hit = bestFigureHit(hits);
     if (hit) {
       const entry = units.get(hit.object.userData.unitId);
       if (entry) { onCell?.(entry.data.x, entry.data.y, entry.data.id); return; }
@@ -2036,7 +2078,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
     const x = Math.floor(hitPoint.x + 0.5), y = Math.floor(hitPoint.z + 0.5);
     if (x < 0 || y < 0 || x >= width || y >= height) return;
-    const unit = (state.units || []).find(u => u.x === x && u.y === y);
+    const unit = (state.units || []).find(u => u.x === x && u.y === y && u.alive !== false)
+      || (state.units || []).find(u => u.x === x && u.y === y && u.team === 'heroes');
     const object = (state.objects || []).find(o => !o.destroyed && footprintContains(o, x, y));
     onCell?.(x, y, unit?.id || object?.id);
   }
