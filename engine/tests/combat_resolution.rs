@@ -173,6 +173,9 @@ fn breath_cast_offers_five_human_elements_and_one_native_recipient_row() {
     let chosen = actions.iter().find(|a| a["label"].as_str().unwrap().ends_with("(cold)")).unwrap();
     arena.perform(chosen["id"].as_str().unwrap()).unwrap();
     let mut f = encounter(ROOM, &roster, 2);
+    while f.current() != 0 {
+        f.advance();
+    }
     let mut native = Vec::new();
     f.spell_candidates(0, &mut native);
     assert_eq!(native.iter().filter(|a| matches!(a, Act::Spell(c) if c.spell == SpellId::DragonsBreath)).count(), 1);
