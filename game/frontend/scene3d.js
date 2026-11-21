@@ -965,7 +965,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   }
 
   function label(unit, y = labelHeight(unit)) {
-    const condCount = (unit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c)).length + (unit.marks || []).length;
+    const conditions = (unit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c));
+    const condCount = new Set([...conditions, ...(unit.marks || [])].filter(Boolean)).size;
     const texture = makeTexture((ctx, w, h) => {
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = 'rgba(11, 20, 24, 0.88)';
