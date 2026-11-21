@@ -419,3 +419,19 @@ def test_policy_specialization_limit_keeps_ppo_trainable(monkeypatch):
         accelerated._compiled.cache_clear()
         for function in (accelerated._policy, accelerated._policy_for_update):
             reset_code(function.__code__)
+
+
+def test_leaf_graph_capture_runs_without_cyclic_gc():
+    import gc
+    from ember_rl.accelerated import _no_gc
+    assert gc.isenabled()
+    with _no_gc():
+        assert not gc.isenabled()
+    assert gc.isenabled()
+    gc.disable()
+    try:
+        with _no_gc():
+            assert not gc.isenabled()
+        assert not gc.isenabled()           # the caller's setting is restored, not forced on
+    finally:
+        gc.enable()

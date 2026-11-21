@@ -1,6 +1,8 @@
 """Optional CUDA execution for the general model. Checkpoints keep ordinary module parameters."""
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import lru_cache
+import gc
 import weakref
 
 import torch
@@ -10,6 +12,21 @@ from ember_rl.general_env import CAND_FIELDS, CREATURE_FIELDS, PAIR_FIELDS, VALU
 
 _NEGATIVE_PADDING = {'cand_ids', 'creature_ids', 'cand_tgt', 'cand_cell'}
 _LEAF_GRAPHS = OrderedDict()
+
+
+@contextmanager
+def _no_gc():
+    """Cyclic garbage collection off for a CUDA graph capture. A collection during capture can run a Triton
+    kernel's __del__, whose module unload is not permitted on a capturing stream and invalidates the capture
+    ('operation not permitted when stream is capturing')."""
+    enabled = gc.isenabled()
+    gc.collect()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if enabled:
+            gc.enable()
 
 
 def _round_up(size, step):
@@ -99,7 +116,7 @@ class _LeafGraph:
         current.wait_stream(stream)
         self.graph = torch.cuda.CUDAGraph()
         # Captured casts and kernels read this model's parameters on every replay.
-        with torch.cuda.graph(self.graph, stream=stream):
+        with _no_gc(), torch.cuda.graph(self.graph, stream=stream):
             self.outputs = model._value(self.inputs)
 
     def fill(self, batch):
