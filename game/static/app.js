@@ -368,21 +368,25 @@
     const moves = movesTo(x, y);
     const matchingAct = moves.length ? cheapestMove(moves)
       : cur.find(a => targetsCell(a, x, y) || (hoveredUnit && targetsUnit(a, hoveredUnit)));
-    let pathCells = null, arcFrom = null, arcTo = null, arcColor = '#ffd478', hoverColor = '#ffe194';
+    let pathCells = null, arcFrom = null, arcTo = null, arcColor = '#ffd478', hoverColor = '#ffe194', areaCells = null, areaColor = '#ff7a3d';
     if (matchingAct && actor) {
       if (matchingAct.kind === 'move') {
         hoverColor = '#5be2ca';
         pathCells = Array.isArray(matchingAct.path) ? matchingAct.path : null;
       } else {
-        hoverColor = matchingAct.kind === 'spell' ? '#c29eff' : '#ff8c6e';
+        hoverColor = matchingAct.allies?.length ? '#ff6454' : (matchingAct.kind === 'spell' ? '#c29eff' : '#ff8c6e');
         arcColor = hoverColor;
         arcFrom = { x: actor.x, y: actor.y };
         arcTo = { x: hoveredUnit?.x ?? x, y: hoveredUnit?.y ?? y };
+        if (matchingAct.cells?.length) {
+          areaCells = matchingAct.cells;
+          areaColor = matchingAct.allies?.length ? '#ff4a38' : '#ff7a3d';
+        }
       }
     } else if (state.phase === 'setup' && setupFigure && state.map.tiles[y]?.[x] !== '#') {
       hoverColor = '#eec373';
     }
-    viewer?.setTacticalPreview?.({ hoverCell: { x, y, color: hoverColor }, pathCells, arcFrom, arcTo, arcColor });
+    viewer?.setTacticalPreview?.({ hoverCell: { x, y, color: hoverColor }, pathCells, arcFrom, arcTo, arcColor, areaCells, areaColor });
     if (!hoveredUnit && !matchingAct) { tip.hidden = true; return; }
     const parts = [];
     if (hoveredUnit) {
@@ -397,6 +401,8 @@
         ? `Move here · ${matchingAct.cost || ''}`
         : `${matchingAct.label}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`;
       parts.push(`<div class="tt-action ${matchingAct.kind !== 'move' ? 'attack' : ''}">${escape(text)}</div>`);
+      const hits = hitsLabel(matchingAct);
+      if (hits) parts.push(`<div class="tt-hits${matchingAct.allies?.length ? ' friendly-fire' : ''}">${escape(hits)}</div>`);
     }
     tip.innerHTML = parts.join('');
     tip.style.left = `${Math.max(4, Math.min(window.innerWidth - 290, clientX))}px`;
@@ -499,6 +505,7 @@
       v.update(state, {
         selectedActions: currentActions(),
         previewCells: previewCells(),
+        previewFriendlyFire: Boolean((preview || armed)?.allies?.length),
         inspectedId: state.phase === 'setup' ? setupFigure : inspectedId,
         setupFigure: state.phase === 'setup' ? setupFigure : null,
         biome: themeFor(),
@@ -722,7 +729,14 @@
   function hitsLabel(action) {
     const parts = [];
     if (action.hits?.length) parts.push(`hits ${action.hits.map(nameOf).join(', ')}`);
-    if (action.allies?.length) parts.push(`⚠ ally ${action.allies.map(nameOf).join(', ')}`);
+    if (action.allies?.length) {
+      const selfId = activeUnit()?.id;
+      const selfHit = Boolean(selfId && action.allies.includes(selfId));
+      const others = action.allies.filter(id => id !== selfId).map(nameOf);
+      if (selfHit && others.length) parts.push(`⚠ self & ally ${others.join(', ')}`);
+      else if (selfHit) parts.push(`⚠ self (${nameOf(selfId)})`);
+      else parts.push(`⚠ ally ${others.join(', ')}`);
+    }
     return parts.join(' · ');
   }
 
@@ -744,7 +758,7 @@
       $('action-bar').innerHTML = visibleGroups.map((g, idx) => {
         const selected = g.key === selectedGroup;
         const rawCost = g.kind === 'move' ? 'Move' : (g.actions[0]?.cost?.replace(/ \+ sorcery points$/, '') || 'Action');
-        const shortCost = rawCost.replace('level ', 'Lv').replace('bonus action', 'Bonus').replace('action', 'Action');
+        const shortCost = rawCost.replace('Magic Initiate free cast', 'Free cast').replace('level ', 'Lv').replace('bonus action', 'Bonus').replace('action', 'Action');
         return `<button class="ability-card kind-${escape(g.kind)} ${selected ? 'selected' : ''}" data-group="${escape(g.key)}" aria-pressed="${selected}" title="${escape(g.label)} (${escape(rawCost)})" ${!canAct() ? 'disabled' : ''}>${idx < 9 ? `<span class="ability-hotkey">${idx + 1}</span>` : ''}${icon(g.kind, g.label)}<span class="ability-name">${escape(g.label)}</span><span class="ability-cost">${escape(shortCost)}</span></button>`;
       }).join('');
     }
@@ -815,7 +829,7 @@
     } else if (!isSplit(cur)) {
       const seen = new Set();
       if (armed && cur.some(a => a.id === armed.id)) {
-        chips.push(`<button class="target-chip confirm" data-action="${escape(armed.id)}">Confirm ${escape(armed.label)} · ${escape(aimLabel(armed))}${hitsLabel(armed) ? ' · ' + escape(hitsLabel(armed)) : ''}${armed.cost ? ' · ' + escape(armed.cost) : ''}</button>`);
+        chips.push(`<button class="target-chip confirm${armed.allies?.length ? ' friendly-fire' : ''}" data-action="${escape(armed.id)}">Confirm ${escape(armed.label)} · ${escape(aimLabel(armed))}${hitsLabel(armed) ? ' · ' + escape(hitsLabel(armed)) : ''}${armed.cost ? ' · ' + escape(armed.cost) : ''}</button>`);
       }
       const targetActs = choices.length ? choices : cur.filter(a => hasTarget(a) || a.target_ids?.length || !hasPosition(a) || a.cells);
       for (const a of targetActs) {

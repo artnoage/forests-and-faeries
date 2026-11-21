@@ -344,6 +344,8 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .tt-sub { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
 .tt-action { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-subtle); font-weight: 700; color: var(--hero); font-size: 11.5px; }
 .tt-action.attack { color: #f29d85; }
+.tt-hits { margin-top: 2px; font-size: 11px; color: var(--gold-bright); line-height: 1.3; }
+.tt-hits.friendly-fire { color: #ff9c8a; font-weight: 700; }
 
 /* TOP FLOATING HUD BAR */
 .hud-top {
@@ -797,6 +799,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .target-chip:hover:not(:disabled) { background: rgba(217, 174, 102, 0.28); border-color: #fff; }
 .target-chip.confirm { background: linear-gradient(180deg, #e3b96f, #aa7930); color: #15110a; border-color: #fff2c6; font-weight: 800; }
 .target-chip.friendly-fire { border-color: var(--enemy); background: rgba(222, 111, 89, 0.2); color: #ffd4cb; }
+.target-chip.confirm.friendly-fire { background: linear-gradient(180deg, #e36a58, #9c2b20); color: #fff6f4; border-color: #ffd4cb; }
 
 .hotbar-main {
   display: grid;
@@ -1287,7 +1290,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 
 /* Move destination chips. */
 .target-chip.move-chip { border-color: rgba(94, 199, 178, 0.55); background: rgba(94, 199, 178, 0.12); }
-.target-options { max-height: 30vh; overflow-y: auto; }
+.target-options { max-height: min(124px, 18vh); overflow-y: auto; }
 
 /* How to play. */
 #help-dialog { max-width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow-y: auto; }

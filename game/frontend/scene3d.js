@@ -1402,9 +1402,10 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       rim.rotation.x = -Math.PI / 2; rim.castShadow = false;
     }
     for (const id of targetIds) { const entry = units.get(id); if (entry) entry.target.visible = true; }
+    const previewColor = options.previewFriendlyFire ? '#ff4a38' : '#ff7a3d';
     for (const cell of options.previewCells || []) {
       const [px, py] = cell;
-      const tile = mesh(overlays, planeGeometry, glow('#ff7a3d', busy ? 0.14 : 0.42), px, 0.066, py, 0.9, 0.9, 1);
+      const tile = mesh(overlays, planeGeometry, glow(previewColor, busy ? 0.14 : 0.42), px, 0.066, py, 0.9, 0.9, 1);
       tile.rotation.x = -Math.PI / 2; tile.castShadow = false;
     }
     for (const object of nextState.objects || []) {
@@ -1640,7 +1641,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     while (hoverGeoms.length) hoverGeoms.pop().dispose();
   }
 
-  function setTacticalPreview({ hoverCell = null, pathCells = null, arcFrom = null, arcTo = null, arcColor = '#ffd478' } = {}) {
+  function setTacticalPreview({ hoverCell = null, pathCells = null, arcFrom = null, arcTo = null, arcColor = '#ffd478', areaCells = null, areaColor = '#ff7a3d' } = {}) {
     if (disposed || unavailable) return;
     clearHoverPreview();
     // 1. 3D Floor Hover Cursor Reticle
@@ -1655,6 +1656,14 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       }), glow(hoverCell.color || '#ffe194', 0.92), hoverCell.x, 0.068, hoverCell.y);
       bracket.rotation.x = -Math.PI / 2;
       bracket.castShadow = false;
+    }
+    // 1b. 3D Area-of-Effect Hover Footprint
+    if (Array.isArray(areaCells) && areaCells.length) {
+      for (const [px, py] of areaCells) {
+        const tile = mesh(hoverGroup, planeGeometry, glow(areaColor, 0.36), px, 0.067, py, 0.88, 0.88, 1);
+        tile.rotation.x = -Math.PI / 2;
+        tile.castShadow = false;
+      }
     }
     // 2. 3D Movement Path Stepping Stones & Tube
     if (Array.isArray(pathCells) && pathCells.length >= 2) {
