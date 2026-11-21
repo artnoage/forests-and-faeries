@@ -88,6 +88,7 @@ MODEL_INPUTS = ('creatures', 'creature_ids', 'creature_mask', 'map', 'global', '
 OPTIONAL_INPUTS = ('creature_rel',)      # only with relations (ember-gen-v2)
 CREATURE_FIELDS = ('creatures', 'creature_ids', 'creature_mask')   # second axis is N
 PAIR_FIELDS = ('creature_rel',)          # second and third axes are N
+VALUE_INPUTS = ('map', 'global', *CREATURE_FIELDS, *PAIR_FIELDS)
 NATIVE_FIELDS = ('native_raw', 'native_dropped', 'native_choice')
 CAND_FIELDS = ('cands', 'cand_ids', 'cand_tgt', 'cand_tgt_n', 'cand_cell', 'cand_mask',
                'native_raw', 'native_dropped')   # second axis is K

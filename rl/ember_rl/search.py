@@ -187,17 +187,36 @@ class Lookahead:
         self.stats = Counter()
 
     @staticmethod
-    def _chunks(obs, groups, row_chunks):
-        """((model id, leaf), positions, observation) per forward pass: each group in row_chunks (leaf value
-        passes run no decoder and stay whole)."""
-        from ember_rl.general_model import select
-        for key, idx in groups.items():
-            part = select(obs, idx)
+    def _chunks(obs, groups, row_chunks, models=None):
+        """Plan on action counts, then gather each final model batch directly from the observation."""
+        from ember_rl.general_env import MODEL_INPUTS, VALUE_INPUTS
+        from ember_rl.general_model import GeneralActorCritic, trimmed_rows
+        if models is not None:
+            obs = {name: obs[name] for name in MODEL_INPUTS if name in obs}
+        mask = obs['cand_mask']
+        action_counts = mask.sum(axis=1)
+        creature_counts = obs['creature_mask'].sum(axis=1)
+        for key, positions in groups.items():
+            group = np.asarray(positions, dtype=np.intp)
+            fields = obs
             if key[1]:
-                yield key, idx, part
-                continue
-            for chunk in row_chunks(part):
-                yield key, [idx[c] for c in chunk], (part if len(chunk) == len(idx) else select(part, chunk))
+                batches = (group,)  # Value passes stay whole.
+                # The built-in critic only encodes state. Other value implementations keep all model inputs.
+                if models is not None and type(models[key[0]]) is GeneralActorCritic:
+                    fields = {name: obs[name] for name in VALUE_INPUTS if name in obs}
+            else:
+                width = min(mask.shape[1], max(1, int(action_counts[group].max())))
+                # The grouping heuristic sees the same trimmed mask as a selection of the full group.
+                chunks = row_chunks({'cand_mask': mask[:, :width][group]})
+                batches = (group[chunk] for chunk in chunks)
+            for batch in batches:
+                # Groups and each chunk within a group keep observation order. Consecutive rows can
+                # borrow the source buffers throughout the forward pass, including the large map.
+                first, last = int(batch[0]), int(batch[-1])
+                rows = slice(first, last + 1) if last - first + 1 == len(batch) else batch
+                k = min(mask.shape[1], max(1, int(action_counts[rows].max())))
+                n = max(1, int(creature_counts[rows].max()))
+                yield key, batch, trimmed_rows(fields, rows, k, n)
 
     # ---- public ----
     def search(self, env, roots: Sequence[Root], *, explore: bool = False) -> list[Result]:
@@ -385,7 +404,7 @@ class Lookahead:
             positions, outputs = [], []
             with torch.no_grad():
                 chunks = grouped_row_chunks if self.group_actions else row_chunks
-                for (mid, is_leaf), idx, part in self._chunks(obs, groups, chunks):
+                for (mid, is_leaf), idx, part in self._chunks(obs, groups, chunks, models):
                     batch = to_batch(part, self.device)
                     model = models[mid]
                     if is_leaf:

@@ -50,6 +50,79 @@ def test_parse_search_and_config_checks():
             parse_search(bad)
 
 
+@pytest.mark.parametrize('grouped', [False, True])
+@pytest.mark.parametrize('action_columns', [0, 160])
+def test_chunks_match_selecting_the_whole_group_first(grouped, action_columns):
+    from ember_rl.general_model import grouped_row_chunks, row_chunks
+
+    rows = np.arange(180)
+    widths = np.resize([3, 27, 53, 86, 137], len(rows))
+    creatures = np.arange(7)[None, :] < (1 + rows % 6)[:, None]
+    obs = dict(cand_mask=np.arange(action_columns)[None, :] < widths[:, None],
+               cands=np.arange(len(rows) * action_columns).reshape(len(rows), action_columns),
+               creature_mask=creatures, creature_rel=np.arange(len(rows) * 49).reshape(-1, 7, 7),
+               map=rows[:, None], actor=rows)
+    groups = {(1, False): rows[8::2], (1, True): rows[:8], (2, False): rows[9::2]}
+    planner = grouped_row_chunks if grouped else row_chunks
+
+    def chunks(part):
+        return planner(part, max_rows=640)
+
+    expected = []
+    for key, group in groups.items():
+        part = select(obs, group)
+        if key[1]:
+            expected.append((key, group, part))
+        else:
+            for chunk in chunks(part):
+                expected.append((key, group[chunk], select(part, chunk)))
+    actual = list(Lookahead._chunks(obs, groups, chunks))
+    assert len(actual) == len(expected)
+    for (key, indices, part), (want_key, want_indices, want_part) in zip(actual, expected):
+        assert key == want_key
+        np.testing.assert_array_equal(indices, want_indices)
+        assert part.keys() == want_part.keys()
+        for field in obs:
+            np.testing.assert_array_equal(part[field], want_part[field])
+        if key[1]:
+            assert np.shares_memory(part['map'], obs['map'])
+
+
+def test_chunk_grouping_uses_the_groups_trimmed_width():
+    from ember_rl.general_model import grouped_row_chunks
+
+    widths = np.tile([50, 65], 48)
+    obs = dict(cand_mask=np.arange(256)[None, :] < widths[:, None],
+               creature_mask=np.ones((len(widths), 1), bool))
+    group = np.arange(len(widths))
+    # At width 65 the two buckets save less than 20%, so the policy keeps the original row order.
+    [(key, positions, part)] = Lookahead._chunks(obs, {(1, False): group}, grouped_row_chunks)
+    assert key == (1, False) and part['cand_mask'].shape == (len(widths), 65)
+    np.testing.assert_array_equal(positions, group)
+
+
+def test_builtin_leaf_gathers_only_state_and_custom_critics_keep_the_full_batch():
+    from ember_rl.general_env import MODEL_INPUTS, VALUE_INPUTS
+    from ember_rl.general_model import row_chunks
+
+    env = FakeBatchEnv(6)
+    start(env, 6, EXTERNAL)
+    obs = env.observe(list(range(6)))
+    model = tiny_models()['heroes']
+    rows = [0, 2, 4]
+    models = {1: model, 2: object()}
+    groups = {(1, True): rows, (2, True): rows, (1, False): rows}
+    parts = {key: part for key, _, part in Lookahead._chunks(obs, groups, row_chunks, models)}
+    full = select(obs, rows)
+    for key, fields in [((1, True), VALUE_INPUTS), ((2, True), MODEL_INPUTS), ((1, False), MODEL_INPUTS)]:
+        assert parts[key].keys() == full.keys() & set(fields)
+        for name, array in parts[key].items():
+            np.testing.assert_array_equal(array, full[name])
+    with torch.no_grad():
+        expected = model.value(to_batch(full), check=False)
+        torch.testing.assert_close(model.value(to_batch(parts[1, True]), check=False), expected, atol=0, rtol=0)
+
+
 @pytest.mark.parametrize('horizon', ['steps:1', 'turns:1', 'rounds:1'])
 def test_search_leaves_the_game_alone_and_returns_valid_targets(horizon):
     env = FakeBatchEnv(6)

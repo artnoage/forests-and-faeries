@@ -438,6 +438,11 @@ def select(obs: Mapping[str, np.ndarray], index: Sequence[int] | np.ndarray) -> 
     index = np.asarray(index)
     k = max(1, int(obs['cand_mask'][index].sum(1).max())) if obs['cand_mask'].shape[1] else 0
     n = max(1, int(obs['creature_mask'][index].sum(1).max()))
+    return trimmed_rows(obs, index, k, n)
+
+
+def trimmed_rows(obs, index, k, n):
+    """Select observation rows with known action and creature widths. A row slice returns views."""
     out = {}
     for name, array in obs.items():
         # Basic slices are views. The row gather only copies the retained columns.

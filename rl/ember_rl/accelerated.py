@@ -5,10 +5,9 @@ import weakref
 
 import torch
 
-from ember_rl.general_env import CAND_FIELDS, CREATURE_FIELDS, PAIR_FIELDS
+from ember_rl.general_env import CAND_FIELDS, CREATURE_FIELDS, PAIR_FIELDS, VALUE_INPUTS
 
 
-_STATE = ('map', 'global', *CREATURE_FIELDS, *PAIR_FIELDS)
 _NEGATIVE_PADDING = {'cand_ids', 'creature_ids', 'cand_tgt', 'cand_cell'}
 _LEAF_GRAPHS = OrderedDict()
 
@@ -40,7 +39,7 @@ def bucket_batch(batch, *, value_only=False):
         targets = max(4, _round_up(batch['cand_tgt'].shape[2], 4))
     result = {}
     for name, tensor in batch.items():
-        if value_only and name not in _STATE:
+        if value_only and name not in VALUE_INPUTS:
             continue
         shape = _shape(name, tensor.shape, creatures, actions, targets)
         if tuple(tensor.shape) == shape:
@@ -84,7 +83,7 @@ def compiled_policy(model, batch):
 class _LeafGraph:
     def __init__(self, model, batch, count):
         self.inputs = {}
-        for name in _STATE:
+        for name in VALUE_INPUTS:
             if name in batch:
                 tensor = batch[name]
                 shape = _shape(name, tensor.shape, 24, 0, 0)
