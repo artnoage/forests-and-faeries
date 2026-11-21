@@ -319,10 +319,7 @@ class Lookahead:
 
     def _rollouts(self, env, roots, results, jobs, utility):
         torch, cfg, sc = self.torch, self.cfg, self.scratch
-        from ember_rl.general_model import (
-            check_action_rows, check_policy_actors, grouped_row_chunks, policy_decision, row_chunks, select, to_batch,
-        )
-        from ember_rl.transfers import read_tensors
+        from ember_rl.general_model import grouped_row_chunks, row_chunks, select, to_batch
         n = len(jobs)
         dst = np.arange(n, dtype=np.int32)
         root_of = np.array([j[0] for j in jobs])
@@ -401,38 +398,32 @@ class Lookahead:
                 groups[(id(model), bool(leaf[p]))].append(p)
             step_slots, step_rows, step_own, step_move = [], [], [], []
             clock = time.time()
-            positions, outputs = [], []
             with torch.no_grad():
                 chunks = grouped_row_chunks if self.group_actions else row_chunks
                 for (mid, is_leaf), idx, part in self._chunks(obs, groups, chunks, models):
                     batch = to_batch(part, self.device)
                     model = models[mid]
                     if is_leaf:
-                        output = model.value(batch, check=False).float()
+                        values = model.value(batch, check=False).float().cpu().numpy()
                         self.stats['value_rows'] += len(idx)
+                        for p, v in zip(idx, values):
+                            g = alive[p]
+                            utility[root_of[g]][jobs[g][1], jobs[g][2]] = (float(v) + sign[g] * float(cur['potential'][g])
+                                                                           - cost[g])
+                            self._leaf(depth[g], terminal=False)
                     else:
-                        check_policy_actors(part)
-                        logits, values = model(batch, check=False)
-                        output, _ = policy_decision(logits, values, batch['cand_mask'], greedy=cfg.rollout == 'greedy')
+                        logits, _ = model(batch, check=False)
+                        if cfg.rollout == 'greedy':
+                            chosen = logits.argmax(-1)
+                        else:
+                            chosen = torch.distributions.Categorical(logits=logits).sample()
                         self.stats['forward_rows'] += len(idx)
-                    positions.append((idx, is_leaf))
-                    outputs.append(output)
-            # All policy and value groups on this ply are independent until the engine step.
-            for (idx, is_leaf), result in zip(positions, read_tensors(outputs)):
-                if is_leaf:
-                    if not np.isfinite(result).all():
-                        raise FloatingPointError('non-finite search leaf value')
-                    for p, v in zip(idx, result):
-                        g = alive[p]
-                        utility[root_of[g]][jobs[g][1], jobs[g][2]] = float(v) + sign[g] * float(cur['potential'][g]) - cost[g]
-                        self._leaf(depth[g], terminal=False)
-                else:
-                    check_action_rows(result)
-                    step_slots.extend(alive[idx])
-                    step_rows.extend(result.tolist())
-                    step_own.extend(mine[idx].tolist())
-                    step_move.extend((obs['cand_ids'][idx, result, 0] == MOVE_KIND).tolist())
-            self.stats['model_seconds'] += time.time() - clock
+                        chosen = chosen.cpu().numpy()
+                        step_slots += [alive[p] for p in idx]
+                        step_rows += chosen.tolist()
+                        step_own += [bool(mine[p]) for p in idx]
+                        step_move += (part['cand_ids'][np.arange(len(idx)), chosen, 0] == MOVE_KIND).tolist()
+            self.stats['model_seconds'] += time.time() - clock     # .cpu() waits for the GPU
             if not step_slots:
                 break
             step_slots = np.asarray(step_slots, np.int32)
@@ -457,15 +448,13 @@ class Lookahead:
                 models[id(model)] = model
                 by_model[id(model)].append(p)
             with torch.no_grad():
-                outputs = [models[mid].value(to_batch(select(final, ps), self.device), check=False).float()
-                           for mid, ps in by_model.items()]
-            for ps, values in zip(by_model.values(), read_tensors(outputs)):
-                if not np.isfinite(values).all():
-                    raise FloatingPointError('non-finite truncated search value')
-                for p, v in zip(ps, values):
-                    g = idx[p]
-                    utility[root_of[g]][jobs[g][1], jobs[g][2]] = float(v) + sign[g] * float(cur['potential'][g]) - cost[g]
-                    self._leaf(depth[g], terminal=True)
+                for mid, ps in by_model.items():
+                    values = models[mid].value(to_batch(select(final, ps), self.device), check=False).float().cpu().numpy()
+                    for p, v in zip(ps, values):
+                        g = idx[p]
+                        utility[root_of[g]][jobs[g][1], jobs[g][2]] = (float(v) + sign[g] * float(cur['potential'][g])
+                                                                       - cost[g])
+                        self._leaf(depth[g], terminal=True)
             self.stats['truncated_leaves'] += len(truncated)
             self.stats['model_seconds'] += time.time() - clock
         self.stats['iterations'] += iterations

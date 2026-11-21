@@ -17,8 +17,7 @@
 //!   with each creature's HP clamped to `[0, its starting HP]` (natural20
 //!   `objectives.health_result`) and standing = alive with HP > 0
 //!   (`duel_env._standing`); `potential` = 0.3 · score, 0 at any terminal;
-//! - `moved`: one-square moves of the deciding creature executed by the
-//!   call's row (0 or 1; with destination moves the squares walked).
+//! - `moved`: squares actually walked by the deciding creature during the call.
 //!
 //! Destination moves ([`MoveMode::Dest`], GENERAL_ENV.md "Destination
 //! moves"): the one-square move rows are replaced by one row per square the
@@ -184,89 +183,109 @@ pub fn dest_decision(env: &Env) -> Option<(Decision, Vec<RowKind>)> {
     Some((d.with_rows(legal, raw, dropped, choice), kinds))
 }
 
-/// The squares the actor of `legal` can reach this turn with one-square
-/// moves and the movement it has left, each with its path (start square
-/// first): breadth-first in steps, the first step from the decision's own
-/// one-square move rows (so every one-step destination is a native row),
-/// the later steps by the same rules (`move_candidates`: a free square that
-/// is passable and placeable, no corner cutting for heroes, no step toward
-/// a source of its fear, one square of movement per step, two while prone).
-/// A creature masked from the actor's team (a hidden enemy) does not block
-/// a later step: walking into it stops the walk, as the step is not a row.
-/// Ties: the first parent found, neighbours in the fixed order N, S, W, E,
-/// NW, NE, SW, SE. Order of the result: by steps, then discovery.
+/// Reachable endpoints for the deciding team. First-step rows remain the
+/// native rows. Beyond them an unseen blocker stops execution on contact.
 pub fn destinations(f: &Fight, a: usize, team: u8, legal: &[Act]) -> Vec<Vec<Pos>> {
-    const DIRS: [(i32, i32); 8] = [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1), (-1, 1), (1, 1)];
+    movement_paths(f, a, masked_from(f, team), false, Some(legal))
+}
+
+const DIRECTIONS: [Pos; 8] = [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1), (-1, 1), (1, 1)];
+
+/// Count terrain and crawling while searching. In crossings-only mode the
+/// first free square after occupied space ends the atomic move. Free
+/// neighbours are already represented by the native one-square rows.
+pub(crate) fn movement_paths(f: &Fight, a: usize, masked: u32, crossings_only: bool, first_rows: Option<&[Act]>) -> Vec<Vec<Pos>> {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
     let g = &f.grid;
-    let unit = &f.units[a];
-    let start = unit.pos;
-    let step_cost = 1 + unit.prone() as i32;
-    let budget = unit.available_movement().div_euclid(5);
-    let masked = masked_from(f, team);
-    let free = |p: Pos| {
-        g.in_bounds(p.0, p.1)
-            && match f.token_at(p) {
-                Some(o) if masked & (1 << o) != 0 => !g.is_wall(p.0, p.1),
-                _ => f.passable(a, p) && f.placeable(a, p),
+    let u = &f.units[a];
+    let start = u.pos;
+    let budget = u.available_movement() / 5;
+    if budget < if crossings_only { 2 } else { 1 } {
+        return Vec::new();
+    }
+    if crossings_only && !DIRECTIONS.iter().any(|&(dx, dy)| f.token_at((start.0 + dx, start.1 + dy)).is_some()) {
+        return Vec::new();
+    }
+    let hidden = |p| masked != 0 && f.token_at(p).is_some_and(|o| masked & (1 << o) != 0);
+    let free = |p| hidden(p) || f.placeable(a, p);
+    let mut best = vec![i32::MAX; g.cells()];
+    let mut parent = vec![start; g.cells()];
+    let mut frontier = BinaryHeap::new();
+    let mut order = 0;
+    let mut result = Vec::new();
+    best[g.index(start.0, start.1)] = 0;
+    // Seed the walk with actual native rows and whole legal crossings.
+    // A hidden token can mask a later square, never the first action.
+    let mut initial = vec![None; g.cells()];
+    if let Some(rows) = first_rows {
+        let mut seeds: Vec<_> = rows.iter().filter_map(|act| match act {
+            Act::Move(p) if p.len() > 1 && p[0] == start => Some(p),
+            _ => None,
+        }).collect();
+        seeds.sort_by_key(|p| DIRECTIONS.iter().position(|&(dx, dy)| (start.0 + dx, start.1 + dy) == p[1]));
+        for path in seeds {
+            let q = *path.last().unwrap();
+            let idx = g.index(q.0, q.1);
+            let cost = path[1..].iter().map(|&p| f.step_cost(a, p)).sum();
+            if cost <= budget && cost < best[idx] {
+                best[idx] = cost;
+                initial[idx] = Some(path.as_slice());
+                order += 1;
+                frontier.push(Reverse((cost, order, q)));
             }
-    };
-    let idx = |p: Pos| g.index(p.0, p.1);
-    let mut parent: Vec<i32> = vec![-2; g.cells()];
-    parent[idx(start)] = -1;
-    let mut order: Vec<Pos> = Vec::new();
-    let mut frontier: Vec<Pos> = Vec::new();
-    if step_cost <= budget {
-        for act in legal {
-            if let Act::Move(p) = act {
-                if p.len() == 2 && p[0] == start && parent[idx(p[1])] == -2 {
-                    parent[idx(p[1])] = idx(start) as i32;
-                    frontier.push(p[1]);
+        }
+    } else {
+        frontier.push(Reverse((0, order, start)));
+    }
+    while let Some(Reverse((cost, _, p))) = frontier.pop() {
+        if cost != best[g.index(p.0, p.1)] {
+            continue;
+        }
+        if p != start && free(p) {
+            let mut path = vec![p];
+            let mut q = p;
+            while q != start {
+                let idx = g.index(q.0, q.1);
+                if let Some(seed) = initial[idx] {
+                    path.extend(seed[..seed.len() - 1].iter().rev().copied());
+                    break;
                 }
+                q = parent[idx];
+                path.push(q);
             }
+            if !crossings_only || path.len() > 2 {
+                path.reverse();
+                result.push(path);
+            }
+            if crossings_only {
+                continue;
+            }
+        }
+        if cost >= budget {
+            continue;
+        }
+        for (dx, dy) in DIRECTIONS {
+            let q = (p.0 + dx, p.1 + dy);
+            if !g.in_bounds(q.0, q.1) || (!hidden(q) && !f.passable(a, q)) {
+                continue;
+            }
+            if u.t.pc && dx != 0 && dy != 0 && !(free((p.0 + dx, p.1)) && free((p.0, p.1 + dy))) {
+                continue;
+            }
+            let next = cost + if hidden(q) { 1 + u.prone() as i32 } else { f.step_cost(a, q) };
+            let idx = g.index(q.0, q.1);
+            if next > budget || next >= best[idx] || f.step_toward_fear(a, p, q) {
+                continue;
+            }
+            best[idx] = next;
+            parent[idx] = p;
+            initial[idx] = None;
+            order += 1;
+            frontier.push(Reverse((next, order, q)));
         }
     }
-    // the first layer in the fixed neighbour order (the rows' order is canonical, not spatial)
-    frontier.sort_by_key(|&p| DIRS.iter().position(|&d| (start.0 + d.0, start.1 + d.1) == p).unwrap_or(8));
-    let mut cost = step_cost;
-    while !frontier.is_empty() {
-        order.extend_from_slice(&frontier);
-        if cost + step_cost > budget {
-            break;
-        }
-        let mut next = Vec::new();
-        for &p in &frontier {
-            for d in DIRS {
-                let q = (p.0 + d.0, p.1 + d.1);
-                if !free(q) || parent[idx(q)] != -2 {
-                    continue;
-                }
-                if unit.t.pc && d.0 != 0 && d.1 != 0 && !(free((p.0 + d.0, p.1)) && free((p.0, p.1 + d.1))) {
-                    continue;
-                }
-                if f.step_toward_fear(a, p, q) {
-                    continue;
-                }
-                parent[idx(q)] = idx(p) as i32;
-                next.push(q);
-            }
-        }
-        frontier = next;
-        cost += step_cost;
-    }
-    let w = g.w as usize;
-    order
-        .into_iter()
-        .map(|dest| {
-            let mut path = vec![dest];
-            let mut i = parent[idx(dest)];
-            while i >= 0 {
-                path.push(((i as usize % w) as i32, (i as usize / w) as i32));
-                i = parent[i as usize];
-            }
-            path.reverse();
-            path
-        })
-        .collect()
+    result
 }
 
 /// One episode in one slot. `Clone` is a snapshot.
@@ -304,6 +323,19 @@ impl Game {
         cfg: &EnvConfig,
         pool: &'static ContentPool,
     ) -> Result<Game, String> {
+        Self::with_rule_version(entry, spec, teams, units, cfg, pool, 3)
+    }
+
+    /// Start on the rules of a recorded game, before the first decision.
+    pub fn with_rule_version(
+        entry: &Arc<Entry>,
+        spec: &EpisodeSpec,
+        teams: [Controller; 2],
+        units: &[UnitRef],
+        cfg: &EnvConfig,
+        pool: &'static ContentPool,
+        version: i32,
+    ) -> Result<Game, String> {
         let placed = entry.place(spec.layout_seed)?;
         let max_rounds = entry.max_rounds.unwrap_or(cfg.max_rounds);
         let external_units = resolve_units(entry, units)?;
@@ -319,7 +351,9 @@ impl Game {
         if spec.dice_seed > i64::MAX as u64 {
             return Err("dice_seed must be below 2**63".into());
         }
-        let fight = Fight::on_map(pool, entry.grid.clone(), &entry.units, &placed.placements, max_rounds, Trace::free(spec.dice_seed))?;
+        let mut fight = Fight::on_map(pool, entry.grid.clone(), &entry.units, &placed.placements, max_rounds, Trace::free(spec.dice_seed))?;
+        fight.champion_moves_enabled = version >= 2;
+        fight.creature_space_rules = version >= 3;
         let start_hp = fight.units.iter().map(|u| u.hp).collect();
         let env = Env::new(fight, Control { teams, external_units }, cfg.scores);
         let mut game = Game {
@@ -375,8 +409,8 @@ impl Game {
     /// native turns to the next external decision; the step cap applies
     /// after it (one policy decision, however many squares it walks).
     ///
-    /// A destination row walks its path one native one-square move at a
-    /// time and stops after the step that reaches the destination, or
+    /// A destination row walks to each legal stopping square in turn,
+    /// crossing occupied squares within a single move. It can stop
     /// earlier, after a step when the decision is no longer the walker's
     /// (its turn ended, the fight is over), when any creature used a
     /// reaction (an opportunity attack, Shield, Redirect Attack), when the
@@ -395,11 +429,16 @@ impl Game {
         };
         match kind {
             RowKind::Native(r) => {
-                let moves = self.env.decision().is_some_and(|d| matches!(d.legal.get(r), Some(Act::Move(_))));
+                let movement = self.env.decision().and_then(|d| match d.legal.get(r) {
+                    Some(Act::Move(path)) => Some((d.actor, path.clone())),
+                    _ => None,
+                });
                 self.env.step(r)?;
                 self.log.push(LogEntry::Row(r as u32));
                 self.last = self.env.last;
-                self.moved = moves as i32;
+                self.moved = movement.map_or(0, |(a, path)| {
+                    path.iter().position(|&p| p == self.env.fight.units[a].pos).unwrap_or(0) as i32
+                });
             }
             RowKind::Walk(path) => self.walk(&path)?,
         }
@@ -408,7 +447,8 @@ impl Game {
         Ok(())
     }
 
-    /// Walk `path` (start square first) as one-square move rows ([`Game::step`]).
+    /// Execute each legal landing along the path. Contiguous occupied
+    /// squares belong to a single move ending on the next free square.
     fn walk(&mut self, path: &[Pos]) -> Result<(), String> {
         let a = self.env.decision().ok_or("no pending decision")?.actor;
         let sees = |f: &Fight| -> u32 {
@@ -430,27 +470,38 @@ impl Game {
         let seen0 = sees(&self.env.fight);
         let mut counts = CallCounts::default();
         let mut moved = 0;
-        for &next in &path[1..] {
+        let mut start = 0;
+        let mut attempted = false;
+        while start + 1 < path.len() {
             let Some(d) = self.env.decision() else { break };
-            if d.actor != a {
-                break;
+            if d.actor != a { break; }
+            // A run of occupied squares is one MoveAction. Reactions resolve
+            // along its whole path; the actor never overwrites another token.
+            let f = &self.env.fight;
+            let mut end = start + 1;
+            while end < path.len() && f.passable(a, path[end]) && !f.placeable(a, path[end]) {
+                end += 1;
             }
-            let Some(r) = d.legal.iter().position(|x| matches!(x, Act::Move(p) if p.len() == 2 && p[1] == next)) else {
-                break;
-            };
+            if end == path.len() { break; }
+            let segment = &path[start..=end];
+            let Some(r) = d.legal.iter().position(|act| matches!(act, Act::Move(p) if p.as_slice() == segment)) else { break };
+            attempted = true;
             let before = (state(&self.env.fight), reactions(&self.env.fight));
             self.env.step(r)?;
             self.log.push(LogEntry::Row(r as u32));
             counts.forced += self.env.last.forced;
             counts.native_actions += self.env.last.native_actions;
-            moved += 1;
+            let reached = self.env.fight.units[a].pos;
+            moved += segment.iter().position(|&p| p == reached).unwrap_or(0) as i32;
+            start = end;
+            if reached != path[end] { break; }
             let f = &self.env.fight;
             let reacted = reactions(f).iter().zip(&before.1).any(|(now, was)| now < was);
             if self.env.decision().is_none_or(|d| d.actor != a) || reacted || state(f) != before.0 || sees(f) & !seen0 != 0 {
                 break;
             }
         }
-        if moved == 0 {
+        if !attempted {
             return Err("a destination row whose first step is not a row".into());
         }
         self.last = counts;
@@ -580,6 +631,7 @@ impl Game {
         let e = &self.entry;
         let mut fight = Fight::on_map(pool, e.grid.clone(), &e.units, &self.placed.placements, self.max_rounds, Trace::recording(self.spec.dice_seed))?;
         fight.champion_moves_enabled = self.env.fight.champion_moves_enabled;
+        fight.creature_space_rules = self.env.fight.creature_space_rules;
         let control = self.env.control().clone();
         let mut env = Env::new(fight, control.clone(), true);
         let mut reseeds = 0;
@@ -616,7 +668,7 @@ impl Game {
         });
         let s = &self.spec;
         let header = Header {
-            version: if self.env.fight.champion_moves_enabled { 2 } else { 1 },
+            version: if self.env.fight.creature_space_rules { 3 } else if self.env.fight.champion_moves_enabled { 2 } else { 1 },
             n20_commit: NATURAL20_COMMIT.trim().to_string(),
             units: e.units.clone(),
             placements: self.placed.placements.clone(),

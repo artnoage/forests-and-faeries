@@ -270,6 +270,9 @@ impl Fight {
             }
         }
         let mut legal: Vec<Act> = first.iter().map(|&i| cands[i].clone()).collect();
+        if self.creature_space_rules {
+            legal.extend(crate::batch::movement_paths(self, u, 0, true, None).into_iter().map(Act::Move));
+        }
         legal.push(Act::EndTurn);
         let end = legal.len() - 1;
         if stand {
@@ -304,6 +307,8 @@ impl Fight {
             }
         }
         let melee = self.enemy_in_melee_range(u);
+        raw.resize(end, f64::NEG_INFINITY);
+        dropped.resize(end, false);
         raw.push(if melee { 0.0 } else { f64::NEG_INFINITY });
         dropped.push(false);
         // The native choice (move_for after scoring).

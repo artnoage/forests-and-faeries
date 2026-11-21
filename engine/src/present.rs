@@ -92,7 +92,7 @@ struct InterruptedMove {
 
 pub struct WebArena {
     level: LevelInput,
-    legacy_replay: bool,
+    replay_version: u8,
     grid: Arc<Grid>,
     roster: Vec<RosterUnit>,
     roster_by_id: HashMap<String, usize>,
@@ -206,7 +206,7 @@ impl WebArena {
         csrf_token: String,
         encounter_token: String,
     ) -> Result<Self, String> {
-        Self::with_trace(level, Trace::web_free(seed), revision, csrf_token, encounter_token, false)
+        Self::with_trace(level, Trace::web_free(seed), revision, csrf_token, encounter_token, 3)
     }
 
     pub fn with_replay_draws(
@@ -227,10 +227,10 @@ impl WebArena {
         encounter_token: String,
         version: u8,
     ) -> Result<Self, String> {
-        if !(1..=2).contains(&version) {
+        if !(1..=3).contains(&version) {
             return Err(format!("unsupported web replay version {version}"));
         }
-        Self::with_trace(level, Trace::web_replay_draws(draws), revision, csrf_token, encounter_token, version == 1)
+        Self::with_trace(level, Trace::web_replay_draws(draws), revision, csrf_token, encounter_token, version)
     }
 
     fn with_trace(
@@ -239,9 +239,9 @@ impl WebArena {
         revision: i64,
         csrf_token: String,
         encounter_token: String,
-        legacy_replay: bool,
+        replay_version: u8,
     ) -> Result<Self, String> {
-        if legacy_replay {
+        if replay_version == 1 {
             if let Some(view) = level.level_view.as_object_mut() {
                 view.remove("hero_level");
                 if let Some(party) = view.get_mut("party").and_then(Value::as_array_mut) {
@@ -287,7 +287,7 @@ impl WebArena {
         let placements = level.suggested_placements.clone();
         let mut arena = WebArena {
             level,
-            legacy_replay,
+            replay_version,
             grid,
             roster,
             roster_by_id,
@@ -540,7 +540,8 @@ impl WebArena {
             crate::engine::MAX_ROUNDS,
             self.trace_init.clone(),
         )?;
-        fight.champion_moves_enabled = !self.legacy_replay;
+        fight.champion_moves_enabled = self.replay_version >= 2;
+        fight.creature_space_rules = self.replay_version >= 3;
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
         self.fight_to_roster = fight_to_roster;
@@ -1090,6 +1091,11 @@ impl WebArena {
 
         for ev in evs {
             match ev {
+                WebEv::Redirected { boss, ally } if self.replay_version >= 3 => {
+                    let text = format!("{} uses Redirect Attack. {} becomes the target.",
+                                       self.unit_display_name(boss), self.unit_display_name(ally));
+                    self.push_log(&text, "info", round);
+                }
                 WebEv::BlindHitTarget { target } => {
                     blind_hit_target = Some(target);
                 }
@@ -1124,6 +1130,11 @@ impl WebArena {
                             "hit",
                             round,
                         );
+                    } else if self.replay_version >= 3 && attack_name == "aid" {
+                        let reason = if tgt.is_some_and(|t| self.fight.as_ref().unwrap().aid_effect(t).is_some()) {
+                            "already has Aid of equal or greater strength"
+                        } else { "is unaffected by Aid" };
+                        self.push_log(&format!("{tgt_name} {reason}."), "info", round);
                     } else {
                         self.push_log(&format!("{src_name}: {pretty_atk} misses {tgt_name}{check}."), "miss", round);
                     }
@@ -1727,6 +1738,9 @@ impl WebArena {
         if budget <= 0 {
             return Vec::new();
         }
+        if self.replay_version >= 3 {
+            return crate::batch::movement_paths(f, actor, 0, false, None).into_iter().map(Act::Move).collect();
+        }
         let origin = f.units[actor].pos;
         let mut results: Vec<Vec<Pos>> = Vec::new();
 
@@ -2061,7 +2075,7 @@ impl WebArena {
                         let f = self.fight.as_ref().unwrap();
                         let has_foe = cells.iter().any(|&[x, y]| {
                             f.token_at((x, y))
-                                .map_or(false, |e| e != actor && f.opposing(actor, e))
+                                .map_or(false, |e| e != actor && f.opposing(actor, e) && (self.replay_version < 3 || !f.units[e].dead()))
                         });
                         if !has_foe {
                             continue;
@@ -2166,7 +2180,12 @@ impl WebArena {
         let cost = match kind {
             "move" => {
                 if let Act::Move(p) = &cand.act {
-                    format!("{} ft", (p.len() as i32 - 1) * 5)
+                    let steps = if self.replay_version >= 3 {
+                        p.iter().skip(1).map(|&q| self.fight.as_ref().unwrap().step_cost(actor, q)).sum()
+                    } else {
+                        p.len() as i32 - 1
+                    };
+                    format!("{} ft", steps * 5)
                 } else {
                     "0 ft".to_string()
                 }
@@ -2178,7 +2197,10 @@ impl WebArena {
             "disengage_bonus" | "hide_bonus" | "rage" | "extend_rage" => "bonus action".to_string(),
             "reckless_attack" | "cleave" => "free".to_string(),
             _ => {
-                let mut text = if matches!(kind, "second_wind" | "spiritual_weapon_attack" | "dragons_breath_exhale" | "innate_sorcery") {
+                let bonus = matches!(kind, "second_wind" | "spiritual_weapon_attack" | "innate_sorcery")
+                    || (self.replay_version < 3 && kind == "dragons_breath_exhale")
+                    || (self.replay_version >= 3 && spell_opt.is_some_and(|c| c.spell.bonus_action()));
+                let mut text = if bonus {
                     "bonus action".to_string()
                 } else if kind == "action_surge" {
                     "free".to_string()
@@ -2188,7 +2210,9 @@ impl WebArena {
                     "action".to_string()
                 };
                 if let Some(c) = spell_opt {
-                    if c.at_level > 0 {
+                    if self.replay_version >= 3 && c.free {
+                        text.push_str(" + Magic Initiate free cast");
+                    } else if c.at_level > 0 {
                         text.push_str(&format!(" + level {} slot", c.at_level));
                     }
                     if c.mm.is_some() {
@@ -2279,16 +2303,23 @@ impl WebArena {
             if !cells.is_empty() {
                 view.insert("area".into(), json!(akey));
                 let f = self.fight.as_ref().unwrap();
-                // `_creatures_in`: all tokens (including dead? Wait: `map.entity_at` returns dead corpses on floor if any, let's check!)
-                // Wait: in natural20 `map.entity_at(x, y)` returns any entity at `(x, y)` (`f.token_at((x, y))`!).
-                let mut caught: Vec<usize> = Vec::new();
-                for [cx, cy] in cells {
-                    if let Some(u) = f.token_at((cx, cy)) {
-                        if u != actor && !caught.contains(&u) {
-                            caught.push(u);
+                let caught = if self.replay_version >= 3 {
+                    let exclude = if matches!(&cand.act, Act::Spell(c) if matches!(c.spell, SpellId::AcidSplash | SpellId::Shatter)) {
+                        None
+                    } else {
+                        Some(actor)
+                    };
+                    let squares: Vec<Pos> = cells.iter().map(|&[x, y]| (x, y)).collect();
+                    f.creatures_in_squares(&squares, exclude)
+                } else {
+                    let mut occupants = Vec::new();
+                    for [x, y] in cells {
+                        if let Some(u) = f.token_at((x, y)) {
+                            if u != actor && !occupants.contains(&u) { occupants.push(u); }
                         }
                     }
-                }
+                    occupants
+                };
                 let hits: Vec<String> = caught.iter().filter(|&&u| f.opposing(actor, u)).map(|&u| f.units[u].id.clone()).collect();
                 let allies: Vec<String> = caught.iter().filter(|&&u| !f.opposing(actor, u)).map(|&u| f.units[u].id.clone()).collect();
                 if !hits.is_empty() {
@@ -2403,6 +2434,12 @@ impl WebArena {
         let unit = &f.units[u];
         let mut pools: Vec<Value> = Vec::new();
         if let Some(c) = unit.t.caster.as_ref() {
+            if self.replay_version >= 3 {
+                for &spell in &c.free_casts {
+                    let text = spell.key().replace('_', " ");
+                    pools.push(json!({"label": format!("Magic Initiate ({text})"), "value": i32::from(unit.free_casts.contains(&spell)), "max": 1}));
+                }
+            }
             for lvl in 1..=2 {
                 if c.slots[lvl] > 0 {
                     pools.push(json!({
@@ -2448,7 +2485,7 @@ impl WebArena {
     }
 
     fn with_interrupt_state(&self, mut state: Value) -> Value {
-        if !self.legacy_replay {
+        if self.replay_version >= 2 {
             state["champion_interrupt"] = json!(self.interrupted_move.is_some());
         }
         state
@@ -2522,7 +2559,7 @@ impl WebArena {
         if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
             let lvl = ru.t.level;
             let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
-            if !self.legacy_replay {
+            if self.replay_version >= 2 {
                 m.insert("base_id".into(), json!(ru.t.base_id));
             }
             let mut classes = Map::new();
@@ -2541,7 +2578,7 @@ impl WebArena {
         m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
         m.insert("marks".into(), if ru.content == "ghast" { json!(["stench"]) } else { json!([]) });
         m.insert("str_loss".into(), json!(0));
-        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.legacy_replay) {
+        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version) {
             m.insert("sheet".into(), sheet);
         }
         Value::Object(m)
@@ -2577,7 +2614,7 @@ impl WebArena {
         if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
             let lvl = ru.t.level;
             let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
-            if !self.legacy_replay {
+            if self.replay_version >= 2 {
                 m.insert("base_id".into(), json!(ru.t.base_id));
             }
             let mut classes = Map::new();
@@ -2596,7 +2633,7 @@ impl WebArena {
         m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
         m.insert("marks".into(), json!(self.unit_marks(u)));
         m.insert("str_loss".into(), json!(unit.str_drain.unwrap_or(0)));
-        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.legacy_replay) {
+        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version) {
             m.insert("sheet".into(), sheet);
         }
         Value::Object(m)

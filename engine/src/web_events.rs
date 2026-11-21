@@ -9,6 +9,7 @@ use crate::trace::RollMode;
 
 #[derive(Clone, Debug)]
 pub enum WebEv {
+    Redirected { boss: usize, ally: usize },
     Initiative {
         u: usize,
         roll_total: i32,

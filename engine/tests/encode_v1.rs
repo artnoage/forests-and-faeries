@@ -53,10 +53,8 @@ fn game_digest(entry: &Arc<Entry>, k: u64) -> (usize, u64) {
         offset_x: -1,
         offset_y: -1,
     };
-    let mut game = Game::new(entry, &spec, [EXT, EXT], &[], &cfg, pool).unwrap();
-    // These historical decisions predate the optional movement after a Champion critical.
-    // Both controllers are external and have yet to choose their first action.
-    game.env.fight.champion_moves_enabled = false;
+    // The golden decisions predate Champion movement and occupied-space crossings.
+    let mut game = Game::with_rule_version(entry, &spec, [EXT, EXT], &[], &cfg, pool, 1).unwrap();
     let mut pick = Chooser::parse(CHOOSERS[k as usize % CHOOSERS.len()], 5_000 + k).unwrap();
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut n = 0;

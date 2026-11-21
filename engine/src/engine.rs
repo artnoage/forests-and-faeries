@@ -516,6 +516,8 @@ pub struct Fight {
     pub pool: &'static ContentPool,
     /// Version-one tapes predate Remarkable Athlete movement; their controllers declined it.
     pub champion_moves_enabled: bool,
+    /// Version 3 movement costs and occupied-space crossings.
+    pub creature_space_rules: bool,
     pub(crate) interactive_champion: Option<usize>,
     /// The map, shared by every fight on it.
     pub grid: Arc<Grid>,
@@ -674,6 +676,7 @@ impl Fight {
         Ok(Fight {
             pool,
             champion_moves_enabled: true,
+            creature_space_rules: true,
             interactive_champion: None,
             grid,
             units,
@@ -762,7 +765,7 @@ impl Fight {
             return false;
         }
         if let Some(o) = self.token_at(p) {
-            if o != u && self.opposing(o, u) && !self.units[o].incapacitated() {
+            if o != u && self.opposing(o, u) && !self.units[o].incapacitated() && !(self.creature_space_rules && self.units[o].t.size == "tiny") {
                 return false;
             }
         }
@@ -780,10 +783,15 @@ impl Fight {
         }
     }
 
-    /// `Map.difficult_terrain(entity, x, y)`: another creature that is not dead.
+    fn difficult_occupant(&self, u: usize, o: usize) -> bool {
+        o != u && !self.units[o].dead()
+            && (!self.creature_space_rules || (!self.allies(u, o) && self.units[o].t.size != "tiny"))
+    }
+
+    /// Occupied difficult terrain under the tape's ruleset.
     pub fn difficult(&self, u: usize, p: Pos) -> bool {
         match self.token_at(p) {
-            Some(o) => o != u && !self.units[o].dead(),
+            Some(o) => self.difficult_occupant(u, o),
             None => false,
         }
     }
@@ -832,7 +840,7 @@ impl Fight {
         for (i, o) in self.occ.iter().enumerate() {
             if let Some(o) = o {
                 let o = *o as usize;
-                if o != u && !self.units[o].dead() {
+                if self.difficult_occupant(u, o) {
                     mask.set(i);
                 }
             }
@@ -1408,12 +1416,15 @@ impl Fight {
     // Movement
     // ------------------------------------------------------------------
 
+    pub(crate) fn step_cost(&self, u: usize, to: Pos) -> i32 {
+        1 + self.units[u].prone() as i32 + (self.difficult(u, to) && !self.units[u].t.fly) as i32
+    }
+
     /// `compute_actual_moves(entity, path, map, battle, budget)` for paths of
     /// 1x1 creatures without jumps; returns (moves, remaining budget).
     pub fn compute_actual_moves(&self, u: usize, path: &[Pos], budget: i32) -> (Vec<Pos>, i32) {
         let mut moves: Vec<Pos> = Vec::with_capacity(path.len());
         let mut budget = budget;
-        let prone = self.units[u].prone();
         let frightened = !self.units[u].frightened_by.is_empty() || !self.units[u].source_fear.is_empty();
         for (i, &m) in path.iter().enumerate() {
             if i == 0 {
@@ -1427,14 +1438,7 @@ impl Fight {
             if !self.passable(u, m) {
                 break;
             }
-            if self.difficult(u, m) && !self.units[u].t.fly {
-                budget -= 2;
-            } else {
-                budget -= 1;
-            }
-            if prone {
-                budget -= 1;
-            }
+            budget -= self.step_cost(u, m);
             if budget < 0 {
                 break;
             }
@@ -2400,6 +2404,7 @@ impl Fight {
         let unit = &mut self.units[tgt];
         unit.reaction = (unit.reaction - 1).max(0);
         self.notes.redirects += 1;
+        self.emit_web(crate::web_events::WebEv::Redirected { boss: tgt, ally });
         Some(ally)
     }
 

@@ -674,7 +674,7 @@ class GeneralTrainer(Trainer):
 
     def decide_batch(self, live, obs):
         """One forward pass per controller key; records learner transitions; returns int32 rows."""
-        from ember_rl.general_model import act_on_host, drop_ids, select, split_obs
+        from ember_rl.general_model import act_in_chunks, drop_ids, select, split_obs
         groups = defaultdict(list)
         for i, g in enumerate(live):
             key = self.slot_state[g]['controllers'][self.infos[g]['team']]
@@ -692,7 +692,7 @@ class GeneralTrainer(Trainer):
                     sub['creature_ids'] = drop_ids(sub['creature_ids'], self.args.p_id, self.np_rng)
                 model = self.policies.model_for(key)
                 # Frozen keys drive development, evaluation and phase-opponent games: greedy.
-                chosen, log_probs, values = act_on_host(model, sub, self.device, greedy=key[0] == 'frozen')
+                chosen, log_probs, values = act_in_chunks(model, sub, self.device, greedy=key[0] == 'frozen')
                 for j, (i, choice, log_prob, value) in enumerate(zip(index, chosen.tolist(), log_probs.tolist(), values.tolist())):
                     g = live[i]
                     slot_state, info = self.slot_state[g], self.infos[g]
@@ -707,8 +707,6 @@ class GeneralTrainer(Trainer):
                         if result is not None:          # --search: target, and in act mode the search's action
                             pending['target'] = result.target
                             if self.args.search_mode == 'act':
-                                if not (0 <= result.row < sub['cand_mask'].shape[1] and sub['cand_mask'][j, result.row]):
-                                    raise ValueError('search returned an illegal or padded candidate')
                                 choice = pending['choice'] = result.row
                                 pending['ppo'] = False
                         slot_state['pending'][team] = pending
@@ -723,9 +721,8 @@ class GeneralTrainer(Trainer):
         """--search: in a random --search-step-prob share of the loop steps, search a random --search-prob share
         of this team's learner decisions in training games (development and evaluation games never search). Returns {position in index: search Result} for the
         searched roots; roots the search skips (one row, a confident prior) are left to the policy."""
-        from ember_rl.general_model import check_policy_actors, forward_in_chunks, select
+        from ember_rl.general_model import forward_in_chunks, select
         from ember_rl.search import Root
-        from ember_rl.transfers import read_tensors
         la = self.lookahead
         if self.args.search_step_prob < 1 and la.rng.random() >= self.args.search_step_prob:
             return {}
@@ -734,17 +731,11 @@ class GeneralTrainer(Trainer):
         if not pick:
             return {}
         part = select(sub, pick)
-        check_policy_actors(part)
         started = time.time()
-        logits, values = forward_in_chunks(self.policies.learner[team], part, self.device, check=False)
-        logits, values = read_tensors((logits.float(), values.float()))
-        mask = part['cand_mask']
-        if not mask.any(1).all():
-            raise ValueError('search root needs a legal candidate')
-        if not np.isfinite(logits[mask]).all() or not np.isfinite(values).all():
-            raise FloatingPointError('non-finite search root logits or values')
+        logits, values = forward_in_chunks(self.policies.learner[team], part, self.device)
+        logits, values = logits.float().cpu().numpy(), values.float().cpu().numpy()
         la.stats['root_model_seconds'] += time.time() - started
-        legal = mask.sum(1)
+        legal = part['cand_mask'].sum(1)
         roots = []
         for p, j in enumerate(pick):
             g = live[index[j]]
@@ -795,10 +786,7 @@ class GeneralTrainer(Trainer):
             for team, group in need.items():
                 # Safety truncation: bootstrap from this team's view of the final state.
                 final = self.env.observe(group, team=np.full(len(group), TEAM_CODE[team], np.int8))
-                final_values = self.policies.learner[team].value(to_batch(final, self.device), check=False).float().cpu().numpy()
-                if not np.isfinite(final_values).all():
-                    raise FloatingPointError('non-finite bootstrap value')
-                for g, value in zip(group, final_values.tolist()):
+                for g, value in zip(group, self.policies.learner[team].value(to_batch(final, self.device)).tolist()):
                     values[(g, team)] = value
         for g in slots:
             slot_state, info = self.slot_state[g], self.infos[g]

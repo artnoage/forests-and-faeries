@@ -45,7 +45,6 @@ from ember_rl.general_env import (
     CAND_FIELDS, CREATURE_FIELDS, DEFAULT_DIMS, ID_SLOTS, MODEL_INPUTS, MOVE_KIND, NATIVE_FIELDS, OPTIONAL_INPUTS,
     PAIR_FIELDS, UNKNOWN_ID, normalize_dims,
 )
-from ember_rl.transfers import pinned_batch, read_tensors
 
 ARCH = 'general'
 ID_OFFSET = 2
@@ -364,15 +363,8 @@ class GeneralActorCritic(nn.Module):
         return distribution.log_prob(indices), distribution.entropy(), values
 
     @torch.no_grad()
-    def act(self, batch, greedy: bool = False, *, defer_checks: bool = False):
-        """Return indices, log probabilities and values. Greedy ties take the first maximum.
-
-        act_on_host uses defer_checks for engine observations and checks every returned row.
-        """
-        if defer_checks:
-            logits, values = self(batch, check=False)
-            rows, likelihood = policy_decision(logits, values, batch['cand_mask'], greedy=greedy, log_prob=True)
-            return rows, likelihood, values
+    def act(self, batch, greedy: bool = False):
+        """indices[B], log_probs[B], values[B]; greedy ties take the first maximum."""
         logits, values = self(batch)
         distribution = Categorical(logits=logits)
         indices = logits.argmax(-1) if greedy else distribution.sample()
@@ -510,71 +502,17 @@ def forward_in_chunks(model, obs: Mapping[str, np.ndarray], device, max_rows: in
     return logits, torch.cat([v for _, v in parts])
 
 
-def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = False, max_rows: int | None = None,
-                  **kwargs):
+def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = False, max_rows: int | None = None):
     """model.act over a batched observation in row_chunks: indices, log_probs, values [B]."""
     chunks = row_chunks(obs, max_rows)
     if len(chunks) == 1:
-        return model.act(to_batch(obs, device), greedy=greedy, **kwargs)
-    parts = [model.act(to_batch(select(obs, c), device), greedy=greedy, **kwargs) for c in chunks]
+        return model.act(to_batch(obs, device), greedy=greedy)
+    parts = [model.act(to_batch(select(obs, c), device), greedy=greedy) for c in chunks]
     return tuple(torch.cat(x) for x in zip(*parts))
-
-
-def check_policy_actors(obs):
-    actor = obs['actor']
-    if not obs['cand_mask'].shape[1] or (actor < 0).any() or (actor >= obs['creature_mask'].shape[1]).any():
-        raise ValueError('each action row needs candidates and a valid actor')
-
-
-def policy_decision(logits, values, mask, *, greedy, log_prob=False):
-    """Choose on device. Negative rows carry validation failures to the engine boundary."""
-    if not mask.shape[1]:
-        raise ValueError('each row needs a legal candidate')
-    has_actions = mask.any(1)
-    finite_rows = (torch.isfinite(logits) | ~mask).all(1) & torch.isfinite(values)
-    distribution = None
-    if not greedy or log_prob:
-        # Keep invalid rows away from multinomial until the caller reads their error.
-        safe = torch.where((has_actions & finite_rows)[:, None], logits.masked_fill(~mask, -torch.inf), 0.)
-        distribution = Categorical(logits=safe, validate_args=False)
-    rows = logits.argmax(-1) if greedy else distribution.sample()
-    likelihood = distribution.log_prob(rows) if log_prob else None
-    if likelihood is not None:
-        finite_rows = finite_rows & torch.isfinite(likelihood)
-    legal = has_actions & mask.gather(1, rows[:, None]).squeeze(1)
-    return rows.masked_fill(~finite_rows, -2).masked_fill(~legal, -1), likelihood
-
-
-def check_action_rows(rows):
-    if (rows == -1).any():
-        raise ValueError('policy returned an illegal or padded candidate')
-    if (rows == -2).any():
-        raise FloatingPointError('non-finite policy logits, log probabilities or values')
-
-
-@torch.no_grad()
-def act_on_host(model, obs, device, *, greedy=False, max_rows=None):
-    """Trusted engine observations to checked actions, log probabilities and values in one read."""
-    check_policy_actors(obs)
-    # Custom policies and wrappers keep their original act(batch, greedy) contract.
-    builtin = getattr(model.act, '__func__', None) is GeneralActorCritic.act
-    options = {'defer_checks': True} if builtin else {}
-    tensors = act_in_chunks(model, obs, device, greedy, max_rows, **options)
-    rows, likelihood, values = read_tensors(tensors)
-    check_action_rows(rows)
-    mask = obs['cand_mask']
-    if (rows < 0).any() or (rows >= mask.shape[1]).any() or not mask[np.arange(len(rows)), rows].all():
-        raise ValueError('policy returned an illegal or padded candidate')
-    if not np.isfinite(likelihood).all() or not np.isfinite(values).all():
-        raise FloatingPointError('non-finite action log probabilities or values')
-    return rows, likelihood, values
 
 
 def to_batch(obs: Mapping[str, np.ndarray], device='cpu') -> dict[str, Tensor]:
     """Model inputs of an already batched observation (numpy) as tensors on `device`."""
-    device = torch.device(device)
-    if device.type == 'cuda':
-        return pinned_batch(obs, MODEL_INPUTS, device)
     return {name: torch.from_numpy(np.ascontiguousarray(obs[name])).to(device, non_blocking=True)
             for name in MODEL_INPUTS if name in obs}
 

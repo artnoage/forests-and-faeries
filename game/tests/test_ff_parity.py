@@ -139,13 +139,13 @@ def assert_full_wire_parity(ctx: str, got: dict, exp: dict) -> None:
         assert_exact_json(ctx, got_clean, exp_clean)
 
 
-def test_version_two_web_replay_preserves_selected_hero_level():
+def test_current_web_replay_preserves_selected_hero_level():
     level = _all_levels()[('crypt', 'bone_patrol')].with_hero_level(3)
     live = FFArena(level, seed=4)
     initial = live.wire(live.state())
     started = live.wire(live.start())
     draws = collect_all_draws({'steps': [{'op': 'start', 'wire': started}]})
-    replay = FFArena(level, replay_draws=draws, replay_version=2)
+    replay = FFArena(level, replay_draws=draws, replay_version=3)
     assert_full_wire_parity('setup', replay.wire(replay.state()), initial)
     assert_full_wire_parity('start', replay.wire(replay.start()), started)
     assert replay.remaining_replay_draws() == 0

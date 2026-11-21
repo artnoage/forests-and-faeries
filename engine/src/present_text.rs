@@ -116,10 +116,11 @@ fn pairs(items: &[(&str, &str)]) -> Vec<Value> {
 }
 
 pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
-    unit_sheet_for_replay(content, pc, hp, ac, false)
+    unit_sheet_for_replay(content, pc, hp, ac, 3)
 }
 
-pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, legacy_replay: bool) -> Option<Value> {
+pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, replay_version: u8) -> Option<Value> {
+    let legacy_replay = replay_version == 1;
     if pc && content.contains("_l") {
         let pool = crate::content::ContentPool::global();
         let doc = &pool.docs[pool.tid(content)? as usize];
@@ -293,7 +294,9 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, l
         ],
         "goblin_boss" => &[
             ("Multiattack", "Two attacks with its scimitar or shortbow: +4, 1d6+2, plus 1d4 with Advantage."),
-            ("Redirect Attack", "Reaction: when an attack would hit it, it swaps places with a goblin ally within 5 ft, which becomes the target."),
+            ("Redirect Attack", if replay_version >= 3 {
+                "Reaction: when an attack would hit it, it swaps places with a Small or Medium ally within 5 ft, which becomes the target."
+            } else { "Reaction: when an attack would hit it, it swaps places with a goblin ally within 5 ft, which becomes the target." }),
             ("Nimble Escape", "Bonus action: Disengage or Hide."),
         ],
         "skeleton" => &[

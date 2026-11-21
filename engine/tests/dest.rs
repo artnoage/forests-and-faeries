@@ -66,7 +66,7 @@ fn check_presented(game: &Game) -> (usize, usize) {
     let natives: Vec<usize> = kinds.iter().filter_map(|k| if let RowKind::Native(r) = k { Some(*r) } else { None }).collect();
     assert_eq!(natives, others);
     // one-step destinations are exactly the native move rows
-    let mut steps: Vec<Pos> = d.legal.iter().filter_map(|a| if let Act::Move(p) = a { Some(p[1]) } else { None }).collect();
+    let mut steps: Vec<Pos> = d.legal.iter().filter_map(|a| match a { Act::Move(p) if p.len() == 2 => Some(p[1]), _ => None }).collect();
     let mut ones: Vec<Pos> = kinds.iter().filter_map(|k| match k {
         RowKind::Walk(p) if p.len() == 2 => Some(p[1]),
         _ => None,
@@ -168,7 +168,7 @@ fn presented_rows_walks_and_tapes() {
                     RowKind::Walk(path) => {
                         walks += 1;
                         walked += moved;
-                        assert!(moved >= 1 && moved < path.len());
+                        assert!(moved < path.len() && (moved > 0 || reacted), "a reaction can stop the first step");
                         if !reacted {
                             assert_eq!(g.env.fight.units[a].pos, path[moved], "the walk ends on its path");
                         }
@@ -228,6 +228,42 @@ fn end_turn(g: &mut Game) {
 fn dest_row(g: &Game, to: Pos) -> usize {
     let (_, kinds) = g.presented().unwrap();
     kinds.iter().position(|k| matches!(k, RowKind::Walk(p) if p.last() == Some(&to))).unwrap_or_else(|| panic!("no row to {to:?}"))
+}
+
+#[test]
+fn crosses_an_occupied_corridor_without_overwriting_tokens_and_replays() {
+    let e = fixed(&["HHHHHHHH", "H......H", "HHHHHHHH"], &[("guy", 1, 1), ("elion", 2, 1)], &[("zombie-1", 6, 1)]);
+    let mut g = dest_game(&e, &spec("t", 4));
+    while g.env.fight.units[g.env.decision().unwrap().actor].id != "guy" {
+        end_turn(&mut g);
+    }
+    let a = g.env.decision().unwrap().actor;
+    let ally = g.env.fight.token_at((2, 1)).unwrap();
+    let (_, kinds) = g.presented().unwrap();
+    assert!(!kinds.iter().any(|k| matches!(k, RowKind::Walk(p) if p.last() == Some(&(2, 1)))));
+    let row = dest_row(&g, (4, 1));
+    let movement = g.env.fight.units[a].movement;
+    g.step(row, &cfg()).unwrap();
+    assert_eq!(g.env.fight.units[a].pos, (4, 1));
+    assert_eq!(g.env.fight.units[a].movement, movement - 15);
+    assert_eq!(g.env.fight.token_at((2, 1)), Some(ally));
+    replays(&g);
+
+    // Along the same corridor, a downed ally or corpse costs one square.
+    // A living incapacitated enemy costs two and a conscious enemy bars passage.
+    use ember_rs::engine::St;
+    let mut f = g.env.fight.clone();
+    f.units[a].movement = 15;
+    for (ally_side, status, expected) in [(true, St::Unconscious, 2), (false, St::Unconscious, 3), (false, St::Dead, 2)] {
+        f.units[ally].team = if ally_side { f.units[a].team } else { 1 - f.units[a].team };
+        f.units[ally].statuses = vec![status];
+        let path = [(4, 1), (3, 1), (2, 1), (1, 1)];
+        let (actual, left) = f.compute_actual_moves(a, &path[1..], 3);
+        assert_eq!(actual, path[1..]);
+        assert_eq!(3 - left, expected);
+    }
+    f.units[ally].statuses.clear();
+    assert!(!f.passable(a, (2, 1)));
 }
 
 /// An opportunity attack (a reaction) stops the walk after the step that

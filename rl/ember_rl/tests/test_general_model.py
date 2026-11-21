@@ -68,61 +68,6 @@ def test_masked_rows_are_minus_inf_and_legal_rows_finite(observation):
             model.evaluate_actions(b, bad)
 
 
-@pytest.mark.parametrize('greedy', [False, True])
-def test_host_action_group_matches_seeded_chunked_policy(observation, greedy):
-    from ember_rl.general_model import act_in_chunks, act_on_host
-
-    model = small()
-    torch.manual_seed(72)
-    expected = act_in_chunks(model, observation, 'cpu', greedy=greedy, max_rows=32)
-    torch.manual_seed(72)
-    with torch.no_grad():
-        actual = act_on_host(model, observation, 'cpu', greedy=greedy, max_rows=32)
-    for old, new in zip(expected, actual):
-        np.testing.assert_array_equal(old.numpy(), new)
-
-
-def test_returned_actions_reject_bad_logits_values_and_padding():
-    from ember_rl.general_model import check_action_rows, policy_decision
-
-    mask = torch.tensor([[True, True, False]])
-    for logits, values, error in [
-        ([1., float('nan'), -torch.inf], [0.], FloatingPointError),
-        ([1., 0., -torch.inf], [float('inf')], FloatingPointError),
-        ([1., 0., 10.], [0.], ValueError),
-    ]:
-        rows, _ = policy_decision(torch.tensor([logits]), torch.tensor(values), mask, greedy=True)
-        with pytest.raises(error):
-            check_action_rows(rows.numpy())
-    rows, _ = policy_decision(torch.full((1, 3), -torch.inf), torch.zeros(1), ~torch.ones_like(mask), greedy=False)
-    with pytest.raises(ValueError):
-        check_action_rows(rows.numpy())
-
-
-@pytest.mark.skipif(not torch.cuda.is_available(), reason='requires asynchronous CUDA transfers')
-def test_pinned_staging_owns_observations_and_preserves_mixed_readback():
-    from ember_rl.transfers import read_tensors
-
-    streams = [torch.cuda.Stream(), torch.cuda.Stream()]
-    expected, pending = [], []
-    source = np.zeros((2048, 32), np.int16)
-    for i in range(9):
-        source.fill(i)
-        obs = {'cand_ids': source[:100 + i * 157, ::-1],
-               'cand_mask': np.ones((i + 1, 0), np.bool_), 'global': np.array([[i + .125]], np.float32)}
-        with torch.cuda.stream(streams[i % 2]):
-            batch = to_batch(obs, 'cuda')
-        for name in obs:
-            assert not batch[name].numel() or batch[name].data_ptr() % 256 == 0
-            expected.append(obs[name].copy())
-            pending.append(batch[name])
-    source.fill(-1)
-    torch.cuda.synchronize()
-    for cpu, gpu in zip(expected, read_tensors(pending)):
-        assert cpu.dtype == gpu.dtype
-        np.testing.assert_array_equal(cpu, gpu)
-
-
 def test_permuting_candidates_permutes_logits(observation):
     model = small()
     b = batch_of(observation)

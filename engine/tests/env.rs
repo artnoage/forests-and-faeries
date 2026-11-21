@@ -100,7 +100,11 @@ fn check_decision(env: &Env, d: &Decision) {
             }
             assert!(!dropped.last().unwrap());
             for (k, v) in raw.iter().enumerate().take(raw.len() - 1) {
-                assert!(v.is_finite(), "row {k} {} score {v}", descs[k]);
+                if matches!(&d.legal[k], Act::Move(path) if path.len() > 2) {
+                    assert_eq!(*v, f64::NEG_INFINITY, "occupied-space crossings have no native score");
+                } else {
+                    assert!(v.is_finite(), "row {k} {} score {v}", descs[k]);
+                }
             }
             let n = d.native_choice.unwrap();
             assert!(!dropped[n], "the native choice is never a dropped row");
