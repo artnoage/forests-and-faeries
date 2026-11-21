@@ -145,7 +145,7 @@ def test_current_web_replay_preserves_selected_hero_level():
     initial = live.wire(live.state())
     started = live.wire(live.start())
     draws = collect_all_draws({'steps': [{'op': 'start', 'wire': started}]})
-    replay = FFArena(level, replay_draws=draws, replay_version=3)
+    replay = FFArena(level, replay_draws=draws, replay_version=ember_rs.WEB_REPLAY_VERSION)
     assert_full_wire_parity('setup', replay.wire(replay.state()), initial)
     assert_full_wire_parity('start', replay.wire(replay.start()), started)
     assert replay.remaining_replay_draws() == 0

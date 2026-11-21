@@ -1207,6 +1207,7 @@ fn ember_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     m.add("FEATURE_VERSIONS", versions)?;
     m.add("NATURAL20_COMMIT", NATURAL20_COMMIT.trim())?;
+    m.add("WEB_REPLAY_VERSION", ember::present::CURRENT_WEB_REPLAY_VERSION)?;
     m.add("DEFAULT_CATALOG", PyString::new(py, ember::catalog::DEFAULT_CATALOG))?;
     m.add_class::<ContentPool>()?;
     m.add_class::<BatchEnv>()?;
