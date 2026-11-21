@@ -3,13 +3,13 @@ from game.arena import FFArena
 from game.catalogue import Level
 
 
-def arena(actor):
+def arena(actor, seed=1):
     positions = {actor: [2, 2], 'guy': [2, 3], 'goblin_minion-1': [3, 2], 'goblin_minion-2': [4, 2]}
     level = Level(dict(id='room', name='Room', theme='crypt'),
                   dict(id='test', name='Test', difficulty='Easy', blurb='', hero_level=3,
                        party=[actor, 'guy'], roster=['goblin_minion'] * 2, placements=positions),
                   ['HHHHHHH', 'H.....H', 'H.....H', 'H.....H', 'HHHHHHH'], {}, 'room')
-    game = FFArena(level, seed=1)
+    game = FFArena(level, seed=seed)
     game.configure(level.suggested_placements(), 'manual')
     game.start()
     return game, turn(game, actor)
@@ -67,3 +67,27 @@ def test_divine_bonus_spells_show_their_actual_cost():
     game.perform(heal['id'])
     assert game.state()['resources']['bonus_action'] == 0
     assert game.state()['resources']['action'] == 1
+
+
+def test_shatter_reports_the_actual_save_and_damage_for_each_target():
+    outcomes = set()
+    for seed in (1, 2, 3, 4):
+        game, before = arena('ilyra_l3', seed=seed)
+        casts = [a for a in before['actions'] if a.get('spell') == 'shatter']
+        cast = max(casts, key=lambda a: len(a.get('hits', [])) + len(a.get('allies', [])))
+        after = game.perform(cast['id'])
+        old = {u['id']: u for u in before['units']}
+        for effect in after['effects']:
+            if effect.get('attack') != 'shatter':
+                continue
+            target = old[effect['target_id']]
+            save = effect['save']
+            outcomes.add(save)
+            verb = 'makes its save' if save == 'made' else 'fails its save'
+            assert any(f"{target['name']} {verb}" in line['text'] and
+                       f"takes {effect['amount']} thunder damage" in line['text'] for line in after['log'])
+            remaining = next(u['hp'] for u in after['units'] if u['id'] == target['id'])
+            assert remaining == max(0, target['hp'] - effect['amount'])
+        if outcomes == {'made', 'failed'}:
+            break
+    assert outcomes == {'made', 'failed'}

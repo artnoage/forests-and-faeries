@@ -11,6 +11,7 @@
 //! https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative
 //! Commons Attribution 4.0 International License.
 
+use crate::web_events::SaveOutcome;
 use crate::content::{ability_mod, Ability, Dmg, SpellId};
 use crate::effects::{EffKey, HookEv, HookKind, ObjKind};
 use crate::engine::{Act, Fight, St, WeaponKind};
@@ -59,7 +60,7 @@ pub struct DmgRef {
     pub crit: bool,
     pub dmg: usize,
     pub droll: usize,
-    pub has_save: bool,
+    pub save: Option<SaveOutcome>,
     pub atk_roll_fmt: Option<String>,
 }
 
@@ -1396,22 +1397,22 @@ impl Fight {
                             }
                             rolls.push(RollObj { sides: 8, rolls: faces, modifier: 0, halved: false, source: None });
                             let i = rolls.len() - 1;
-                            items.push(Item::RDamage(DmgRef { t, dt, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                            items.push(Item::RDamage(DmgRef { t, dt, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, save: None, atk_roll_fmt: atk_fmt }));
                         }
                         Firebolt => {
                             let i = self.new_roll(u, "spells.generic_damage", if nat20 { 2 } else { 1 }, 10, 0, rolls);
-                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, save: None, atk_roll_fmt: atk_fmt }));
                         }
                         _ => {
                             let i = self.new_roll(u, "spells.ray_of_frost", if nat20 { 2 } else { 1 }, 8, 0, rolls);
-                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Cold, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                            items.push(Item::RDamage(DmgRef { t, dt: Dmg::Cold, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, save: None, atk_roll_fmt: atk_fmt }));
                             if hit {
                                 items.push(Item::RayOfFrost { t, action_t });
                             }
                         }
                     }
                 } else {
-                    items.push(Item::SpellMiss { t, has_save: false, atk_roll_fmt: atk_fmt });
+                    items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: atk_fmt });
                 }
             }
             ChromaticOrb => {
@@ -1432,11 +1433,11 @@ impl Fight {
                         items.push(Item::Dismiss(d.0, d.1));
                     }
                     if !hit {
-                        items.push(Item::SpellMiss { t: target, has_save: false, atk_roll_fmt: atk_fmt });
+                        items.push(Item::SpellMiss { t: target, save: None, atk_roll_fmt: atk_fmt });
                         break;
                     }
                     let i = self.new_roll(u, "spells.chromatic_orb", if nat20 { 2 * n } else { n }, 8, 0, rolls);
-                    items.push(Item::RDamage(DmgRef { t: target, dt, crit: nat20, dmg: i, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                    items.push(Item::RDamage(DmgRef { t: target, dt, crit: nat20, dmg: i, droll: i, save: None, atk_roll_fmt: atk_fmt }));
                     let faces = &rolls[i].rolls;
                     let mut seen = faces.clone();
                     seen.sort();
@@ -1459,11 +1460,11 @@ impl Fight {
                         self.units[t].pools_init = true;
                     }
                     if self.has_spell_effect(t, EffKey::AcBonus, SpellId::Shield) {
-                        items.push(Item::SpellMiss { t, has_save: false, atk_roll_fmt: None });
+                        items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: None });
                         continue;
                     }
                     let i = self.new_roll(u, "spells.magic_missile", 1, 4, 1, rolls);
-                    items.push(Item::RDamage(DmgRef { t, dt: Dmg::Force, crit: false, dmg: i, droll: i, has_save: false, atk_roll_fmt: None }));
+                    items.push(Item::RDamage(DmgRef { t, dt: Dmg::Force, crit: false, dmg: i, droll: i, save: None, atk_roll_fmt: None }));
                 }
             }
             ScorchingRay => {
@@ -1475,9 +1476,9 @@ impl Fight {
                     }
                     if hit {
                         let i = self.new_roll(u, "spells.scorching_ray", if nat20 { 4 } else { 2 }, 6, 0, rolls);
-                        items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: nat20, dmg: i, droll: i, has_save: false, atk_roll_fmt: atk_fmt }));
+                        items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: nat20, dmg: i, droll: i, save: None, atk_roll_fmt: atk_fmt }));
                     } else {
-                        items.push(Item::SpellMiss { t, has_save: false, atk_roll_fmt: atk_fmt });
+                        items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: atk_fmt });
                     }
                 }
             }
@@ -1494,11 +1495,11 @@ impl Fight {
                 for t in self.creatures_in_squares(&squares, None) {
                     let (passed, rolled) = self.save_check(t, ab, dc, c.spell == Shatter && self.units[t].t.construct);
                     if passed && !half {
-                        items.push(Item::SpellMiss { t, has_save: rolled, atk_roll_fmt: None });
+                        items.push(Item::SpellMiss { t, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None });
                         continue;
                     }
                     let dmg = if passed { Fight::half_of(rolls, roll) } else { roll };
-                    items.push(Item::RDamage(DmgRef { t, dt, crit: false, dmg, droll: roll, has_save: rolled, atk_roll_fmt: None }));
+                    items.push(Item::RDamage(DmgRef { t, dt, crit: false, dmg, droll: roll, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None }));
                 }
             }
             BurningHands => {
@@ -1512,7 +1513,7 @@ impl Fight {
                 for t in targets {
                     let (passed, rolled) = self.save_check(t, Ability::Dex, dc, false);
                     let dmg = if passed { Fight::half_of(rolls, roll) } else { roll };
-                    items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: false, dmg, droll: roll, has_save: rolled, atk_roll_fmt: None }));
+                    items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: false, dmg, droll: roll, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None }));
                 }
             }
             Thunderwave => {
@@ -1528,7 +1529,7 @@ impl Fight {
                 for t in targets {
                     let (passed, rolled) = self.save_check(t, Ability::Con, dc, false);
                     let dmg = if passed { Fight::half_of(rolls, roll) } else { roll };
-                    items.push(Item::RDamage(DmgRef { t, dt: Dmg::Thunder, crit: false, dmg, droll: roll, has_save: rolled, atk_roll_fmt: None }));
+                    items.push(Item::RDamage(DmgRef { t, dt: Dmg::Thunder, crit: false, dmg, droll: roll, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None }));
                     if !passed {
                         let to = self.push_square(t, origin, &claimed);
                         claimed.push(to);
@@ -1662,7 +1663,7 @@ impl Fight {
                 crate::web_events::fmt_dice_roll(r.sides, &r.rolls, r.modifier, r.halved, amount)
             });
             let mut hs = crate::engine::HitState::default();
-            self.spell_damage_with_web(u, t, amount, dt, false, rolled, "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
+            self.spell_damage_with_web(u, t, amount, dt, false, Some(SaveOutcome::from_check(passed, rolled)), "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
         }
     }
 

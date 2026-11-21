@@ -30,8 +30,9 @@ use crate::present_text;
 use crate::spells::Cast;
 use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
-use crate::web_events::WebEv;
+use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
+const CURRENT_WEB_REPLAY_VERSION: u8 = 4;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -206,7 +207,7 @@ impl WebArena {
         csrf_token: String,
         encounter_token: String,
     ) -> Result<Self, String> {
-        Self::with_trace(level, Trace::web_free(seed), revision, csrf_token, encounter_token, 3)
+        Self::with_trace(level, Trace::web_free(seed), revision, csrf_token, encounter_token, CURRENT_WEB_REPLAY_VERSION)
     }
 
     pub fn with_replay_draws(
@@ -227,7 +228,7 @@ impl WebArena {
         encounter_token: String,
         version: u8,
     ) -> Result<Self, String> {
-        if !(1..=3).contains(&version) {
+        if !(1..=CURRENT_WEB_REPLAY_VERSION).contains(&version) {
             return Err(format!("unsupported web replay version {version}"));
         }
         Self::with_trace(level, Trace::web_replay_draws(draws), revision, csrf_token, encounter_token, version)
@@ -899,6 +900,20 @@ impl WebArena {
         best.map_or(victim, |b| b.1)
     }
 
+    fn log_death_save(&mut self, u: usize, outcome: DeathSave, round: i32) {
+        let name = self.unit_display_name(u);
+        let text = match outcome {
+            DeathSave::Roll { passed, description } => {
+                let label = if passed { "death save" } else { "death fail" };
+                format!("{name}: {label} {description}.")
+            }
+            DeathSave::Damage { .. } if self.replay_version < 4 => format!("{name}: death fail ."),
+            DeathSave::Damage { failures: 2 } => format!("{name} takes a critical hit: 2 death-save failures."),
+            DeathSave::Damage { .. } => format!("{name} takes damage while unconscious: 1 death-save failure."),
+        };
+        self.push_log(&text, "info", round);
+    }
+
     fn process_non_action_events(&mut self, evs: Vec<WebEv>) {
         for ev in evs {
             match ev {
@@ -926,12 +941,7 @@ impl WebArena {
                     let eff = self.push_effect(m);
                     self.pending_effects.push(eff);
                 }
-                WebEv::DeathSave { u, passed, roll_fmt, round } => {
-                    let name = self.unit_display_name(u).to_string();
-                    let label = if passed { "death save" } else { "death fail" };
-                    let r = roll_fmt.as_deref().unwrap_or("");
-                    self.push_log(&format!("{name}: {label} {r}."), "info", round);
-                }
+                WebEv::DeathSave { u, outcome, round } => self.log_death_save(u, outcome, round),
                 WebEv::Died { u, pos, monster } => {
                     if monster {
                         let uid = self.fight.as_ref().unwrap().units[u].id.clone();
@@ -1111,7 +1121,7 @@ impl WebArena {
                     hit,
                     crit,
                     reaction,
-                    has_save,
+                    save,
                     dt,
                     raw_damage,
                     applied_damage,
@@ -1122,12 +1132,25 @@ impl WebArena {
                     let tgt_name = tgt.map(|t| self.unit_display_name(t).to_string()).unwrap_or_else(|| "creature".to_string());
                     let pretty_atk = attack_name.replace('_', " ");
                     let check = atk_roll_fmt.as_deref().map(|r| format!(" (attack {r})")).unwrap_or_default();
-                    if hit {
+                    let current_text = self.replay_version >= 4;
+                    if let Some(result) = save.filter(|_| current_text) {
+                        let verb = match result {
+                            SaveOutcome::Made => "makes its save",
+                            SaveOutcome::Failed => "fails its save",
+                            SaveOutcome::AutomaticFailure => "automatically fails its save",
+                        };
+                        let name = present_text::title_words(attack_name.trim_start_matches("spell."));
+                        let damage = dt.map(|ty| {
+                            let roll = dmg_roll_fmt.as_deref().map(|r| format!(" ({r})")).unwrap_or_default();
+                            format!(" and takes {applied_damage} {} damage{roll}", ty.name())
+                        }).unwrap_or_default();
+                        self.push_log(&format!("{tgt_name} {verb} against {src_name}'s {name}{damage}."), if hit { "hit" } else { "miss" }, round);
+                    } else if hit {
                         let dt_str = dt.map_or("", |d| d.name());
                         let dmg_str = dmg_roll_fmt.as_deref().unwrap_or("");
-                        // `webgame/arena.py:343`: `{damage} → {event['value']} {dt} damage.` (`value` is pre-defense `raw_damage`!)
+                        let amount = if current_text { applied_damage } else { raw_damage };
                         self.push_log(
-                            &format!("{src_name}: {pretty_atk} hits {tgt_name}{check}; {dmg_str} → {raw_damage} {dt_str} damage."),
+                            &format!("{src_name}: {pretty_atk} hits {tgt_name}{check}; {dmg_str} → {amount} {dt_str} damage."),
                             "hit",
                             round,
                         );
@@ -1172,8 +1195,10 @@ impl WebArena {
                         if reaction {
                             m.insert("reaction".into(), json!(true));
                         }
-                        if has_save {
-                            m.insert("save".into(), json!(if hit { "failed" } else { "made" }));
+                        if let Some(result) = save.filter(|s| current_text || *s != SaveOutcome::AutomaticFailure) {
+                            // Earlier web recordings used the presence of damage to infer a failed save.
+                            let made = if current_text { result == SaveOutcome::Made } else { !hit };
+                            m.insert("save".into(), json!(if made { "made" } else { "failed" }));
                             if !hit && style == "dreadful_glare" {
                                 m.insert("text".into(), json!("RESISTS"));
                             }
@@ -1186,7 +1211,17 @@ impl WebArena {
                         }
                     }
                 }
+                WebEv::FailedSaveAgainstEffect { src, tgt, name } if self.replay_version >= 4 => {
+                    let caster = self.unit_display_name(src);
+                    let target = self.unit_display_name(tgt);
+                    let effect = present_text::title_words(name);
+                    self.push_log(&format!("{target} fails its save against {caster}'s {effect}."), "info", round);
+                }
                 WebEv::RiderDamage { tgt, applied_damage, dt } => {
+                    if self.replay_version >= 4 {
+                        let name = self.unit_display_name(tgt);
+                        self.push_log(&format!("{name} takes {applied_damage} additional {} damage.", dt.name()), "hit", round);
+                    }
                     if let Some(&eid) = last_hit_effect_id.get(&tgt) {
                         for eff in self.effects.iter_mut().rev() {
                             if eff.get("id").and_then(Value::as_i64) == Some(eid) {
@@ -1388,12 +1423,7 @@ impl WebArena {
                     let name = self.unit_display_name(u).to_string();
                     self.push_log(&format!("{name} falls dead."), "end", round);
                 }
-                WebEv::DeathSave { u, passed, roll_fmt, .. } => {
-                    let name = self.unit_display_name(u).to_string();
-                    let label = if passed { "death save" } else { "death fail" };
-                    let r = roll_fmt.as_deref().unwrap_or("");
-                    self.push_log(&format!("{name}: {label} {r}."), "info", round);
-                }
+                WebEv::DeathSave { u, outcome, .. } => self.log_death_save(u, outcome, round),
                 WebEv::Unconscious { u } => {
                     let name = self.unit_display_name(u).to_string();
                     self.push_log(&format!("{name} falls unconscious."), "end", round);

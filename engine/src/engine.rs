@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use crate::web_events::{DeathSave, SaveOutcome};
 use crate::content::{ability_mod, Ability, AtkAbility, AttackDef, Condition, ContentPool, Dice, Dmg, OnHit, SpellId, Template};
 use crate::effects::{EffEntry, EffKey, EffObj, Hook, HookEv};
 use crate::spells::Cast;
@@ -1953,7 +1954,7 @@ impl Fight {
                         hit: false,
                         crit: false,
                         reaction,
-                        has_save: true,
+                        save: Some(SaveOutcome::Made),
                         dt: None,
                         raw_damage: 0,
                         applied_damage: 0,
@@ -2060,7 +2061,7 @@ impl Fight {
                     hit: false,
                     crit: false,
                     reaction,
-                    has_save: false,
+                    save: None,
                     dt: None,
                     raw_damage: 0,
                     applied_damage: 0,
@@ -2157,6 +2158,9 @@ impl Fight {
         let mut hs = HitState { kill_at_zero: def.kill_at_zero, ..HitState::default() };
         // a `no_damage` action has no damage event (`damage_event` skipped)
         let applied = if def.no_damage {
+            if def.save_attack.is_some() {
+                self.emit_web(crate::web_events::WebEv::FailedSaveAgainstEffect { src, tgt, name: atk_name });
+            }
             None
         } else {
             let sp = self.units[src].pos;
@@ -2184,7 +2188,7 @@ impl Fight {
                 hit: true,
                 crit,
                 reaction,
-                has_save: def.save_attack.is_some(),
+                save: def.save_attack.map(|_| SaveOutcome::Failed),
                 dt: Some(def.damage_type),
                 raw_damage: amount,
                 applied_damage: 0,
@@ -2590,8 +2594,9 @@ impl Fight {
         }
         if self.units[u].unconscious() && !counted {
             self.units[u].remove_status(St::Stable);
-            self.units[u].death_fails += if critical { 2 } else { 1 };
-            self.emit_web(crate::web_events::WebEv::DeathSave { u, passed: false, roll_fmt: None, round: self.round });
+            let failures = if critical { 2 } else { 1 };
+            self.units[u].death_fails += failures;
+            self.emit_web(crate::web_events::WebEv::DeathSave { u, outcome: DeathSave::Damage { failures }, round: self.round });
             if self.units[u].death_fails >= 3 {
                 self.make_dead(u);
                 self.units[u].death_saves = 0;
@@ -2725,8 +2730,8 @@ impl Fight {
         let face = self.roll_d20(u, "death_saving_throw", RollMode::Normal);
         if self.web_events.is_some() {
             let passed = face >= 10;
-            let roll_fmt = Some(format!("d20({face}) = {face}"));
-            self.emit_web(crate::web_events::WebEv::DeathSave { u, passed, roll_fmt, round: self.round });
+            let outcome = DeathSave::Roll { passed, description: format!("d20({face}) = {face}") };
+            self.emit_web(crate::web_events::WebEv::DeathSave { u, outcome, round: self.round });
         }
         // a cursed creature can't regain the Hit Point: a plain success (N20-044)
         if face == 20 && !self.units[u].cursed {

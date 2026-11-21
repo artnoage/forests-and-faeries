@@ -7,6 +7,25 @@ use crate::map::Pos;
 use crate::tape::DrawVal;
 use crate::trace::RollMode;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveOutcome {
+    Made,
+    Failed,
+    AutomaticFailure,
+}
+
+impl SaveOutcome {
+    pub fn from_check(passed: bool, rolled: bool) -> Self {
+        if passed { Self::Made } else if rolled { Self::Failed } else { Self::AutomaticFailure }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum DeathSave {
+    Roll { passed: bool, description: String },
+    Damage { failures: i32 },
+}
+
 #[derive(Clone, Debug)]
 pub enum WebEv {
     Redirected { boss: usize, ally: usize },
@@ -29,8 +48,7 @@ pub enum WebEv {
     },
     DeathSave {
         u: usize,
-        passed: bool,
-        roll_fmt: Option<String>,
+        outcome: DeathSave,
         round: i32,
     },
     /// Weapon, NPC, spell, or feature attack / save outcome (`attacked` or `miss`).
@@ -45,7 +63,7 @@ pub enum WebEv {
         hit: bool,
         crit: bool,
         reaction: bool,
-        has_save: bool,
+        save: Option<SaveOutcome>,
         dt: Option<Dmg>,
         raw_damage: i32,
         applied_damage: i32,
@@ -57,6 +75,7 @@ pub enum WebEv {
     BlindHitTarget {
         target: usize,
     },
+    FailedSaveAgainstEffect { src: usize, tgt: usize, name: &'static str },
     RiderDamage {
         tgt: usize,
         applied_damage: i32,

@@ -9,6 +9,7 @@
 //! https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative
 //! Commons Attribution 4.0 International License.
 
+use crate::web_events::SaveOutcome;
 use crate::content::{ability_mod, Ability, Dmg, SpellId};
 use crate::effects::{EffKey, HookEv, HookKind, ObjKind};
 use crate::engine::{Act, Fight, HitState, St, WeaponKind};
@@ -75,7 +76,7 @@ pub(crate) enum Item {
         amount: i32,
         dt: Dmg,
         crit: bool,
-        has_save: bool,
+        save: Option<SaveOutcome>,
         atk_roll_fmt: Option<String>,
         dmg_roll_fmt: Option<String>,
     },
@@ -83,7 +84,7 @@ pub(crate) enum Item {
     RDamage(DmgRef),
     SpellMiss {
         t: usize,
-        has_save: bool,
+        save: Option<SaveOutcome>,
         atk_roll_fmt: Option<String>,
     },
     Dismiss(usize, u32),
@@ -1611,12 +1612,12 @@ impl Fight {
                         amount: if total < dc { amount } else { amount / 2 },
                         dt: Dmg::Radiant,
                         crit: false,
-                        has_save: true,
+                        save: Some(SaveOutcome::from_check(total >= dc, true)),
                         atk_roll_fmt: None,
                         dmg_roll_fmt: dmg_fmt,
                     });
                 } else {
-                    items.push(Item::SpellMiss { t, has_save: true, atk_roll_fmt: None });
+                    items.push(Item::SpellMiss { t, save: Some(SaveOutcome::Made), atk_roll_fmt: None });
                 }
             }
             GuidingBolt => {
@@ -1636,13 +1637,13 @@ impl Fight {
                         amount,
                         dt: Dmg::Radiant,
                         crit: nat20,
-                        has_save: false,
+                        save: None,
                         atk_roll_fmt: atk_fmt,
                         dmg_roll_fmt: dmg_fmt,
                     });
                     items.push(Item::GuidingBolt { t });
                 } else {
-                    items.push(Item::SpellMiss { t, has_save: false, atk_roll_fmt: atk_fmt });
+                    items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: atk_fmt });
                 }
             }
             SpiritualWeapon => {
@@ -1666,12 +1667,12 @@ impl Fight {
                         amount,
                         dt: Dmg::Force,
                         crit: nat20,
-                        has_save: false,
+                        save: None,
                         atk_roll_fmt: atk_fmt,
                         dmg_roll_fmt: dmg_fmt,
                     });
                 } else {
-                    items.push(Item::SpellMiss { t, has_save: false, atk_roll_fmt: atk_fmt });
+                    items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: atk_fmt });
                 }
             }
             Bless => {
@@ -1701,7 +1702,7 @@ impl Fight {
                     let current = self.aid_effect(t);
                     if self.units[t].dead() || !self.units[t].t.pc || current.map_or(false, |b| b >= bonus) {
                         // `aid_spell.py:124-126`: emits a `spell_miss` (`attack_name: 'aid'`) when unaffected
-                        items.push(Item::SpellMiss { t, has_save: false, atk_roll_fmt: None });
+                        items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: None });
                         continue;
                     }
                     items.push(Item::Aid { t, bonus });
@@ -1715,7 +1716,7 @@ impl Fight {
                     }
                     let total = self.save_throw(t, Ability::Wis);
                     if total >= dc {
-                        items.push(Item::SpellMiss { t, has_save: true, atk_roll_fmt: None });
+                        items.push(Item::SpellMiss { t, save: Some(SaveOutcome::Made), atk_roll_fmt: None });
                         continue;
                     }
                     let grovel = !self.units[t].t.immune_prone;
@@ -1761,14 +1762,14 @@ impl Fight {
         let mut hs = HitState::default();
         for item in items {
             match item {
-                Item::Damage { t, amount, dt, crit, has_save, atk_roll_fmt, dmg_roll_fmt } => {
+                Item::Damage { t, amount, dt, crit, save, atk_roll_fmt, dmg_roll_fmt } => {
                     self.spell_damage_with_web(
                         u,
                         t,
                         amount,
                         dt,
                         crit,
-                        has_save,
+                        save,
                         spell_atk_name,
                         spell_style_name,
                         atk_roll_fmt,
@@ -1790,7 +1791,7 @@ impl Fight {
                         amount,
                         d.dt,
                         d.crit,
-                        d.has_save,
+                        d.save,
                         spell_atk_name,
                         spell_style_name,
                         d.atk_roll_fmt,
@@ -1798,7 +1799,7 @@ impl Fight {
                         &mut h,
                     );
                 }
-                Item::SpellMiss { t, has_save, atk_roll_fmt } => {
+                Item::SpellMiss { t, save, atk_roll_fmt } => {
                     let sp = self.units[u].pos;
                     let tp = self.units[t].pos;
                     self.emit_web(crate::web_events::WebEv::AttackOutcome {
@@ -1812,7 +1813,7 @@ impl Fight {
                         hit: false,
                         crit: false,
                         reaction: false,
-                        has_save,
+                        save,
                         dt: None,
                         raw_damage: 0,
                         applied_damage: 0,
@@ -1901,6 +1902,7 @@ impl Fight {
                     }
                 }
                 Item::Command { t, grovel } => {
+                    self.emit_web(crate::web_events::WebEv::FailedSaveAgainstEffect { src: u, tgt: t, name: "Command" });
                     let olds: Vec<u32> = self.units[t]
                         .effects
                         .iter()
@@ -2028,7 +2030,7 @@ impl Fight {
         amount: i32,
         dt: Dmg,
         crit: bool,
-        has_save: bool,
+        save: Option<SaveOutcome>,
         attack_name: &'static str,
         spell_style: &'static str,
         atk_roll_fmt: Option<String>,
@@ -2049,7 +2051,7 @@ impl Fight {
             hit: true,
             crit,
             reaction: false,
-            has_save,
+            save,
             dt: Some(dt),
             raw_damage: amount,
             applied_damage: 0,
@@ -2154,7 +2156,7 @@ impl Fight {
                         amount,
                         *dt,
                         false,
-                        true,
+                        Some(SaveOutcome::from_check(saved, true)),
                         "divine_spark",
                         "divine_spark",
                         None,
@@ -2227,7 +2229,7 @@ impl Fight {
                         amount,
                         Dmg::Force,
                         crit,
-                        false,
+                        None,
                         "spell.spiritual_weapon",
                         "spiritual_weapon",
                         atk_fmt,
@@ -2248,7 +2250,7 @@ impl Fight {
                         hit: false,
                         crit: false,
                         reaction: false,
-                        has_save: false,
+                        save: None,
                         dt: None,
                         raw_damage: 0,
                         applied_damage: 0,
