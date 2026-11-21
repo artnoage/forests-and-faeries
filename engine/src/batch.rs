@@ -22,10 +22,9 @@
 //! Destination moves ([`MoveMode::Dest`], GENERAL_ENV.md "Destination
 //! moves"): the one-square move rows are replaced by one row per square the
 //! actor can reach with the movement it has left (the shortest path, see
-//! [`destinations`]). The game executes such a row as the native one-square
-//! moves of its path, each an ordinary external decision (the tape and the
-//! natural20 replay see exactly those), and stops early when the next step
-//! is not a legal row or something interrupts the walk ([`Game::step`]).
+//! [`destinations`]). Each legal landing is one external move on the tape.
+//! A crossing traverses consecutive occupied squares in that move. Reactions
+//! and newly visible enemies can interrupt the walk ([`Game::step`]).
 
 use std::sync::Arc;
 

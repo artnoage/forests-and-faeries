@@ -1586,6 +1586,7 @@ impl Fight {
     fn check_opportunity_attacks(&mut self, mover: usize, moves: Vec<Pos>) -> Vec<Pos> {
         let oas = self.opportunity_attacks(mover, &moves);
         for (reactor, index) in oas {
+            let was_prone = self.units[mover].prone();
             let original: Vec<Pos> = moves[..index].to_vec();
             if let Some(act) = self.opportunity_attack_listener(reactor, mover) {
                 if let Act::Attack { atk, target, .. } = act {
@@ -1595,7 +1596,7 @@ impl Fight {
             if !self.units[mover].conscious() {
                 return original;
             }
-            if self.units[mover].prone() {
+            if self.units[mover].prone() && (!was_prone || !self.creature_space_rules) {
                 return original;
             }
         }

@@ -807,6 +807,7 @@ impl WebArena {
         let mut oas = oas.into_iter();
         while let Some((reactor, index)) = oas.next() {
             let original: Vec<Pos> = moves[..index].to_vec();
+            let was_prone = self.fight.as_ref().unwrap().units[mover].prone();
             let oa_act = self.fight.as_mut().unwrap().opportunity_attack_listener(reactor, mover);
             if let Some(Act::Attack { atk, target, .. }) = oa_act {
                 let oa = Act::Attack { atk, target, reaction: true };
@@ -823,7 +824,7 @@ impl WebArena {
             }
             let stop = {
                 let f = self.fight.as_ref().unwrap();
-                !f.units[mover].conscious() || f.units[mover].prone()
+                !f.units[mover].conscious() || (f.units[mover].prone() && (!was_prone || !f.creature_space_rules))
             };
             if self.fight.as_ref().unwrap().units[reactor].champion_movement > 0 {
                 let remaining = if stop { Vec::new() } else { oas.collect() };
