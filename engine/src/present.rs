@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-const CURRENT_WEB_REPLAY_VERSION: u8 = 5;
+const CURRENT_WEB_REPLAY_VERSION: u8 = 6;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -455,6 +455,13 @@ impl WebArena {
         f.units[u].team == 0 || self.monster_control == "manual"
     }
 
+    fn concealed_from_heroes(&self, u: usize) -> bool {
+        if self.replay_version < 6 || self.finished || self.monster_control == "manual" { return false; }
+        let f = self.fight.as_ref().unwrap();
+        f.units[u].team != 0 && f.units[u].hidden() && !(0..f.units.len()).any(|hero|
+            f.units[hero].team == 0 && f.units[hero].conscious() && f.can_see(hero, u))
+    }
+
     fn acting_unit(&self, fight: &Fight) -> usize {
         self.interrupted_move.as_ref().map_or_else(|| fight.current(), |m| m.champion)
     }
@@ -541,7 +548,11 @@ impl WebArena {
             crate::engine::MAX_ROUNDS,
             self.trace_init.clone(),
         )?;
-        fight.set_rule_version(if self.replay_version >= 5 { 4 } else { i32::from(self.replay_version.min(3)) });
+        fight.set_rule_version(match self.replay_version {
+            1..=3 => i32::from(self.replay_version),
+            4 => 3,
+            v => i32::from(v - 1),
+        });
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
         self.fight_to_roster = fight_to_roster;
@@ -920,8 +931,15 @@ impl WebArena {
                     let uid = self.fight.as_ref().unwrap().units[u].id.clone();
                     self.initiative_rolls.insert(uid, roll_total);
                 }
-                WebEv::StenchSave { victim, victim_pos, passed } => {
-                    let ghast = self.nearest_stench_source(victim);
+                WebEv::StenchSave { source, victim, victim_pos, total, dc, passed } => {
+                    let ghast = if self.replay_version >= 6 { source } else { self.nearest_stench_source(victim) };
+                    if self.replay_version >= 6 {
+                        let who = self.unit_display_name(victim);
+                        let name = self.unit_display_name(ghast);
+                        let result = if passed { "succeeds" } else { "fails" };
+                        let effect = if passed { "immune to this Stench for 24 hours" } else { "Poisoned until the start of its next turn" };
+                        self.push_log(&format!("{who} {result} on the Constitution save against {name}'s Stench ({total} vs DC {dc}) and is {effect}."), "status", self.current_round());
+                    }
                     let (src_id, sp, tgt_id) = {
                         let f = self.fight.as_ref().unwrap();
                         (f.units[ghast].id.clone(), f.units[ghast].pos, f.units[victim].id.clone())
@@ -1099,8 +1117,29 @@ impl WebArena {
             _ => {}
         }
 
+        // Magic Missile's darts strike simultaneously. Show every dart before a resulting fall.
+        let evs = if self.replay_version >= 6 && matches!(act, Act::Spell(c) if c.spell == SpellId::MagicMissile) {
+            let (mut darts, consequences): (Vec<_>, Vec<_>) = evs.into_iter().partition(|e|
+                !matches!(e, WebEv::Died { .. } | WebEv::Unconscious { .. } | WebEv::DeathSave { .. }));
+            darts.extend(consequences);
+            darts
+        } else { evs };
         for ev in evs {
             match ev {
+                WebEv::HideResult { actor, total, seen } if self.replay_version >= 6 => {
+                    let who = self.unit_display_name(actor);
+                    let result = if seen { "an enemy can see the attempt" } else if total < 15 { "the check falls short" } else { "the creature is hidden" };
+                    self.push_log(&format!("{who} attempts to hide (Stealth {total} vs DC 15), and {result}."), "status", round);
+                }
+                WebEv::SapApplied { source, target } if self.replay_version >= 6 => {
+                    let name = self.unit_display_name(target);
+                    let who = self.unit_display_name(source);
+                    self.push_log(&format!("{who}'s Sap gives {name} Disadvantage on its next attack roll before {who}'s next turn."), "status", round);
+                }
+                WebEv::EmpoweredReroll { caster, sides, old, new } if self.replay_version >= 6 => {
+                    let who = self.unit_display_name(caster);
+                    self.push_log(&format!("{who} uses Empowered Spell to reroll a d{sides} from {old} to {new}."), "spell", round);
+                }
                 WebEv::Redirected { boss, ally } if self.replay_version >= 3 => {
                     let text = format!("{} uses Redirect Attack. {} becomes the target.",
                                        self.unit_display_name(boss), self.unit_display_name(ally));
@@ -1311,6 +1350,11 @@ impl WebArena {
                     self.push_effect(m);
                 }
                 WebEv::SpellHeal { caster, target, src_pos, tgt_pos, style_key, healed } => {
+                    if self.replay_version >= 6 {
+                        let name = self.unit_display_name(target);
+                        let spell = present_text::title_words(style_key);
+                        self.push_log(&format!("{name} regains {healed} HP from {spell}."), "spell", round);
+                    }
                     let style = match style_key {
                         "divine_spark" => "divine_spark",
                         "cure_wounds" => "cure_wounds",
@@ -1435,6 +1479,7 @@ impl WebArena {
                     self.push_log(&format!("{name} falls unconscious."), "end", round);
                 }
                 WebEv::MoveExecuted { u, path } => {
+                    if self.concealed_from_heroes(u) { continue; }
                     let cells: Vec<[i32; 2]> = path.iter().map(|&(x, y)| [x, y]).collect();
                     if cells.len() >= 2 && cells[0] != *cells.last().unwrap() {
                         let name = self.unit_display_name(u).to_string();
@@ -2204,6 +2249,13 @@ impl WebArena {
             _ => present_text::title_words(kind),
         };
 
+        if self.replay_version >= 6 && spell_key == Some("mage_armor") {
+            let f = self.fight.as_ref().unwrap();
+            if targets.first().is_some_and(|&t| f.has_spell_effect(t, EffKey::AcOverride, SpellId::MageArmor)) {
+                label.push_str(" (already active)");
+            }
+        }
+
         let mode_opt: Option<&str> = match &cand.act {
             Act::DivineSpark { heal, .. } => Some(if *heal { "heal" } else { "harm" }),
             _ => None,
@@ -2362,7 +2414,9 @@ impl WebArena {
                     }
                     occupants
                 };
-                let hits: Vec<String> = caught.iter().filter(|&&u| f.opposing(actor, u)).map(|&u| f.units[u].id.clone()).collect();
+                let hits: Vec<String> = caught.iter()
+                    .filter(|&&u| f.opposing(actor, u) && (self.replay_version < 6 || !f.units[u].hidden() || f.can_see(actor, u)))
+                    .map(|&u| f.units[u].id.clone()).collect();
                 let allies: Vec<String> = caught.iter().filter(|&&u| !f.opposing(actor, u)).map(|&u| f.units[u].id.clone()).collect();
                 if !hits.is_empty() {
                     view.insert("hits".into(), json!(hits));
@@ -2650,6 +2704,9 @@ impl WebArena {
         m.insert("active".into(), json!(Some(u) == actor));
         m.insert("description".into(), json!(present_text::creature_description(ru.t.base_id)));
         m.insert("conditions".into(), json!(conds));
+        if self.concealed_from_heroes(u) {
+            m.insert("hidden_from_heroes".into(), json!(true));
+        }
         m.insert("controlled_by".into(), json!(controlled_by));
         m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
         m.insert("initiative".into(), if self.in_setup { json!(null) } else { json!(unit.initiative) });

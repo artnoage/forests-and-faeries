@@ -964,6 +964,9 @@
   }
 
   function expandState(data) {
+    if (data?.units?.some(u => u.hidden_from_heroes)) {
+      data.units = data.units.filter(u => !u.hidden_from_heroes);
+    }
     if (!Array.isArray(data?.action_defs) || !Array.isArray(data.actions)) return data;
     const names = new Map([...(data.units || []), ...(data.objects || [])].map(i => [i.id, i.name]));
     const actor = (data.units || []).find(u => u.id === data.turn_id);

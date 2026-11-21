@@ -96,3 +96,31 @@ fn native_dash_needs_an_affordable_step_towards_a_known_enemy() {
     let d = trapped.external_decision(1, true, 0);
     assert!(matches!(d.legal[d.native_choice.unwrap()], Act::EndTurn));
 }
+
+#[test]
+fn native_pursues_heard_targets_around_cover() {
+    let mut f = fight(&["HHHHHHHHH", "H.......H", "H..H....H", "H.......H", "HHHHHHHHH"],
+                      &[("guy", 1, 2), ("ghoul-1", 6, 2)]);
+    assert!(!f.can_see(1, 0));
+    f.units[1].movement = 30;
+    f.units[1].action = 1;
+    let choice = f.external_decision(1, true, 0);
+    assert!(matches!(choice.legal[choice.native_choice.unwrap()], Act::Move(_)));
+    f.units[1].movement = 0;
+    let choice = f.external_decision(1, true, 0);
+    assert!(matches!(choice.legal[choice.native_choice.unwrap()], Act::Dash));
+}
+
+#[test]
+fn diagonal_corners_follow_terrain_and_allow_an_adjacent_ally() {
+    let rows = ["HHHHHHH", "H.....H", "H...H.H", "H.....H", "HHHHHHH"];
+    let mut f = fight(&rows, &[("guy", 2, 2), ("elion", 3, 2), ("ghoul-1", 5, 3)]);
+    let direct = [(2, 2), (3, 1)];
+    assert_eq!(f.compute_actual_moves(0, &direct, 1).0, direct);
+    f.units[0].movement = 30;
+    let choices = f.external_decision(0, true, 0);
+    assert!(choices.legal.iter().any(|a| matches!(a, Act::Move(path) if path.as_slice() == direct)));
+    let by_wall = fight(&rows, &[("guy", 4, 3), ("ghoul-1", 5, 1)]);
+    let around = [(4, 3), (5, 2)];
+    assert_eq!(by_wall.compute_actual_moves(0, &around, 1).0, [around[0]]);
+}

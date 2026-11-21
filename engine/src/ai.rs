@@ -251,7 +251,7 @@ impl Fight {
                     continue;
                 }
                 let (nx, ny) = (cx + dx, cy + dy);
-                if unit.t.pc && dx != 0 && dy != 0 {
+                if self.rule_version < 5 && unit.t.pc && dx != 0 && dy != 0 {
                     // no corner cutting: both orthogonal neighbours must be free
                     let a = (cx + dx, cy);
                     let b = (cx, cy + dy);
@@ -518,7 +518,7 @@ impl Fight {
             let (x, y) = self.grid.pos_of(i);
             for nx in x - 1..=x + 1 {
                 for ny in y - 1..=y + 1 {
-                    if self.grid.is_wall(nx, ny) {
+                    if self.grid.is_wall(nx, ny) || (self.rule_version >= 5 && !self.grid.clears_corner((x, y), (nx, ny))) {
                         continue;
                     }
                     let j = self.grid.index(nx, ny);
@@ -567,6 +567,16 @@ impl Fight {
         let mut targets: Vec<Pos> = observed.enemies.iter().filter(|e| e.2).map(|e| e.1).collect();
         let mut kind_enemy = !targets.is_empty();
         let mut kind_investigate = false;
+        let sense_pursuit = self.rule_version >= 5 && !self.units[u].t.pc;
+        if sense_pursuit && targets.is_empty() {
+            // An unseen combatant may already have been heard around a wall.
+            for (enemy, pos) in self.sensed_split(u).0 {
+                if self.opposing(u, enemy) && self.units[enemy].conscious() && !targets.contains(&pos) {
+                    targets.push(pos);
+                }
+            }
+            kind_investigate = !targets.is_empty();
+        }
         if targets.is_empty() && !self.units[u].mem.investigate.is_empty() {
             targets = self.units[u].mem.investigate.iter().map(|(p, _)| *p).collect();
             kind_investigate = true;
@@ -590,8 +600,9 @@ impl Fight {
             cache.steps.clear();
             cache.steps.resize(self.grid.cells(), None);
         }
-        let pursuit = !self.legacy_v4_rules && !self.units[u].t.pc
+        let pursuit = self.rule_version >= 4 && !self.units[u].t.pc
             && cands.iter().any(|a| matches!(a, Act::Dash | Act::Move(_)));
+        let exploring = sense_pursuit && targets.is_empty();
         if pursuit {
             let mut occupied = crate::map::Bits::new(self.grid.cells());
             for (i, other) in self.units.iter().enumerate() {
@@ -599,7 +610,15 @@ impl Fight {
                     occupied.set(self.grid.index(other.pos.0, other.pos.1));
                 }
             }
-            if cache.pursuit.is_empty() || cache.occupied != occupied {
+            if exploring {
+                let unvisited: Vec<_> = (0..self.grid.cells()).map(|i| self.grid.pos_of(i))
+                    .filter(|&p| {
+                        let i = self.grid.index(p.0, p.1);
+                        p != upos && !self.grid.is_wall(p.0, p.1) && !occupied.get(i) && !self.units[u].mem.visited.get(i)
+                    }).collect();
+                cache.pursuit = self.pursuit_distances(&unvisited, &occupied);
+                cache.occupied = occupied;
+            } else if cache.pursuit.is_empty() || cache.occupied != occupied {
                 cache.pursuit = self.pursuit_distances(&targets, &occupied);
                 cache.occupied = occupied;
             }
@@ -608,10 +627,10 @@ impl Fight {
         let closes_distance = |p: Pos| {
             let current = cache.pursuit[grid.index(upos.0, upos.1)];
             let next = cache.pursuit[grid.index(p.0, p.1)];
-            current != u16::MAX && current > 1 && next > 0 && next < current
+            current != u16::MAX && next < current && (exploring || next > 0)
         };
         let ordinary_progress = pursuit && cands.iter().any(|a| matches!(a, Act::Move(path) if path.last().is_some_and(|p| closes_distance(*p))));
-        let can_pursue_with_dash = pursuit && !ordinary_progress && cands.iter().any(|a| matches!(a, Act::Dash))
+        let can_pursue_with_dash = pursuit && !exploring && !ordinary_progress && cands.iter().any(|a| matches!(a, Act::Dash))
             && self.speed_of(u) > 0 && (-1..=1).any(|dx| (-1..=1).any(|dy| {
                 let dest = (upos.0 + dx, upos.1 + dy);
                 if !self.placeable(u, dest) || !closes_distance(dest) {
@@ -650,7 +669,7 @@ impl Fight {
         for act in cands {
             let s = match act {
                 Act::Attack { atk, .. } | Act::BlindAttack { atk, .. }
-                    if !self.legacy_v4_rules && self.throws_last_melee_weapon(u, *atk) => SKIP_NATIVE,
+                    if self.rule_version >= 4 && self.throws_last_melee_weapon(u, *atk) => SKIP_NATIVE,
                 Act::Attack { atk, target, .. } => self.ai_attack_value(u, *atk, *target),
                 Act::BlindAttack { atk, heard, .. } => self.ai_blind_value(u, *atk, *heard),
                 Act::Move(path) if pursuit && !path.last().is_some_and(|p| closes_distance(*p)) => SKIP_NATIVE,

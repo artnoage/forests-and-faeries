@@ -36,6 +36,9 @@ def test_area_preview_uses_living_targets_and_the_spells_caster_rule():
     assert pools(after)['Magic Initiate (magic missile)'] == 0
     assert pools(after)['Level 1 slots'] == pools(before)['Level 1 slots']
     assert next(u for u in after['units'] if u['id'] == 'goblin_minion-1')['dead']
+    lines = [entry['text'] for entry in after['log']]
+    darts = [j for j, line in enumerate(lines) if 'magic missile hits Goblin Minion 1' in line]
+    assert len(darts) == 3 and max(darts) < lines.index('Goblin Minion 1 falls dead.')
     game.end_turn()
     state = turn(game, 'ilyra_l3')
     units = state['units']

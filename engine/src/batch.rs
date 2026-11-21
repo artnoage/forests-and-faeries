@@ -269,7 +269,9 @@ pub(crate) fn movement_paths(f: &Fight, a: usize, masked: u32, crossings_only: b
             if !g.in_bounds(q.0, q.1) || (!hidden(q) && !f.passable(a, q)) {
                 continue;
             }
-            if u.t.pc && dx != 0 && dy != 0 && !(free((p.0 + dx, p.1)) && free((p.0, p.1 + dy))) {
+            if f.rule_version >= 5 {
+                if !g.clears_corner(p, q) { continue; }
+            } else if u.t.pc && dx != 0 && dy != 0 && !(free((p.0 + dx, p.1)) && free((p.0, p.1 + dy))) {
                 continue;
             }
             let next = cost + if hidden(q) { 1 + u.prone() as i32 } else { f.step_cost(a, q) };
@@ -322,7 +324,7 @@ impl Game {
         cfg: &EnvConfig,
         pool: &'static ContentPool,
     ) -> Result<Game, String> {
-        Self::with_rule_version(entry, spec, teams, units, cfg, pool, 4)
+        Self::with_rule_version(entry, spec, teams, units, cfg, pool, crate::engine::CURRENT_RULE_VERSION)
     }
 
     /// Start on the rules of a recorded game, before the first decision.

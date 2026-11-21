@@ -42,10 +42,16 @@ pub enum WebEv {
         round: i32,
     },
     StenchSave {
+        source: usize,
         victim: usize,
         victim_pos: Pos,
+        total: i32,
+        dc: i32,
         passed: bool,
     },
+    EmpoweredReroll { caster: usize, sides: i32, old: i32, new: i32 },
+    HideResult { actor: usize, total: i32, seen: bool },
+    SapApplied { source: usize, target: usize },
     DeathSave {
         u: usize,
         outcome: DeathSave,
@@ -266,8 +272,13 @@ pub fn fmt_dice_roll(sides: i32, rolls: &[i32], modifier: i32, halved: bool, tot
 }
 
 /// Format `Arena._roll(item['damage'])` for weapon/NPC attacks (with optional Berserker Frenzy `+ d6(...)`).
-pub fn fmt_weapon_damage_roll(sides: i32, rolls: &[i32], modifier: i32, frenzy_rolls: Option<&[i32]>, total: i32) -> String {
-    let mut expr = fmt_dice_expr(sides, rolls, modifier, false);
+pub fn fmt_weapon_damage_roll(sides: i32, rolls: &[i32], modifier: i32, frenzy_rolls: Option<&[i32]>, total: i32, show_fixed: bool) -> String {
+    let fixed: i32 = rolls.iter().sum();
+    let mut expr = if show_fixed && sides <= 0 && fixed != 0 {
+        if modifier < 0 { format!("{fixed} - {}", modifier.abs()) } else { format!("{fixed} + {modifier}") }
+    } else {
+        fmt_dice_expr(sides, rolls, modifier, false)
+    };
     if let Some(fr) = frenzy_rolls {
         let fr_str = fr.iter().map(|r| r.to_string()).collect::<Vec<_>>().join(" + ");
         expr.push_str(&format!(" + d6({fr_str})"));

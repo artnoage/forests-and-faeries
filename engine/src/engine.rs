@@ -18,6 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
+pub const CURRENT_RULE_VERSION: i32 = 5;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -519,8 +520,8 @@ pub struct Fight {
     pub champion_moves_enabled: bool,
     /// Version 3 movement costs and occupied-space crossings.
     pub creature_space_rules: bool,
-    /// Web recordings through v4 used the old native movement and casting policies.
-    pub(crate) legacy_v4_rules: bool,
+    /// Strict tape version governing controller scores and combat behavior.
+    pub(crate) rule_version: i32,
     pub(crate) interactive_champion: Option<usize>,
     /// The map, shared by every fight on it.
     pub grid: Arc<Grid>,
@@ -680,7 +681,7 @@ impl Fight {
             pool,
             champion_moves_enabled: true,
             creature_space_rules: true,
-            legacy_v4_rules: false,
+            rule_version: CURRENT_RULE_VERSION,
             interactive_champion: None,
             grid,
             units,
@@ -764,14 +765,14 @@ impl Fight {
     }
 
     pub fn rule_version(&self) -> i32 {
-        if !self.legacy_v4_rules { 4 } else if self.creature_space_rules { 3 } else if self.champion_moves_enabled { 2 } else { 1 }
+        self.rule_version
     }
 
     /// Select the recorded combat rules before initiative or any controller choice.
     pub fn set_rule_version(&mut self, version: i32) {
         self.champion_moves_enabled = version >= 2;
         self.creature_space_rules = version >= 3;
-        self.legacy_v4_rules = version < 4;
+        self.rule_version = version;
     }
 
     /// `Map.passable(entity, x, y, battle)` for a 1x1 creature (no squeezing).
@@ -1172,7 +1173,7 @@ impl Fight {
             } else {
                 self.units[u].stench_poison.push(src);
             }
-            self.emit_web(crate::web_events::WebEv::StenchSave { victim: u, victim_pos: pos, passed });
+            self.emit_web(crate::web_events::WebEv::StenchSave { source: src, victim: u, victim_pos: pos, total, dc, passed });
         }
     }
 
@@ -1450,7 +1451,7 @@ impl Fight {
             if frightened && self.step_toward_fear(u, path[i - 1], m) {
                 break;
             }
-            if !self.passable(u, m) {
+            if !self.passable(u, m) || (self.rule_version >= 5 && !self.grid.clears_corner(path[i - 1], m)) {
                 break;
             }
             budget -= self.step_cost(u, m);
@@ -2184,6 +2185,7 @@ impl Fight {
                     dmg.modifier,
                     frenzy_rolls.as_deref(),
                     amount,
+                    self.rule_version >= 5,
                 ))
             } else {
                 None
@@ -2215,6 +2217,9 @@ impl Fight {
             }
             app
         };
+        if def.sap && !self.units[tgt].dead() {
+            self.emit_web(crate::web_events::WebEv::SapApplied { source: src, target: tgt });
+        }
         if crit {
             self.offer_champion_movement(src);
         }
@@ -2236,9 +2241,15 @@ impl Fight {
             if self.units[tgt].dead() {
                 continue;
             }
-            let r_app = self.take_damage(tgt, amount, dt, crit, Some(&mut hs), Some(src));
-            if let Some(rad) = r_app {
-                self.emit_web(crate::web_events::WebEv::RiderDamage { tgt, applied_damage: rad.max(0), dt });
+            let before = self.web_events.as_ref().map(Vec::len);
+            let applied = self.take_damage(tgt, amount, dt, crit, Some(&mut hs), Some(src));
+            if let (Some(before), Some(amount), Some(events)) = (before, applied, &mut self.web_events) {
+                let event = crate::web_events::WebEv::RiderDamage { tgt, applied_damage: amount.max(0), dt };
+                if self.rule_version >= 5 {
+                    events.insert(before, event);
+                } else {
+                    events.push(event);
+                }
             }
         }
         for e in effects {
@@ -2359,6 +2370,7 @@ impl Fight {
             let x = &self.units[o];
             o != u && !x.dead() && self.opposing(o, u) && x.conscious() && self.grid.los(x.pos, pos)
         });
+        self.emit_web(crate::web_events::WebEv::HideResult { actor: u, total, seen });
         if !seen && total >= 15 {
             self.notes.hide_success += 1;
             let unit = &mut self.units[u];

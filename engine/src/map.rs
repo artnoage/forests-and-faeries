@@ -280,6 +280,12 @@ impl Grid {
         !self.in_bounds(x, y) || self.wall[self.index(x, y)]
     }
 
+    /// A diagonal cannot cross the corner of terrain that fills its square.
+    pub fn clears_corner(&self, from: Pos, to: Pos) -> bool {
+        from.0 == to.0 || from.1 == to.1
+            || (!self.is_wall(to.0, from.1) && !self.is_wall(from.0, to.1))
+    }
+
     /// Floor cells.
     pub fn floor_count(&self) -> usize {
         self.wall.iter().filter(|w| !**w).count()

@@ -1590,6 +1590,9 @@ impl Fight {
         for &(_, gi, di) in cands.iter().take(k) {
             let g = groups[gi];
             let new = self.roll_dice(u, "empowered_spell", 1, rolls[g].sides)[0];
+            self.emit_web(crate::web_events::WebEv::EmpoweredReroll {
+                caster: u, sides: rolls[g].sides, old: rolls[g].rolls[di], new,
+            });
             rolls[g].rolls[di] = new;
             if !changed.contains(&g) {
                 changed.push(g);
@@ -1702,7 +1705,7 @@ impl Fight {
         let able = self.units[t].has_reaction()
             && self.units[t].conscious()
             && !self.has_spell_effect(t, EffKey::AcBonus, SpellId::Shield)
-            && (self.legacy_v4_rules || !self.spent_slot_this_turn(t))
+            && (self.rule_version < 4 || !self.spent_slot_this_turn(t))
             && self.next_slot(t, 1).is_some();
         // not offered on a natural 20 (still hits) or a natural 1 (N20-011)
         if nat20 || nat1 {
@@ -1730,7 +1733,7 @@ impl Fight {
         let unit = &mut self.units[t];
         unit.reaction = (unit.reaction - 1).max(0);
         unit.slots[at_level as usize] -= 1;
-        if !self.legacy_v4_rules {
+        if self.rule_version >= 4 {
             unit.last_slot_turn = Some((self.round, self.turn_idx));
         }
         Some((!nat20 && total < ac + 5, at_level))

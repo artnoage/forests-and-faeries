@@ -572,7 +572,7 @@ impl Fight {
 
     pub(crate) fn spent_slot_this_turn(&self, u: usize) -> bool {
         let last = self.units[u].last_slot_turn;
-        if self.legacy_v4_rules { last.is_some() } else { last == Some((self.round, self.turn_idx)) }
+        if self.rule_version < 4 { last.is_some() } else { last == Some((self.round, self.turn_idx)) }
     }
 
     /// `SpellAction.can_cast` (and the `spell_list` disable reasons).
@@ -588,7 +588,7 @@ impl Fight {
         if spell == SpellId::Shield {
             return false;
         }
-        let needs_slot = level > 0 && (self.legacy_v4_rules || !unit.free_casts.contains(&spell));
+        let needs_slot = level > 0 && (self.rule_version < 4 || !unit.free_casts.contains(&spell));
         if needs_slot && self.spent_slot_this_turn(u) {
             return false;
         }
@@ -965,7 +965,7 @@ impl Fight {
             CureWounds | HealingWord => {
                 let (count, sides) = if c.spell == CureWounds { (2 * c.at_level, 8) } else { (2 * c.at_level, 4) };
                 let mut expected = count as f64 * (sides + 1) as f64 / 2.0 + self.spell_mod(u) as f64;
-                if !c.free && (self.legacy_v4_rules || self.units[u].t.disciple_of_life) {
+                if !c.free && (self.rule_version < 4 || self.units[u].t.disciple_of_life) {
                     expected += (2 + c.at_level) as f64;
                 }
                 self.heal_value(u, t0, expected, c.spell.bonus_action())
@@ -1570,7 +1570,7 @@ impl Fight {
         }
         let level = if c.spell.level() > 0 { c.at_level } else { 0 };
         if c.free {
-            if self.legacy_v4_rules {
+            if self.rule_version < 4 {
                 unit.last_slot_turn = Some((self.round, self.turn_idx));
             }
             if let Some(i) = unit.free_casts.iter().position(|&s| s == c.spell) {
