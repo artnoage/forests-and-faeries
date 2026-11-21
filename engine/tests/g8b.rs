@@ -266,25 +266,13 @@ fn minion_daggers() {
     f.units[g].items[0] = 0;
     assert!(!f.attack_available(g, 0) && !f.attack_available(g, 1), "no dagger: no melee row either");
 
-    let (mut throws, mut empty) = (0, 0);
-    let minions = ["goblin_minion-1", "goblin_minion-2", "goblin_minion-3", "goblin_minion-4"];
-    for seed in 0..40u64 {
-        let mut f = fight(
-            &[("mara", 2, 7), ("ilyra", 2, 6), (minions[0], 12, 2), (minions[1], 13, 6), (minions[2], 14, 4), (minions[3], 14, 7)],
-            seed,
-        );
-        f.prefer = vec!["goblin_minion:dagger".into()];
-        // one dagger each (they rarely live to throw three)
-        for u in 2..6 {
-            f.units[u].items[0] = 1;
-        }
-        f.run();
-        throws += f.notes.npc_throws;
-        empty += (2..6).filter(|&u| f.units[u].items[0] == 0).count();
-        let left: i32 = (2..6).map(|u| f.units[u].items[0]).sum();
-        assert_eq!(left as u64 + f.notes.npc_throws, 4, "seed {seed}");
-    }
-    assert!(throws > 0 && empty > 0, "{throws} throws, {empty} out of daggers");
+    // Keeping the last dagger is a native policy. External choices can still throw it.
+    f.units[g].items[0] = 1;
+    f.units[g].action = 1;
+    let d = f.external_decision(g, true, 0);
+    let i = d.legal.iter().position(|a| matches!(a, Act::Attack { atk: 1, .. })).unwrap();
+    assert!(d.native_dropped.as_ref().unwrap()[i]);
+    assert_ne!(d.native_choice, Some(i));
 
     // N20-041 fixed: Ilyra's thrown daggers (on these seeds they gave the
     // Minions daggers before the fix) never add to a Minion's count

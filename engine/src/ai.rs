@@ -65,7 +65,6 @@ pub struct MoveCache {
     steps: Vec<Option<Option<i32>>>,
     occupied: crate::map::Bits,
     pursuit: Vec<u16>,
-
 }
 
 impl Fight {
@@ -605,9 +604,10 @@ impl Fight {
                 cache.occupied = occupied;
             }
         }
+        let grid = self.grid.clone();
         let closes_distance = |p: Pos| {
-            let current = cache.pursuit[self.grid.index(upos.0, upos.1)];
-            let next = cache.pursuit[self.grid.index(p.0, p.1)];
+            let current = cache.pursuit[grid.index(upos.0, upos.1)];
+            let next = cache.pursuit[grid.index(p.0, p.1)];
             current != u16::MAX && current > 1 && next > 0 && next < current
         };
         let ordinary_progress = pursuit && cands.iter().any(|a| matches!(a, Act::Move(path) if path.last().is_some_and(|p| closes_distance(*p))));
@@ -620,7 +620,6 @@ impl Fight {
                 let budget = (self.units[u].available_movement() + self.speed_of(u)) / 5;
                 self.compute_actual_moves(u, &[upos, dest], budget).0.len() == 2
             }));
-        let grid = self.grid.clone();
         let mut pc = PathCompute::new(&grid, prone, flying, mask);
         if !targets.is_empty() && has_moves {
             let paths = pc.compute_paths_to_multiple(upos, &targets);

@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use ember_rs::content::{ContentPool, SpellId, Template};
-use ember_rs::engine::{Fight, St};
+use ember_rs::engine::{Act, Fight, St};
 use ember_rs::map::Grid;
 use ember_rs::spells::Cast;
 use ember_rs::tape::Placement;
@@ -69,4 +69,30 @@ fn blur_scores_and_attack_rolls_use_the_attackers_sense() {
     assert!(f.spell_ai_value(0, &blur) > 0.0);
     f.do_spell(0, &blur);
     assert!(f.advantage(1, 0, &f.units[1].t.attacks[0]).1);
+}
+
+#[test]
+fn native_dash_needs_an_affordable_step_towards_a_known_enemy() {
+    let mut f = fight(&["HHHHHHHH", "H......H", "HHHHHHHH"],
+                      &[("guy", 1, 1), ("animated_armor-1", 5, 1)]);
+    f.units[1].action = 1;
+    f.units[1].movement = 0;
+    let choice = f.external_decision(1, true, 0);
+    assert!(matches!(choice.legal[choice.native_choice.unwrap()], Act::Dash));
+    f.units[1].movement = 25;
+    let choice = f.external_decision(1, true, 0);
+    assert!(matches!(&choice.legal[choice.native_choice.unwrap()], Act::Move(path) if path.last() == Some(&(4, 1))));
+
+    let mut trapped = fight(&["HHHHHHHH", "H......H", "HHHHHHHH"],
+                            &[("guy", 1, 1), ("animated_armor-1", 5, 1), ("skeleton-1", 4, 1)]);
+    trapped.units[2].hp = 0;
+    trapped.units[2].statuses.push(St::Dead);
+    trapped.units[1].action = 1;
+    trapped.units[1].movement = 25;
+    let d = trapped.external_decision(1, true, 0);
+    assert!(matches!(d.legal[d.native_choice.unwrap()], Act::Dodge));
+    assert!(d.legal.iter().any(|a| matches!(a, Act::Dash)));
+    trapped.units[1].action = 0;
+    let d = trapped.external_decision(1, true, 0);
+    assert!(matches!(d.legal[d.native_choice.unwrap()], Act::EndTurn));
 }

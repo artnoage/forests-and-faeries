@@ -91,3 +91,27 @@ def test_shatter_reports_the_actual_save_and_damage_for_each_target():
         if outcomes == {'made', 'failed'}:
             break
     assert outcomes == {'made', 'failed'}
+
+
+def test_magic_initiate_and_a_slot_spell_in_either_order():
+    def cast_action(state, spell, target):
+        return next(a for a in state['actions'] if a.get('spell') == spell and a.get('target_id') == target)
+
+    def slots(state):
+        return next(p['value'] for p in state['resources']['pools'] if p['label'] == 'Level 1 slots')
+
+    for first, second in [('healing_word', 'guiding_bolt'), ('guiding_bolt', 'healing_word')]:
+        game, state = arena('elion')
+        targets = {'healing_word': 'guy', 'guiding_bolt': 'goblin_minion-1'}
+        initial = slots(state)
+        for spell in (first, second):
+            action = cast_action(state, spell, targets[spell])
+            if spell == 'healing_word':
+                assert 'free cast' in action['cost'].lower()
+            state = game.perform(action['id'])
+        assert slots(state) == initial - 1
+
+    game, state = arena('elion')
+    state = game.perform(cast_action(state, 'sanctuary', 'guy')['id'])
+    assert state['resources']['action'] == 1
+    assert all(a.get('spell') != 'guiding_bolt' for a in state['actions'])
