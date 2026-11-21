@@ -115,6 +115,7 @@ impl Fight {
                 k.ids = vec![self.units[*target].id.clone()];
                 k.mode = if *heal { "heal" } else { "harm" };
             }
+            Act::CreateSpellSlot { level } | Act::ConvertSpellSlot { level } => k.at_level = level.to_string(),
             Act::SpiritualWeaponMove { to } => k.point = vec![to.0, to.1],
             Act::SpiritualWeaponAttack { target } => k.ids = vec![self.units[*target].id.clone()],
             Act::RedirectAttack { ally } => k.ids = vec![self.units[*ally].id.clone()],
@@ -667,6 +668,7 @@ impl Fight {
                 self, u, 0, true, None, (self.units[u].available_movement() + self.speed_of(u)) / 5
             ).iter().any(|path| path.last().is_some_and(|p| closes_distance(*p)))));
         let mut pc = PathCompute::new(&grid, prone, flying, mask);
+        pc.solid_wall_corners = self.rule_version >= 8;
         if !targets.is_empty() && has_moves {
             let paths = pc.compute_paths_to_multiple(upos, &targets);
             for (dest, path) in targets.iter().zip(paths.iter()) {

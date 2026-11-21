@@ -1210,6 +1210,7 @@ impl Fight {
     /// Feature actions' `ai_value`.
     pub fn feature_ai_value(&mut self, u: usize, act: &Act) -> f64 {
         match act {
+            Act::CreateSpellSlot { .. } | Act::ConvertSpellSlot { .. } => POINTLESS,
             Act::InnateSorcery | Act::DragonsBreathExhale => self.sorcerer_feature_value(u, act),
             Act::TurnUndead => {
                 let dc = self.spell_dc(u);
@@ -1631,6 +1632,13 @@ impl Fight {
     pub fn do_spell(&mut self, u: usize, c: &Cast) {
         use SpellId::*;
         let prior = self.units[u].concentration;
+        if self.rule_version >= 8 && c.spell.concentration() {
+            if let Some(obj) = prior {
+                let spell = self.objs[obj as usize].spell;
+                self.dismiss_effect(u, obj);
+                self.emit_web(crate::web_events::WebEv::ConcentrationReplaced { caster: u, prior: spell });
+            }
+        }
         // `run_counterspell_window`: every other creature's prepared spells
         // are listed (creating lazily registered pools), whoever it is
         for o in 0..self.units.len() {
@@ -1796,7 +1804,7 @@ impl Fight {
         self.consume_spell(u, c);
         self.resolve_trigger(u, HookEv::SpellCast);
         // commit
-        if replaced {
+        if self.rule_version < 8 && replaced {
             let p = prior.unwrap();
             if self.units[u].concentration == Some(p) {
                 self.dismiss_effect(u, p);
@@ -2136,7 +2144,7 @@ impl Fight {
     /// Feature actions (resolve + commit).
     pub fn do_feature(&mut self, u: usize, act: &Act) {
         match act {
-            Act::InnateSorcery | Act::DragonsBreathExhale => self.do_sorcerer_feature(u, act),
+            Act::CreateSpellSlot { .. } | Act::ConvertSpellSlot { .. } | Act::InnateSorcery | Act::DragonsBreathExhale => self.do_sorcerer_feature(u, act),
             Act::TurnUndead => {
                 let dc = self.spell_dc(u);
                 let targets: Vec<usize> = self.turn_undead_targets(u).into_iter().filter(|&t| self.opposing(u, t)).collect();

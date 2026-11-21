@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 8;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 9;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -763,6 +763,8 @@ impl WebArena {
             Act::TurnUndead => self.push_log(&format!("{who} uses Turn Undead."), "spell", round),
             Act::DivineSpark { .. } => self.push_log(&format!("{who} uses Divine Spark."), "spell", round),
             Act::PreserveLife(_) => self.push_log(&format!("{who} uses Preserve Life."), "spell", round),
+            Act::CreateSpellSlot { level } => self.push_log(&format!("{who} uses Font of Magic to create a level {level} spell slot."), "spell", round),
+            Act::ConvertSpellSlot { level } => self.push_log(&format!("{who} converts a level {level} spell slot into sorcery points."), "spell", round),
             Act::InnateSorcery => self.push_log(&format!("{who} uses Innate Sorcery."), "spell", round),
             Act::ActionSurge => self.push_log(&format!("{who} uses Action Surge."), "spell", round),
             Act::DragonsBreathExhale => self.push_log(&format!("{who} uses Dragon's Breath: exhale."), "spell", round),
@@ -805,9 +807,21 @@ impl WebArena {
     fn execute_move_with_oas(&mut self, mover: usize, path: &[Pos]) {
         self.fight.as_mut().unwrap().decisions += 1;
         let f = self.fight.as_ref().unwrap();
-        let contact = if self.replay_version >= 8 && f.units[mover].team == 0 {
-            path.iter().skip(1).position(|&p| f.token_at(p).is_some_and(|i| self.concealed_from_heroes(i)))
+        let hidden_contact = |path: &[Pos]| path.iter().skip(1).position(|&p|
+            f.token_at(p).is_some_and(|i| self.concealed_from_heroes(i)));
+        let mut contact = if self.replay_version >= 8 && f.units[mover].team == 0 {
+            hidden_contact(path)
         } else { None };
+        // The menu offers destinations using what the party can see. Honor a reachable
+        // destination via an open route even if the preview's tie-break hit a hidden enemy.
+        let alternative = if self.replay_version >= 9 && contact.is_some() {
+            crate::batch::movement_paths(f, mover, 0, false, None).into_iter()
+                .find(|route| route.last() == path.last() && hidden_contact(route).is_none())
+        } else { None };
+        let path = if let Some(ref route) = alternative {
+            contact = None;
+            route.as_slice()
+        } else { path };
         let limit = contact.map_or(path.len(), |i| i + 1);
         let moves = f.prepare_move(mover, &path[..limit]);
         if contact.is_some() { self.push_log("The route is blocked.", "info", self.current_round()); }
@@ -1363,6 +1377,31 @@ impl WebArena {
                     let name = self.unit_display_name(target);
                     self.push_log(&format!("{name} suffers massive damage ({excess} damage beyond 0 HP, maximum {maximum} HP)."), "damage", round);
                 }
+                WebEv::ConcentrationReplaced { caster, prior } => {
+                    if !self.concealed_from_heroes(caster) {
+                        let who = self.unit_display_name(caster);
+                        let old = present_text::spell_display_name(prior.key());
+                        self.push_log(&format!("{who}’s concentration on {old} ends."), "spell", round);
+                    }
+                }
+                WebEv::HealingBlocked { target } => {
+                    if !self.concealed_from_heroes(target) {
+                        let who = self.unit_display_name(target);
+                        self.push_log(&format!("Mummy Rot prevents {who} from regaining hit points."), "info", round);
+                    }
+                }
+                WebEv::ThunderwavePush { target, from, to } => {
+                    if !self.concealed_from_heroes(target) {
+                        let who = self.unit_display_name(target);
+                        let feet = (from.0 - to.0).abs().max((from.1 - to.1).abs()) * 5;
+                        let text = if feet == 0 {
+                            format!("Thunderwave cannot push {who} out of [{}, {}].", from.0, from.1)
+                        } else {
+                            format!("Thunderwave pushes {who} {feet} ft from [{}, {}] to [{}, {}].", from.0, from.1, to.0, to.1)
+                        };
+                        self.push_log(&text, "spell", round);
+                    }
+                }
                 WebEv::ConcentrationEnded { target, spell } => {
                     let who = self.unit_display_name(target);
                     let name = present_text::spell_display_name(spell.key());
@@ -1401,6 +1440,10 @@ impl WebArena {
                 }
                 WebEv::SecondWind { u, pos, roll_fmt, healed } => {
                     let who = self.unit_display_name(u).to_string();
+                    if self.replay_version >= 9 && self.fight.as_ref().unwrap().units[u].cursed {
+                        self.push_log(&format!("{who} uses Second Wind."), "info", round);
+                        continue;
+                    }
                     self.push_log(&format!("{who} uses Second Wind: {roll_fmt} healing."), "info", round);
                     let uid = self.fight.as_ref().unwrap().units[u].id.clone();
                     let mut m = Map::new();
@@ -2177,6 +2220,10 @@ impl WebArena {
                             "None".into(),
                         )
                     }
+                    Act::CreateSpellSlot { level } | Act::ConvertSpellSlot { level } => (
+                        Vec::new(), Vec::new(), None, "", None, None, level.to_string(),
+                        "None".into(), "None".into(), "None".into(), "None".into(),
+                    ),
                     Act::DivineSpark { target, heal, .. } => {
                         let mode = if *heal { "heal" } else { "harm" };
                         (
@@ -2340,6 +2387,12 @@ impl WebArena {
             _ => present_text::title_words(kind),
         };
 
+        match &cand.act {
+            Act::CreateSpellSlot { level } => label = format!("Font of Magic: create level {level} spell slot ({} sorcery points)", Fight::slot_creation_cost(*level)),
+            Act::ConvertSpellSlot { level } => label = format!("Font of Magic: convert level {level} spell slot to sorcery points"),
+            _ => {}
+        }
+
         if self.replay_version >= 7 {
             if let Act::BlindAttack { square: (x, y), heard, .. } = &cand.act {
                 let sense = if *heard { "heard" } else { "last known" };
@@ -2375,7 +2428,12 @@ impl WebArena {
             "move" => {
                 if let Act::Move(p) = &cand.act {
                     let steps = if self.replay_version >= 3 {
-                        p.iter().skip(1).map(|&q| self.fight.as_ref().unwrap().step_cost(actor, q)).sum()
+                        let f = self.fight.as_ref().unwrap();
+                        p.iter().skip(1).map(|&q| {
+                            if self.replay_version >= 9 && f.token_at(q).is_some_and(|i| self.concealed_from_heroes(i)) {
+                                1 + f.units[actor].prone() as i32
+                            } else { f.step_cost(actor, q) }
+                        }).sum()
                     } else {
                         p.len() as i32 - 1
                     };
@@ -2388,8 +2446,8 @@ impl WebArena {
                 let speed = self.fight.as_ref().unwrap().speed_of(actor);
                 format!("{} ft of movement", speed / 2)
             }
-            "disengage_bonus" | "hide_bonus" | "rage" | "extend_rage" => "bonus action".to_string(),
-            "reckless_attack" | "cleave" => "free".to_string(),
+            "create_spell_slot" | "disengage_bonus" | "hide_bonus" | "rage" | "extend_rage" => "bonus action".to_string(),
+            "convert_spell_slot" | "reckless_attack" | "cleave" => "free".to_string(),
             _ => {
                 let bonus = matches!(kind, "second_wind" | "spiritual_weapon_attack" | "spiritual_weapon_move" | "innate_sorcery")
                     || (self.replay_version < 3 && kind == "dragons_breath_exhale")
@@ -2472,6 +2530,9 @@ impl WebArena {
             view.insert("y".into(), json!(ay));
         }
         view.insert("cost".into(), json!(cost));
+        if let Act::CreateSpellSlot { level } | Act::ConvertSpellSlot { level } = &cand.act {
+            view.insert("at_level".into(), json!(level));
+        }
         if let Some(c) = spell_opt {
             view.insert("spell".into(), json!(c.spell.key()));
             view.insert("spell_level".into(), json!(c.spell.level()));
@@ -2698,6 +2759,7 @@ impl WebArena {
         for &u in &f.order {
             let unit = &f.units[u];
             let mut conds: Vec<&str> = unit.statuses.iter().map(|s| s.name()).collect();
+            if self.replay_version >= 9 && unit.poisoned() && !conds.contains(&"poisoned") { conds.push("poisoned"); }
             conds.sort_unstable();
             units.push(json!({
                 "id": unit.id,
@@ -2794,6 +2856,7 @@ impl WebArena {
         let ac = f.armor_class(u);
         let controlled_by = if self.human_controlled_fight(u) { "human" } else { "ai" };
         let mut conds: Vec<&str> = unit.statuses.iter().map(|s| s.name()).collect();
+        if self.replay_version >= 9 && unit.poisoned() && !conds.contains(&"poisoned") { conds.push("poisoned"); }
         conds.sort_unstable();
 
         let mut m = Map::new();
@@ -2838,6 +2901,23 @@ impl WebArena {
         m.insert("str_loss".into(), json!(unit.str_drain.unwrap_or(0)));
         if let Some(mut sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version) {
             if self.replay_version >= 8 && unit.str_drain.unwrap_or(0) > 0 {
+                if self.replay_version >= 9 {
+                    if let Some(features) = sheet["features"].as_array_mut() {
+                        for (atk, def) in unit.t.attacks.iter().enumerate().filter(|(_, d)| !d.thrown) {
+                            let name = present_text::title_words(def.name);
+                            let Some(feature) = features.iter_mut().find(|line| line["name"] == name) else { continue };
+                            let Some((hit, damage_line)) = feature["text"].as_str().and_then(|s| s.split_once(", ")) else { continue };
+                            let Some((_, detail)) = damage_line.split_once(' ') else { continue };
+                            let (bonus, damage, graze) = f.attack_numbers_ex(u, atk, false);
+                            let hit_suffix = if hit.ends_with(" to hit") { " to hit" } else { "" };
+                            let mut detail = detail.to_owned();
+                            if let (Some(old), Some(new)) = (def.graze, graze) {
+                                detail = detail.replace(&format!("Graze deals {old} damage"), &format!("Graze deals {} damage", new.max(0)));
+                            }
+                            feature["text"] = json!(format!("{bonus:+}{hit_suffix}, {} {detail}", damage.text()));
+                        }
+                    }
+                }
                 if let Some(stats) = sheet["stats"].as_str() {
                     let old = format!("STR {}", unit.t.abil[0]);
                     sheet["stats"] = json!(if stats.contains(&old) {
@@ -3021,10 +3101,13 @@ mod movement_preview_tests {
         game.fight.as_mut().unwrap().move_to(goblin, (7, 7));
         assert_eq!(offered, game.movement_candidates(actor));
         game.fight.as_mut().unwrap().move_to(goblin, (4, 4));
+        // A physically occupied destination still stops the mover.
+        game.execute_move_with_oas(actor, &[(3, 3), (4, 4)]);
+        assert_eq!(game.fight.as_ref().unwrap().units[actor].pos, (3, 3));
         game.execute_move_with_oas(actor, &[(3, 3), (4, 4), (5, 5)]);
         let f = game.fight.as_ref().unwrap();
-        assert_eq!(f.units[actor].pos, (3, 3));
+        assert_eq!(f.units[actor].pos, (5, 5));
         assert_eq!(f.token_at((4, 4)), Some(goblin));
-        assert_eq!(f.units[actor].movement, 30);
+        assert_eq!(f.units[actor].movement, 15);
     }
 }

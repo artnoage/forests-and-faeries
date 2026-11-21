@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 7;
+pub const CURRENT_RULE_VERSION: i32 = 8;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -305,6 +305,8 @@ pub enum Act {
     PreserveLife(Vec<(usize, i32)>),
     SpiritualWeaponAttack { target: usize },
     SpiritualWeaponMove { to: Pos },
+    CreateSpellSlot { level: usize },
+    ConvertSpellSlot { level: usize },
     /// Innate Sorcery (bonus action).
     InnateSorcery,
     /// Dragon's Breath exhale (unaimed: the best cone at resolve).
@@ -379,6 +381,8 @@ impl Act {
             Act::PreserveLife(_) => "preserve_life",
             Act::SpiritualWeaponAttack { .. } => "spiritual_weapon_attack",
             Act::SpiritualWeaponMove { .. } => "spiritual_weapon_move",
+            Act::CreateSpellSlot { .. } => "create_spell_slot",
+            Act::ConvertSpellSlot { .. } => "convert_spell_slot",
             Act::InnateSorcery => "innate_sorcery",
             Act::DragonsBreathExhale => "dragons_breath_exhale",
             Act::Stand => "stand",
@@ -774,7 +778,11 @@ impl Fight {
         if !self.grid.in_bounds(p.0, p.1) {
             return None;
         }
-        self.occ[self.grid.index(p.0, p.1)].map(|u| u as usize)
+        let top = self.occ[self.grid.index(p.0, p.1)]? as usize;
+        if self.rule_version >= 8 && self.units[top].dead() {
+            return self.units.iter().position(|unit| unit.pos == p && !unit.dead());
+        }
+        Some(top)
     }
 
     pub fn rule_version(&self) -> i32 {
@@ -809,7 +817,7 @@ impl Fight {
         true
     }
 
-    /// `Map.placeable`: passable and no token (alive or corpse) but our own.
+    /// Current rules permit ending movement on remains.
     pub fn placeable(&self, u: usize, p: Pos) -> bool {
         if !self.passable(u, p) {
             return false;
@@ -1137,6 +1145,7 @@ impl Fight {
             self.trace.emit(Ev::Turn { who: self.units[u].id.clone(), round: self.round });
         }
         self.turns += 1;
+        if self.rule_version >= 8 { self.units[u].dodge = false; }
         if self.units[u].unconscious() && !self.units[u].has(St::Stable) {
             self.death_saving_throw(u);
         }
@@ -1256,6 +1265,14 @@ impl Fight {
     fn battle_end_turn(&mut self) {
         let current = self.current();
         self.units[current].champion_movement = 0;
+        if self.rule_version >= 8 && !self.units[current].dead() && self.units[current].t.size != "tiny" {
+            let size_rank = |size: &str| ["tiny", "small", "medium", "large", "huge", "gargantuan"].iter().position(|&s| s == size);
+            let actor = &self.units[current];
+            if self.units.iter().enumerate().any(|(i, other)| i != current && !other.dead() && other.pos == actor.pos
+                && size_rank(other.t.size) >= size_rank(actor.t.size)) {
+                self.units[current].do_prone();
+            }
+        }
         // before the end-of-turn effects: a cleric Incapacitated only for its
         // own turn (Command) still ends its turns
         self.expire_timed_conditions();
@@ -1594,9 +1611,9 @@ impl Fight {
         let di = self.grid.index(dest.0, dest.1);
         if self.rule_version >= 7 && self.occ[fi] == Some(u as u8) {
             // An interrupted legal crossing can temporarily share a creature's square.
-            self.occ[fi] = self.units.iter().enumerate().find(|(i, unit)| *i != u && unit.pos == from).map(|(i, _)| i as u8);
+            self.occ[fi] = self.units.iter().enumerate().find(|(i, unit)| *i != u && unit.pos == from && (self.rule_version < 8 || !unit.dead())).map(|(i, _)| i as u8);
         } else if self.rule_version < 7 { self.occ[fi] = None; }
-        self.occ[di] = Some(u as u8);
+        if self.rule_version < 8 || !self.units[u].dead() { self.occ[di] = Some(u as u8); }
         self.units[u].pos = dest;
     }
 
@@ -2778,6 +2795,12 @@ impl Fight {
         let monster = self.units[u].team == 1;
         let unit = &mut self.units[u];
         unit.add_status(St::Dead);
+        if self.rule_version >= 8 {
+            let cell = self.grid.index(pos.0, pos.1);
+            if self.occ[cell] == Some(u as u8) {
+                self.occ[cell] = self.units.iter().position(|other| other.pos == pos && !other.dead()).map(|i| i as u8);
+            }
+        }
         self.end_rage_if_incapacitated(u);
         let unit = &mut self.units[u];
         unit.do_prone();
@@ -2821,6 +2844,9 @@ impl Fight {
         }
         if self.units[u].cursed && amount != 0 {
             self.notes.heals_blocked += 1;
+            if self.rule_version >= 8 && amount > 0 {
+                self.emit_web(crate::web_events::WebEv::HealingBlocked { target: u });
+            }
         }
         let mhp = self.max_hp_of(u);
         let unit = &mut self.units[u];
@@ -3006,6 +3032,7 @@ impl Fight {
             Act::DivineSpark { target, heal, .. } => {
                 format!("divine_spark:mode={}:>{}", if *heal { "heal" } else { "harm" }, self.units[*target].id)
             }
+            Act::CreateSpellSlot { level } | Act::ConvertSpellSlot { level } => format!("{}:L{level}", act.kind()),
             Act::SpiritualWeaponMove { to } => format!("spiritual_weapon_move:@{},{}", to.0, to.1),
             Act::SpiritualWeaponAttack { target } => format!("spiritual_weapon_attack:>{}", self.units[*target].id),
             Act::RedirectAttack { ally } => format!("redirect_attack:>{}:reaction", self.units[*ally].id),

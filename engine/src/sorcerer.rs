@@ -309,6 +309,9 @@ impl Fight {
 
     /// Corpse tokens in an area (coverage count).
     fn corpses_in_squares(&self, squares: &[Pos], exclude: usize) -> u64 {
+        if self.rule_version >= 8 {
+            return self.units.iter().enumerate().filter(|(i, unit)| *i != exclude && unit.dead() && squares.contains(&unit.pos)).count() as u64;
+        }
         let mut found: Vec<usize> = Vec::new();
         for &p in squares {
             if let Some(c) = self.token_at(p) {
@@ -325,10 +328,12 @@ impl Fight {
         let mut found = Vec::new();
         for &p in squares {
             if let Some(c) = self.token_at(p) {
-                if Some(c) == exclude || self.units[c].dead() || found.contains(&c) {
-                    continue;
+                if Some(c) != exclude && !self.units[c].dead() && !found.contains(&c) { found.push(c); }
+                if self.rule_version >= 8 {
+                    for (other, unit) in self.units.iter().enumerate() {
+                        if other != c && Some(other) != exclude && !unit.dead() && unit.pos == p && !found.contains(&other) { found.push(other); }
+                    }
                 }
-                found.push(c);
             }
         }
         found
@@ -787,11 +792,27 @@ impl Fight {
         }
     }
 
+    /// Slot levels supported by the roster, and their SRD Font of Magic costs.
+    pub(crate) fn slot_creation_cost(level: usize) -> i32 {
+        [0, 2, 3][level]
+    }
+
     /// Class-feature candidates of the sorcerer and of a Dragon's Breath breather.
     pub fn sorcerer_feature_candidates(&self, u: usize, out: &mut Vec<Act>) {
         let unit = &self.units[u];
         if unit.t.innate_sorcery && unit.innate_sorcery > 0 && !self.innate_active(u) && unit.bonus > 0 {
             out.push(Act::InnateSorcery);
+        }
+        if self.rule_version >= 8 && unit.t.sorcerer && unit.t.level >= 2 {
+            let max_points = unit.t.caster.as_ref().unwrap().sorcery_points;
+            for level in 1..unit.slots.len() {
+                if unit.bonus > 0 && level as i32 <= (unit.t.level + 1) / 2 && unit.sorcery_points >= Self::slot_creation_cost(level) {
+                    out.push(Act::CreateSpellSlot { level });
+                }
+                if unit.slots[level] > 0 && unit.sorcery_points < max_points {
+                    out.push(Act::ConvertSpellSlot { level });
+                }
+            }
         }
         if self.active_breath(u).is_some() && unit.action > 0 {
             out.push(Act::DragonsBreathExhale);
@@ -1653,8 +1674,12 @@ impl Fight {
             }
             &Item::Push { t, to } => self.move_to(t, to),
             &Item::PushFrom { t, origin } => {
+                let from = self.units[t].pos;
                 let to = self.push_square(t, origin, &[]);
                 self.move_to(t, to);
+                if self.rule_version >= 8 {
+                    self.emit_web(crate::web_events::WebEv::ThunderwavePush { target: t, from, to });
+                }
             }
             &Item::Breath { t, dt, dice } => {
                 let obj = self.new_obj(SpellId::DragonsBreath, ObjKind::Breath { target: t, dt, dice }, u, Vec::new(), true);
@@ -1709,6 +1734,18 @@ impl Fight {
 
     pub(crate) fn do_sorcerer_feature(&mut self, u: usize, act: &Act) {
         match act {
+            Act::CreateSpellSlot { level } => {
+                let unit = &mut self.units[u];
+                unit.sorcery_points -= Self::slot_creation_cost(*level);
+                unit.slots[*level] += 1;
+                unit.bonus -= 1;
+            }
+            Act::ConvertSpellSlot { level } => {
+                let unit = &mut self.units[u];
+                unit.slots[*level] -= 1;
+                let max_points = unit.t.caster.as_ref().unwrap().sorcery_points;
+                unit.sorcery_points = (unit.sorcery_points + *level as i32).min(max_points);
+            }
             Act::InnateSorcery => {
                 let unit = &mut self.units[u];
                 unit.innate_sorcery = (unit.innate_sorcery - 1).max(0);

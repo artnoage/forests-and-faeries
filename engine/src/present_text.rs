@@ -116,7 +116,7 @@ fn pairs(items: &[(&str, &str)]) -> Vec<Value> {
 }
 
 pub fn unit_sheet(content: &str, pc: bool, hp: i32, ac: i32) -> Option<Value> {
-    unit_sheet_for_replay(content, pc, hp, ac, 3)
+    unit_sheet_for_replay(content, pc, hp, ac, crate::present::CURRENT_WEB_REPLAY_VERSION)
 }
 
 pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, replay_version: u8) -> Option<Value> {
@@ -326,7 +326,9 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, r
         ],
         "shadow" => &[
             ("Draining Swipe", "+4, 1d6+2 necrotic; the target loses 1d4 Strength."),
-            ("Vulnerable: radiant", "Takes double radiant damage. Resists acid, cold, fire, lightning and thunder."),
+            ("Vulnerable: radiant", if replay_version >= 9 {
+                "Takes double radiant damage. Resists acid, cold, fire, lightning and thunder. Immune to necrotic and poison damage."
+            } else { "Takes double radiant damage. Resists acid, cold, fire, lightning and thunder." }),
         ],
         "wight" => &[
             ("Necrotic Sword / Bow", "+4, 1d8+2 plus 1d8 necrotic. Two attacks per action."),

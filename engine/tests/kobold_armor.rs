@@ -90,7 +90,8 @@ fn native_dash_needs_an_affordable_step_towards_a_known_enemy() {
     crossing.units[1].action = 1;
     crossing.units[1].movement = 25;
     let d = crossing.external_decision(1, true, 0);
-    assert!(matches!(&d.legal[d.native_choice.unwrap()], Act::Move(path) if path.contains(&(4, 1)) && path.last().unwrap().0 < 4));
+    // Remains no longer require a multi-square crossing: the armor can stop at (4, 1).
+    assert!(matches!(&d.legal[d.native_choice.unwrap()], Act::Move(path) if path.contains(&(4, 1)) && path.last().unwrap().0 <= 4));
 
     let mut trapped = fight(&["HHHHHHHH", "H...H..H", "HHHHHHHH"],
                             &[("guy", 1, 1), ("animated_armor-1", 5, 1)]);

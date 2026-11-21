@@ -193,7 +193,7 @@ impl Version {
 }
 
 /// The `action_kinds` vocabulary names, in `Act` order of [`act_kind_index`].
-pub const ACTION_KINDS: [&str; 24] = [
+pub const ACTION_KINDS: [&str; 26] = [
     "move",
     "attack",
     "dash",
@@ -220,6 +220,8 @@ pub const ACTION_KINDS: [&str; 24] = [
     "cleave",
     "disengage",
     "spiritual_weapon_move",
+    "create_spell_slot",
+    "convert_spell_slot",
 ];
 
 // ----------------------------------------------------------------------------
@@ -586,6 +588,8 @@ pub fn act_kind_index(a: &Act) -> usize {
         Act::Cleave { .. } => 21,
         Act::Disengage => 22,
         Act::SpiritualWeaponMove { .. } => 23,
+        Act::CreateSpellSlot { .. } => 24,
+        Act::ConvertSpellSlot { .. } => 25,
     }
 }
 
@@ -1134,7 +1138,7 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
         let mut free = [0u64; 34];
         free[1..=h].copy_from_slice(floor);
         for (i, u) in f.units.iter().enumerate() {
-            if i != a && masked & (1 << i) == 0 {
+            if i != a && masked & (1 << i) == 0 && (f.rule_version() < 8 || !u.dead()) {
                 free[u.pos.1 as usize + 1] &= !(1u64 << u.pos.0);
             }
         }
@@ -2328,6 +2332,17 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
                     spell_attack_damage(f, a, *target, WeaponKind::melee(), n, 8, modifier, Dmg::Force, 1.0, row, &mut est);
                 }
             }
+        }
+        Act::CreateSpellSlot { level } => {
+            row[ai!("uses_bonus_action")] = 1.0;
+            row[ai!("targets_self")] = 1.0;
+            row[ai!("cast_level_div9")] = *level as f32 / 9.0;
+            row[ai!("sorcery_points_div5")] = Fight::slot_creation_cost(*level) as f32 / 5.0;
+        }
+        Act::ConvertSpellSlot { level } => {
+            row[ai!("no_cost")] = 1.0;
+            row[ai!("targets_self")] = 1.0;
+            row[ai!("slot_level_div9")] = *level as f32 / 9.0;
         }
         Act::InnateSorcery => {
             row[ai!("uses_bonus_action")] = 1.0;

@@ -74,6 +74,7 @@ impl Ord for Entry {
 /// natural20 `PathCompute` for one mover.
 pub struct PathCompute<'a> {
     grid: &'a Grid,
+    pub(crate) solid_wall_corners: bool,
     prone: bool,
     /// `is_flying()`: difficult terrain costs 1 (`base_move_cost`).
     flying: bool,
@@ -90,6 +91,7 @@ impl<'a> PathCompute<'a> {
         let n = grid.cells();
         Self {
             grid,
+            solid_wall_corners: false,
             prone,
             flying,
             occupied,
@@ -138,7 +140,10 @@ impl<'a> PathCompute<'a> {
     fn neighbours(&self, x: i32, y: i32, out: &mut Vec<(Cell, f64)>) {
         out.clear();
         for nb in self.grid.neighbours(self.grid.index(x, y)) {
-            out.push(((nb.x as i32, nb.y as i32), self.base_move_cost(nb)));
+            let to = (nb.x as i32, nb.y as i32);
+            if !self.solid_wall_corners || self.grid.clears_corner((x, y), to) {
+                out.push((to, self.base_move_cost(nb)));
+            }
         }
     }
 

@@ -54,7 +54,9 @@
    "reckless_attack": 20,
    "cleave": 21,
    "disengage": 22,
-   "spiritual_weapon_move": 23
+   "spiritual_weapon_move": 23,
+   "create_spell_slot": 24,
+   "convert_spell_slot": 25
   },
   "effects": {
    "bless": 0,

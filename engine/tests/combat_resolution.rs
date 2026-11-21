@@ -73,7 +73,9 @@ fn lethal_reaction_leaves_the_body_at_the_departure_square() {
         f.execute(Act::Move(vec![(1, 3), (2, 3), (3, 3), (3, 4)]));
         if f.units[1].dead() {
             assert_eq!(f.units[1].pos, (3, 3));
-            assert_eq!(f.token_at((3, 3)), Some(1));
+            assert_eq!(f.token_at((3, 3)), None);
+            assert!(f.placeable(0, (3, 3)));
+            assert!(!f.difficult(0, (3, 3)));
             assert_eq!(f.token_at((1, 3)), None);
             assert!(f.web_events.as_ref().unwrap().iter().any(|e| matches!(e,
                 WebEv::AttackOutcome { reaction: true, tgt_pos: (3, 3), .. })));
@@ -217,4 +219,40 @@ fn rage_resists_the_advantage_die_even_when_base_damage_would_drop_the_target() 
         return;
     }
     panic!("expected a noncritical arrow with a lethal base roll");
+}
+
+#[test]
+fn replacing_bless_removes_the_bonus_before_spiritual_weapon_attacks() {
+    let mut f = encounter(ROOM, &[("elion", (2, 2)), ("skeleton-1", (3, 2))], 4);
+    let mut bless = cast(SpellId::Bless, 1);
+    bless.targets = vec![0];
+    f.do_spell(0, &bless);
+    assert!(f.units[0].concentration.is_some());
+    let mut force = cast(SpellId::SpiritualWeapon, 2);
+    force.targets = vec![1];
+    f.do_spell(0, &force);
+    assert!(f.web_events.as_ref().unwrap().iter().any(|e| matches!(e, WebEv::ConcentrationReplaced { caster: 0, prior: SpellId::Bless })));
+    assert!(!f.trace.recorded().iter().any(|e| matches!(e, ember_rs::tape::Ev::Draw { tag, .. } if tag == "bless")));
+}
+
+#[test]
+fn level_two_sorcerer_can_create_a_slot_and_convert_it_back_without_an_action() {
+    let mut f = encounter(ROOM, &[("curogana_l2", (2, 2)), ("skeleton-1", (4, 2))], 6);
+    f.units[0].slots[1] = 0;
+    f.units[0].sorcery_points = 2;
+    f.units[0].action = 0;
+    f.units[0].bonus = 1;
+    let mut options = Vec::new();
+    f.feature_candidates(0, &mut options);
+    let create = Act::CreateSpellSlot { level: 1 };
+    assert!(options.contains(&create));
+    assert!(!options.contains(&Act::CreateSpellSlot { level: 2 }));
+    f.do_feature(0, &create);
+    assert_eq!((f.units[0].slots[1], f.units[0].sorcery_points, f.units[0].bonus), (1, 0, 0));
+    options.clear();
+    f.feature_candidates(0, &mut options);
+    let convert = Act::ConvertSpellSlot { level: 1 };
+    assert!(options.contains(&convert));
+    f.do_feature(0, &convert);
+    assert_eq!((f.units[0].slots[1], f.units[0].sorcery_points, f.units[0].action), (0, 1, 0));
 }
