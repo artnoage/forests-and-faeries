@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 9;
+pub const CURRENT_RULE_VERSION: i32 = 10;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -821,7 +821,7 @@ impl Fight {
         let (walls, creatures) = self.grid.cover_rays(origin, self.units[target].pos, |p| {
             self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
         });
-        if walls == 15 && !self.grid.los(origin, self.units[target].pos) { return 0; } // Total cover excludes attacks.
+        if walls == 15 && !self.clear_effect(origin, self.units[target].pos) { return 0; } // Total cover excludes attacks.
         if walls.count_ones() >= 3 { 5 }
         else if (walls | creatures).count_ones() >= 2 { 2 }
         else { 0 }
@@ -831,6 +831,19 @@ impl Fight {
         self.armor_class(target) + self.cover_bonus_from(origin, target)
     }
 
+    /// Annotate the roll at resolution, while the target, cover and reaction AC are known.
+    pub(crate) fn describe_attack_cover(&self, roll: &mut Option<String>, target: usize, ac: i32, shield: bool) {
+        if self.rule_version >= 10 {
+            if let Some(text) = roll {
+                let cover = ac - self.armor_class(target);
+                if cover > 0 {
+                    let effective = ac + if shield { 5 } else { 0 };
+                    text.push_str(&format!(" vs AC {effective} including cover +{cover}"));
+                }
+            }
+        }
+    }
+
     pub(crate) fn save_cover(&self, origin: Pos, target: usize, ability: Ability) -> i32 {
         if ability == Ability::Dex { self.cover_bonus_from(origin, target) } else { 0 }
     }
@@ -838,7 +851,8 @@ impl Fight {
     pub(crate) fn clear_effect(&self, a: Pos, b: Pos) -> bool {
         if self.grid.los(a, b) { return true; }
         self.rule_version >= 9 && !self.grid.is_wall(a.0, a.1) && !self.grid.is_wall(b.0, b.1)
-            && self.grid.wall_cover_mask(a, b) != 15
+            && (self.grid.wall_cover_mask(a, b) != 15
+                || (self.rule_version >= 10 && self.grid.wall_cover_mask(b, a) != 15))
     }
 
     pub(crate) fn incorporeal(&self, u: usize) -> bool {
@@ -1353,7 +1367,15 @@ impl Fight {
         let pos = self.units[u].pos;
         if self.incorporeal(u) && self.grid.is_wall(pos.0, pos.1) {
             let damage = self.roll_dice(u, "incorporeal_movement", 1, 10)[0];
-            self.take_damage(u, damage, Dmg::Force, false, None, None);
+            let before = self.web_events.as_ref().map(Vec::len);
+            let applied = self.take_damage(u, damage, Dmg::Force, false, None, None);
+            if self.rule_version >= 10 {
+                if let (Some(index), Some(events)) = (before, &mut self.web_events) {
+                    events.insert(index, crate::web_events::WebEv::IncorporealDamage {
+                        target: u, roll: damage, applied: applied.unwrap_or(0), round: self.round,
+                    });
+                }
+            }
         }
         self.barbarian_end_of_turn(u);
         self.resolve_trigger(u, HookEv::EndOfTurn);
@@ -2145,6 +2167,7 @@ impl Fight {
                 force_miss = blocks;
                 shield_cast = Some((at_level, total, ac));
             }
+            self.describe_attack_cover(&mut atk_roll_fmt, tgt, ac, shield_cast.is_some());
             let mut c = nat20 || (t.improved_critical && face >= 19);
             let critical_roll = c;
             // `weapon.get('type') == 'melee_attack'`: a thrown dagger too
@@ -2260,7 +2283,10 @@ impl Fight {
         for (d, dt) in &def.additional {
             let n = if crit { d.count * 2 } else { d.count };
             let rolls = self.roll_dice(src, "additional_damage", n, d.sides);
-            riders.push((rolls.iter().sum::<i32>() + d.modifier, *dt, None));
+            let value = rolls.iter().sum::<i32>() + d.modifier;
+            let detail = (self.rule_version >= 10 && self.web_events.is_some()).then(||
+                crate::web_events::fmt_dice_roll(d.sides, &rolls, d.modifier, false, value));
+            riders.push((value, *dt, detail));
         }
         if had_adv && !def.additional_adv.is_empty() {
             self.notes.adv_riders += 1;
@@ -2398,14 +2424,17 @@ impl Fight {
             self.notes.cleave_windows += 1;
             self.units[src].cleave = Some((atk, cands));
         }
-        for (index, (amount, dt, advantage_roll)) in riders.into_iter().enumerate() {
+        for (index, (amount, dt, roll)) in riders.into_iter().enumerate() {
             if !combined && self.units[tgt].dead() {
                 continue;
             }
             let before = self.web_events.as_ref().map(Vec::len);
             let applied = if combined { Some(rider_applied[index]) } else { self.take_damage(tgt, amount, dt, crit, Some(&mut hs), Some(src)) };
             if let (Some(before), Some(amount), Some(events)) = (before, applied, &mut self.web_events) {
-                let event = crate::web_events::WebEv::RiderDamage { tgt, applied_damage: amount.max(0), dt, advantage_roll };
+                let (plain_roll, advantage_roll) = if index < def.additional.len() { (roll, None) } else { (None, roll) };
+                let event = crate::web_events::WebEv::RiderDamage {
+                    tgt, applied_damage: amount.max(0), dt, plain_roll, advantage_roll,
+                };
                 if self.rule_version >= 6 {
                     let next = rider_offset.as_mut().unwrap();
                     events.insert(*next, event);
@@ -3151,8 +3180,13 @@ mod srd_level_tests {
         let before = f.units[0].hp;
         f.move_to(0, (2,1));
         assert_eq!(f.units[0].hp, before);
+        f.web_events = Some(Vec::new());
         f.battle_end_turn();
-        assert!((1..=10).contains(&(before - f.units[0].hp)));
+        let damage = before - f.units[0].hp;
+        assert!((1..=10).contains(&damage));
+        assert!(f.take_web_events().iter().any(|ev| matches!(ev,
+            crate::web_events::WebEv::IncorporealDamage { target: 0, roll, applied, .. }
+            if *roll == damage && *applied == damage)));
         let after = f.units[0].hp;
         f.move_to(0, (3,1));
         f.battle_end_turn();
@@ -3174,6 +3208,19 @@ mod srd_level_tests {
         f.execute_action(0, &Act::HideBonus);
         assert_eq!(f.units[0].bonus, 0);
         assert!(!f.available_moves(0).contains(&Act::HideBonus));
+    }
+
+    #[test]
+    fn a_partial_wall_opening_has_reciprocal_sight() {
+        let a = (2, 5);
+        let b = (0, 0);
+        let mut f = fight(&["...", "H..", "H..", "..H", "...", "H.."], &[("guy", a), ("mummy-1", b)]);
+        assert!(!f.grid.los(a, b));
+        assert!(f.can_see(0, 1) && f.can_see(1, 0));
+        assert_eq!(f.cover_bonus_from(b, 0), 5);
+        f.set_rule_version(9);
+        assert!(f.can_see(0, 1));
+        assert!(!f.can_see(1, 0));
     }
 
     #[test]

@@ -83,10 +83,12 @@ pub enum WebEv {
     },
     RiderDamage {
         advantage_roll: Option<String>,
+        plain_roll: Option<String>,
         tgt: usize,
         applied_damage: i32,
         dt: Dmg,
     },
+    IncorporealDamage { target: usize, roll: i32, applied: i32, round: i32 },
     ShieldCast {
         u: usize,
         pos: Pos,

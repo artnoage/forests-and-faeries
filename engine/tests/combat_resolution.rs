@@ -50,7 +50,10 @@ fn one_bite_checks_concentration_once_and_lethal_bites_end_it_directly() {
             f.turn_idx = f.order.iter().position(|&u| u == 1).unwrap();
             f.execute(Act::Attack { atk: 0, target: 0, reaction: false });
             let events = f.web_events.as_ref().unwrap();
-            if !events.iter().any(|e| matches!(e, WebEv::RiderDamage { .. })) { continue; }
+            let Some(WebEv::RiderDamage { plain_roll, advantage_roll, .. }) =
+                events.iter().find(|e| matches!(e, WebEv::RiderDamage { .. })) else { continue; };
+            assert!(plain_roll.as_deref().is_some_and(|roll| roll.starts_with("d6(")));
+            assert!(advantage_roll.is_none());
             let saves = events.iter().filter(|e| matches!(e, WebEv::ConcentrationSave { .. })).count();
             let ended = events.iter().filter(|e| matches!(e, WebEv::ConcentrationEnded { .. })).count();
             assert_eq!((saves, ended), if hp == 1 { (0, 1) } else { (1, 0) });

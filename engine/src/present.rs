@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 10;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 11;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -999,6 +999,12 @@ impl WebArena {
                     let eff = self.push_effect(m);
                     self.pending_effects.push(eff);
                 }
+                WebEv::IncorporealDamage { target, roll, applied, round } => {
+                    if !self.concealed_from_heroes(target) {
+                        let name = self.unit_display_name(target);
+                        self.push_log(&format!("{name} ends its turn inside a wall and takes {applied} force damage (d10({roll}) = {roll})."), "damage", round);
+                    }
+                }
                 WebEv::DeathSave { u, outcome, round } => self.log_death_save(u, outcome, round),
                 WebEv::Died { u, pos, monster } => {
                     if monster {
@@ -1301,10 +1307,14 @@ impl WebArena {
                         }
                     }
                 }
-                WebEv::RiderDamage { tgt, applied_damage, dt, advantage_roll } => {
+                WebEv::RiderDamage { tgt, applied_damage, dt, plain_roll, advantage_roll } => {
                     if self.replay_version >= 4 {
                         let name = self.unit_display_name(tgt);
-                        let rider = advantage_roll.map_or_else(String::new, |roll| format!(" from the advantage rider ({roll})"));
+                        let rider = match (advantage_roll, plain_roll) {
+                            (Some(roll), _) => format!(" from the advantage rider ({roll})"),
+                            (_, Some(roll)) => format!(" ({roll})"),
+                            _ => String::new(),
+                        };
                         self.push_log(&format!("{name} takes {applied_damage} additional {} damage{rider}.", dt.name()), "hit", round);
                     }
                     if let Some(&eid) = last_hit_effect_id.get(&tgt) {

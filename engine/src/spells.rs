@@ -568,13 +568,14 @@ impl Fight {
         } else {
             None
         };
-        let atk_fmt = if self.web_events.is_some() {
+        let mut atk_fmt = if self.web_events.is_some() {
             Some(crate::web_events::fmt_d20_roll(dv, mode, modifier, bless) + &reasons)
         } else {
             None
         };
         let t = self.redirect_window(caster, t, face, total, false, origin).unwrap_or(t);
         let ac = self.attack_ac(origin, t);
+        self.describe_attack_cover(&mut atk_fmt, t, ac, false);
         self.resolve_trigger(caster, HookEv::AttackResolved);
         let items = self.resolve_trigger(t, HookEv::AfterAttackRollTarget);
         let nat20 = face == 20 && mode != RollMode::Disadvantage || (mode == RollMode::Disadvantage && face == 20);

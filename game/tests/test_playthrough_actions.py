@@ -193,3 +193,7 @@ def test_attack_preview_reports_only_the_intervening_creatures_cover():
     for a in frost:
         expected = {'goblin_minion-2': 2} if a['target_id'] == 'goblin_minion-2' else {}
         assert a.get('cover', {}) == rows[a['id']].get('cover', {}) == expected
+    target = next(u for u in state['units'] if u['id'] == 'goblin_minion-2')
+    covered = next(a for a in frost if a['target_id'] == target['id'])
+    game.perform(covered['id'])
+    assert any(f"vs AC {target['ac'] + 2} including cover +2" in line['text'] for line in game.state()['log'])
