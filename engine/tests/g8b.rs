@@ -267,12 +267,20 @@ fn minion_daggers() {
     assert!(!f.attack_available(g, 0) && !f.attack_available(g, 1), "no dagger: no melee row either");
 
     // Keeping the last dagger is a native policy. External choices can still throw it.
+    let roster = [("mara", 1, 1), ("ilyra", 1, 2), ("goblin_minion-1", 4, 1)];
+    let (ids, initial) = placements(&roster);
+    let grid = Grid::shared(&["HHHHHH", "H....H", "H....H", "HHHHHH"]).unwrap();
+    let mut f = Fight::on_map(ContentPool::global(), grid, &ids, &initial, 50, Trace::free(0)).unwrap();
     f.units[g].items[0] = 1;
     f.units[g].action = 1;
     let d = f.external_decision(g, true, 0);
     let i = d.legal.iter().position(|a| matches!(a, Act::Attack { atk: 1, .. })).unwrap();
     assert!(d.native_dropped.as_ref().unwrap()[i]);
     assert_ne!(d.native_choice, Some(i));
+    f.order = vec![g, 0, 1];
+    f.execute(d.legal[i].clone());
+    assert_eq!(f.units[g].items[0], 0);
+    assert!(!f.attack_available(g, 0));
 
     // N20-041 fixed: Ilyra's thrown daggers (on these seeds they gave the
     // Minions daggers before the fix) never add to a Minion's count

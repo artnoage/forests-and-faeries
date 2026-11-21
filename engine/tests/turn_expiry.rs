@@ -60,7 +60,10 @@ fn game(scores: bool, n: usize) -> Env {
     let ids: Vec<String> = UNITS.iter().map(|u| u.0.to_string()).collect();
     let placements: Vec<Placement> = UNITS.iter().map(|&(id, x, y)| Placement { id: id.into(), x, y }).collect();
     let grid = Grid::shared(&MAP).unwrap();
-    let mut env = Env::from_units(ContentPool::global(), grid, &ids, &placements, 30, DICE_SEED, [EXT, EXT], scores).unwrap();
+    // The stored row numbers and native scores came from this historical ruleset.
+    let mut fight = ember_rs::engine::Fight::on_map(ContentPool::global(), grid, &ids, &placements, 30, ember_rs::trace::Trace::free(DICE_SEED)).unwrap();
+    fight.set_rule_version(3);
+    let mut env = Env::new(fight, [EXT, EXT], scores);
     for (i, &r) in ROWS[..n].iter().enumerate() {
         env.step(r).unwrap_or_else(|e| panic!("decision {i}: {e}"));
     }

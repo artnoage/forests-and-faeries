@@ -171,10 +171,12 @@ fn cloned_fight_continues_identically() {
             let mut a = Fight::on_map(ContentPool::global(), grid.clone(), &ids, &pl, 50, Trace::recording(seed)).unwrap();
             a.start();
             for _ in 0..(3 + seed as usize * 2) {
-                if a.finished || a.round >= a.max_rounds {
+                let mut next = a.clone();
+                next.advance();
+                if next.finished || next.round >= next.max_rounds {
                     break;
                 }
-                a.advance();
+                a = next;
             }
             let mut b = a.clone();
             let mark = a.trace.position();

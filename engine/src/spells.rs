@@ -571,7 +571,8 @@ impl Fight {
     }
 
     pub(crate) fn spent_slot_this_turn(&self, u: usize) -> bool {
-        self.units[u].last_slot_turn == Some((self.round, self.turn_idx))
+        let last = self.units[u].last_slot_turn;
+        if self.legacy_v4_rules { last.is_some() } else { last == Some((self.round, self.turn_idx)) }
     }
 
     /// `SpellAction.can_cast` (and the `spell_list` disable reasons).

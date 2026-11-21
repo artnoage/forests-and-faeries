@@ -541,9 +541,7 @@ impl WebArena {
             crate::engine::MAX_ROUNDS,
             self.trace_init.clone(),
         )?;
-        fight.champion_moves_enabled = self.replay_version >= 2;
-        fight.creature_space_rules = self.replay_version >= 3;
-        fight.legacy_v4_rules = self.replay_version < 5;
+        fight.set_rule_version(if self.replay_version >= 5 { 4 } else { i32::from(self.replay_version.min(3)) });
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
         self.fight_to_roster = fight_to_roster;
@@ -1238,7 +1236,7 @@ impl WebArena {
                         let name = self.unit_display_name(attacker);
                         let target = self.unit_display_name(warded);
                         let result = if total >= dc { "makes" } else { "fails" };
-                        let effect = if total >= dc { "the attack proceeds" } else { "the attack is lost" };
+                        let effect = if total >= dc { "The attack proceeds" } else { "The attack is lost" };
                         self.push_log(&format!("{name} {result} the Wisdom save against Sanctuary on {target} ({total} vs DC {dc}). {effect}."), "status", round);
                     }
                 }

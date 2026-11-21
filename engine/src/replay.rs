@@ -33,9 +33,7 @@ pub fn fight_for(h: &Header, pool: &'static ContentPool, trace: Trace) -> Result
     };
     check_stats(h, pool)?;
     let mut fight = Fight::on_map(pool, grid, &h.units, &h.placements, h.max_rounds, trace)?;
-    fight.champion_moves_enabled = h.version >= 2;
-    fight.creature_space_rules = h.version >= 3;
-    fight.legacy_v4_rules = h.version < 4;
+    fight.set_rule_version(h.version);
     fight.prefer = h.prefer.clone();
     Ok(fight)
 }

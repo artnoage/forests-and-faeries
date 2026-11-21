@@ -763,6 +763,13 @@ impl Fight {
         self.occ[self.grid.index(p.0, p.1)].map(|u| u as usize)
     }
 
+    /// Select the recorded combat rules before initiative or any controller choice.
+    pub fn set_rule_version(&mut self, version: i32) {
+        self.champion_moves_enabled = version >= 2;
+        self.creature_space_rules = version >= 3;
+        self.legacy_v4_rules = version < 4;
+    }
+
     /// `Map.passable(entity, x, y, battle)` for a 1x1 creature (no squeezing).
     pub fn passable(&self, u: usize, p: Pos) -> bool {
         if self.grid.is_wall(p.0, p.1) {
@@ -1174,6 +1181,7 @@ impl Fight {
         unit.reaction = 1;
         unit.movement = speed;
         unit.action_surge_flag = false;
+        unit.last_slot_turn = None;
         unit.dodge = false;
         unit.disengage = false;
         unit.ma_started = false;

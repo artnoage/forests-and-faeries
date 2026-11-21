@@ -351,9 +351,7 @@ impl Game {
             return Err("dice_seed must be below 2**63".into());
         }
         let mut fight = Fight::on_map(pool, entry.grid.clone(), &entry.units, &placed.placements, max_rounds, Trace::free(spec.dice_seed))?;
-        fight.champion_moves_enabled = version >= 2;
-        fight.creature_space_rules = version >= 3;
-        fight.legacy_v4_rules = version < 4;
+        fight.set_rule_version(version);
         let start_hp = fight.units.iter().map(|u| u.hp).collect();
         let env = Env::new(fight, Control { teams, external_units }, cfg.scores);
         let mut game = Game {
