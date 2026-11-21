@@ -117,6 +117,7 @@ fn nimble_escape_rows_and_the_native_hide_value() {
     assert_eq!(raw[rh], 0.0);
     // spent: no Nimble Escape rows any more this turn
     env.step(rd).unwrap();
+    assert_eq!(env.fight.notes.disengage_bonus, 1);
     assert!(row_of(&env, &Act::HideBonus).is_none() && row_of(&env, &Act::DisengageBonus).is_none());
 
     // out of sight (the other sealed corridor): DC 15 above passive
@@ -143,12 +144,14 @@ fn nimble_escape_rows_and_the_native_hide_value() {
         }
     }
 
+    // Archived v5 native games still take the old Disengage tie.
     let mut notes = Notes::default();
     for seed in 0..20u64 {
         let mut f = fight(
             &[("mara", 3, 7), ("ilyra", 2, 6), ("goblin_warrior-1", 12, 2), ("goblin_minion-1", 12, 6), ("skeleton-1", 13, 4)],
             seed,
         );
+        f.set_rule_version(5);
         f.run();
         notes.add(&f.notes);
     }
