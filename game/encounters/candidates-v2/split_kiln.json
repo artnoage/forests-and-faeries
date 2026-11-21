@@ -1,0 +1,499 @@
+{
+ "id": "split_kiln",
+ "name": "Split Kiln",
+ "order": 6,
+ "map": "split_kiln",
+ "theme": "crucible",
+ "blurb": "Two banks of kiln walls shelter the outer aisles. Short passages connect them through the middle.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_clay_run",
+   "name": "The Clay Run",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The central firebox divides the two brick aisles.",
+   "party": ["guy_l1", "ilyra_l1", "chruna_l1"],
+   "roster": ["animated_armor", "skeleton", "specter"],
+   "placements": {
+    "guy_l1": [2, 3],
+    "ilyra_l1": [3, 6],
+    "chruna_l1": [2, 2],
+    "animated_armor-1": [12, 3],
+    "skeleton-1": [14, 7],
+    "specter-1": [13, 3]
+   }
+  },
+  {
+   "id": "l1_the_first_firing",
+   "name": "The First Firing",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "Two banks of brickwork flank the kiln floor.",
+   "party": ["elion_l1", "ilyra_l1", "chruna_l1"],
+   "roster": ["ghast", "ghast", "goblin_minion", "goblin_minion"],
+   "placements": {
+    "elion_l1": [4, 1],
+    "ilyra_l1": [8, 2],
+    "chruna_l1": [6, 2],
+    "ghast-1": [12, 9],
+    "ghast-2": [7, 8],
+    "goblin_minion-1": [11, 9],
+    "goblin_minion-2": [5, 9]
+   }
+  },
+  {
+   "id": "l1_the_ash_rake",
+   "name": "The Ash Rake",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The long way around the firebox opens onto the far aisle.",
+   "party": ["elion_l1"],
+   "roster": ["skeleton", "skeleton", "specter"],
+   "placements": {
+    "elion_l1": [2, 8],
+    "skeleton-1": [12, 2],
+    "skeleton-2": [14, 3],
+    "specter-1": [10, 1]
+   }
+  },
+  {
+   "id": "l1_the_brick_stack",
+   "name": "The Brick Stack",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The raised kilns leave passages along both outer walls.",
+   "party": ["guy_l1", "elion_l1"],
+   "roster": ["goblin_boss", "kobold_warrior"],
+   "placements": {
+    "guy_l1": [13, 4],
+    "elion_l1": [14, 6],
+    "goblin_boss-1": [4, 1],
+    "kobold_warrior-1": [4, 7]
+   }
+  },
+  {
+   "id": "l1_the_open_vent",
+   "name": "The Open Vent",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The gaps between the furnaces are narrower than the loading aisles.",
+   "party": ["elion_l1", "curogana_l1"],
+   "roster": ["ghoul", "zombie", "zombie"],
+   "placements": {
+    "elion_l1": [11, 1],
+    "curogana_l1": [13, 3],
+    "ghoul-1": [4, 8],
+    "zombie-1": [3, 6],
+    "zombie-2": [5, 6]
+   }
+  },
+  {
+   "id": "l1_the_loading_bay",
+   "name": "The Loading Bay",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The three central firebricks screen the opposite aisle.",
+   "party": ["curogana_l1", "ilyra_l1"],
+   "roster": ["shadow", "specter", "specter"],
+   "placements": {
+    "curogana_l1": [7, 8],
+    "ilyra_l1": [10, 8],
+    "shadow-1": [4, 1],
+    "specter-1": [12, 3],
+    "specter-2": [2, 2]
+   }
+  },
+  {
+   "id": "l1_the_stoke_hole",
+   "name": "The Stoke Hole",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The stoking aisles meet in the open space between the kilns.",
+   "party": ["guy_l1", "elion_l1", "curogana_l1"],
+   "roster": ["ghoul", "shadow", "shadow"],
+   "placements": {
+    "guy_l1": [2, 5],
+    "elion_l1": [3, 7],
+    "curogana_l1": [1, 5],
+    "ghoul-1": [11, 4],
+    "shadow-1": [12, 9],
+    "shadow-2": [9, 3]
+   }
+  },
+  {
+   "id": "l1_the_measuring_rod",
+   "name": "The Measuring Rod",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The kiln walls break the diagonal across the workshop.",
+   "party": ["guy_l1", "mara_l1", "ilyra_l1"],
+   "roster": ["goblin_boss", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "guy_l1": [4, 4],
+    "mara_l1": [6, 2],
+    "ilyra_l1": [5, 4],
+    "goblin_boss-1": [13, 5],
+    "goblin_warrior-1": [10, 8],
+    "goblin_warrior-2": [12, 5],
+    "kobold_warrior-1": [10, 7]
+   }
+  },
+  {
+   "id": "l1_the_potters_yard",
+   "name": "The Potter’s Yard",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "There is a short passage on each side of the central firebox.",
+   "party": ["elion_l1", "mara_l1", "ilyra_l1"],
+   "roster": ["ghast", "ghoul", "ghoul"],
+   "placements": {
+    "elion_l1": [6, 5],
+    "mara_l1": [7, 7],
+    "ilyra_l1": [5, 5],
+    "ghast-1": [12, 2],
+    "ghoul-1": [13, 5],
+    "ghoul-2": [12, 3]
+   }
+  },
+  {
+   "id": "l2_the_red_kiln",
+   "name": "The Red Kiln",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The central firebox divides the two brick aisles.",
+   "party": ["curogana_l2"],
+   "roster": ["ghoul", "zombie"],
+   "placements": {
+    "curogana_l2": [12, 3],
+    "ghoul-1": [2, 3],
+    "zombie-1": [3, 6]
+   }
+  },
+  {
+   "id": "l2_the_cooling_rack",
+   "name": "The Cooling Rack",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "Two banks of brickwork flank the kiln floor.",
+   "party": ["guy_l2", "curogana_l2"],
+   "roster": ["goblin_boss", "goblin_boss", "goblin_minion", "goblin_minion", "goblin_minion", "goblin_warrior"],
+   "placements": {
+    "guy_l2": [12, 9],
+    "curogana_l2": [7, 8],
+    "goblin_boss-1": [4, 1],
+    "goblin_boss-2": [8, 2],
+    "goblin_minion-1": [6, 2],
+    "goblin_minion-2": [8, 1],
+    "goblin_minion-3": [3, 1],
+    "goblin_warrior-1": [10, 1]
+   }
+  },
+  {
+   "id": "l2_glaze_on_the_floor",
+   "name": "Glaze on the Floor",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The long way around the firebox opens onto the far aisle.",
+   "party": ["elion_l2", "mara"],
+   "roster": ["ghast", "ghoul", "skeleton"],
+   "placements": {
+    "elion_l2": [12, 2],
+    "mara": [14, 3],
+    "ghast-1": [2, 8],
+    "ghoul-1": [4, 8],
+    "skeleton-1": [2, 7]
+   }
+  },
+  {
+   "id": "l2_the_coal_screen",
+   "name": "The Coal Screen",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The raised kilns leave passages along both outer walls.",
+   "party": ["curogana_l2", "chruna_l2"],
+   "roster": ["shadow", "shadow", "specter"],
+   "placements": {
+    "curogana_l2": [4, 1],
+    "chruna_l2": [4, 7],
+    "shadow-1": [13, 4],
+    "shadow-2": [14, 6],
+    "specter-1": [12, 4]
+   }
+  },
+  {
+   "id": "l2_the_fire_door",
+   "name": "The Fire Door",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The gaps between the furnaces are narrower than the loading aisles.",
+   "party": ["guy_l2", "elion_l2", "mara"],
+   "roster": ["ghast", "ghoul", "ghoul", "ghoul", "skeleton", "skeleton", "zombie", "zombie", "zombie"],
+   "placements": {
+    "guy_l2": [4, 8],
+    "elion_l2": [3, 6],
+    "mara": [5, 6],
+    "ghast-1": [11, 1],
+    "ghoul-1": [13, 3],
+    "ghoul-2": [9, 2],
+    "ghoul-3": [14, 3],
+    "skeleton-1": [12, 1],
+    "skeleton-2": [14, 1],
+    "zombie-1": [11, 4],
+    "zombie-2": [15, 3],
+    "zombie-3": [10, 1]
+   }
+  },
+  {
+   "id": "l2_the_kilnmasters_mark",
+   "name": "The Kilnmaster’s Mark",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The three central firebricks screen the opposite aisle.",
+   "party": ["guy_l2", "ilyra", "chruna_l2"],
+   "roster": ["animated_armor", "skeleton", "skeleton", "skeleton"],
+   "placements": {
+    "guy_l2": [4, 1],
+    "ilyra": [12, 3],
+    "chruna_l2": [2, 2],
+    "animated_armor-1": [7, 8],
+    "skeleton-1": [10, 8],
+    "skeleton-2": [7, 7],
+    "skeleton-3": [10, 9]
+   }
+  },
+  {
+   "id": "l2_the_draught_shaft",
+   "name": "The Draught Shaft",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The stoking aisles meet in the open space between the kilns.",
+   "party": ["elion_l2", "ilyra", "chruna_l2"],
+   "roster": ["ghast", "ghast", "ghoul", "skeleton"],
+   "placements": {
+    "elion_l2": [11, 4],
+    "ilyra": [12, 9],
+    "chruna_l2": [9, 3],
+    "ghast-1": [2, 5],
+    "ghast-2": [3, 7],
+    "ghoul-1": [1, 5],
+    "skeleton-1": [4, 5]
+   }
+  },
+  {
+   "id": "l2_the_clay_mould",
+   "name": "The Clay Mould",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The kiln walls break the diagonal across the workshop.",
+   "party": ["elion_l2"],
+   "roster": ["animated_armor", "goblin_minion", "kobold_warrior"],
+   "placements": {
+    "elion_l2": [13, 5],
+    "animated_armor-1": [4, 4],
+    "goblin_minion-1": [6, 2],
+    "kobold_warrior-1": [5, 4]
+   }
+  },
+  {
+   "id": "l2_the_stoking_hour",
+   "name": "The Stoking Hour",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "There is a short passage on each side of the central firebox.",
+   "party": ["guy_l2", "elion_l2"],
+   "roster": ["goblin_boss", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "guy_l2": [12, 2],
+    "elion_l2": [13, 5],
+    "goblin_boss-1": [6, 5],
+    "goblin_warrior-1": [7, 7],
+    "goblin_warrior-2": [5, 5],
+    "kobold_warrior-1": [4, 7]
+   }
+  },
+  {
+   "id": "l3_white_heat",
+   "name": "White Heat",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central firebox divides the two brick aisles.",
+   "party": ["elion", "ilyra_l3"],
+   "roster": ["ghast", "ghast", "ghast", "ghoul", "ghoul", "skeleton", "skeleton", "zombie", "zombie"],
+   "placements": {
+    "elion": [2, 3],
+    "ilyra_l3": [3, 6],
+    "ghast-1": [12, 3],
+    "ghast-2": [14, 7],
+    "ghast-3": [13, 3],
+    "ghoul-1": [12, 6],
+    "ghoul-2": [12, 1],
+    "skeleton-1": [14, 6],
+    "skeleton-2": [14, 3],
+    "zombie-1": [14, 8],
+    "zombie-2": [11, 4]
+   }
+  },
+  {
+   "id": "l3_the_last_firing",
+   "name": "The Last Firing",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "Two banks of brickwork flank the kiln floor.",
+   "party": ["mara_l3", "ilyra_l3"],
+   "roster": ["animated_armor", "goblin_minion", "goblin_minion", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "mara_l3": [4, 1],
+    "ilyra_l3": [8, 2],
+    "animated_armor-1": [12, 9],
+    "goblin_minion-1": [7, 8],
+    "goblin_minion-2": [11, 9],
+    "goblin_warrior-1": [5, 9],
+    "goblin_warrior-2": [13, 9],
+    "kobold_warrior-1": [7, 9]
+   }
+  },
+  {
+   "id": "l3_the_fallen_chimney",
+   "name": "The Fallen Chimney",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The long way around the firebox opens onto the far aisle.",
+   "party": ["guy", "elion", "chruna"],
+   "roster": ["goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_minion", "goblin_minion", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "guy": [2, 8],
+    "elion": [4, 8],
+    "chruna": [2, 7],
+    "goblin_boss-1": [12, 2],
+    "goblin_boss-2": [14, 3],
+    "goblin_boss-3": [10, 1],
+    "goblin_boss-4": [14, 4],
+    "goblin_boss-5": [12, 1],
+    "goblin_minion-1": [12, 4],
+    "goblin_minion-2": [12, 3],
+    "goblin_warrior-1": [14, 2],
+    "goblin_warrior-2": [10, 4],
+    "kobold_warrior-1": [14, 5]
+   }
+  },
+  {
+   "id": "l3_the_firebox",
+   "name": "The Firebox",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The raised kilns leave passages along both outer walls.",
+   "party": ["elion", "curogana", "mara_l3"],
+   "roster": ["shadow", "wight", "wight", "wight", "zombie"],
+   "placements": {
+    "elion": [13, 4],
+    "curogana": [14, 6],
+    "mara_l3": [12, 4],
+    "shadow-1": [4, 1],
+    "wight-1": [4, 7],
+    "wight-2": [4, 4],
+    "wight-3": [4, 8],
+    "zombie-1": [2, 2]
+   }
+  },
+  {
+   "id": "l3_the_shattered_glaze",
+   "name": "The Shattered Glaze",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The gaps between the furnaces are narrower than the loading aisles.",
+   "party": ["curogana", "mara_l3", "ilyra_l3"],
+   "roster": ["ghast", "ghast", "ghast", "goblin_minion", "goblin_minion", "goblin_minion", "kobold_warrior", "skeleton"],
+   "placements": {
+    "curogana": [11, 1],
+    "mara_l3": [13, 3],
+    "ilyra_l3": [9, 2],
+    "ghast-1": [4, 8],
+    "ghast-2": [3, 6],
+    "ghast-3": [5, 6],
+    "goblin_minion-1": [3, 5],
+    "goblin_minion-2": [4, 9],
+    "goblin_minion-3": [2, 7],
+    "kobold_warrior-1": [6, 9],
+    "skeleton-1": [1, 5]
+   }
+  },
+  {
+   "id": "l3_the_masters_seal",
+   "name": "The Master’s Seal",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The three central firebricks screen the opposite aisle.",
+   "party": ["curogana"],
+   "roster": ["animated_armor", "animated_armor", "goblin_minion", "goblin_warrior", "kobold_warrior", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "curogana": [7, 8],
+    "animated_armor-1": [4, 1],
+    "animated_armor-2": [12, 3],
+    "goblin_minion-1": [2, 2],
+    "goblin_warrior-1": [13, 3],
+    "kobold_warrior-1": [4, 4],
+    "kobold_warrior-2": [12, 1],
+    "kobold_warrior-3": [2, 3]
+   }
+  },
+  {
+   "id": "l3_the_long_cooling",
+   "name": "The Long Cooling",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The stoking aisles meet in the open space between the kilns.",
+   "party": ["guy", "curogana"],
+   "roster": ["goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_minion", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "guy": [2, 5],
+    "curogana": [3, 7],
+    "goblin_boss-1": [11, 4],
+    "goblin_boss-2": [12, 9],
+    "goblin_boss-3": [9, 3],
+    "goblin_boss-4": [10, 8],
+    "goblin_boss-5": [12, 2],
+    "goblin_boss-6": [12, 6],
+    "goblin_minion-1": [10, 1],
+    "goblin_warrior-1": [10, 7],
+    "kobold_warrior-1": [12, 4]
+   }
+  },
+  {
+   "id": "l3_the_double_flue",
+   "name": "The Double Flue",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The kiln walls break the diagonal across the workshop.",
+   "party": ["elion", "mara_l3"],
+   "roster": ["shadow", "wight", "zombie"],
+   "placements": {
+    "elion": [4, 4],
+    "mara_l3": [6, 2],
+    "shadow-1": [13, 5],
+    "wight-1": [10, 8],
+    "zombie-1": [12, 5]
+   }
+  },
+  {
+   "id": "l3_ash_at_daybreak",
+   "name": "Ash at Daybreak",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "There is a short passage on each side of the central firebox.",
+   "party": ["curogana", "chruna"],
+   "roster": ["animated_armor", "skeleton", "specter", "specter", "specter", "specter"],
+   "placements": {
+    "curogana": [6, 5],
+    "chruna": [7, 7],
+    "animated_armor-1": [12, 2],
+    "skeleton-1": [13, 5],
+    "specter-1": [12, 3],
+    "specter-2": [14, 7],
+    "specter-3": [12, 1],
+    "specter-4": [12, 6]
+   }
+  }
+ ]
+}

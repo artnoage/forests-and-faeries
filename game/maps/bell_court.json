@@ -1,0 +1,20 @@
+{
+ "version": 1,
+ "map": {
+  "name": "bell_court",
+  "display_name": "Bell Court",
+  "rows": [
+   "HHHHHHHHHHHHHHH",
+   "H.....HHH.....H",
+   "H.............H",
+   "H...H.....H...H",
+   "H...H.....H...H",
+   "HHH.........HHH",
+   "H.............H",
+   "H...HH...HH...H",
+   "H.............H",
+   "H......H......H",
+   "HHHHHHHHHHHHHHH"
+  ]
+ }
+}

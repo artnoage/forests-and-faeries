@@ -2,6 +2,7 @@
 
 Run from the repository root with --ember pointing to a release build of the CLI.
 Intermediate maps and both rounds of native games are written under --work.
+Use --export-game-levels ENCOUNTER_DIR JSONL to export a hand-authored test pool on its own.
 """
 import argparse
 from collections import Counter, defaultdict
@@ -42,9 +43,9 @@ def write_rows(path, rows):
     temp.replace(path)
 
 
-def game_levels():
+def game_levels(encounters=Path('game/encounters')):
     rows = []
-    for path in sorted(Path('game/encounters').glob('*.json')):
+    for path in sorted(encounters.glob('*.json')):
         book = json.loads(path.read_text())
         grid = json.loads((Path('game/maps') / (book['map'] + '.json')).read_text())['map']
         for preset in book['presets']:
@@ -54,10 +55,16 @@ def game_levels():
                 counts[name] += 1
                 actors.append(f'{name}-{counts[name]}')
             placements = [dict(id=a, x=preset['placements'][a][0], y=preset['placements'][a][1]) for a in actors]
-            rows.append(dict(id=f"{book['id']}/{preset['id']}", split='test', name=preset['name'],
-                             difficulty=preset['difficulty'], party=preset['party'], roster=preset['roster'],
-                             map=dict(name=grid['name'], rows=grid['rows']),
-                             layout=dict(rule='fixed', placements=placements), max_rounds=30))
+            row = dict(id=f"{book['id']}/{preset['id']}", split='test', name=preset['name'],
+                       difficulty=preset['difficulty'], party=preset['party'], roster=preset['roster'],
+                       map=dict(name=grid['name'], rows=grid['rows']),
+                       layout=dict(rule='fixed', placements=placements), max_rounds=30)
+            if 'hero_level' in preset:
+                row['hero_level'] = preset['hero_level']
+            if 'grading_status' in book:
+                row['grading_status'] = book['grading_status']
+                row['recorded'] = preset.get('balance')
+            rows.append(row)
     return rows
 
 
@@ -200,8 +207,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ember', default='ember')
     parser.add_argument('--threads', type=int, default=8)
-    parser.add_argument('--work', type=Path, required=True)
+    parser.add_argument('--work', type=Path)
     parser.add_argument('--output', type=Path, default=Path('catalogs'))
+    parser.add_argument('--export-game-levels', nargs=2, type=Path, metavar=('ENCOUNTER_DIR', 'JSONL'),
+                        help='export just the game presets in this directory as fixed, test-only catalog rows')
     options = parser.parse_args()
-    options.work.mkdir(parents=True, exist_ok=True)
-    build(options)
+    if options.export_game_levels:
+        directory, output = options.export_game_levels
+        rows = game_levels(directory)
+        if not rows:
+            parser.error(f'no game presets found in {directory}')
+        write_rows(output, rows)
+    elif options.work is None:
+        parser.error('--work is required to build the generated encounter catalog')
+    else:
+        options.work.mkdir(parents=True, exist_ok=True)
+        build(options)

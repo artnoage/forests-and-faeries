@@ -1,0 +1,466 @@
+{
+ "id": "reed_lock",
+ "name": "Reed Lock",
+ "order": 5,
+ "map": "reed_lock",
+ "theme": "catacombs",
+ "blurb": "Two crossings lead between the banks of a stone lock. A central divide screens the opposite towpath.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_towpath",
+   "name": "The Towpath",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "Both towpaths reach the two crossings over the lock.",
+   "party": ["mara_l1", "ilyra_l1"],
+   "roster": ["ghoul", "skeleton", "skeleton"],
+   "placements": {
+    "mara_l1": [2, 3],
+    "ilyra_l1": [2, 7],
+    "ghoul-1": [12, 3],
+    "skeleton-1": [13, 7],
+    "skeleton-2": [11, 3]
+   }
+  },
+  {
+   "id": "l1_the_loose_mooring",
+   "name": "The Loose Mooring",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["guy_l1", "elion_l1", "chruna_l1"],
+   "roster": ["ghast", "skeleton"],
+   "placements": {
+    "guy_l1": [4, 2],
+    "elion_l1": [8, 3],
+    "chruna_l1": [5, 2],
+    "ghast-1": [11, 9],
+    "skeleton-1": [6, 9]
+   }
+  },
+  {
+   "id": "l1_at_the_sluice",
+   "name": "At the Sluice",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The long banks turn a diagonal crossing into a choice of bridges.",
+   "party": ["elion_l1", "curogana_l1", "mara_l1"],
+   "roster": ["goblin_minion", "goblin_minion", "goblin_warrior", "goblin_warrior", "goblin_warrior", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "elion_l1": [2, 8],
+    "curogana_l1": [4, 9],
+    "mara_l1": [2, 9],
+    "goblin_minion-1": [11, 2],
+    "goblin_minion-2": [13, 3],
+    "goblin_warrior-1": [10, 2],
+    "goblin_warrior-2": [13, 4],
+    "goblin_warrior-3": [11, 4],
+    "kobold_warrior-1": [13, 2],
+    "kobold_warrior-2": [9, 2]
+   }
+  },
+  {
+   "id": "l1_the_reed_cutters",
+   "name": "The Reed Cutters",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["curogana_l1", "mara_l1", "ilyra_l1"],
+   "roster": ["skeleton", "wight"],
+   "placements": {
+    "curogana_l1": [13, 5],
+    "mara_l1": [13, 7],
+    "ilyra_l1": [11, 5],
+    "skeleton-1": [4, 3],
+    "wight-1": [4, 8]
+   }
+  },
+  {
+   "id": "l1_the_wick_basket",
+   "name": "The Wick Basket",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The lower crossing is only one square wide.",
+   "party": ["curogana_l1"],
+   "roster": ["shadow"],
+   "placements": {
+    "curogana_l1": [10, 2],
+    "shadow-1": [4, 8]
+   }
+  },
+  {
+   "id": "l1_by_the_gauge",
+   "name": "By the Gauge",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The two openings in the lock wall lead onto the opposite towpath.",
+   "party": ["guy_l1", "curogana_l1"],
+   "roster": ["specter", "specter"],
+   "placements": {
+    "guy_l1": [6, 8],
+    "curogana_l1": [10, 9],
+    "specter-1": [3, 3],
+    "specter-2": [12, 3]
+   }
+  },
+  {
+   "id": "l1_the_lower_landing",
+   "name": "The Lower Landing",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The long bank links the landing to either crossing.",
+   "party": ["elion_l1", "mara_l1"],
+   "roster": ["animated_armor", "animated_armor"],
+   "placements": {
+    "elion_l1": [2, 6],
+    "mara_l1": [3, 8],
+    "animated_armor-1": [10, 3],
+    "animated_armor-2": [11, 8]
+   }
+  },
+  {
+   "id": "l1_the_ferry_token",
+   "name": "The Ferry Token",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The central divide hides part of the opposite approach.",
+   "party": ["curogana_l1", "chruna_l1"],
+   "roster": ["animated_armor", "skeleton"],
+   "placements": {
+    "curogana_l1": [4, 4],
+    "chruna_l1": [5, 2],
+    "animated_armor-1": [12, 6],
+    "skeleton-1": [9, 8]
+   }
+  },
+  {
+   "id": "l1_the_roped_gate",
+   "name": "The Roped Gate",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The near crossing leaves little cover once a figure reaches the far bank.",
+   "party": ["guy_l1", "elion_l1", "mara_l1"],
+   "roster": ["animated_armor", "animated_armor", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "guy_l1": [5, 5],
+    "elion_l1": [6, 8],
+    "mara_l1": [6, 5],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 6],
+    "kobold_warrior-1": [11, 2],
+    "kobold_warrior-2": [12, 7]
+   }
+  },
+  {
+   "id": "l2_the_lockkeepers_shift",
+   "name": "The Lockkeeper’s Shift",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "Both towpaths reach the two crossings over the lock.",
+   "party": ["elion_l2", "curogana_l2", "ilyra"],
+   "roster": ["ghast", "ghoul", "ghoul"],
+   "placements": {
+    "elion_l2": [12, 3],
+    "curogana_l2": [13, 7],
+    "ilyra": [11, 3],
+    "ghast-1": [2, 3],
+    "ghoul-1": [2, 7],
+    "ghoul-2": [2, 4]
+   }
+  },
+  {
+   "id": "l2_the_upper_weir",
+   "name": "The Upper Weir",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["curogana_l2", "mara", "chruna_l2"],
+   "roster": ["ghoul", "mummy", "skeleton", "zombie"],
+   "placements": {
+    "curogana_l2": [11, 9],
+    "mara": [6, 9],
+    "chruna_l2": [11, 8],
+    "ghoul-1": [4, 2],
+    "mummy-1": [8, 3],
+    "skeleton-1": [5, 2],
+    "zombie-1": [9, 1]
+   }
+  },
+  {
+   "id": "l2_the_east_culvert",
+   "name": "The East Culvert",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The long banks turn a diagonal crossing into a choice of bridges.",
+   "party": ["mara"],
+   "roster": ["ghoul", "ghoul"],
+   "placements": {
+    "mara": [11, 2],
+    "ghoul-1": [2, 8],
+    "ghoul-2": [4, 9]
+   }
+  },
+  {
+   "id": "l2_the_lift_chain",
+   "name": "The Lift Chain",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["guy_l2", "mara"],
+   "roster": ["animated_armor", "specter"],
+   "placements": {
+    "guy_l2": [4, 3],
+    "mara": [4, 8],
+    "animated_armor-1": [13, 5],
+    "specter-1": [13, 7]
+   }
+  },
+  {
+   "id": "l2_the_water_mark",
+   "name": "The Water Mark",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The lower crossing is only one square wide.",
+   "party": ["elion_l2", "ilyra"],
+   "roster": ["ghast", "ghast"],
+   "placements": {
+    "elion_l2": [4, 8],
+    "ilyra": [2, 6],
+    "ghast-1": [10, 2],
+    "ghast-2": [13, 3]
+   }
+  },
+  {
+   "id": "l2_the_timber_raft",
+   "name": "The Timber Raft",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The two openings in the lock wall lead onto the opposite towpath.",
+   "party": ["mara", "ilyra"],
+   "roster": ["mummy"],
+   "placements": {
+    "mara": [3, 3],
+    "ilyra": [12, 3],
+    "mummy-1": [6, 8]
+   }
+  },
+  {
+   "id": "l2_silt_on_the_steps",
+   "name": "Silt on the Steps",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The long bank links the landing to either crossing.",
+   "party": ["guy_l2", "elion_l2", "chruna_l2"],
+   "roster": ["shadow", "skeleton", "wight"],
+   "placements": {
+    "guy_l2": [10, 3],
+    "elion_l2": [11, 8],
+    "chruna_l2": [9, 3],
+    "shadow-1": [2, 6],
+    "skeleton-1": [3, 8],
+    "wight-1": [2, 5]
+   }
+  },
+  {
+   "id": "l2_the_gauge_room",
+   "name": "The Gauge Room",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The central divide hides part of the opposite approach.",
+   "party": ["elion_l2", "curogana_l2", "mara"],
+   "roster": ["animated_armor", "animated_armor", "goblin_minion", "goblin_minion", "goblin_minion", "goblin_minion", "goblin_warrior", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "elion_l2": [12, 6],
+    "curogana_l2": [9, 8],
+    "mara": [11, 6],
+    "animated_armor-1": [4, 4],
+    "animated_armor-2": [5, 2],
+    "goblin_minion-1": [3, 4],
+    "goblin_minion-2": [6, 4],
+    "goblin_minion-3": [4, 2],
+    "goblin_minion-4": [6, 2],
+    "goblin_warrior-1": [2, 4],
+    "kobold_warrior-1": [5, 4],
+    "kobold_warrior-2": [4, 6]
+   }
+  },
+  {
+   "id": "l2_the_second_crossing",
+   "name": "The Second Crossing",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The near crossing leaves little cover once a figure reaches the far bank.",
+   "party": ["curogana_l2", "mara", "ilyra"],
+   "roster": ["shadow", "specter", "wight"],
+   "placements": {
+    "curogana_l2": [11, 3],
+    "mara": [12, 6],
+    "ilyra": [11, 2],
+    "shadow-1": [5, 5],
+    "specter-1": [6, 8],
+    "wight-1": [6, 5]
+   }
+  },
+  {
+   "id": "l3_high_water",
+   "name": "High Water",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "Both towpaths reach the two crossings over the lock.",
+   "party": ["ilyra_l3"],
+   "roster": ["goblin_boss", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "ilyra_l3": [2, 3],
+    "goblin_boss-1": [12, 3],
+    "goblin_warrior-1": [13, 7],
+    "kobold_warrior-1": [11, 3]
+   }
+  },
+  {
+   "id": "l3_the_broken_capstan",
+   "name": "The Broken Capstan",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["guy", "ilyra_l3"],
+   "roster": ["shadow", "wight"],
+   "placements": {
+    "guy": [4, 2],
+    "ilyra_l3": [8, 3],
+    "shadow-1": [11, 9],
+    "wight-1": [6, 9]
+   }
+  },
+  {
+   "id": "l3_the_final_passage",
+   "name": "The Final Passage",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The long banks turn a diagonal crossing into a choice of bridges.",
+   "party": ["elion", "chruna"],
+   "roster": ["goblin_boss", "goblin_minion", "goblin_minion", "goblin_warrior", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "elion": [2, 8],
+    "chruna": [4, 9],
+    "goblin_boss-1": [11, 2],
+    "goblin_minion-1": [13, 3],
+    "goblin_minion-2": [10, 2],
+    "goblin_warrior-1": [13, 4],
+    "goblin_warrior-2": [11, 4],
+    "goblin_warrior-3": [13, 2],
+    "kobold_warrior-1": [9, 2]
+   }
+  },
+  {
+   "id": "l3_the_flood_bell",
+   "name": "The Flood Bell",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["mara_l3", "chruna"],
+   "roster": ["ghast", "ghoul", "ghoul", "skeleton", "skeleton", "skeleton"],
+   "placements": {
+    "mara_l3": [13, 5],
+    "chruna": [13, 7],
+    "ghast-1": [4, 3],
+    "ghoul-1": [4, 8],
+    "ghoul-2": [4, 2],
+    "skeleton-1": [5, 8],
+    "skeleton-2": [2, 3],
+    "skeleton-3": [3, 8]
+   }
+  },
+  {
+   "id": "l3_the_stone_sill",
+   "name": "The Stone Sill",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The lower crossing is only one square wide.",
+   "party": ["guy", "curogana", "mara_l3"],
+   "roster": ["mummy", "mummy", "mummy", "shadow", "shadow", "zombie"],
+   "placements": {
+    "guy": [10, 2],
+    "curogana": [13, 3],
+    "mara_l3": [11, 2],
+    "mummy-1": [4, 8],
+    "mummy-2": [2, 6],
+    "mummy-3": [4, 9],
+    "shadow-1": [4, 6],
+    "shadow-2": [6, 8],
+    "zombie-1": [2, 7]
+   }
+  },
+  {
+   "id": "l3_the_night_barge",
+   "name": "The Night Barge",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The two openings in the lock wall lead onto the opposite towpath.",
+   "party": ["elion", "curogana", "ilyra_l3"],
+   "roster": ["ghast", "ghast", "ghoul", "ghoul", "ghoul", "ghoul", "zombie", "zombie"],
+   "placements": {
+    "elion": [6, 8],
+    "curogana": [10, 9],
+    "ilyra_l3": [6, 9],
+    "ghast-1": [3, 3],
+    "ghast-2": [12, 3],
+    "ghoul-1": [3, 1],
+    "ghoul-2": [11, 3],
+    "ghoul-3": [4, 3],
+    "ghoul-4": [13, 3],
+    "zombie-1": [2, 3],
+    "zombie-2": [11, 5]
+   }
+  },
+  {
+   "id": "l3_the_sunken_toll",
+   "name": "The Sunken Toll",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The long bank links the landing to either crossing.",
+   "party": ["curogana", "mara_l3", "chruna"],
+   "roster": ["mummy", "mummy", "mummy"],
+   "placements": {
+    "curogana": [2, 6],
+    "mara_l3": [3, 8],
+    "chruna": [2, 5],
+    "mummy-1": [10, 3],
+    "mummy-2": [11, 8],
+    "mummy-3": [9, 3]
+   }
+  },
+  {
+   "id": "l3_the_dry_channel",
+   "name": "The Dry Channel",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide hides part of the opposite approach.",
+   "party": ["mara_l3"],
+   "roster": ["ghast", "skeleton", "zombie"],
+   "placements": {
+    "mara_l3": [4, 4],
+    "ghast-1": [12, 6],
+    "skeleton-1": [9, 8],
+    "zombie-1": [11, 6]
+   }
+  },
+  {
+   "id": "l3_the_last_lockkeeper",
+   "name": "The Last Lockkeeper",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The near crossing leaves little cover once a figure reaches the far bank.",
+   "party": ["guy", "mara_l3"],
+   "roster": ["animated_armor", "skeleton", "specter"],
+   "placements": {
+    "guy": [5, 5],
+    "mara_l3": [6, 8],
+    "animated_armor-1": [11, 3],
+    "skeleton-1": [12, 6],
+    "specter-1": [11, 2]
+   }
+  }
+ ]
+}

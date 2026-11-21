@@ -1,0 +1,475 @@
+{
+ "id": "lantern_mine",
+ "name": "Lantern Mine",
+ "order": 4,
+ "map": "lantern_mine",
+ "theme": "caverns",
+ "blurb": "Two winding galleries join around a seam of uncut rock.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_lamp_shelf",
+   "name": "The Lamp Shelf",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The rock spine splits the gallery before the far lamp shelf.",
+   "party": ["guy_l1", "ilyra_l1"],
+   "roster": ["ghast", "zombie"],
+   "placements": {
+    "guy_l1": [2, 3],
+    "ilyra_l1": [2, 7],
+    "ghast-1": [12, 3],
+    "zombie-1": [13, 7]
+   }
+  },
+  {
+   "id": "l1_chalk_arrows",
+   "name": "Chalk Arrows",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "Two low seams block a straight passage down the mine.",
+   "party": ["elion_l1", "chruna_l1"],
+   "roster": ["shadow", "shadow", "skeleton", "skeleton", "skeleton"],
+   "placements": {
+    "elion_l1": [4, 2],
+    "chruna_l1": [7, 2],
+    "shadow-1": [11, 9],
+    "shadow-2": [6, 9],
+    "skeleton-1": [12, 9],
+    "skeleton-2": [5, 9],
+    "skeleton-3": [10, 9]
+   }
+  },
+  {
+   "id": "l1_the_bent_rail",
+   "name": "The Bent Rail",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The rail bends around a tongue of uncut rock.",
+   "party": ["mara_l1", "chruna_l1"],
+   "roster": ["ghoul", "zombie"],
+   "placements": {
+    "mara_l1": [2, 8],
+    "chruna_l1": [4, 10],
+    "ghoul-1": [11, 2],
+    "zombie-1": [13, 3]
+   }
+  },
+  {
+   "id": "l1_a_shift_below",
+   "name": "A Shift Below",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The largest outcrop has a passage on either side.",
+   "party": ["guy_l1", "curogana_l1", "mara_l1"],
+   "roster": ["animated_armor", "skeleton", "specter"],
+   "placements": {
+    "guy_l1": [12, 4],
+    "curogana_l1": [13, 7],
+    "mara_l1": [13, 5],
+    "animated_armor-1": [4, 3],
+    "skeleton-1": [5, 8],
+    "specter-1": [4, 2]
+   }
+  },
+  {
+   "id": "l1_loose_shale",
+   "name": "Loose Shale",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The straight diagonal crosses the rock face. The galleries curve around it.",
+   "party": ["elion_l1", "curogana_l1", "ilyra_l1"],
+   "roster": ["ghoul", "ghoul", "ghoul", "ghoul", "skeleton", "zombie"],
+   "placements": {
+    "elion_l1": [10, 2],
+    "curogana_l1": [13, 3],
+    "ilyra_l1": [11, 2],
+    "ghoul-1": [5, 8],
+    "ghoul-2": [3, 6],
+    "ghoul-3": [3, 9],
+    "ghoul-4": [3, 7],
+    "skeleton-1": [5, 9],
+    "zombie-1": [3, 5]
+   }
+  },
+  {
+   "id": "l1_the_lamp_trimmer",
+   "name": "The Lamp Trimmer",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "Two galleries meet below the central seam.",
+   "party": ["curogana_l1", "mara_l1", "chruna_l1"],
+   "roster": ["animated_armor", "skeleton"],
+   "placements": {
+    "curogana_l1": [6, 8],
+    "mara_l1": [10, 9],
+    "chruna_l1": [6, 9],
+    "animated_armor-1": [3, 2],
+    "skeleton-1": [12, 3]
+   }
+  },
+  {
+   "id": "l1_the_upper_drift",
+   "name": "The Upper Drift",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The upper drift rejoins the broad passage at the far wall.",
+   "party": ["mara_l1"],
+   "roster": ["ghast"],
+   "placements": {
+    "mara_l1": [2, 6],
+    "ghast-1": [10, 3]
+   }
+  },
+  {
+   "id": "l1_the_split_seam",
+   "name": "The Split Seam",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The near bend hides the far end of the gallery.",
+   "party": ["guy_l1", "mara_l1"],
+   "roster": ["wight"],
+   "placements": {
+    "guy_l1": [4, 3],
+    "mara_l1": [6, 3],
+    "wight-1": [13, 6]
+   }
+  },
+  {
+   "id": "l1_a_knock_in_the_rock",
+   "name": "A Knock in the Rock",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "Beyond the rock spur, the passage opens into a working chamber.",
+   "party": ["elion_l1", "ilyra_l1"],
+   "roster": ["ghast"],
+   "placements": {
+    "elion_l1": [6, 6],
+    "ilyra_l1": [6, 8],
+    "ghast-1": [11, 3]
+   }
+  },
+  {
+   "id": "l2_at_the_ore_chute",
+   "name": "At the Ore Chute",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The rock spine splits the gallery before the far lamp shelf.",
+   "party": ["ilyra", "chruna_l2"],
+   "roster": ["animated_armor", "goblin_boss", "kobold_warrior", "kobold_warrior", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "ilyra": [12, 3],
+    "chruna_l2": [13, 7],
+    "animated_armor-1": [2, 3],
+    "goblin_boss-1": [2, 7],
+    "kobold_warrior-1": [2, 4],
+    "kobold_warrior-2": [3, 7],
+    "kobold_warrior-3": [2, 2],
+    "kobold_warrior-4": [1, 7]
+   }
+  },
+  {
+   "id": "l2_the_long_haul",
+   "name": "The Long Haul",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "Two low seams block a straight passage down the mine.",
+   "party": ["guy_l2", "curogana_l2", "ilyra"],
+   "roster": ["ghoul", "skeleton", "skeleton", "zombie"],
+   "placements": {
+    "guy_l2": [11, 9],
+    "curogana_l2": [6, 9],
+    "ilyra": [12, 9],
+    "ghoul-1": [4, 2],
+    "skeleton-1": [7, 2],
+    "skeleton-2": [5, 2],
+    "zombie-1": [7, 1]
+   }
+  },
+  {
+   "id": "l2_the_last_wick",
+   "name": "The Last Wick",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The rail bends around a tongue of uncut rock.",
+   "party": ["elion_l2", "curogana_l2", "chruna_l2"],
+   "roster": ["shadow", "specter", "wight"],
+   "placements": {
+    "elion_l2": [11, 2],
+    "curogana_l2": [13, 3],
+    "chruna_l2": [10, 2],
+    "shadow-1": [2, 8],
+    "specter-1": [4, 10],
+    "wight-1": [2, 9]
+   }
+  },
+  {
+   "id": "l2_pay_at_the_pithead",
+   "name": "Pay at the Pithead",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The largest outcrop has a passage on either side.",
+   "party": ["mara", "ilyra", "chruna_l2"],
+   "roster": ["ghoul", "shadow", "wight", "zombie"],
+   "placements": {
+    "mara": [4, 3],
+    "ilyra": [5, 8],
+    "chruna_l2": [4, 2],
+    "ghoul-1": [12, 4],
+    "shadow-1": [13, 7],
+    "wight-1": [13, 5],
+    "zombie-1": [12, 7]
+   }
+  },
+  {
+   "id": "l2_the_far_gallery",
+   "name": "The Far Gallery",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The straight diagonal crosses the rock face. The galleries curve around it.",
+   "party": ["ilyra"],
+   "roster": ["zombie"],
+   "placements": {
+    "ilyra": [5, 8],
+    "zombie-1": [10, 2]
+   }
+  },
+  {
+   "id": "l2_the_survey_mark",
+   "name": "The Survey Mark",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Two galleries meet below the central seam.",
+   "party": ["guy_l2", "ilyra"],
+   "roster": ["goblin_boss", "goblin_boss", "skeleton"],
+   "placements": {
+    "guy_l2": [3, 2],
+    "ilyra": [12, 3],
+    "goblin_boss-1": [6, 8],
+    "goblin_boss-2": [10, 9],
+    "skeleton-1": [6, 9]
+   }
+  },
+  {
+   "id": "l2_the_weigh_house",
+   "name": "The Weigh House",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The upper drift rejoins the broad passage at the far wall.",
+   "party": ["elion_l2", "chruna_l2"],
+   "roster": ["mummy"],
+   "placements": {
+    "elion_l2": [10, 3],
+    "chruna_l2": [11, 8],
+    "mummy-1": [2, 6]
+   }
+  },
+  {
+   "id": "l2_blue_stone",
+   "name": "Blue Stone",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The near bend hides the far end of the gallery.",
+   "party": ["mara", "chruna_l2"],
+   "roster": ["goblin_boss", "goblin_boss", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "mara": [13, 6],
+    "chruna_l2": [9, 9],
+    "goblin_boss-1": [4, 3],
+    "goblin_boss-2": [6, 3],
+    "kobold_warrior-1": [3, 5],
+    "kobold_warrior-2": [5, 1]
+   }
+  },
+  {
+   "id": "l2_the_sealed_face",
+   "name": "The Sealed Face",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Beyond the rock spur, the passage opens into a working chamber.",
+   "party": ["guy_l2", "curogana_l2", "mara"],
+   "roster": ["ghoul", "mummy"],
+   "placements": {
+    "guy_l2": [11, 3],
+    "curogana_l2": [12, 7],
+    "mara": [11, 2],
+    "ghoul-1": [6, 6],
+    "mummy-1": [6, 8]
+   }
+  },
+  {
+   "id": "l3_the_deep_shift",
+   "name": "The Deep Shift",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The rock spine splits the gallery before the far lamp shelf.",
+   "party": ["elion", "mara_l3", "ilyra_l3"],
+   "roster": ["animated_armor", "animated_armor", "animated_armor", "animated_armor", "specter"],
+   "placements": {
+    "elion": [2, 3],
+    "mara_l3": [2, 7],
+    "ilyra_l3": [2, 4],
+    "animated_armor-1": [12, 3],
+    "animated_armor-2": [13, 7],
+    "animated_armor-3": [12, 4],
+    "animated_armor-4": [12, 7],
+    "specter-1": [10, 3]
+   }
+  },
+  {
+   "id": "l3_the_drowned_winch",
+   "name": "The Drowned Winch",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "Two low seams block a straight passage down the mine.",
+   "party": ["guy"],
+   "roster": ["ghoul", "skeleton", "skeleton"],
+   "placements": {
+    "guy": [4, 2],
+    "ghoul-1": [11, 9],
+    "skeleton-1": [6, 9],
+    "skeleton-2": [12, 9]
+   }
+  },
+  {
+   "id": "l3_three_unlit_lamps",
+   "name": "Three Unlit Lamps",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The rail bends around a tongue of uncut rock.",
+   "party": ["chruna"],
+   "roster": ["animated_armor", "animated_armor", "shadow"],
+   "placements": {
+    "chruna": [2, 8],
+    "animated_armor-1": [11, 2],
+    "animated_armor-2": [13, 3],
+    "shadow-1": [10, 2]
+   }
+  },
+  {
+   "id": "l3_the_sounding_rod",
+   "name": "The Sounding Rod",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The largest outcrop has a passage on either side.",
+   "party": ["guy", "chruna"],
+   "roster": ["animated_armor", "goblin_boss", "kobold_warrior"],
+   "placements": {
+    "guy": [12, 4],
+    "chruna": [13, 7],
+    "animated_armor-1": [4, 3],
+    "goblin_boss-1": [5, 8],
+    "kobold_warrior-1": [4, 2]
+   }
+  },
+  {
+   "id": "l3_the_empty_cart",
+   "name": "The Empty Cart",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The straight diagonal crosses the rock face. The galleries curve around it.",
+   "party": ["curogana", "mara_l3"],
+   "roster": ["ghoul", "mummy", "mummy", "skeleton", "zombie", "zombie", "zombie"],
+   "placements": {
+    "curogana": [10, 2],
+    "mara_l3": [13, 3],
+    "ghoul-1": [5, 8],
+    "mummy-1": [3, 6],
+    "mummy-2": [3, 9],
+    "skeleton-1": [3, 7],
+    "zombie-1": [5, 9],
+    "zombie-2": [3, 5],
+    "zombie-3": [5, 7]
+   }
+  },
+  {
+   "id": "l3_the_fault_line",
+   "name": "The Fault Line",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Two galleries meet below the central seam.",
+   "party": ["ilyra_l3", "chruna"],
+   "roster": ["ghast", "ghast", "ghast", "goblin_minion", "skeleton"],
+   "placements": {
+    "ilyra_l3": [6, 8],
+    "chruna": [10, 9],
+    "ghast-1": [3, 2],
+    "ghast-2": [12, 3],
+    "ghast-3": [3, 3],
+    "goblin_minion-1": [11, 3],
+    "skeleton-1": [5, 2]
+   }
+  },
+  {
+   "id": "l3_a_breath_of_air",
+   "name": "A Breath of Air",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The upper drift rejoins the broad passage at the far wall.",
+   "party": ["guy", "curogana", "ilyra_l3"],
+   "roster": ["mummy", "mummy", "skeleton", "skeleton", "skeleton", "zombie", "zombie"],
+   "placements": {
+    "guy": [2, 6],
+    "curogana": [4, 7],
+    "ilyra_l3": [2, 5],
+    "mummy-1": [10, 3],
+    "mummy-2": [11, 8],
+    "skeleton-1": [9, 3],
+    "skeleton-2": [11, 9],
+    "skeleton-3": [11, 3],
+    "zombie-1": [9, 9],
+    "zombie-2": [10, 1]
+   }
+  },
+  {
+   "id": "l3_under_the_loadstone",
+   "name": "Under the Loadstone",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The near bend hides the far end of the gallery.",
+   "party": ["elion", "curogana", "chruna"],
+   "roster": ["shadow", "shadow", "skeleton", "skeleton", "specter", "wight", "wight"],
+   "placements": {
+    "elion": [4, 3],
+    "curogana": [6, 3],
+    "chruna": [3, 5],
+    "shadow-1": [13, 6],
+    "shadow-2": [9, 9],
+    "skeleton-1": [12, 4],
+    "skeleton-2": [9, 7],
+    "specter-1": [11, 7],
+    "wight-1": [10, 9],
+    "wight-2": [13, 7]
+   }
+  },
+  {
+   "id": "l3_the_old_claim",
+   "name": "The Old Claim",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Beyond the rock spur, the passage opens into a working chamber.",
+   "party": ["mara_l3", "ilyra_l3", "chruna"],
+   "roster": ["animated_armor", "animated_armor", "animated_armor", "animated_armor", "animated_armor", "animated_armor", "goblin_minion", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "mara_l3": [6, 6],
+    "ilyra_l3": [6, 8],
+    "chruna": [4, 6],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 7],
+    "animated_armor-3": [11, 2],
+    "animated_armor-4": [13, 5],
+    "animated_armor-5": [9, 3],
+    "animated_armor-6": [13, 7],
+    "goblin_minion-1": [13, 3],
+    "goblin_warrior-1": [11, 7],
+    "goblin_warrior-2": [11, 1],
+    "goblin_warrior-3": [14, 7],
+    "goblin_warrior-4": [13, 2],
+    "goblin_warrior-5": [12, 9],
+    "goblin_warrior-6": [10, 4],
+    "kobold_warrior-1": [10, 7]
+   }
+  }
+ ]
+}

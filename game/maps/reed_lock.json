@@ -1,0 +1,21 @@
+{
+ "version": 1,
+ "map": {
+  "name": "reed_lock",
+  "display_name": "Reed Lock",
+  "rows": [
+   "HHHHHHHHHHHHHHHH",
+   "H......HH.....HH",
+   "H.HH...HH.....HH",
+   "H..............H",
+   "H...........H..H",
+   "H......HH...H..H",
+   "H..H...HH......H",
+   "H..H...HH......H",
+   "H..............H",
+   "HH.....HH...HH.H",
+   "HH.....HH......H",
+   "HHHHHHHHHHHHHHHH"
+  ]
+ }
+}

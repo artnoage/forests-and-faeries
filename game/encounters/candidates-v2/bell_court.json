@@ -1,0 +1,476 @@
+{
+ "id": "bell_court",
+ "name": "Bell Court",
+ "order": 3,
+ "map": "bell_court",
+ "theme": "sanctum",
+ "blurb": "The bell piers divide a paved court into an open aisle and two covered approaches.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_first_bell",
+   "name": "First Bell",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The middle aisle runs straight between the bell piers.",
+   "party": ["guy_l1"],
+   "roster": ["kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "guy_l1": [2, 3],
+    "kobold_warrior-1": [11, 3],
+    "kobold_warrior-2": [12, 7]
+   }
+  },
+  {
+   "id": "l1_coins_in_the_font",
+   "name": "Coins in the Font",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "Two stone piers flank the approach to the belfry.",
+   "party": ["chruna_l1"],
+   "roster": ["animated_armor"],
+   "placements": {
+    "chruna_l1": [4, 2],
+    "animated_armor-1": [10, 8]
+   }
+  },
+  {
+   "id": "l1_the_rope_walk",
+   "name": "The Rope Walk",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The arcade screens the diagonal route across the court.",
+   "party": ["guy_l1", "chruna_l1"],
+   "roster": ["ghast", "kobold_warrior", "kobold_warrior", "skeleton"],
+   "placements": {
+    "guy_l1": [2, 8],
+    "chruna_l1": [4, 8],
+    "ghast-1": [10, 2],
+    "kobold_warrior-1": [12, 3],
+    "kobold_warrior-2": [10, 1],
+    "skeleton-1": [12, 4]
+   }
+  },
+  {
+   "id": "l1_the_missing_clapper",
+   "name": "The Missing Clapper",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "Two approaches open around the west pier.",
+   "party": ["curogana_l1", "mara_l1"],
+   "roster": ["ghoul", "zombie"],
+   "placements": {
+    "curogana_l1": [11, 4],
+    "mara_l1": [12, 6],
+    "ghoul-1": [3, 2],
+    "zombie-1": [4, 8]
+   }
+  },
+  {
+   "id": "l1_the_west_arcade",
+   "name": "The West Arcade",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The far corners of the court lie beyond a double row of piers.",
+   "party": ["ilyra_l1", "chruna_l1"],
+   "roster": ["specter", "specter"],
+   "placements": {
+    "ilyra_l1": [10, 2],
+    "chruna_l1": [12, 3],
+    "specter-1": [4, 8],
+    "specter-2": [3, 6]
+   }
+  },
+  {
+   "id": "l1_a_key_for_the_belfry",
+   "name": "A Key for the Belfry",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The middle aisle joins the upper and lower courts.",
+   "party": ["guy_l1", "curogana_l1", "ilyra_l1"],
+   "roster": ["animated_armor", "animated_armor", "goblin_warrior", "skeleton"],
+   "placements": {
+    "guy_l1": [6, 8],
+    "curogana_l1": [9, 8],
+    "ilyra_l1": [6, 7],
+    "animated_armor-1": [3, 2],
+    "animated_armor-2": [11, 3],
+    "goblin_warrior-1": [3, 3],
+    "skeleton-1": [11, 2]
+   }
+  },
+  {
+   "id": "l1_the_side_gate",
+   "name": "The Side Gate",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "The side passages skirt the bases of the bells.",
+   "party": ["elion_l1", "curogana_l1", "chruna_l1"],
+   "roster": ["goblin_boss", "goblin_minion", "goblin_minion", "goblin_minion", "goblin_minion", "kobold_warrior"],
+   "placements": {
+    "elion_l1": [2, 6],
+    "curogana_l1": [4, 6],
+    "chruna_l1": [2, 4],
+    "goblin_boss-1": [9, 3],
+    "goblin_minion-1": [10, 8],
+    "goblin_minion-2": [9, 2],
+    "goblin_minion-3": [10, 6],
+    "goblin_minion-4": [11, 3],
+    "kobold_warrior-1": [11, 8]
+   }
+  },
+  {
+   "id": "l1_the_bell_steps",
+   "name": "The Bell Steps",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "The narrow outer arcade opens onto the centre of the court.",
+   "party": ["mara_l1", "ilyra_l1", "chruna_l1"],
+   "roster": ["ghoul", "ghoul"],
+   "placements": {
+    "mara_l1": [3, 3],
+    "ilyra_l1": [5, 2],
+    "chruna_l1": [3, 4],
+    "ghoul-1": [11, 5],
+    "ghoul-2": [9, 8]
+   }
+  },
+  {
+   "id": "l1_the_silent_fountain",
+   "name": "The Silent Fountain",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The southern plinths stand between the fountain and the open aisle.",
+   "party": ["ilyra_l1"],
+   "roster": ["skeleton", "skeleton"],
+   "placements": {
+    "ilyra_l1": [5, 5],
+    "skeleton-1": [10, 2],
+    "skeleton-2": [11, 6]
+   }
+  },
+  {
+   "id": "l2_the_noon_watch",
+   "name": "The Noon Watch",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The middle aisle runs straight between the bell piers.",
+   "party": ["elion_l2", "curogana_l2"],
+   "roster": ["mummy", "shadow"],
+   "placements": {
+    "elion_l2": [11, 3],
+    "curogana_l2": [12, 7],
+    "mummy-1": [2, 3],
+    "shadow-1": [2, 6]
+   }
+  },
+  {
+   "id": "l2_the_brass_measure",
+   "name": "The Brass Measure",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "Two stone piers flank the approach to the belfry.",
+   "party": ["curogana_l2", "ilyra"],
+   "roster": ["ghoul", "ghoul", "ghoul"],
+   "placements": {
+    "curogana_l2": [10, 8],
+    "ilyra": [5, 8],
+    "ghoul-1": [4, 2],
+    "ghoul-2": [7, 2],
+    "ghoul-3": [4, 1]
+   }
+  },
+  {
+   "id": "l2_rain_in_the_arcade",
+   "name": "Rain in the Arcade",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The arcade screens the diagonal route across the court.",
+   "party": ["guy_l2", "elion_l2", "curogana_l2"],
+   "roster": ["mummy", "shadow"],
+   "placements": {
+    "guy_l2": [10, 2],
+    "elion_l2": [12, 3],
+    "curogana_l2": [10, 1],
+    "mummy-1": [2, 8],
+    "shadow-1": [4, 8]
+   }
+  },
+  {
+   "id": "l2_the_wardens_bench",
+   "name": "The Warden’s Bench",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Two approaches open around the west pier.",
+   "party": ["guy_l2", "mara", "ilyra"],
+   "roster": ["animated_armor", "goblin_boss", "goblin_warrior", "goblin_warrior", "skeleton"],
+   "placements": {
+    "guy_l2": [3, 2],
+    "mara": [4, 8],
+    "ilyra": [4, 2],
+    "animated_armor-1": [11, 4],
+    "goblin_boss-1": [12, 6],
+    "goblin_warrior-1": [12, 4],
+    "goblin_warrior-2": [11, 6],
+    "skeleton-1": [13, 4]
+   }
+  },
+  {
+   "id": "l2_the_broken_dial",
+   "name": "The Broken Dial",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The far corners of the court lie beyond a double row of piers.",
+   "party": ["elion_l2", "mara", "ilyra"],
+   "roster": ["mummy", "skeleton", "skeleton", "skeleton", "skeleton", "zombie", "zombie"],
+   "placements": {
+    "elion_l2": [4, 8],
+    "mara": [3, 6],
+    "ilyra": [3, 8],
+    "mummy-1": [10, 2],
+    "skeleton-1": [12, 3],
+    "skeleton-2": [9, 2],
+    "skeleton-3": [12, 2],
+    "skeleton-4": [8, 2],
+    "zombie-1": [12, 4],
+    "zombie-2": [9, 4]
+   }
+  },
+  {
+   "id": "l2_echoes_in_the_court",
+   "name": "Echoes in the Court",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The middle aisle joins the upper and lower courts.",
+   "party": ["guy_l2"],
+   "roster": ["ghoul"],
+   "placements": {
+    "guy_l2": [3, 2],
+    "ghoul-1": [6, 8]
+   }
+  },
+  {
+   "id": "l2_the_bell_founder",
+   "name": "The Bell Founder",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The side passages skirt the bases of the bells.",
+   "party": ["chruna_l2"],
+   "roster": ["animated_armor", "skeleton"],
+   "placements": {
+    "chruna_l2": [9, 3],
+    "animated_armor-1": [2, 6],
+    "skeleton-1": [4, 6]
+   }
+  },
+  {
+   "id": "l2_the_open_gate",
+   "name": "The Open Gate",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "The narrow outer arcade opens onto the centre of the court.",
+   "party": ["guy_l2", "chruna_l2"],
+   "roster": ["ghast", "goblin_minion", "kobold_warrior", "kobold_warrior", "skeleton", "skeleton", "skeleton"],
+   "placements": {
+    "guy_l2": [11, 5],
+    "chruna_l2": [9, 8],
+    "ghast-1": [3, 3],
+    "goblin_minion-1": [5, 2],
+    "kobold_warrior-1": [3, 4],
+    "kobold_warrior-2": [5, 3],
+    "skeleton-1": [3, 2],
+    "skeleton-2": [5, 1],
+    "skeleton-3": [5, 4]
+   }
+  },
+  {
+   "id": "l2_the_tenth_stroke",
+   "name": "The Tenth Stroke",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "The southern plinths stand between the fountain and the open aisle.",
+   "party": ["curogana_l2", "mara"],
+   "roster": ["animated_armor", "goblin_minion", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "curogana_l2": [10, 2],
+    "mara": [11, 6],
+    "animated_armor-1": [5, 5],
+    "goblin_minion-1": [6, 7],
+    "goblin_warrior-1": [5, 4],
+    "kobold_warrior-1": [4, 8]
+   }
+  },
+  {
+   "id": "l3_the_night_bell",
+   "name": "The Night Bell",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The middle aisle runs straight between the bell piers.",
+   "party": ["guy", "elion", "mara_l3"],
+   "roster": ["animated_armor", "animated_armor", "animated_armor", "animated_armor", "skeleton", "specter", "specter"],
+   "placements": {
+    "guy": [2, 3],
+    "elion": [2, 6],
+    "mara_l3": [1, 3],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 7],
+    "animated_armor-3": [11, 2],
+    "animated_armor-4": [12, 6],
+    "skeleton-1": [11, 4],
+    "specter-1": [10, 6],
+    "specter-2": [9, 3]
+   }
+  },
+  {
+   "id": "l3_the_last_toll",
+   "name": "The Last Toll",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "Two stone piers flank the approach to the belfry.",
+   "party": ["guy", "ilyra_l3", "chruna"],
+   "roster": ["animated_armor", "animated_armor", "animated_armor", "animated_armor", "goblin_boss"],
+   "placements": {
+    "guy": [4, 2],
+    "ilyra_l3": [7, 2],
+    "chruna": [4, 1],
+    "animated_armor-1": [10, 8],
+    "animated_armor-2": [5, 8],
+    "animated_armor-3": [11, 8],
+    "animated_armor-4": [6, 8],
+    "goblin_boss-1": [9, 8]
+   }
+  },
+  {
+   "id": "l3_bronze_at_dawn",
+   "name": "Bronze at Dawn",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The arcade screens the diagonal route across the court.",
+   "party": ["elion", "ilyra_l3", "chruna"],
+   "roster": ["ghoul", "shadow", "wight", "wight", "zombie"],
+   "placements": {
+    "elion": [2, 8],
+    "ilyra_l3": [4, 8],
+    "chruna": [2, 7],
+    "ghoul-1": [10, 2],
+    "shadow-1": [12, 3],
+    "wight-1": [10, 1],
+    "wight-2": [12, 4],
+    "zombie-1": [8, 2]
+   }
+  },
+  {
+   "id": "l3_the_south_procession",
+   "name": "The South Procession",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Two approaches open around the west pier.",
+   "party": ["elion"],
+   "roster": ["ghast", "ghast", "goblin_minion", "goblin_minion", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "elion": [11, 4],
+    "ghast-1": [3, 2],
+    "ghast-2": [4, 8],
+    "goblin_minion-1": [4, 2],
+    "goblin_minion-2": [4, 6],
+    "kobold_warrior-1": [3, 4],
+    "kobold_warrior-2": [5, 8]
+   }
+  },
+  {
+   "id": "l3_the_empty_balcony",
+   "name": "The Empty Balcony",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The far corners of the court lie beyond a double row of piers.",
+   "party": ["guy", "elion"],
+   "roster": ["goblin_boss", "goblin_boss", "goblin_boss", "goblin_warrior"],
+   "placements": {
+    "guy": [10, 2],
+    "elion": [12, 3],
+    "goblin_boss-1": [4, 8],
+    "goblin_boss-2": [3, 6],
+    "goblin_boss-3": [3, 8],
+    "goblin_warrior-1": [2, 6]
+   }
+  },
+  {
+   "id": "l3_the_long_service",
+   "name": "The Long Service",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The middle aisle joins the upper and lower courts.",
+   "party": ["elion", "curogana"],
+   "roster": ["shadow", "skeleton", "skeleton", "specter", "wight"],
+   "placements": {
+    "elion": [6, 8],
+    "curogana": [9, 8],
+    "shadow-1": [3, 2],
+    "skeleton-1": [11, 3],
+    "skeleton-2": [3, 3],
+    "specter-1": [11, 2],
+    "wight-1": [3, 1]
+   }
+  },
+  {
+   "id": "l3_bells_without_ropes",
+   "name": "Bells Without Ropes",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The side passages skirt the bases of the bells.",
+   "party": ["curogana", "ilyra_l3"],
+   "roster": ["shadow", "wight", "zombie", "zombie"],
+   "placements": {
+    "curogana": [2, 6],
+    "ilyra_l3": [4, 6],
+    "shadow-1": [9, 3],
+    "wight-1": [10, 8],
+    "zombie-1": [9, 2],
+    "zombie-2": [10, 6]
+   }
+  },
+  {
+   "id": "l3_the_clockless_hour",
+   "name": "The Clockless Hour",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "The narrow outer arcade opens onto the centre of the court.",
+   "party": ["guy", "elion", "curogana"],
+   "roster": ["animated_armor", "animated_armor", "skeleton", "skeleton", "specter", "specter", "specter", "specter"],
+   "placements": {
+    "guy": [3, 3],
+    "elion": [5, 2],
+    "curogana": [3, 4],
+    "animated_armor-1": [11, 5],
+    "animated_armor-2": [9, 8],
+    "skeleton-1": [11, 6],
+    "skeleton-2": [8, 8],
+    "specter-1": [11, 4],
+    "specter-2": [9, 6],
+    "specter-3": [13, 6],
+    "specter-4": [10, 8]
+   }
+  },
+  {
+   "id": "l3_the_bellringers_debt",
+   "name": "The Bellringer’s Debt",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The southern plinths stand between the fountain and the open aisle.",
+   "party": ["guy", "mara_l3", "ilyra_l3"],
+   "roster": ["animated_armor", "goblin_boss", "goblin_boss", "goblin_boss", "goblin_boss", "skeleton"],
+   "placements": {
+    "guy": [5, 5],
+    "mara_l3": [6, 7],
+    "ilyra_l3": [5, 4],
+    "animated_armor-1": [10, 2],
+    "goblin_boss-1": [11, 6],
+    "goblin_boss-2": [11, 2],
+    "goblin_boss-3": [12, 6],
+    "goblin_boss-4": [11, 4],
+    "skeleton-1": [10, 6]
+   }
+  }
+ ]
+}
