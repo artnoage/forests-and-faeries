@@ -298,7 +298,7 @@ impl Fight {
 
     /// `expected_dpr(creature, against)`.
     pub fn expected_dpr(&self, c: usize, against: Option<usize>) -> f64 {
-        let ac = against.map_or(15, |a| self.armor_class(a));
+        let ac = against.map_or(15, |a| self.attack_ac(self.units[c].pos, a));
         self.expected_round_damage(c, ac)
     }
 
@@ -451,8 +451,12 @@ impl Fight {
 
     /// `spell_ai.spell_attack_estimate`.
     pub(crate) fn spell_attack_estimate(&self, caster: usize, t: usize, wk: WeaponKind) -> (f64, f64) {
+        self.spell_attack_estimate_from(caster, t, wk, self.units[caster].pos)
+    }
+
+    pub(crate) fn spell_attack_estimate_from(&self, caster: usize, t: usize, wk: WeaponKind, origin: Pos) -> (f64, f64) {
         let modifier = self.units[caster].t.caster.as_ref().map_or(0, |c| c.spell_attack);
-        let ac = self.armor_class(t);
+        let ac = self.attack_ac(origin, t);
         let (adv, dis) = self.advantage_flags(caster, t, wk);
         let net = adv as i32 - dis as i32;
         let offsets = self.bless_offsets(caster);
@@ -466,7 +470,7 @@ impl Fight {
     }
 
     /// `divine_spell_ai.attack_value`.
-    fn attack_value(&self, caster: usize, t: usize, dt: Dmg, dice: f64, flat: f64, rider: f64, wk: WeaponKind) -> f64 {
+    fn attack_value(&self, caster: usize, t: usize, origin: Pos, dt: Dmg, dice: f64, flat: f64, rider: f64, wk: WeaponKind) -> f64 {
         if !self.opposing(caster, t) {
             return POINTLESS;
         }
@@ -474,7 +478,7 @@ impl Fight {
         if mult <= 0.0 && rider <= 0.0 {
             return POINTLESS;
         }
-        let (p_hit, p_crit) = self.spell_attack_estimate(caster, t, wk);
+        let (p_hit, p_crit) = self.spell_attack_estimate_from(caster, t, wk, origin);
         let hit = dice + flat;
         let crit = 2.0 * dice + flat;
         let mut value = mult * ((p_hit - p_crit) * hit + p_crit * crit) + p_hit * rider;
@@ -486,6 +490,13 @@ impl Fight {
 
     /// `divine_spell_ai.force_attack_value` (cast-time: `force` None, `level`
     /// the cast level; live force: its level).
+    pub(crate) fn force_attack_origin(&self, caster: usize, target: usize, force: Option<u32>) -> Pos {
+        if let Some(id) = force {
+            if let ObjKind::Force { pos, .. } = self.objs[id as usize].kind { return pos; }
+        }
+        self.landing_square(target, self.units[caster].pos, Some(12)).unwrap_or(self.units[target].pos)
+    }
+
     fn force_attack_value(&self, caster: usize, t: usize, force: Option<u32>, level: i32) -> f64 {
         let (count, flat) = match force {
             Some(obj) => match self.objs[obj as usize].kind {
@@ -495,7 +506,7 @@ impl Fight {
             None => (1 + (level - 2).max(0), self.spell_mod(caster)),
         };
         let dice = count as f64 * 4.5;
-        self.attack_value(caster, t, Dmg::Force, dice, flat as f64, 0.0, WeaponKind::melee())
+        self.attack_value(caster, t, self.force_attack_origin(caster, t, force), Dmg::Force, dice, flat as f64, 0.0, WeaponKind::melee())
     }
 
     pub fn spell_mod(&self, caster: usize) -> i32 {
@@ -503,9 +514,22 @@ impl Fight {
         ability_mod(self.units[caster].t.abil[c.ability.idx()])
     }
 
-    /// `spell_save_dc(<ability>)`, +1 while Innate Sorcery is active.
+    /// The untyped DC is also used for class features.
     pub fn spell_dc(&self, caster: usize) -> i32 {
-        self.units[caster].t.caster.as_ref().map_or(10, |c| c.dc) + if self.innate_active(caster) { 1 } else { 0 }
+        self.units[caster].t.caster.as_ref().map_or(10, |c| c.dc)
+            + i32::from(self.rule_version < 9 && self.innate_active(caster))
+    }
+
+    pub(crate) fn kind_for_spell(&self, caster: usize, spell: SpellId, mut wk: WeaponKind) -> WeaponKind {
+        if self.rule_version >= 9 {
+            wk.spell = self.units[caster].t.caster.as_ref().is_some_and(|c| c.sorcerer_spells.contains(&spell));
+        }
+        wk
+    }
+
+    pub fn spell_dc_for(&self, caster: usize, spell: SpellId) -> i32 {
+        let qualifies = self.units[caster].t.caster.as_ref().is_some_and(|c| c.sorcerer_spells.contains(&spell));
+        self.spell_dc(caster) + i32::from(self.rule_version >= 9 && qualifies && self.innate_active(caster))
     }
 
     /// `evaluate_spell_attack`: advantage, the d20, Bless, the target's
@@ -520,6 +544,12 @@ impl Fight {
         spell: SpellId,
         wk: WeaponKind,
     ) -> (bool, bool, Vec<(usize, u32)>, usize, Option<String>) {
+        self.evaluate_spell_attack_from(caster, t, spell, wk, self.units[caster].pos)
+    }
+
+    fn evaluate_spell_attack_from(&mut self, caster: usize, t: usize, spell: SpellId, wk: WeaponKind, origin: Pos)
+        -> (bool, bool, Vec<(usize, u32)>, usize, Option<String>) {
+        let wk = self.kind_for_spell(caster, spell, wk);
         let ((adv, dis), reasons) = self.attack_roll_modifiers(caster, t, wk);
         let mode = Fight::mode_of(adv, dis);
         // a spell attack roll spends the caster's Sap marker too (N20-029)
@@ -543,8 +573,8 @@ impl Fight {
         } else {
             None
         };
-        let t = self.redirect_window(caster, t, face, total, false).unwrap_or(t);
-        let ac = self.armor_class(t);
+        let t = self.redirect_window(caster, t, face, total, false, origin).unwrap_or(t);
+        let ac = self.attack_ac(origin, t);
         self.resolve_trigger(caster, HookEv::AttackResolved);
         let items = self.resolve_trigger(t, HookEv::AfterAttackRollTarget);
         let nat20 = face == 20 && mode != RollMode::Disadvantage || (mode == RollMode::Disadvantage && face == 20);
@@ -665,69 +695,85 @@ impl Fight {
             if !self.can_cast(u, spell) {
                 continue;
             }
-            let level = spell.level();
-            let mut at_level = level;
-            let mut free = false;
-            if level > 0 {
-                if self.units[u].free_casts.contains(&spell) {
-                    free = true;
-                } else if let Some(l) = self.next_slot(u, level) {
-                    at_level = l;
-                }
+            for (at_level, free) in self.cast_payments(u, spell) {
+                self.build_casts(u, spell, at_level, free, auto_target, out);
             }
-            // the built targets: (targets, tuple target, point, damage type)
-            let mut builds: Vec<(Vec<usize>, bool, Option<Pos>, Option<Dmg>)> = Vec::new();
-            let (range, types, num, min) = self.spell_param(u, spell, at_level);
-            if num > 0 {
-                let pool = self.acquire_targets(u, range, types);
-                if num == 1 {
-                    for &t in &pool {
-                        builds.push((vec![t], false, None, None));
-                    }
-                } else {
-                    let mut combos: Vec<Vec<usize>> = Vec::new();
-                    for n in min..=num {
-                        combinations(&pool, n as usize, &mut combos);
-                    }
-                    for c in combos {
-                        builds.push((c, true, None, None));
-                    }
+        }
+    }
+
+    fn cast_payments(&self, u: usize, spell: SpellId) -> Vec<(i32, bool)> {
+        let base = spell.level();
+        if base == 0 { return vec![(0, false)]; }
+        let unit = &self.units[u];
+        let mut payments = Vec::new();
+        if unit.free_casts.contains(&spell) {
+            payments.push((base, true));
+        }
+        if self.rule_version < 9 {
+            if payments.is_empty() {
+                if let Some(level) = self.next_slot(u, base) { payments.push((level, false)); }
+            }
+        } else if !self.spent_slot_this_turn(u) {
+            for level in base as usize..unit.slots.len() {
+                if unit.slots[level] > 0 { payments.push((level as i32, false)); }
+            }
+        }
+        payments
+    }
+
+    fn build_casts(&mut self, u: usize, spell: SpellId, at_level: i32, free: bool, auto_target: bool, out: &mut Vec<Act>) {
+        // the built targets: (targets, tuple target, point, damage type)
+        let mut builds: Vec<(Vec<usize>, bool, Option<Pos>, Option<Dmg>)> = Vec::new();
+        let (range, types, num, min) = self.spell_param(u, spell, at_level);
+        if num > 0 {
+            let pool = self.acquire_targets(u, range, types);
+            if num == 1 {
+                for &t in &pool {
+                    builds.push((vec![t], false, None, None));
                 }
-            } else if auto_target {
-                builds = self.sorcerer_builds(u, spell, at_level);
             } else {
-                builds = self.human_sorcerer_builds(u, spell, at_level);
+                let mut combos: Vec<Vec<usize>> = Vec::new();
+                for n in min..=num {
+                    combinations(&pool, n as usize, &mut combos);
+                }
+                for c in combos {
+                    builds.push((c, true, None, None));
+                }
             }
-            for (mut targets, multi, point, dt) in builds {
-                if targets.iter().any(|&t| self.units[t].dead()) {
-                    continue;
-                }
-                let harmful = spell.harmful();
-                let own = targets.iter().any(|&t| t == u || self.allies(u, t));
-                if harmful && own {
-                    continue;
-                }
-                if !harmful && targets.iter().any(|&t| self.opposing(u, t)) {
-                    continue;
-                }
-                // `MageArmorSpell.validate`: not on a creature wearing armor
-                if spell == SpellId::MageArmor && targets.iter().any(|&t| self.units[t].t.wearing_armor) {
-                    continue;
-                }
-                if spell == SpellId::SpareTheDying {
-                    let t = targets[0];
-                    let unit = &self.units[t];
-                    if unit.has(St::Stable) || unit.dead() || !unit.unconscious() || unit.hp > 0 {
-                        continue;
-                    }
-                }
-                if multi {
-                    targets.sort_by(|&a, &b| self.units[a].id.cmp(&self.units[b].id));
-                }
-                let cast = Cast { spell, at_level, free, targets, multi, point, mm: None, dt };
-                self.metamagic_variants(u, &cast, out);
-                out.push(Act::Spell(Box::new(cast)));
+        } else if auto_target {
+            builds = self.sorcerer_builds(u, spell, at_level);
+        } else {
+            builds = self.human_sorcerer_builds(u, spell, at_level);
+        }
+        for (mut targets, multi, point, dt) in builds {
+            if targets.iter().any(|&t| self.units[t].dead()) {
+                continue;
             }
+            let harmful = spell.harmful();
+            let own = targets.iter().any(|&t| t == u || self.allies(u, t));
+            if harmful && own {
+                continue;
+            }
+            if !harmful && targets.iter().any(|&t| self.opposing(u, t)) {
+                continue;
+            }
+            // `MageArmorSpell.validate`: not on a creature wearing armor
+            if spell == SpellId::MageArmor && targets.iter().any(|&t| self.units[t].t.wearing_armor) {
+                continue;
+            }
+            if spell == SpellId::SpareTheDying {
+                let t = targets[0];
+                let unit = &self.units[t];
+                if unit.has(St::Stable) || unit.dead() || !unit.unconscious() || unit.hp > 0 {
+                    continue;
+                }
+            }
+            if multi {
+                targets.sort_by(|&a, &b| self.units[a].id.cmp(&self.units[b].id));
+            }
+            let cast = Cast { spell, at_level, free, targets, multi, point, mm: None, dt };
+            self.metamagic_variants(u, &cast, out);
+            out.push(Act::Spell(Box::new(cast)));
         }
     }
 
@@ -874,7 +920,7 @@ impl Fight {
         (0..self.units.len())
             .filter(|&c| !self.units[c].dead() && self.opposing(src, c) && self.square_distance(pos, self.units[c].pos) <= 5
                 && (self.rule_version < 6 || !self.units[c].hidden() || self.can_see(src, c))
-                && (self.rule_version < 7 || (self.square_distance(pos, self.units[c].pos) <= 1 && self.grid.los(pos, self.units[c].pos))
+                && (self.rule_version < 7 || (self.square_distance(pos, self.units[c].pos) <= 1 && self.clear_effect(pos, self.units[c].pos))
                     || self.landing_square(c, pos, Some(4)).is_some()))
             .collect()
     }
@@ -912,7 +958,7 @@ impl Fight {
                 if mult <= 0.0 {
                     return POINTLESS;
                 }
-                let p_fail = self.save_fail_probability(t, Ability::Dex, self.spell_dc(u));
+                let p_fail = self.save_fail_probability(t, Ability::Dex, self.spell_dc_for(u, c.spell));
                 let mut v = p_fail * 4.5 * mult;
                 if !self.units[t].conscious() {
                     v *= DOWNED_FOE_WEIGHT;
@@ -923,7 +969,7 @@ impl Fight {
                 let Some(t) = t0 else { return POINTLESS };
                 let dice = (4 + (c.at_level - 1).max(0)) as f64 * 3.5;
                 let rider = if self.units[t].conscious() { 1.0 } else { 0.0 };
-                self.attack_value(u, t, Dmg::Radiant, dice, 0.0, rider, WeaponKind::spell_ranged(120))
+                self.attack_value(u, t, self.units[u].pos, Dmg::Radiant, dice, 0.0, rider, self.kind_for_spell(u, c.spell, WeaponKind::spell_ranged(120)))
             }
             SpiritualWeapon => {
                 if self.active_force(u).is_some() {
@@ -1017,7 +1063,7 @@ impl Fight {
                 }
             }
             Command => {
-                let dc = self.spell_dc(u);
+                let dc = self.spell_dc_for(u, c.spell);
                 let mut total = 0.0;
                 if c.targets.is_empty() {
                     return POINTLESS;
@@ -1079,7 +1125,7 @@ impl Fight {
                 if !hurt || attackers.is_empty() {
                     return POINTLESS;
                 }
-                let dc = self.spell_dc(u);
+                let dc = self.spell_dc_for(u, c.spell);
                 let mut s = 0.0;
                 for &f in &attackers {
                     s += self.save_fail_probability(f, Ability::Wis, dc) * self.expected_dpr(f, Some(t));
@@ -1657,7 +1703,7 @@ impl Fight {
         match c.spell {
             SacredFlame => {
                 let t = t0.unwrap();
-                let dc = self.spell_dc(u);
+                let dc = self.spell_dc_for(u, c.spell);
                 let total = self.save_throw(t, Ability::Dex);
                 if total < dc || self.units[u].t.potent_cantrip {
                     let faces = self.roll_dice(u, "spells.sacred_flame", 1, 8);
@@ -1708,7 +1754,7 @@ impl Fight {
                 let pos = self.landing_square(t, origin, Some(12)).unwrap_or(self.units[t].pos);
                 let modifier = self.spell_mod(u);
                 items.push(Item::Force { t, pos, level: c.at_level, modifier });
-                let (hit, nat20, dismiss, t, atk_fmt) = self.evaluate_spell_attack(u, t, SpiritualWeapon, WeaponKind::melee());
+                let (hit, nat20, dismiss, t, atk_fmt) = self.evaluate_spell_attack_from(u, t, SpiritualWeapon, WeaponKind::melee(), pos);
                 for d in dismiss {
                     items.push(Item::Dismiss(d.0, d.1));
                 }
@@ -1767,7 +1813,7 @@ impl Fight {
                 }
             }
             Command => {
-                let dc = self.spell_dc(u);
+                let dc = self.spell_dc_for(u, c.spell);
                 for &t in &c.targets {
                     if self.units[t].dead() {
                         continue;
@@ -2001,7 +2047,7 @@ impl Fight {
                     for o in olds {
                         self.dismiss_effect(t, o);
                     }
-                    let dc = self.spell_dc(u);
+                    let dc = self.spell_dc_for(u, c.spell);
                     let obj = self.new_obj(Sanctuary, ObjKind::Sanctuary { target: t, dc }, u, Vec::new(), true);
                     self.add_casted(u, t, obj, Some(60));
                     self.register_effect(t, EffKey::TargetingWard, obj, Some(60));
@@ -2060,7 +2106,7 @@ impl Fight {
                 if (dx == 0 && dy == 0) || x < 0 || y < 0 || x >= self.grid.w || y >= self.grid.h {
                     continue;
                 }
-                if self.rule_version >= 7 && (!self.grid.los((x, y), (sx, sy)) || self.grid.is_wall(x, y)) { continue; }
+                if self.rule_version >= 7 && (!self.clear_effect((x, y), (sx, sy)) || self.grid.is_wall(x, y)) { continue; }
                 let gap = self.square_distance(origin, (x, y));
                 if let Some(dist) = &distances {
                     if !(0..=max_squares.unwrap()).contains(&dist[self.grid.index(x, y)]) { continue; }
@@ -2281,10 +2327,10 @@ impl Fight {
                 let Some(force) = self.active_force(u) else { return };
                 let ObjKind::Force { pos, level, modifier, .. } = self.objs[force as usize].kind else { return };
                 let mut position = pos;
-                if self.square_distance(pos, self.units[t].pos) > 1 || (self.rule_version >= 7 && !self.grid.los(pos, self.units[t].pos)) {
+                if self.square_distance(pos, self.units[t].pos) > 1 || (self.rule_version >= 7 && !self.clear_effect(pos, self.units[t].pos)) {
                     position = self.landing_square(t, pos, Some(4)).unwrap_or(self.units[t].pos);
                 }
-                let (hit, nat20, dismiss, t, atk_fmt) = self.evaluate_spell_attack(u, t, SpellId::SpiritualWeapon, WeaponKind::melee());
+                let (hit, nat20, dismiss, t, atk_fmt) = self.evaluate_spell_attack_from(u, t, SpellId::SpiritualWeapon, WeaponKind::melee(), position);
                 let mut dmg = None;
                 if hit {
                     let n = 1 + (level - 2).max(0);

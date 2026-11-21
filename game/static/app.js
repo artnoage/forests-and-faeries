@@ -308,14 +308,16 @@
     return [...groups.values()];
   };
   const groupActions = () => canAct() ? actions().filter(a => groupKey(a) === selectedGroup) : [];
-  const levelsOf = list => [...new Set(list.map(a => a.at_level).filter(l => l !== undefined && l !== null))].sort((a, b) => a - b);
+  const paymentKey = a => a.at_level == null ? null : (a.free_cast ? 'free' : String(a.at_level));
+  const levelsOf = list => [...new Set(list.map(paymentKey).filter(l => l !== null))].sort((a, b) => a === 'free' ? -1 : b === 'free' ? 1 : Number(a) - Number(b));
   const optionsOf = list => [...new Set(list.map(a => a.option || ''))].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
   const currentActions = () => {
     const list = groupActions();
-    const levels = levelsOf(list), opts = optionsOf(list);
+    const levels = levelsOf(list);
     const level = levels.includes(selectedLevel) ? selectedLevel : levels[0];
+    const opts = optionsOf(list.filter(a => paymentKey(a) === (level ?? null)));
     const opt = opts.includes(selectedOption) ? selectedOption : opts[0];
-    return list.filter(a => (a.at_level ?? null) === (level ?? null) && (a.option || '') === opt);
+    return list.filter(a => paymentKey(a) === (level ?? null) && (a.option || '') === opt);
   };
 
   const isSplit = list => list.some(a => (a.target_ids || []).length > 1);
@@ -818,11 +820,12 @@
       return;
     }
     const optParts = [];
-    const levels = levelsOf(list), opts = optionsOf(list);
+    const levels = levelsOf(list);
     const lv = levels.includes(selectedLevel) ? selectedLevel : levels[0];
+    const opts = optionsOf(list.filter(a => paymentKey(a) === (lv ?? null)));
     const op = opts.includes(selectedOption) ? selectedOption : opts[0];
     const pill = (attr, val, txt, on) => `<button class="option-pill ${on ? 'selected' : ''}" data-${attr}="${escape(val)}" aria-pressed="${on}">${escape(txt)}</button>`;
-    if (levels.length > 1) optParts.push(`<span class="option-row"><span class="option-name">Slot</span>${levels.map(l => pill('level', l, l === 0 ? 'Cantrip' : `Level ${l}`, l === lv)).join('')}</span>`);
+    if (levels.length > 1) optParts.push(`<span class="option-row"><span class="option-name">Slot</span>${levels.map(l => pill('level', l, l === 'free' ? 'Free use' : l === '0' ? 'Cantrip' : `Level ${l}`, l === lv)).join('')}</span>`);
     if (opts.length > 1) optParts.push(`<span class="option-row"><span class="option-name">${group.kind === 'spell' ? 'Metamagic' : 'Mode'}</span>${opts.map(o => pill('option', o, o === '' ? 'Standard' : niceName(o), o === op)).join('')}</span>`);
 
     const cur = currentActions();
@@ -1029,6 +1032,13 @@
         else if (Number.isInteger(action.x) && actor && action.cells) {
           txt += ['burning_hands', 'thunderwave'].includes(action.spell) || action.kind === 'dragons_breath_exhale'
             ? ` → ${compass(action.x - actor.x, action.y - actor.y)}` : ` → ${cellName(action.x, action.y)}`;
+        }
+        if (action.cover) {
+          const covered = Object.entries(action.cover).map(([id, bonus]) => {
+            const unit = data.units.find(u => u.id === id);
+            return (unit?.name || id) + ' +' + bonus;
+          });
+          txt += ' · cover ' + covered.join(', ');
         }
         action.description = `${txt}${action.cost ? ' · ' + action.cost : ''}`;
       }
@@ -1833,7 +1843,7 @@
   $('action-options').addEventListener('click', e => {
     const lv = e.target.closest('[data-level]'), op = e.target.closest('[data-option]');
     const inc = e.target.closest('[data-alloc-inc]'), dec = e.target.closest('[data-alloc-dec]'), cf = e.target.closest('[data-alloc-confirm]');
-    if (lv) { selectedLevel = Number(lv.dataset.level); allocation = new Map(); armed = null; render(); }
+    if (lv) { selectedLevel = lv.dataset.level; allocation = new Map(); armed = null; render(); }
     else if (op) { selectedOption = op.dataset.option; allocation = new Map(); armed = null; render(); }
     else if (inc && !inc.disabled) { allocation.set(inc.dataset.allocInc, (allocation.get(inc.dataset.allocInc) || 0) + 1); render(); }
     else if (dec && !dec.disabled) {

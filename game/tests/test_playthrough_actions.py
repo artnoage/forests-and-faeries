@@ -161,3 +161,35 @@ def test_potent_cantrip_miss_reports_half_damage_and_the_roll_modifiers():
                        and 'enemy in close combat' in l['text'] for l in state['log'])
             return
     raise AssertionError('the fixed seeds should include a Potent Cantrip miss')
+
+
+def test_spell_payments_debit_the_selected_resource_and_survive_wire_encoding():
+    resources = ['Magic Initiate (magic missile)', 'Level 1 slots', 'Level 2 slots']
+    for at_level, free, spent in [(1, True, resources[0]), (1, False, resources[1]), (2, False, resources[2])]:
+        game, before = arena('curogana')
+        actions = {(a['at_level'], bool(a.get('free_cast'))): a for a in before['actions']
+                   if a.get('spell') == 'magic_missile' and not a.get('metamagic')
+                   and set(a.get('target_ids', [])) == {'goblin_minion-2'}}
+        assert set(actions) == {(1, True), (1, False), (2, False)}
+        selected = actions[at_level, free]
+        wire = game.wire(before)
+        rows = {a['id']: a for a in wire['actions']}
+        encoded = wire['action_defs'][rows[selected['id']]['d']]
+        assert (encoded['at_level'], bool(encoded.get('free_cast'))) == (at_level, free)
+        game.perform(selected['id'])
+        previous = {p['label']: p['value'] for p in before['resources']['pools']}
+        current = {p['label']: p['value'] for p in game.state()['resources']['pools']}
+        assert {key: previous[key] - current[key] for key in resources} == {
+            key: int(key == spent) for key in resources
+        }
+
+
+def test_attack_preview_reports_only_the_intervening_creatures_cover():
+    game, state = arena('curogana')
+    wire = game.wire(state)
+    rows = {a['id']: a for a in wire['actions']}
+    frost = [a for a in state['actions'] if a.get('spell') == 'ray_of_frost' and not a.get('metamagic')]
+    assert {a['target_id'] for a in frost} == {'goblin_minion-1', 'goblin_minion-2'}
+    for a in frost:
+        expected = {'goblin_minion-2': 2} if a['target_id'] == 'goblin_minion-2' else {}
+        assert a.get('cover', {}) == rows[a['id']].get('cover', {}) == expected

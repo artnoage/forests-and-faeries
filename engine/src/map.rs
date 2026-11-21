@@ -71,7 +71,7 @@ impl Bits {
 pub struct Grid {
     pub w: i32,
     pub h: i32,
-    /// The rows as given (`H` / `.`).
+    /// Original rows: wall, bright floor, dim floor or dark floor.
     pub rows: Vec<String>,
     wall: Vec<bool>,
     pub(crate) symmetric_sight: bool,
@@ -79,6 +79,7 @@ pub struct Grid {
     comp: Vec<i32>,
     /// Line of sight from each source cell, computed on first use.
     los: Vec<OnceLock<Bits>>,
+    wall_cover: Vec<OnceLock<Vec<u8>>>,
     /// Passable neighbours of each cell for 1x1 movement, in natural20's
     /// `get_neighbors` order (see `path.rs`): `nbr[nbr_start[i]..nbr_start[i + 1]]`.
     nbr_start: Vec<u32>,
@@ -150,8 +151,8 @@ impl Grid {
             for c in row.chars() {
                 match c {
                     'H' => wall.push(true),
-                    '.' => wall.push(false),
-                    other => return Err(format!("map square {other:?} (only H and . are supported)")),
+                    '.' | 'd' | 'D' => wall.push(false),
+                    other => return Err(format!("map square {other:?} (expected H (wall), . (bright), d (dim) or D (dark))")),
                 }
             }
         }
@@ -165,6 +166,7 @@ impl Grid {
             symmetric_sight: true,
             comp: Vec::new(),
             los: (0..n).map(|_| OnceLock::new()).collect(),
+            wall_cover: (0..n).map(|_| OnceLock::new()).collect(),
             nbr_start: Vec::new(),
             nbr: Vec::new(),
             static_planes: OnceLock::new(),
@@ -288,6 +290,15 @@ impl Grid {
         !self.in_bounds(x, y) || self.wall[self.index(x, y)]
     }
 
+    /// Floor illumination as encoded in the observation: dark (0), dim (1), bright (2).
+    pub(crate) fn light_level(&self, (x, y): Pos) -> u8 {
+        match self.rows[y as usize].as_bytes()[x as usize] {
+            b'D' => 0,
+            b'd' => 1,
+            _ => 2,
+        }
+    }
+
     /// A diagonal cannot cross the corner of terrain that fills its square.
     pub fn clears_corner(&self, from: Pos, to: Pos) -> bool {
         from.0 == to.0 || from.1 == to.1
@@ -368,8 +379,8 @@ impl Grid {
             for i in 0..n {
                 out[i] = 1; // inside the map
                 out[n + i] = self.wall[i] as u8;
-                // 2 difficult terrain and 3 cover: none in version 1
-                out[4 * n + i] = 2; // bright light everywhere
+                // The terrain and cover planes represent static tile properties. Directional cover is actor-dependent.
+                out[4 * n + i] = self.light_level(self.pos_of(i));
             }
             out
         })
@@ -435,6 +446,40 @@ impl Grid {
             if cross >= 0 { y += dy.signum(); iy += 1; }
         }
         !inclusive || !self.is_wall(x, y)
+    }
+
+    pub(crate) fn wall_cover_mask(&self, origin: Pos, target: Pos) -> u8 {
+        let row = self.wall_cover[self.index(origin.0, origin.1)].get_or_init(|| {
+            (0..self.cells()).map(|i| self.cover_rays(origin, self.pos_of(i), |_| false).0).collect()
+        });
+        row[self.index(target.0, target.1)]
+    }
+
+    /// Sample the four quadrants of the defender's square from the effect origin.
+    /// Wall and creature masks are separate because a creature grants at most half cover.
+    pub(crate) fn cover_rays(&self, origin: Pos, target: Pos, occupied: impl Fn(Pos) -> bool) -> (u8, u8) {
+        let mut walls = 0;
+        let mut creatures = 0;
+        for (ray, (ox, oy)) in [(1, 1), (3, 1), (1, 3), (3, 3)].into_iter().enumerate() {
+            let dx = 4 * (target.0 - origin.0) + ox - 2;
+            let dy = 4 * (target.1 - origin.1) + oy - 2;
+            let (sx, sy) = (dx.signum(), dy.signum());
+            let (mut x, mut y) = origin;
+            let (mut next_x, mut next_y) = (2, 2);
+            while (x, y) != target {
+                let cross = next_x * dy.abs() - next_y * dx.abs();
+                if cross == 0 && self.is_wall(x + sx, y) && self.is_wall(x, y + sy) {
+                    walls |= 1 << ray;
+                    break;
+                }
+                if cross <= 0 { x += sx; next_x += 4; }
+                if cross >= 0 { y += sy; next_y += 4; }
+                if (x, y) == target { break; }
+                if self.is_wall(x, y) { walls |= 1 << ray; break; }
+                if occupied((x, y)) { creatures |= 1 << ray; }
+            }
+        }
+        (walls, creatures)
     }
 
     /// Step distances from `start` over the floor (A* neighbour rule), as

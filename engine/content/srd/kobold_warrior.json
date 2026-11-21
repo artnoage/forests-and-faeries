@@ -59,6 +59,7 @@
   "vulnerabilities": []
  },
  "condition_immunities": [],
+ "darkvision": 60,
  "passive_perception": 8,
  "attacks": [
   {

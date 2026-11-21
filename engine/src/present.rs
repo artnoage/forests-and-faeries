@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 9;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 10;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -2105,6 +2105,8 @@ impl WebArena {
                 }
                 if unit.t.nimble_escape.is_some() && unit.bonus > 0 {
                     non_spell.push(Act::DisengageBonus);
+                }
+                if unit.bonus > 0 && (unit.t.nimble_escape.is_some() || f.shadow_can_hide(actor)) {
                     non_spell.push(Act::HideBonus);
                 }
                 let speed = f.speed_of(actor);
@@ -2535,6 +2537,7 @@ impl WebArena {
         }
         if let Some(c) = spell_opt {
             view.insert("spell".into(), json!(c.spell.key()));
+            if self.replay_version >= 10 && c.free { view.insert("free_cast".into(), json!(true)); }
             view.insert("spell_level".into(), json!(c.spell.level()));
             view.insert("at_level".into(), json!(c.at_level));
             if let Some(mm) = c.mm {
@@ -2592,6 +2595,37 @@ impl WebArena {
             }
         }
 
+        if self.replay_version >= 10 {
+            let f = self.fight.as_ref().unwrap();
+            let here = f.units[actor].pos;
+            let origin = match &cand.act {
+                Act::Attack { atk, .. } | Act::Cleave { atk, .. }
+                    if f.units[actor].t.attacks[*atk].save_attack.is_none_or(|(ab, _)| ab == crate::content::Ability::Dex) => Some(here),
+                Act::DragonsBreathExhale => Some(here),
+                Act::SpiritualWeaponAttack { target } => Some(f.force_attack_origin(actor, *target, f.active_force(actor))),
+                Act::Spell(c) => match c.spell {
+                    SpellId::AcidSplash => c.point,
+                    SpellId::SpiritualWeapon => c.targets.first().map(|&t| f.force_attack_origin(actor, t, None)),
+                    SpellId::BurningHands | SpellId::GuidingBolt | SpellId::RayOfFrost | SpellId::Firebolt
+                    | SpellId::SorcerousBurst | SpellId::ScorchingRay | SpellId::ChromaticOrb => Some(here),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(origin) = origin {
+                let hidden = crate::encode::masked_from(f, f.units[actor].team);
+                let mut bonuses = serde_json::Map::new();
+                let affected = ["hits", "allies"].into_iter().flat_map(|key| view.get(key).and_then(Value::as_array))
+                    .flatten().filter_map(Value::as_str);
+                for id in target_ids.iter().map(String::as_str).chain(affected) {
+                    if let Some(t) = f.units.iter().position(|unit| unit.id == id) {
+                        let bonus = f.known_cover(origin, t, hidden);
+                        if bonus > 0 && hidden & (1 << t) == 0 { bonuses.insert(id.to_owned(), json!(bonus)); }
+                    }
+                }
+                if !bonuses.is_empty() { view.insert("cover".into(), Value::Object(bonuses)); }
+            }
+        }
         Value::Object(view)
     }
 
@@ -3016,8 +3050,8 @@ impl WebArena {
         let Some(obj) = state.as_object_mut() else { return state };
         let Some(actions) = obj.get("actions").and_then(Value::as_array).cloned() else { return state };
 
-        let static_keys = ["kind", "category", "label", "cost", "spell", "spell_level", "at_level", "metamagic", "mode", "option"];
-        let row_keys = ["target_ids", "x", "y", "area", "hits", "allies", "path"];
+        let static_keys = ["kind", "category", "label", "cost", "spell", "spell_level", "at_level", "free_cast", "metamagic", "mode", "option"];
+        let row_keys = ["target_ids", "x", "y", "area", "hits", "allies", "path", "cover"];
 
         let mut defs: Vec<Value> = Vec::new();
         let mut def_index: HashMap<String, usize> = HashMap::new();

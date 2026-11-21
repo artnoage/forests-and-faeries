@@ -63,6 +63,7 @@
   "exhaustion",
   "poisoned"
  ],
+ "darkvision": 60,
  "passive_perception": 13,
  "attacks": [
   {

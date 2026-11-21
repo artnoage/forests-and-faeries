@@ -67,6 +67,7 @@
   "paralyzed",
   "poisoned"
  ],
+ "darkvision": 60,
  "passive_perception": 11,
  "attacks": [
   {

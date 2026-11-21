@@ -93,7 +93,7 @@ def _hero_sheet(content):
 def _connected_floor(rows):
     height = len(rows)
     width = len(rows[0]) if height else 0
-    floor = {(x, y) for y, row in enumerate(rows) for x, ch in enumerate(row) if ch == '.'}
+    floor = {(x, y) for y, row in enumerate(rows) for x, ch in enumerate(row) if ch in '.dD'}
     if len(floor) < 2:
         return False
     start = min(floor)
@@ -123,8 +123,8 @@ def validate_rows(rows, name='map'):
     width = len(rows[0])
     if not (1 <= width <= MAX_SIZE) or any(len(r) != width for r in rows):
         raise CatalogueError(f'{name}: rows must be rectangular within 1..{MAX_SIZE}')
-    if any(ch not in ('.', 'H') for r in rows for ch in r):
-        raise CatalogueError(f'{name}: rows may only contain "." and "H"')
+    if any(ch not in '.dDH' for r in rows for ch in r):
+        raise CatalogueError(f'{name}: expected H (wall), . (bright), d (dim) or D (dark)')
     if not _connected_floor(rows):
         raise CatalogueError(f'{name}: floor must be one connected component')
 
@@ -207,7 +207,7 @@ class Level:
         occupied = set()
         for item in self.suggested_placements():
             x, y = item['x'], item['y']
-            if not (0 <= x < width and 0 <= y < height) or self.rows[y][x] != '.':
+            if not (0 <= x < width and 0 <= y < height) or self.rows[y][x] == 'H':
                 raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: {item["id"]} not on floor at {(x, y)}')
             if (x, y) in occupied:
                 raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: duplicate placement at {(x, y)}')

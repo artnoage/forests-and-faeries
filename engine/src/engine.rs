@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 8;
+pub const CURRENT_RULE_VERSION: i32 = 9;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -742,9 +742,16 @@ impl Fight {
         self.units[a].team != self.units[b].team
     }
 
-    /// `Map.can_see` / `Battle.can_see` between creatures (bright light): a
-    /// hidden creature is seen only by an observer whose passive Perception
-    /// reaches its Stealth total, and then only with line of sight.
+    /// Check the effect path and the observer's senses at the target square.
+    pub(crate) fn sees_lit_square(&self, observer: usize, pos: Pos) -> bool {
+        let u = &self.units[observer];
+        if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.grid.light_level(pos) == 0 {
+            let senses = u.t.darkvision.max(u.t.blindsight).max(u.t.truesight);
+            if self.square_distance(u.pos, pos) * 5 > senses { return false; }
+        }
+        self.clear_effect(u.pos, pos)
+    }
+
     #[inline]
     pub fn can_see(&self, a: usize, b: usize) -> bool {
         if a == b {
@@ -756,7 +763,7 @@ impl Fight {
                 return false;
             }
         }
-        self.grid.los(self.units[a].pos, self.units[b].pos)
+        self.sees_lit_square(a, self.units[b].pos)
     }
 
     #[inline]
@@ -804,8 +811,52 @@ impl Fight {
         self.rule_version = version;
     }
 
+    /// SRD cover is directional. Cover sources never add their bonuses together.
+    pub fn cover_bonus_from(&self, origin: Pos, target: usize) -> i32 {
+        self.known_cover(origin, target, 0)
+    }
+
+    pub(crate) fn known_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
+        if self.rule_version < 9 { return 0; }
+        let (walls, creatures) = self.grid.cover_rays(origin, self.units[target].pos, |p| {
+            self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
+        });
+        if walls == 15 && !self.grid.los(origin, self.units[target].pos) { return 0; } // Total cover excludes attacks.
+        if walls.count_ones() >= 3 { 5 }
+        else if (walls | creatures).count_ones() >= 2 { 2 }
+        else { 0 }
+    }
+
+    pub(crate) fn attack_ac(&self, origin: Pos, target: usize) -> i32 {
+        self.armor_class(target) + self.cover_bonus_from(origin, target)
+    }
+
+    pub(crate) fn save_cover(&self, origin: Pos, target: usize, ability: Ability) -> i32 {
+        if ability == Ability::Dex { self.cover_bonus_from(origin, target) } else { 0 }
+    }
+
+    pub(crate) fn clear_effect(&self, a: Pos, b: Pos) -> bool {
+        if self.grid.los(a, b) { return true; }
+        self.rule_version >= 9 && !self.grid.is_wall(a.0, a.1) && !self.grid.is_wall(b.0, b.1)
+            && self.grid.wall_cover_mask(a, b) != 15
+    }
+
+    pub(crate) fn incorporeal(&self, u: usize) -> bool {
+        self.rule_version >= 9 && self.units[u].t.incorporeal
+    }
+
+    pub(crate) fn step_clears_corner(&self, u: usize, from: Pos, to: Pos) -> bool {
+        self.incorporeal(u) || self.grid.clears_corner(from, to)
+    }
+
+    pub(crate) fn shadow_can_hide(&self, u: usize) -> bool {
+        let unit = &self.units[u];
+        self.rule_version >= 9 && unit.t.shadow_stealth.is_some() && self.grid.light_level(unit.pos) < 2
+    }
+
     /// `Map.passable(entity, x, y, battle)` for a 1x1 creature (no squeezing).
     pub fn passable(&self, u: usize, p: Pos) -> bool {
+        if self.incorporeal(u) { return self.grid.in_bounds(p.0, p.1); }
         if self.grid.is_wall(p.0, p.1) {
             return false;
         }
@@ -885,7 +936,7 @@ impl Fight {
         for (i, o) in self.occ.iter().enumerate() {
             if let Some(o) = o {
                 let o = *o as usize;
-                if self.difficult_occupant(u, o) {
+                if self.difficult_occupant(u, o) || (self.incorporeal(u) && o != u && !self.units[o].dead()) {
                     mask.set(i);
                 }
             }
@@ -936,11 +987,15 @@ impl Fight {
     }
 
     pub(crate) fn save_throw_disadvantage(&mut self, u: usize, ab: Ability, disadvantage: bool) -> (i32, String) {
+        self.save_throw_with_cover(u, ab, disadvantage, 0)
+    }
+
+    pub(crate) fn save_throw_with_cover(&mut self, u: usize, ab: Ability, disadvantage: bool, cover: i32) -> (i32, String) {
         if matches!(ab, Ability::Str | Ability::Dex) && self.units[u].has(St::Paralyzed) {
             // `DieRoll.roll("1")` -> `DieRoll([1], 0, 0)` -> `describe() == "0"`, `result() == 1`
             return (1, "0 = 1".to_string());
         }
-        let m = self.units[u].save_mod(ab);
+        let m = self.units[u].save_mod(ab) + cover;
         // Rage: Advantage on Strength saves; Danger Sense: on Dexterity saves
         // unless Incapacitated (2024)
         let adv = (ab == Ability::Str && self.is_raging(u))
@@ -1295,6 +1350,11 @@ impl Fight {
             }
         }
         // the barbarian's end-of-turn hook comes first (registered at load)
+        let pos = self.units[u].pos;
+        if self.incorporeal(u) && self.grid.is_wall(pos.0, pos.1) {
+            let damage = self.roll_dice(u, "incorporeal_movement", 1, 10)[0];
+            self.take_damage(u, damage, Dmg::Force, false, None, None);
+        }
         self.barbarian_end_of_turn(u);
         self.resolve_trigger(u, HookEv::EndOfTurn);
         // `SourceTurnExpiry.end_of_turn` hooks on this creature: the fear it
@@ -1477,7 +1537,12 @@ impl Fight {
     // ------------------------------------------------------------------
 
     pub(crate) fn step_cost(&self, u: usize, to: Pos) -> i32 {
-        1 + self.units[u].prone() as i32 + (self.difficult(u, to) && !self.units[u].t.fly) as i32
+        let difficult = if self.incorporeal(u) {
+            self.grid.is_wall(to.0, to.1) || self.token_at(to).is_some_and(|o| o != u)
+        } else {
+            self.difficult(u, to) && !self.units[u].t.fly
+        };
+        1 + self.units[u].prone() as i32 + i32::from(difficult)
     }
 
     /// `compute_actual_moves(entity, path, map, battle, budget)` for paths of
@@ -1499,7 +1564,7 @@ impl Fight {
             if frightened && self.step_toward_fear(u, path[i - 1], m) {
                 break;
             }
-            if !self.passable(u, m) || (self.rule_version >= 5 && !self.grid.clears_corner(path[i - 1], m)) {
+            if !self.passable(u, m) || (self.rule_version >= 5 && !self.step_clears_corner(u, path[i - 1], m)) {
                 break;
             }
             let cost = self.step_cost(u, m);
@@ -1997,7 +2062,8 @@ impl Fight {
         if let Some((ab, dc)) = def.save_attack {
             // `_resolve_save_attack`: the target saves; a failure is a hit
             // (no attack roll, so no critical hit).
-            let total = self.save_throw(tgt, ab);
+            let cover = self.save_cover(self.units[src].pos, tgt, ab);
+                    let total = self.save_throw_with_cover(tgt, ab, false, cover).0;
             if total >= dc {
                 if def.save_immune {
                     // `grant_save_immunity` (the miss item's `save_immunity`)
@@ -2062,10 +2128,10 @@ impl Fight {
             self.resolve_trigger(src, HookEv::AttackResolved);
             // the target's attack-roll reactions (`npc_reactions`: Redirect
             // Attack): the roll stands, the target may change
-            if let Some(ally) = self.redirect_window(src, tgt, face, total, true) {
+            if let Some(ally) = self.redirect_window(src, tgt, face, total, true, self.units[src].pos) {
                 tgt = ally;
             }
-            let ac = self.armor_class(tgt);
+            let ac = self.attack_ac(self.units[src].pos, tgt);
             dismiss = self.resolve_trigger(tgt, HookEv::AfterAttackRollTarget);
             if self.units[tgt].t.pc {
                 self.units[tgt].pools_init = true;
@@ -2222,7 +2288,8 @@ impl Fight {
                     if (not_undead && tt.undead) || (not_elf && tt.elf) {
                         continue;
                     }
-                    let total = self.save_throw(tgt, ability);
+                    let cover = self.save_cover(self.units[src].pos, tgt, ability);
+                    let total = self.save_throw_with_cover(tgt, ability, false, cover).0;
                     if total < dc {
                         effects.push(HitEffect::Condition(condition));
                     }
@@ -2455,7 +2522,7 @@ impl Fight {
     /// spent either way; a failure leaves an earlier hidden status as it was.
     fn do_hide(&mut self, u: usize) {
         self.notes.hide_attempts += 1;
-        let modifier = self.units[u].t.nimble_escape.unwrap_or(0);
+        let modifier = self.units[u].t.nimble_escape.or(self.units[u].t.shadow_stealth).unwrap_or(0);
         let gt = self.gt();
         let unit = &self.units[u];
         let feared = unit.frightened_by.iter().any(|&(f, until)| gt < until && !self.units[f].dead() && self.can_see(u, f))
@@ -2466,7 +2533,7 @@ impl Fight {
         let pos = self.units[u].pos;
         let seen = (0..self.units.len()).any(|o| {
             let x = &self.units[o];
-            o != u && !x.dead() && self.opposing(o, u) && x.conscious() && self.grid.los(x.pos, pos)
+            o != u && !x.dead() && self.opposing(o, u) && x.conscious() && self.sees_lit_square(o, pos)
         });
         self.emit_web(crate::web_events::WebEv::HideResult { actor: u, total, seen });
         if !seen && total >= 15 {
@@ -2490,7 +2557,7 @@ impl Fight {
     /// ally's HP). The two swap squares (no movement, no opportunity
     /// attacks), the target's reaction is spent, and the ally becomes the
     /// target. No draws. Returns the ally.
-    pub(crate) fn redirect_window(&mut self, attacker: usize, tgt: usize, face: i32, total: i32, weapon: bool) -> Option<usize> {
+    pub(crate) fn redirect_window(&mut self, attacker: usize, tgt: usize, face: i32, total: i32, weapon: bool, origin: Pos) -> Option<usize> {
         let spec = self.units[tgt].t.swap_retarget.as_ref()?;
         if tgt == attacker {
             return None;
@@ -2504,7 +2571,7 @@ impl Fight {
         } else if face == 20 || (weapon && self.units[attacker].t.improved_critical && face >= 19) {
             true
         } else {
-            total >= self.armor_class(tgt)
+            total >= self.attack_ac(origin, tgt)
         };
         if !would_hit || (spec.requires_sight && !self.can_see(tgt, attacker)) {
             return None;
@@ -3018,6 +3085,7 @@ impl Fight {
             }
             Act::Spell(c) => {
                 let mut s = format!("spell:{}:L{}", c.spell.key(), c.at_level);
+                if self.rule_version >= 9 && c.free { s.push_str(":free"); }
                 if let Some(mm) = c.mm {
                     s.push_str(&format!(":mm={}", mm.key()));
                 }
@@ -3058,3 +3126,95 @@ pub fn apply_gwf(rolls: &mut [i32]) {
 
 #[allow(dead_code)]
 fn unused(_: Dice) {}
+
+
+#[cfg(test)]
+mod srd_level_tests {
+    use super::*;
+
+    fn fight(rows: &[&str], roster: &[(&str, Pos)]) -> Fight {
+        let units = roster.iter().map(|(id, _)| id.to_string()).collect::<Vec<_>>();
+        let places = roster.iter().map(|&(id, (x, y))| Placement { id: id.into(), x, y }).collect::<Vec<_>>();
+        let mut f = Fight::on_map(ContentPool::global(), Grid::shared(rows).unwrap(), &units, &places, 30, Trace::recording(17)).unwrap();
+        f.order = (0..units.len()).collect();
+        f
+    }
+
+    #[test]
+    fn specter_crosses_enemies_and_walls_pays_only_inside_a_wall_at_turn_end() {
+        let mut f = fight(&[".....", "..H..", "....."], &[("specter-1", (0,1)), ("elion", (1,1))]);
+        let path = [(0,1), (1,1), (2,1), (3,1)];
+        assert!(f.passable(0, (1,1)) && !f.placeable(0, (1,1)));
+        assert!(!f.passable(0, (-1,1)));
+        assert_eq!(f.compute_actual_moves(0, &path, 5), (path.to_vec(), 0));
+        assert_eq!(f.compute_actual_moves(0, &path, 4).0, path[..3]);
+        let before = f.units[0].hp;
+        f.move_to(0, (2,1));
+        assert_eq!(f.units[0].hp, before);
+        f.battle_end_turn();
+        assert!((1..=10).contains(&(before - f.units[0].hp)));
+        let after = f.units[0].hp;
+        f.move_to(0, (3,1));
+        f.battle_end_turn();
+        assert_eq!(f.units[0].hp, after);
+    }
+
+    #[test]
+    fn shadow_stealth_uses_the_current_square_and_spends_the_bonus_action() {
+        let mut f = fight(&[".dD.."], &[("shadow-1", (0,0)), ("guy", (4,0))]);
+        f.units[0].bonus = 1;
+        let start = 4 * f.grid.cells();
+        assert_eq!(&f.grid.static_planes()[start..start + 5], &[2, 1, 0, 2, 2]);
+        assert!(!f.available_moves(0).contains(&Act::HideBonus));
+        f.move_to(0, (1,0));
+        assert!(f.available_moves(0).contains(&Act::HideBonus));
+        f.move_to(0, (2,0));
+        assert!(f.available_moves(0).contains(&Act::HideBonus));
+        assert!(!f.can_see(1, 0));
+        f.execute_action(0, &Act::HideBonus);
+        assert_eq!(f.units[0].bonus, 0);
+        assert!(!f.available_moves(0).contains(&Act::HideBonus));
+    }
+
+    #[test]
+    fn cover_from_creatures_and_wall_edges_uses_the_effect_origin() {
+        let mut f = fight(&["....."; 5], &[("guy",(0,2)), ("goblin_warrior-1",(2,2)), ("specter-1",(4,2))]);
+        assert_eq!(f.cover_bonus_from((0,2), 2), 2);
+        assert_eq!(f.attack_ac((0,2), 2), f.armor_class(2) + 2);
+        assert_eq!(f.save_cover((0,2), 2, Ability::Dex), 2);
+        assert_eq!(f.save_cover((0,2), 2, Ability::Con), 0);
+        assert_eq!(f.cover_bonus_from((3,2), 2), 0);
+        assert_eq!(f.known_cover((0,2), 2, 1 << 1), 0);
+        f.units[1].hp = 0;
+        f.units[1].add_status(St::Dead);
+        assert_eq!(f.cover_bonus_from((0,2), 2), 0);
+        let mut edge = fight(&[".....","..H..",".....",".....","....."], &[("guy",(0,0)),("shadow-1",(4,1))]);
+        assert!(edge.clear_effect((0,0), (4,1)));
+        assert_eq!(edge.cover_bonus_from((0,0), 1), 2);
+        edge.move_to(1, (4,0));
+        assert!(edge.clear_effect((0,1), (4,0)));
+        assert_eq!(edge.cover_bonus_from((0,1), 1), 5);
+        assert!(!edge.clear_effect((0,1), (4,1)));
+    }
+
+    #[test]
+    fn spell_payments_and_dc_keep_their_source() {
+        let mut f = fight(&["....."], &[("curogana",(0,0)), ("zombie-1",(3,0))]);
+        f.units[0].action = 1;
+        f.units[0].innate_until = Some(60);
+        assert_eq!(f.spell_dc_for(0, SpellId::AcidSplash), f.spell_dc(0) + 1);
+        assert_eq!(f.spell_dc_for(0, SpellId::Command), f.spell_dc(0) + 1);
+        assert_eq!(f.spell_dc_for(0, SpellId::SacredFlame), f.spell_dc(0));
+        let choices = |f: &mut Fight| {
+            let mut acts = Vec::new();
+            f.human_spell_candidates(0, &mut acts);
+            acts.into_iter().filter_map(|a| match a {
+                Act::Spell(c) if c.spell == SpellId::MagicMissile && c.mm.is_none() => Some((c.at_level,c.free,c.targets.len())),
+                _ => None,
+            }).collect::<std::collections::BTreeSet<_>>()
+        };
+        assert_eq!(choices(&mut f), [(1,true,3),(1,false,3),(2,false,4)].into_iter().collect());
+        f.units[0].last_slot_turn = Some((f.round, f.turn_idx));
+        assert_eq!(choices(&mut f), [(1,true,3)].into_iter().collect());
+    }
+}

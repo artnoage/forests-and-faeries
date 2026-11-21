@@ -67,6 +67,7 @@
   "vulnerabilities": []
  },
  "condition_immunities": [],
+ "darkvision": 60,
  "passive_perception": 11,
  "base_id": "curogana",
  "loadout": {
@@ -193,6 +194,7 @@
   "spell_info": [
    {
     "id": "sorcerous_burst",
+    "sorcerer_spell": true,
     "name": "Sorcerous Burst",
     "level": 0,
     "casting_time": "1:action",
@@ -200,6 +202,7 @@
    },
    {
     "id": "acid_splash",
+    "sorcerer_spell": true,
     "name": "Acid Splash",
     "level": 0,
     "casting_time": "1:action",
@@ -207,6 +210,7 @@
    },
    {
     "id": "firebolt",
+    "sorcerer_spell": true,
     "name": "Firebolt",
     "level": 0,
     "casting_time": "1:action",
@@ -221,6 +225,7 @@
    },
    {
     "id": "burning_hands",
+    "sorcerer_spell": true,
     "name": "Burning Hands",
     "level": 1,
     "casting_time": "1:action",
@@ -228,6 +233,7 @@
    },
    {
     "id": "thunderwave",
+    "sorcerer_spell": true,
     "name": "Thunderwave",
     "level": 1,
     "casting_time": "1:action",
@@ -235,6 +241,7 @@
    },
    {
     "id": "chromatic_orb",
+    "sorcerer_spell": true,
     "name": "Chromatic Orb",
     "level": 1,
     "casting_time": "1:action",
@@ -249,6 +256,7 @@
    },
    {
     "id": "shield",
+    "sorcerer_spell": true,
     "name": "Shield",
     "level": 1,
     "casting_time": "1:reaction",

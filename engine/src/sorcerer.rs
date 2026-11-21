@@ -234,7 +234,7 @@ impl Fight {
                 if delta.abs() > half {
                     continue;
                 }
-                if require_los && !self.grid.los(origin, (x, y)) {
+                if require_los && !self.clear_effect(origin, (x, y)) {
                     continue;
                 }
                 out.push((x, y));
@@ -253,7 +253,7 @@ impl Fight {
                 if !self.grid.in_bounds(x, y) {
                     continue;
                 }
-                if require_los && (x, y) != c && !self.grid.los(c, (x, y)) {
+                if require_los && (x, y) != c && !self.clear_effect(c, (x, y)) {
                     continue;
                 }
                 out.push((x, y));
@@ -282,7 +282,7 @@ impl Fight {
         let mut out = Vec::new();
         for x in x0..=x1 {
             for y in y0..=y1 {
-                if self.grid.in_bounds(x, y) && (x, y) != origin && (self.rule_version < 7 || self.grid.los(origin, (x, y))) {
+                if self.grid.in_bounds(x, y) && (x, y) != origin && (self.rule_version < 7 || self.clear_effect(origin, (x, y))) {
                     out.push((x, y));
                 }
             }
@@ -465,7 +465,7 @@ impl Fight {
                 if !self.grid.in_bounds(x, y) {
                     continue;
                 }
-                if !self.grid.los(cur, (x, y)) {
+                if !self.clear_effect(cur, (x, y)) {
                     continue;
                 }
                 positions.push((x, y));
@@ -617,7 +617,7 @@ impl Fight {
                         if !self.grid.in_bounds(nx, ny) {
                             continue;
                         }
-                        if (spell == Shatter || spell == AcidSplash) && !self.grid.los(origin, (nx, ny)) {
+                        if (spell == Shatter || spell == AcidSplash) && !self.clear_effect(origin, (nx, ny)) {
                             continue;
                         }
                         out.push((Vec::new(), false, Some((nx, ny)), None));
@@ -846,12 +846,12 @@ impl Fight {
     }
 
     /// `area_value` of a save-for-half (or no-damage-on-save) area.
-    fn area_save_value(&self, src: usize, creatures: &[usize], ab: Ability, dc: i32, full: f64, dt: Dmg, half: bool, shatter: bool) -> f64 {
+    fn area_save_value(&self, src: usize, origin: Pos, creatures: &[usize], ab: Ability, dc: i32, full: f64, dt: Dmg, half: bool, shatter: bool) -> f64 {
         let mut total = 0.0;
         for &c in creatures {
             let w = self.side_weight(src, c);
             if w != 0.0 {
-                let amount = self.save_for_half(c, ab, dc, full, half, shatter && self.units[c].t.construct);
+                let amount = self.save_for_half(c, ab, dc - self.save_cover(origin, c, ab), full, half, shatter && self.units[c].t.construct);
                 total += w * (self.damage_multiplier(c, dt) * amount);
             }
         }
@@ -859,7 +859,7 @@ impl Fight {
     }
 
     /// `single_target_attack_value`.
-    fn single_attack_value(&self, caster: usize, t: usize, dt: Dmg, hit: f64, crit: f64, range: i32, cantrip: bool) -> f64 {
+    fn single_attack_value(&self, caster: usize, t: usize, spell: SpellId, dt: Dmg, hit: f64, crit: f64, range: i32, cantrip: bool) -> f64 {
         if !self.opposing(caster, t) {
             return POINTLESS;
         }
@@ -867,7 +867,7 @@ impl Fight {
         if mult <= 0.0 {
             return POINTLESS;
         }
-        let (p_hit, p_crit) = self.spell_attack_estimate(caster, t, WeaponKind::spell_ranged(range));
+        let (p_hit, p_crit) = self.spell_attack_estimate(caster, t, self.kind_for_spell(caster, spell, WeaponKind::spell_ranged(range)));
         let miss = if cantrip && self.units[caster].t.potent_cantrip { hit / 2.0 } else { 0.0 };
         let mut value = mult * ((p_hit - p_crit) * hit + p_crit * crit + (1.0 - p_hit) * miss);
         if !self.units[t].conscious() {
@@ -915,7 +915,7 @@ impl Fight {
             if used.contains(&foe) || !self.units[foe].conscious() || !self.can_see(caster, foe) || self.feet(from, foe) > 30 {
                 continue;
             }
-            let v = self.single_attack_value(caster, foe, dt, hit, crit, 90, false);
+            let v = self.single_attack_value(caster, foe, SpellId::ChromaticOrb, dt, hit, crit, 90, false);
             if v > best_value {
                 best = Some(foe);
                 best_value = v;
@@ -954,7 +954,7 @@ impl Fight {
     pub(crate) fn ignores_blur(&self, attacker: usize, caster: usize) -> bool {
         let observer = &self.units[attacker];
         let range = observer.t.blindsight.max(observer.t.truesight);
-        range > 0 && self.feet(attacker, caster) <= range && self.grid.los(observer.pos, self.units[caster].pos)
+        range > 0 && self.feet(attacker, caster) <= range && self.clear_effect(observer.pos, self.units[caster].pos)
     }
 
     /// `cone_value(breather, ..., origin, aim, damage_type, dice, dc)`.
@@ -962,7 +962,7 @@ impl Fight {
         let squares = self.squares_in_cone(origin, aim, 3, true);
         let creatures = self.creatures_in_squares(&squares, Some(breather));
         let full = dice as f64 * 3.5;
-        self.area_save_value(breather, &creatures, Ability::Dex, dc, full, dt, true, false)
+        self.area_save_value(breather, self.units[breather].pos, &creatures, Ability::Dex, dc, full, dt, true, false)
     }
 
     /// `best_cone(breather, ...)`: (value, aim) of the best exhale.
@@ -1102,7 +1102,7 @@ impl Fight {
                 if obj.ended || self.active_breath(target) != Some(held) {
                     return 0.0;
                 }
-                let dc = self.spell_dc(obj.source);
+                let dc = self.spell_dc_for(obj.source, SpellId::DragonsBreath);
                 let per = self.best_cone(target, dt, dice, dc).0;
                 (HORIZON_EXHALES * (per - ACTION_BASELINE).max(0.0)).max(0.0)
             }
@@ -1120,22 +1120,22 @@ impl Fight {
     pub(crate) fn sorcerer_ai_value(&self, u: usize, c: &Cast) -> f64 {
         use SpellId::*;
         let t0 = c.targets.first().copied();
-        let dc = self.spell_dc(u);
+        let dc = self.spell_dc_for(u, c.spell);
         match c.spell {
             SorcerousBurst => {
                 let Some(t) = t0 else { return POINTLESS };
                 let cap = ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(0);
                 let hit = 4.5 * expected_dice(1, cap);
                 let crit = 4.5 * expected_dice(2, cap);
-                self.single_attack_value(u, t, c.dt.unwrap_or(Dmg::Acid), hit, crit, 120, true)
+                self.single_attack_value(u, t, c.spell, c.dt.unwrap_or(Dmg::Acid), hit, crit, 120, true)
             }
             Firebolt => {
                 let Some(t) = t0 else { return POINTLESS };
-                self.single_attack_value(u, t, Dmg::Fire, 1.0 * 1.0 * 11.0 / 2.0, 1.0 * 2.0 * 11.0 / 2.0, 120, true)
+                self.single_attack_value(u, t, c.spell, Dmg::Fire, 1.0 * 1.0 * 11.0 / 2.0, 1.0 * 2.0 * 11.0 / 2.0, 120, true)
             }
             RayOfFrost => {
                 let Some(t) = t0 else { return POINTLESS };
-                self.single_attack_value(u, t, Dmg::Cold, 1.0 * 1.0 * 9.0 / 2.0, 1.0 * 2.0 * 9.0 / 2.0, 60, true)
+                self.single_attack_value(u, t, c.spell, Dmg::Cold, 1.0 * 1.0 * 9.0 / 2.0, 1.0 * 2.0 * 9.0 / 2.0, 60, true)
             }
             ChromaticOrb => {
                 let Some(t) = t0 else { return POINTLESS };
@@ -1143,7 +1143,7 @@ impl Fight {
                 let hit = (n * 1) as f64 * 4.5;
                 let crit = (n * 2) as f64 * 4.5;
                 let dt = c.dt.unwrap_or(Dmg::Acid);
-                let first = self.single_attack_value(u, t, dt, hit, crit, 90, false);
+                let first = self.single_attack_value(u, t, c.spell, dt, hit, crit, 90, false);
                 if first <= 0.0 {
                     return first;
                 }
@@ -1171,7 +1171,7 @@ impl Fight {
                     (10, Ability::Con, (3 + (c.at_level - 2).max(0)) as f64 * 4.5, Dmg::Thunder, true)
                 };
                 let creatures = self.creatures_in_squares(&self.squares_in_radius(p, radius, true), None);
-                let v = self.area_save_value(u, &creatures, ab, dc, full, dt, half, c.spell == Shatter);
+                let v = self.area_save_value(u, p, &creatures, ab, dc, full, dt, half, c.spell == Shatter);
                 if v > 0.0 {
                     v
                 } else {
@@ -1183,7 +1183,7 @@ impl Fight {
                 let squares = self.squares_in_cone(self.units[u].pos, p, 3, true);
                 let creatures = self.creatures_in_squares(&squares, Some(u));
                 let full = (3 + (c.at_level - 1).max(0)) as f64 * 3.5;
-                let v = self.area_save_value(u, &creatures, Ability::Dex, dc, full, Dmg::Fire, true, false);
+                let v = self.area_save_value(u, self.units[u].pos, &creatures, Ability::Dex, dc, full, Dmg::Fire, true, false);
                 if v > 0.0 {
                     v
                 } else {
@@ -1195,7 +1195,7 @@ impl Fight {
                 let squares = self.cube_squares(self.units[u].pos, p, 3);
                 let creatures = self.creatures_in_squares(&squares, Some(u));
                 let full = (2 + (c.at_level - 1).max(0)) as f64 * 4.5;
-                let v = self.area_save_value(u, &creatures, Ability::Con, dc, full, Dmg::Thunder, true, false);
+                let v = self.area_save_value(u, self.units[u].pos, &creatures, Ability::Con, dc, full, Dmg::Thunder, true, false);
                 if v > 0.0 {
                     v
                 } else {
@@ -1277,7 +1277,7 @@ impl Fight {
             Act::DragonsBreathExhale => {
                 let Some(obj) = self.active_breath(u) else { return POINTLESS };
                 let ObjKind::Breath { dt, dice, .. } = self.objs[obj as usize].kind else { return POINTLESS };
-                let dc = self.spell_dc(self.objs[obj as usize].source);
+                let dc = self.spell_dc_for(self.objs[obj as usize].source, SpellId::DragonsBreath);
                 let (_, aim) = self.best_cone(u, dt, dice, dc);
                 let Some(aim) = aim else { return POINTLESS };
                 let v = self.cone_value(u, self.units[u].pos, aim, dt, dice, dc);
@@ -1311,11 +1311,11 @@ impl Fight {
 
     /// `SaveCheck.make(creature, ability, dc)`: Paralyzed (STR/DEX) and
     /// downed (STR/DEX) creatures fail without rolling (`roll=None` -> `rolled=false`).
-    fn save_check(&mut self, c: usize, ab: Ability, dc: i32, disadvantage: bool) -> (bool, bool) {
+    fn save_check(&mut self, origin: Pos, c: usize, ab: Ability, dc: i32, disadvantage: bool) -> (bool, bool) {
         if matches!(ab, Ability::Str | Ability::Dex) && (self.units[c].has(St::Paralyzed) || !self.units[c].conscious()) {
             return (false, false);
         }
-        (self.save_throw_disadvantage(c, ab, disadvantage).0 >= dc, true)
+        (self.save_throw_with_cover(c, ab, disadvantage, self.save_cover(origin, c, ab)).0 >= dc, true)
     }
 
     /// `push_from(map, x, y, distance=10, reserved=...)` for a 1x1 creature:
@@ -1535,10 +1535,10 @@ impl Fight {
                     (10, Ability::Con, 3 + (c.at_level - 2).max(0), 8, Dmg::Thunder, true, "spells.shatter")
                 };
                 let squares = self.squares_in_radius(p, radius, true);
-                let dc = self.spell_dc(u);
+                let dc = self.spell_dc_for(u, c.spell);
                 let roll = self.new_roll(u, tag, n, sides, 0, rolls);
                 for t in self.creatures_in_squares(&squares, None) {
-                    let (passed, rolled) = self.save_check(t, ab, dc, c.spell == Shatter && self.units[t].t.construct);
+                    let (passed, rolled) = self.save_check(p, t, ab, dc, c.spell == Shatter && self.units[t].t.construct);
                     if passed && !half {
                         items.push(Item::SpellMiss { t, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None });
                         continue;
@@ -1552,11 +1552,11 @@ impl Fight {
                 let squares = self.squares_in_cone(self.units[u].pos, p, 3, true);
                 let targets = self.creatures_in_squares(&squares, Some(u));
                 self.notes.area_corpses += self.corpses_in_squares(&squares, u);
-                let dc = self.spell_dc(u);
+                let dc = self.spell_dc_for(u, c.spell);
                 let n = 3 + (c.at_level - 1).max(0);
                 let roll = self.new_roll(u, "spells.burning_hands", n, 6, 0, rolls);
                 for t in targets {
-                    let (passed, rolled) = self.save_check(t, Ability::Dex, dc, false);
+                    let (passed, rolled) = self.save_check(self.units[u].pos, t, Ability::Dex, dc, false);
                     let dmg = if passed { Fight::half_of(rolls, roll) } else { roll };
                     items.push(Item::RDamage(DmgRef { t, dt: Dmg::Fire, crit: false, dmg, droll: roll, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None }));
                 }
@@ -1569,11 +1569,11 @@ impl Fight {
                 self.notes.area_corpses += self.corpses_in_squares(&squares, u);
                 let n = 2 + (c.at_level - 1).max(0);
                 let roll = self.new_roll(u, "spells.generic_damage", n, 8, 0, rolls);
-                let dc = self.spell_dc(u);
+                let dc = self.spell_dc_for(u, c.spell);
                 let mut claimed: Vec<Pos> = Vec::new();
                 let mut pushes = Vec::new();
                 for t in targets {
-                    let (passed, rolled) = self.save_check(t, Ability::Con, dc, false);
+                    let (passed, rolled) = self.save_check(self.units[u].pos, t, Ability::Con, dc, false);
                     let dmg = if passed { Fight::half_of(rolls, roll) } else { roll };
                     items.push(Item::RDamage(DmgRef { t, dt: Dmg::Thunder, crit: false, dmg, droll: roll, save: Some(SaveOutcome::from_check(passed, rolled)), atk_roll_fmt: None }));
                     if !passed && self.rule_version >= 7 {
@@ -1707,7 +1707,7 @@ impl Fight {
     pub(crate) fn do_exhale_at(&mut self, u: usize, aim: Pos) {
         let Some(obj) = self.active_breath(u) else { return };
         let ObjKind::Breath { dt, dice, .. } = self.objs[obj as usize].kind else { return };
-        let dc = self.spell_dc(self.objs[obj as usize].source);
+        let dc = self.spell_dc_for(self.objs[obj as usize].source, SpellId::DragonsBreath);
         let origin = self.units[u].pos;
         let squares = self.squares_in_cone(origin, aim, 3, true);
         let creatures = self.creatures_in_squares(&squares, Some(u));
@@ -1715,7 +1715,7 @@ impl Fight {
         let roll = self.new_roll(u, "spells.dragons_breath", dice, 6, 0, &mut rolls);
         let mut hits = Vec::new();
         for t in creatures {
-            let (passed, rolled) = self.save_check(t, Ability::Dex, dc, false);
+            let (passed, rolled) = self.save_check(self.units[u].pos, t, Ability::Dex, dc, false);
             let dmg = if passed { Fight::half_of(&mut rolls, roll) } else { roll };
             hits.push((t, dmg, SaveOutcome::from_check(passed, rolled)));
         }
@@ -1755,7 +1755,7 @@ impl Fight {
             Act::DragonsBreathExhale => {
                 let Some(obj) = self.active_breath(u) else { return };
                 let ObjKind::Breath { dt, dice, .. } = self.objs[obj as usize].kind else { return };
-                let dc = self.spell_dc(self.objs[obj as usize].source);
+                let dc = self.spell_dc_for(self.objs[obj as usize].source, SpellId::DragonsBreath);
                 let (_, aim) = self.best_cone(u, dt, dice, dc);
                 let Some(aim) = aim else { return };
                 self.do_exhale_at(u, aim);

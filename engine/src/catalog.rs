@@ -75,7 +75,7 @@ pub struct Placed {
 }
 
 fn rows_of(grid: &Grid) -> Vec<String> {
-    (0..grid.h).map(|y| (0..grid.w).map(|x| if grid.is_wall(x, y) { 'H' } else { '.' }).collect()).collect()
+    grid.rows.clone()
 }
 
 fn str_list(v: &Value, what: &str) -> Result<Vec<String>, String> {

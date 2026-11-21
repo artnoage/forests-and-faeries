@@ -67,6 +67,7 @@
   "vulnerabilities": []
  },
  "condition_immunities": [],
+ "darkvision": 60,
  "passive_perception": 11,
  "base_id": "curogana",
  "loadout": {
@@ -210,6 +211,7 @@
   "spell_info": [
    {
     "id": "sorcerous_burst",
+    "sorcerer_spell": true,
     "name": "Sorcerous Burst",
     "level": 0,
     "casting_time": "1:action",
@@ -217,6 +219,7 @@
    },
    {
     "id": "acid_splash",
+    "sorcerer_spell": true,
     "name": "Acid Splash",
     "level": 0,
     "casting_time": "1:action",
@@ -224,6 +227,7 @@
    },
    {
     "id": "firebolt",
+    "sorcerer_spell": true,
     "name": "Firebolt",
     "level": 0,
     "casting_time": "1:action",
@@ -238,6 +242,7 @@
    },
    {
     "id": "burning_hands",
+    "sorcerer_spell": true,
     "name": "Burning Hands",
     "level": 1,
     "casting_time": "1:action",
@@ -245,6 +250,7 @@
    },
    {
     "id": "thunderwave",
+    "sorcerer_spell": true,
     "name": "Thunderwave",
     "level": 1,
     "casting_time": "1:action",
@@ -252,6 +258,7 @@
    },
    {
     "id": "shatter",
+    "sorcerer_spell": true,
     "name": "Shatter",
     "level": 2,
     "casting_time": "1:action",
@@ -259,6 +266,7 @@
    },
    {
     "id": "scorching_ray",
+    "sorcerer_spell": true,
     "name": "Scorching Ray",
     "level": 2,
     "casting_time": "1:action",
@@ -266,6 +274,7 @@
    },
    {
     "id": "blur",
+    "sorcerer_spell": true,
     "name": "Blur",
     "level": 2,
     "casting_time": "1:action",
@@ -280,6 +289,7 @@
    },
    {
     "id": "chromatic_orb",
+    "sorcerer_spell": true,
     "name": "Chromatic Orb",
     "level": 1,
     "casting_time": "1:action",
@@ -287,6 +297,7 @@
    },
    {
     "id": "command",
+    "sorcerer_spell": true,
     "name": "Command",
     "level": 1,
     "casting_time": "1:action",
@@ -294,6 +305,7 @@
    },
    {
     "id": "dragons_breath",
+    "sorcerer_spell": true,
     "name": "Dragon's Breath",
     "level": 2,
     "casting_time": "1:bonus_action",
@@ -301,6 +313,7 @@
    },
    {
     "id": "shield",
+    "sorcerer_spell": true,
     "name": "Shield",
     "level": 1,
     "casting_time": "1:reaction",

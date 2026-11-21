@@ -400,6 +400,7 @@ pub struct CasterSpec {
     /// `spell_list` order, filtered to the action spells
     /// (`scenarios/general/mechanics.py` `ACTION_SPELLS`).
     pub spells: Vec<SpellId>,
+    pub sorcerer_spells: Vec<SpellId>,
     /// Prepared reaction spells (`REACTION_SPELLS`: Shield).
     pub reaction_spells: Vec<SpellId>,
     pub channel_divinity: i32,
@@ -499,6 +500,7 @@ pub struct Template {
     pub erd: (Vec<(Option<i32>, f64)>, i32),
     pub pack_tactics: bool,
     pub construct: bool,
+    pub darkvision: i32,
     /// Blindsight range in feet (zero for ordinary vision).
     pub blindsight: i32,
     /// Truesight range in feet.
@@ -508,6 +510,8 @@ pub struct Template {
     /// Nimble Escape (bonus-action Disengage or Hide): the Hide check's
     /// Stealth modifier.
     pub nimble_escape: Option<i32>,
+    pub incorporeal: bool,
+    pub shadow_stealth: Option<i32>,
     /// NPC `reactions:` of type `swap_retarget` (at most one).
     pub swap_retarget: Option<SwapRetarget>,
     /// NPC inventory items its attacks use (name, starting count).
@@ -608,6 +612,8 @@ pub enum Trait {
     Stench,
     /// Bonus action Disengage or Hide (`disengage_bonus`, `hide_bonus`).
     NimbleEscape,
+    IncorporealMovement,
+    ShadowStealth,
     Inert,
 }
 
@@ -618,9 +624,9 @@ impl Trait {
             "stench" => Trait::Stench,
             "nimble_escape" => Trait::NimbleEscape,
             "pack_tactics" => Trait::PackTactics,
-            "incorporeal_movement" | "sunlight_sensitivity" | "sunlight_weakness" | "amorphous" | "shadow_stealth" => {
-                Trait::Inert
-            }
+            "incorporeal_movement" => Trait::IncorporealMovement,
+            "shadow_stealth" => Trait::ShadowStealth,
+            "sunlight_sensitivity" | "sunlight_weakness" | "amorphous" => Trait::Inert,
             _ => return None,
         })
     }
@@ -795,6 +801,8 @@ pub struct FreeCastDoc {
 #[serde(deny_unknown_fields)]
 pub struct SpellInfoDoc {
     pub id: String,
+    #[serde(default)]
+    pub sorcerer_spell: bool,
     pub name: String,
     pub level: i32,
     pub casting_time: String,
@@ -848,6 +856,8 @@ pub struct ContentDoc {
     pub damage: DamageMods,
     pub condition_immunities: Vec<String>,
     pub passive_perception: i32,
+    #[serde(default)]
+    pub darkvision: i32,
     #[serde(default)]
     pub blindsight: i32,
     #[serde(default)]
@@ -1024,9 +1034,12 @@ impl Template {
             passive_perception: d.passive_perception,
             pack_tactics: false,
             construct: d.races.iter().any(|r| r == "construct"),
+            darkvision: d.darkvision,
             blindsight: d.blindsight,
             truesight: d.truesight,
             nimble_escape: None,
+            incorporeal: false,
+            shadow_stealth: None,
             barbarian: false,
             rage_uses: 0,
             rage_damage: 0,
@@ -1169,6 +1182,8 @@ impl Template {
                 Trait::Stench => t.stench_dc = Some(param_i32(tr, "dc")?),
                 Trait::PackTactics => t.pack_tactics = true,
                 Trait::NimbleEscape => t.nimble_escape = Some(param_i32(tr, "stealth")?),
+                Trait::IncorporealMovement => t.incorporeal = true,
+                Trait::ShadowStealth => t.shadow_stealth = Some(param_i32(tr, "stealth")?),
                 Trait::Inert => {}
             }
         }
@@ -1476,6 +1491,7 @@ fn caster(sc: &SpellcastingDoc, t: &Template, metamagic: Vec<Mm>) -> Result<Cast
         level: sc.level,
         slots,
         spells,
+        sorcerer_spells: sc.spell_info.iter().filter(|info| info.sorcerer_spell).map(|info| spell(&info.id)).collect::<Result<_, _>>()?,
         reaction_spells,
         channel_divinity: res("channel_divinity"),
         free_casts,

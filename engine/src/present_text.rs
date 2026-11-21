@@ -337,9 +337,25 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, r
         ],
         _ => return None,
     };
+    let mut features = pairs(features);
+    if replay_version >= 10 {
+        let traits: &[(&str, &str)] = match content {
+            "specter" => &[
+                ("Incorporeal Movement", "Moves through creatures and solid objects as difficult terrain. Ending its turn inside an object deals 1d10 force damage to it."),
+                ("Sunlight Sensitivity", "Sunlight imposes Disadvantage on its ability checks and attack rolls."),
+            ],
+            "shadow" => &[
+                ("Shadow Stealth", "In dim light or darkness, can take the Hide action as a Bonus Action. Stealth +6."),
+                ("Sunlight Weakness", "Sunlight imposes Disadvantage on its ability checks, attack rolls and saving throws."),
+            ],
+            "wight" => &[("Sunlight Sensitivity", "Sunlight imposes Disadvantage on its ability checks and attack rolls.")],
+            _ => &[],
+        };
+        features.extend(pairs(traits));
+    }
     Some(json!({
         "stats": format!("{} · {} HP · AC {}", creature_type_label(content), hp, ac),
-        "features": pairs(features),
+        "features": features,
         "spells": [],
     }))
 }

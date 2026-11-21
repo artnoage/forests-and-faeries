@@ -280,7 +280,7 @@ pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, cross
                 continue;
             }
             if f.rule_version >= 5 {
-                if !g.clears_corner(p, q) { continue; }
+                if !f.step_clears_corner(a, p, q) { continue; }
             } else if u.t.pc && dx != 0 && dy != 0 && !(free((p.0 + dx, p.1)) && free((p.0, p.1 + dy))) {
                 continue;
             }

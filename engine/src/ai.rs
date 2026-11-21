@@ -51,6 +51,7 @@ struct CanonKey {
     mode: &'static str,
     path: String,
     thrown: bool,
+    paid: bool,
 }
 
 /// Cached progress searches of move scoring (see `sort_with_scores`).
@@ -82,6 +83,7 @@ impl Fight {
             mode: "None",
             path: String::new(),
             thrown: false,
+            paid: false,
         };
         match act {
             Act::Move(path) => k.path = path_repr(path),
@@ -110,6 +112,7 @@ impl Fight {
                     k.mm = mm.key();
                 }
                 k.at_level = c.at_level.to_string();
+                k.paid = self.rule_version >= 9 && !c.free;
             }
             Act::DivineSpark { target, heal, .. } => {
                 k.ids = vec![self.units[*target].id.clone()];
@@ -143,7 +146,7 @@ impl Fight {
             let opos = self.units[o].pos;
             // compute_path(ignore_opposing=True): only walls block, so a path
             // exists within one component; it has >= 2 cells unless same cell.
-            let ok = self.reachable(upos, opos) && upos != opos;
+            let ok = (self.incorporeal(u) || self.reachable(upos, opos)) && upos != opos;
             enemies.push((o, opos, ok));
         }
         let mem = &mut self.units[u].mem;
@@ -323,6 +326,8 @@ impl Fight {
         // a bonus action left
         if unit.t.nimble_escape.is_some() && unit.bonus > 0 {
             acts.push(Act::DisengageBonus);
+        }
+        if unit.bonus > 0 && (unit.t.nimble_escape.is_some() || self.shadow_can_hide(u)) {
             acts.push(Act::HideBonus);
         }
         self.move_candidates(u, &mut acts);
@@ -363,11 +368,11 @@ impl Fight {
             let t = &self.units[tgt];
             let auto = matches!(ab, crate::content::Ability::Str | crate::content::Ability::Dex)
                 && t.has(crate::engine::St::Paralyzed);
-            save_fail_chance(dc, t.save_mod(ab), auto)
+            save_fail_chance(dc, t.save_mod(ab) + self.save_cover(self.units[src].pos, tgt, ab), auto)
         } else {
             let (adv, dis) = self.advantage(src, tgt, def);
             let mode = Fight::mode_of(adv, dis);
-            let ac = self.armor_class(tgt);
+            let ac = self.attack_ac(self.units[src].pos, tgt);
             prob_at_least(20, plus_string_modifier(to_hit), ac, mode)
         };
         let avg = if def.no_damage {
@@ -449,7 +454,7 @@ impl Fight {
         let pos = unit.pos;
         let mut need = 0;
         for &o in &opponents {
-            if self.grid.los(self.units[o].pos, pos) {
+            if self.sees_lit_square(o, pos) {
                 return 0.0;
             }
             need = need.max(self.units[o].t.passive_perception + 1);
@@ -458,7 +463,7 @@ impl Fight {
         let gt = self.gt();
         let feared = unit.frightened_by.iter().any(|&(f, until)| gt < until && !self.units[f].dead() && self.can_see(u, f));
         let mode = crate::trace::RollMode::from_flags(false, unit.poisoned() || feared);
-        let modifier = unit.t.nimble_escape.unwrap_or(0);
+        let modifier = unit.t.nimble_escape.or(unit.t.shadow_stealth).unwrap_or(0);
         let chance = prob_at_least(20, plus_string_modifier(modifier), need, mode);
         if chance <= 0.0 {
             return 0.0;
@@ -485,7 +490,7 @@ impl Fight {
                 extra += expected(d.count, d.sides, d.modifier);
             }
             for &t in &opponents {
-                let ac = self.armor_class(t);
+                let ac = self.attack_ac(self.units[u].pos, t);
                 let hit = prob_at_least(20, plus_string_modifier(to_hit), ac, crate::trace::RollMode::Normal);
                 let hit_adv = prob_at_least(20, plus_string_modifier(to_hit), ac, crate::trace::RollMode::Advantage);
                 best = best.max(hit * dmg);
@@ -514,7 +519,7 @@ impl Fight {
 
     /// Shortest placeable one-square path to a visible enemy or its last known square.
     /// Start at the targets so a single traversal covers every candidate, including detours.
-    fn pursuit_distances(&self, targets: &[Pos], occupied: &crate::map::Bits) -> Vec<u16> {
+    fn pursuit_distances(&self, u: usize, targets: &[Pos], occupied: &crate::map::Bits) -> Vec<u16> {
         let mut distances = vec![u16::MAX; self.grid.cells()];
         let mut queue = VecDeque::new();
         for &(x, y) in targets {
@@ -526,7 +531,7 @@ impl Fight {
             let (x, y) = self.grid.pos_of(i);
             for nx in x - 1..=x + 1 {
                 for ny in y - 1..=y + 1 {
-                    if self.grid.is_wall(nx, ny) || (self.rule_version >= 5 && !self.grid.clears_corner((x, y), (nx, ny))) {
+                    if !self.grid.in_bounds(nx, ny) || (!self.incorporeal(u) && self.grid.is_wall(nx, ny)) || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny))) {
                         continue;
                     }
                     let j = self.grid.index(nx, ny);
@@ -626,7 +631,7 @@ impl Fight {
                         let i = self.grid.index(p.0, p.1);
                         p != upos && !self.grid.is_wall(p.0, p.1) && !occupied.get(i) && (self.rule_version < 6 || self.placeable(u, p)) && !self.units[u].mem.visited.get(i)
                     }).collect();
-                cache.pursuit = self.pursuit_distances(&unvisited, &occupied);
+                cache.pursuit = self.pursuit_distances(u, &unvisited, &occupied);
                 cache.occupied = occupied;
             } else if self.rule_version >= 7 {
                 let reach = self.units[u].t.melee_ft.unwrap_or_else(|| self.units[u].t.attacks.iter()
@@ -637,14 +642,14 @@ impl Fight {
                 }
                 if cache.pursuit.is_empty() || cache.occupied != occupied || cache.landings != landings || cache.reach != reach {
                     let goals: Vec<_> = (0..self.grid.cells()).filter(|&i| !landings.get(i)).map(|i| self.grid.pos_of(i))
-                        .filter(|&p| self.placeable(u, p) && targets.iter().any(|&t| self.within_reach(p, t, reach) && self.grid.los(p, t))).collect();
-                    cache.pursuit = self.pursuit_distances(&goals, &occupied);
+                        .filter(|&p| self.placeable(u, p) && targets.iter().any(|&t| self.within_reach(p, t, reach) && self.clear_effect(p, t))).collect();
+                    cache.pursuit = self.pursuit_distances(u, &goals, &occupied);
                     cache.occupied = occupied;
                     cache.landings = landings;
                     cache.reach = reach;
                 }
             } else if cache.pursuit.is_empty() || cache.occupied != occupied {
-                cache.pursuit = self.pursuit_distances(&targets, &occupied);
+                cache.pursuit = self.pursuit_distances(u, &targets, &occupied);
                 cache.occupied = occupied;
             }
         }
@@ -668,6 +673,7 @@ impl Fight {
                 self, u, 0, true, None, (self.units[u].available_movement() + self.speed_of(u)) / 5
             ).iter().any(|path| path.last().is_some_and(|p| closes_distance(*p)))));
         let mut pc = PathCompute::new(&grid, prone, flying, mask);
+        pc.incorporeal = self.incorporeal(u);
         pc.solid_wall_corners = self.rule_version >= 8;
         if !targets.is_empty() && has_moves {
             let paths = pc.compute_paths_to_multiple(upos, &targets);

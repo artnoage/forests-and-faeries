@@ -75,6 +75,7 @@ impl Ord for Entry {
 pub struct PathCompute<'a> {
     grid: &'a Grid,
     pub(crate) solid_wall_corners: bool,
+    pub(crate) incorporeal: bool,
     prone: bool,
     /// `is_flying()`: difficult terrain costs 1 (`base_move_cost`).
     flying: bool,
@@ -92,6 +93,7 @@ impl<'a> PathCompute<'a> {
         Self {
             grid,
             solid_wall_corners: false,
+            incorporeal: false,
             prone,
             flying,
             occupied,
@@ -139,6 +141,17 @@ impl<'a> PathCompute<'a> {
     /// (the static part is precomputed in `Grid::neighbours`).
     fn neighbours(&self, x: i32, y: i32, out: &mut Vec<(Cell, f64)>) {
         out.clear();
+        if self.incorporeal {
+            for nx in x - 1..=x + 1 {
+                for ny in y - 1..=y + 1 {
+                    if (x, y) == (nx, ny) || !self.grid.in_bounds(nx, ny) { continue; }
+                    let difficult = self.grid.is_wall(nx, ny) || self.occupied.get(self.grid.index(nx, ny));
+                    let diagonal = if nx != x && ny != y { 0.1 } else { 0.0 };
+                    out.push(((nx, ny), 1.0 + f64::from(difficult) + diagonal));
+                }
+            }
+            return;
+        }
         for nb in self.grid.neighbours(self.grid.index(x, y)) {
             let to = (nb.x as i32, nb.y as i32);
             if !self.solid_wall_corners || self.grid.clears_corner((x, y), to) {

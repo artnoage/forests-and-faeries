@@ -1144,7 +1144,31 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
         }
         let rule = if f.units[a].t.pc { Rule::NoCornerCut } else { Rule::AnyDiagonal };
         let p = f.units[a].pos;
-        if f.units[a].frightened_by.is_empty() && f.units[a].source_fear.is_empty() {
+        if f.incorporeal(a) {
+            use std::cmp::Reverse;
+            let mut queue = std::collections::BinaryHeap::from([Reverse((0u16, p))]);
+            sc.steps[g.index(p.0, p.1)] = 0;
+            while let Some(Reverse((cost, from))) = queue.pop() {
+                if sc.steps[g.index(from.0, from.1)] != cost { continue; }
+                for x in from.0 - 1..=from.0 + 1 {
+                    for y in from.1 - 1..=from.1 + 1 {
+                        if !g.in_bounds(x, y) || f.step_toward_fear(a, from, (x, y)) { continue; }
+                        let occupied = f.token_at((x, y)).is_some_and(|o| o != a && masked & (1 << o) == 0);
+                        let next = cost + 1 + u16::from(g.is_wall(x, y) || occupied);
+                        let i = g.index(x, y);
+                        if next < sc.steps[i] {
+                            sc.steps[i] = next;
+                            queue.push(Reverse((next, (x, y))));
+                        }
+                    }
+                }
+            }
+            for (i, unit) in f.units.iter().enumerate() {
+                if i != a && !unit.dead() && masked & (1 << i) == 0 {
+                    sc.steps[g.index(unit.pos.0, unit.pos.1)] = INF;
+                }
+            }
+        } else if f.units[a].frightened_by.is_empty() && f.units[a].source_fear.is_empty() {
             let mut start = [0u64; 34];
             start[p.1 as usize + 1] = 1u64 << p.0;
             bfs_rows(w, h, &free, &start, rule, None, &mut sc.steps);
@@ -2329,7 +2353,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             if let Some(force) = f.active_force(a) {
                 if let ObjKind::Force { level, modifier, .. } = f.objs[force as usize].kind {
                     let n = 1 + (level - 2).max(0);
-                    spell_attack_damage(f, a, *target, WeaponKind::melee(), n, 8, modifier, Dmg::Force, 1.0, row, &mut est);
+                    spell_attack_damage(f, f.force_attack_origin(a, *target, Some(force)), a, *target, WeaponKind::melee(), n, 8, modifier, Dmg::Force, 1.0, row, &mut est);
                 }
             }
         }
@@ -2360,7 +2384,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             row[ai!("save_based")] = 1.0;
             if let Some(obj) = f.active_breath(a) {
                 if let ObjKind::Breath { dt, dice, .. } = f.objs[obj as usize].kind {
-                    let dc = f.spell_dc(f.objs[obj as usize].source);
+                    let dc = f.spell_dc_for(f.objs[obj as usize].source, SpellId::DragonsBreath);
                     row[ai!("save_dc_div20")] = dc as f32 / 20.0;
                     let d = Dice::new(dice, 6, 0);
                     let (mean, max, _) = dice_stats(d);
@@ -2375,7 +2399,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
                                 continue;
                             }
                             tg.add(c);
-                            area_save(f, a, c, Ability::Dex, dc, mean, true, dt, false, &mut est);
+                            area_save(f, a, c, Ability::Dex, dc - f.save_cover(f.units[a].pos, c, Ability::Dex), mean, true, dt, false, &mut est);
                         }
                     }
                 }
@@ -2521,14 +2545,14 @@ fn attack_estimate(f: &Fight, a: usize, atk: usize, t: usize, cleave: bool, est:
     let mut adv_riders = false;
     let (p, crit) = if let Some((ab, dc)) = def.save_attack {
         let auto = matches!(ab, Ability::Str | Ability::Dex) && target.has(St::Paralyzed);
-        (save_fail_chance(dc, target.save_mod(ab), auto), 0.0)
+        (save_fail_chance(dc, target.save_mod(ab) + f.save_cover(unit.pos, t, ab), auto), 0.0)
     } else {
         let (adv, dis) = f.advantage(a, t, def);
         adv_riders = adv && !dis;
         est.adv |= adv && !dis;
         est.dis |= dis && !adv;
         let mode = Fight::mode_of(adv, dis);
-        let p = prob_at_least(20, plus_string_modifier(to_hit), f.armor_class(t), mode);
+        let p = prob_at_least(20, plus_string_modifier(to_hit), f.attack_ac(unit.pos, t), mode);
         let c = if unit.t.improved_critical { 0.1 } else { 0.05 };
         let mut crit = match mode {
             RollMode::Advantage => 1.0 - (1.0 - c) * (1.0 - c),
@@ -2570,6 +2594,7 @@ fn attack_estimate(f: &Fight, a: usize, atk: usize, t: usize, cleave: bool, est:
 #[allow(clippy::too_many_arguments)]
 fn spell_attack_damage(
     f: &Fight,
+    origin: Pos,
     a: usize,
     t: usize,
     wk: WeaponKind,
@@ -2581,7 +2606,7 @@ fn spell_attack_damage(
     row: &mut [f32],
     est: &mut Est,
 ) {
-    let (ph, pc) = f.spell_attack_estimate(a, t, wk);
+    let (ph, pc) = f.spell_attack_estimate_from(a, t, wk, origin);
     let (adv, dis) = f.advantage_flags(a, t, wk);
     est.adv |= adv && !dis;
     est.dis |= dis && !adv;
@@ -2652,7 +2677,7 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
     row[ai!("ends_concentration")] = b(s.concentration() && unit.concentration.is_some());
     row[ai!("duration_div10")] = duration_rounds(s).min(10.0) / 10.0;
     let heightened = c.mm == Some(Mm::Heightened);
-    let dc = f.spell_dc(a);
+    let dc = f.spell_dc_for(a, c.spell);
     let save = |row: &mut [f32], ab: Ability, half: bool| {
         row[ai!("save_based")] = 1.0;
         row[ai!("save_dc_div20")] = dc as f32 / 20.0;
@@ -2711,7 +2736,7 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                     let exp = f.damage_multiplier(t, dt) * ((ph - pc) * hit + pc * crit);
                     est.hit(f, a, t, 1.0, ph, exp);
                 } else {
-                    spell_attack_damage(f, a, t, wk, n, sides, flat, dt, 1.0, row, est);
+                    spell_attack_damage(f, if s == SpiritualWeapon { f.force_attack_origin(a, t, None) } else { unit.pos }, a, t, f.kind_for_spell(a, s, wk), n, sides, flat, dt, 1.0, row, est);
                 }
             }
         }
@@ -2725,7 +2750,7 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                 tg.add(t);
             }
             for &(t, m) in &tg.list[..tg.len] {
-                spell_attack_damage(f, a, t, ranged(120), 2, 6, 0, Dmg::Fire, m as f64, row, est);
+                spell_attack_damage(f, unit.pos, a, t, f.kind_for_spell(a, s, ranged(120)), 2, 6, 0, Dmg::Fire, m as f64, row, est);
             }
         }
         MagicMissile => {
@@ -2779,7 +2804,8 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                     if h {
                         first_enemy = false;
                     }
-                    area_save(f, a, t, ab, dc, full, half, dt, h, est);
+                    let origin = if s == AcidSplash { c.point.unwrap_or(unit.pos) } else { unit.pos };
+                    area_save(f, a, t, ab, dc - f.save_cover(origin, t, ab), full, half, dt, h, est);
                 }
             }
         }

@@ -296,7 +296,7 @@ fn check_row(env: &Env, o: &Obs, r: usize, act: &Act, off: (i32, i32)) {
                 // AttackAction.ai_value's hit chance
                 let (to_hit, _, _) = f.attack_numbers(d.actor, *atk);
                 let (adv, dis) = f.advantage(d.actor, *target, def);
-                let want = prob_at_least(20, to_hit, f.armor_class(*target), Fight::mode_of(adv, dis));
+                let want = prob_at_least(20, to_hit, f.armor_class(*target) + f.cover_bonus_from(f.units[d.actor].pos, *target), Fight::mode_of(adv, dis));
                 assert!((p - want as f32).abs() < 1e-6, "attack P(hit) {p} != {want}");
             }
         }
@@ -373,24 +373,48 @@ fn check_reference(env: &Env, o: &Obs) {
     let mut steps = vec![u16::MAX; g.cells()];
     let start = f.units[actor].pos;
     steps[g.index(start.0, start.1)] = 0;
-    let mut queue = std::collections::VecDeque::from([start]);
-    while let Some((x, y)) = queue.pop_front() {
-        let s = steps[g.index(x, y)];
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                let q = (x + dx, y + dy);
-                if (dx == 0 && dy == 0) || !free(q) {
-                    continue;
+    if f.rule_version() >= 9 && f.units[actor].t.incorporeal {
+        // Independent relaxation for the Specter's weighted paths through solid and occupied squares.
+        loop {
+            let mut changed = false;
+            for i in 0..g.cells() {
+                if steps[i] == u16::MAX { continue; }
+                let (x, y) = g.pos_of(i);
+                for nx in x - 1..=x + 1 {
+                    for ny in y - 1..=y + 1 {
+                        if !g.in_bounds(nx, ny) || f.step_toward_fear(actor, (x, y), (nx, ny)) { continue; }
+                        let cost = 1 + u16::from(g.is_wall(nx, ny) || f.token_at((nx, ny)).is_some_and(|u| u != actor && !hid(u)));
+                        let next = steps[i] + cost;
+                        let j = g.index(nx, ny);
+                        if next < steps[j] { steps[j] = next; changed = true; }
+                    }
                 }
-                if pc && dx != 0 && dy != 0 && !(free((x + dx, y)) && free((x, y + dy))) {
-                    continue;
-                }
-                if f.step_toward_fear(actor, (x, y), q) {
-                    continue;
-                }
-                if steps[g.index(q.0, q.1)] == u16::MAX {
-                    steps[g.index(q.0, q.1)] = s + 1;
-                    queue.push_back(q);
+            }
+            if !changed { break; }
+        }
+        for (i, unit) in f.units.iter().enumerate() {
+            if i != actor && !unit.dead() && !hid(i) { steps[g.index(unit.pos.0, unit.pos.1)] = u16::MAX; }
+        }
+    } else {
+        let mut queue = std::collections::VecDeque::from([start]);
+        while let Some((x, y)) = queue.pop_front() {
+            let s = steps[g.index(x, y)];
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    let q = (x + dx, y + dy);
+                    if (dx == 0 && dy == 0) || !free(q) {
+                        continue;
+                    }
+                    if pc && dx != 0 && dy != 0 && !(free((x + dx, y)) && free((x, y + dy))) {
+                        continue;
+                    }
+                    if f.step_toward_fear(actor, (x, y), q) {
+                        continue;
+                    }
+                    if steps[g.index(q.0, q.1)] == u16::MAX {
+                        steps[g.index(q.0, q.1)] = s + 1;
+                        queue.push_back(q);
+                    }
                 }
             }
         }
