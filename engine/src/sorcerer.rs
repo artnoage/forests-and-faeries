@@ -1652,18 +1652,18 @@ impl Fight {
         for t in creatures {
             let (passed, rolled) = self.save_check(t, Ability::Dex, dc, false);
             let dmg = if passed { Fight::half_of(&mut rolls, roll) } else { roll };
-            hits.push((t, dmg, rolled));
+            hits.push((t, dmg, SaveOutcome::from_check(passed, rolled)));
         }
         // commit: the action, then each damage item
         self.units[u].action = (self.units[u].action - 1).max(0);
-        for (t, dmg, rolled) in hits {
+        for (t, dmg, save) in hits {
             let r = &rolls[dmg];
             let amount = r.amount();
             let dmg_fmt = self.web_events.is_some().then(|| {
                 crate::web_events::fmt_dice_roll(r.sides, &r.rolls, r.modifier, r.halved, amount)
             });
             let mut hs = crate::engine::HitState::default();
-            self.spell_damage_with_web(u, t, amount, dt, false, Some(SaveOutcome::from_check(passed, rolled)), "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
+            self.spell_damage_with_web(u, t, amount, dt, false, Some(save), "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
         }
     }
 
