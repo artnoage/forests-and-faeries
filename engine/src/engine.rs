@@ -763,6 +763,10 @@ impl Fight {
         self.occ[self.grid.index(p.0, p.1)].map(|u| u as usize)
     }
 
+    pub fn rule_version(&self) -> i32 {
+        if !self.legacy_v4_rules { 4 } else if self.creature_space_rules { 3 } else if self.champion_moves_enabled { 2 } else { 1 }
+    }
+
     /// Select the recorded combat rules before initiative or any controller choice.
     pub fn set_rule_version(&mut self, version: i32) {
         self.champion_moves_enabled = version >= 2;

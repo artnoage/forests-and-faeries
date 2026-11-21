@@ -628,8 +628,7 @@ impl Game {
         }
         let e = &self.entry;
         let mut fight = Fight::on_map(pool, e.grid.clone(), &e.units, &self.placed.placements, self.max_rounds, Trace::recording(self.spec.dice_seed))?;
-        fight.champion_moves_enabled = self.env.fight.champion_moves_enabled;
-        fight.creature_space_rules = self.env.fight.creature_space_rules;
+        fight.set_rule_version(self.env.fight.rule_version());
         let control = self.env.control().clone();
         let mut env = Env::new(fight, control.clone(), true);
         let mut reseeds = 0;
@@ -666,7 +665,7 @@ impl Game {
         });
         let s = &self.spec;
         let header = Header {
-            version: if !self.env.fight.legacy_v4_rules { 4 } else if self.env.fight.creature_space_rules { 3 } else if self.env.fight.champion_moves_enabled { 2 } else { 1 },
+            version: self.env.fight.rule_version(),
             n20_commit: NATURAL20_COMMIT.trim().to_string(),
             units: e.units.clone(),
             placements: self.placed.placements.clone(),
