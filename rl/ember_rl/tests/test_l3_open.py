@@ -923,3 +923,28 @@ def test_dedicated_eval_slots_hold_only_evaluation_games(tmp_path, catalog):
     assert [r for r in log if r['type'] == 'dev'] and rows(tmp_path / 'slots', 'eval.jsonl')
     with pytest.raises(SystemExit):
         duel.main(['--output', str(tmp_path / 'bad'), '--backend', 'legacy', '--eval-slots', '4'])
+
+
+def test_league_native_mixes_the_builtin_ai_into_training_opponents(tmp_path, catalog):
+    from ember_rl.fake_env import FakeBatchEnv
+    from ember_rl.general_duel import GeneralTrainer
+    argv = ['--output', str(tmp_path / 'native'), '--max-updates', '6', '--gate-threshold', '-1', '--league',
+            '--league-size', '3', '--league-native', '.5', *strata_args(catalog), *PPO, *TINY, *GATED]
+    args = duel.prepare_args(duel.parser().parse_args(argv))
+    kinds = []
+
+    class Probe(GeneralTrainer):
+        def training_opponent(self, team):
+            key = super().training_opponent(team)
+            kinds.append(key[0])
+            return key
+
+    env = FakeBatchEnv(args.slots, scores=False, objective=args.objective, max_rounds=args.max_rounds,
+                       standing_weight=args.standing_weight, max_steps=args.max_steps, catalog=synthetic_catalog(**SMALL))
+    winning_candidates(Probe)(args, env).run()
+    assert kinds.count('native') and kinds.count('frozen')
+    assert 0.3 < kinds.count('native') / len(kinds) < 0.7
+    opponents = {k for r in rows(tmp_path / 'native') if r['type'] == 'progress' for k in r.get('opponents', {})}
+    assert 'native' in opponents
+    with pytest.raises(SystemExit):
+        duel.prepare_args(duel.parser().parse_args(['--league-native', '.2', *GATED]))

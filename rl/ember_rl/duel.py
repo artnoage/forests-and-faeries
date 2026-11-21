@@ -356,6 +356,8 @@ class Trainer:
         if self.args.native_opponent == team:
             return ('native',)
         if self.league is not None:
+            if self.args.league_native > 0 and self.rng.random() < self.args.league_native:
+                return ('native',)          # --league-native: the built-in AI as one more league opponent
             eid, model, version = self.league.choose(self.rng)
             return ('frozen', f'opp:{eid}', model, version)
         return ('frozen', f'opp:{self.selected_id[team]}', self.selected[team], 0)
@@ -1144,6 +1146,9 @@ def parser():
                    help='league: opponents resident on the GPU per phase (the latest selected one included)')
     p.add_argument('--league-latest', type=float, default=.5,
                    help='league: probability that a training game plays the latest selected opponent')
+    p.add_argument('--league-native', type=float, default=0.,
+                   help='league: probability that a training game plays the native AI as the frozen side (drawn '
+                        'before --league-latest; 0 = never). Development games are unchanged')
     p.add_argument('--pfsp-power', type=float, default=2.,
                    help='league: an archived opponent weighs (1 - x)^p, x = the learner\'s win rate against it')
     p.add_argument('--pfsp-window', type=int, default=256,
@@ -1384,9 +1389,12 @@ def prepare_args(args):
             raise SystemExit('--league needs --schedule gated')
         if args.native_opponent:
             raise SystemExit('--league and --native-opponent exclude each other')
+    if args.league_native and not args.league:
+        raise SystemExit('--league-native needs --league')
     if args.league_size < 1 or not 0 <= args.league_latest <= 1 or not 0 <= args.league_dev_fraction <= 1 \
+            or not 0 <= args.league_native <= 1 \
             or args.league_dev_opponents < 1 or args.pfsp_power < 0 or args.pfsp_window < 1:
-        raise SystemExit('league: --league-size >= 1, --league-latest and --league-dev-fraction in [0, 1], '
+        raise SystemExit('league: --league-size >= 1, --league-latest, --league-native and --league-dev-fraction in [0, 1], '
                          '--league-dev-opponents >= 1, --pfsp-power >= 0, --pfsp-window >= 1')
     return args
 
