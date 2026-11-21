@@ -954,7 +954,7 @@ impl Fight {
     pub(crate) fn ignores_blur(&self, attacker: usize, caster: usize) -> bool {
         let observer = &self.units[attacker];
         let range = observer.t.blindsight.max(observer.t.truesight);
-        range > 0 && self.feet(attacker, caster) <= range && self.clear_effect(observer.pos, self.units[caster].pos)
+        range > 0 && self.feet(attacker, caster) <= range && self.clear_sight(observer.pos, self.units[caster].pos)
     }
 
     /// `cone_value(breather, ..., origin, aim, damage_type, dice, dc)`.

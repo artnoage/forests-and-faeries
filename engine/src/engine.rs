@@ -749,7 +749,7 @@ impl Fight {
             let senses = u.t.darkvision.max(u.t.blindsight).max(u.t.truesight);
             if self.square_distance(u.pos, pos) * 5 > senses { return false; }
         }
-        self.clear_effect(u.pos, pos)
+        self.clear_sight(u.pos, pos)
     }
 
     #[inline]
@@ -821,7 +821,7 @@ impl Fight {
         let (walls, creatures) = self.grid.cover_rays(origin, self.units[target].pos, |p| {
             self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
         });
-        if walls == 15 && !self.clear_effect(origin, self.units[target].pos) { return 0; } // Total cover excludes attacks.
+        if walls == 15 && !self.clear_sight(origin, self.units[target].pos) { return 0; } // Total cover excludes attacks.
         if walls.count_ones() >= 3 { 5 }
         else if (walls | creatures).count_ones() >= 2 { 2 }
         else { 0 }
@@ -851,8 +851,12 @@ impl Fight {
     pub(crate) fn clear_effect(&self, a: Pos, b: Pos) -> bool {
         if self.grid.los(a, b) { return true; }
         self.rule_version >= 9 && !self.grid.is_wall(a.0, a.1) && !self.grid.is_wall(b.0, b.1)
-            && (self.grid.wall_cover_mask(a, b) != 15
-                || (self.rule_version >= 10 && self.grid.wall_cover_mask(b, a) != 15))
+            && self.grid.wall_cover_mask(a, b) != 15
+    }
+
+    /// Either creature can look through the same gap. An area has a fixed point of origin.
+    pub(crate) fn clear_sight(&self, a: Pos, b: Pos) -> bool {
+        self.clear_effect(a, b) || (self.rule_version >= 10 && self.clear_effect(b, a))
     }
 
     pub(crate) fn incorporeal(&self, u: usize) -> bool {
@@ -3217,6 +3221,7 @@ mod srd_level_tests {
         let mut f = fight(&["...", "H..", "H..", "..H", "...", "H.."], &[("guy", a), ("mummy-1", b)]);
         assert!(!f.grid.los(a, b));
         assert!(f.can_see(0, 1) && f.can_see(1, 0));
+        assert!(f.clear_effect(a, b) && !f.clear_effect(b, a));
         assert_eq!(f.cover_bonus_from(b, 0), 5);
         f.set_rule_version(9);
         assert!(f.can_see(0, 1));
