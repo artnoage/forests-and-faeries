@@ -1902,7 +1902,6 @@ impl Fight {
                     }
                 }
                 Item::Command { t, grovel } => {
-                    self.emit_web(crate::web_events::WebEv::FailedSaveAgainstEffect { src: u, tgt: t, name: "Command" });
                     let olds: Vec<u32> = self.units[t]
                         .effects
                         .iter()

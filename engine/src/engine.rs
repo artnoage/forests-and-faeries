@@ -2158,9 +2158,6 @@ impl Fight {
         let mut hs = HitState { kill_at_zero: def.kill_at_zero, ..HitState::default() };
         // a `no_damage` action has no damage event (`damage_event` skipped)
         let applied = if def.no_damage {
-            if def.save_attack.is_some() {
-                self.emit_web(crate::web_events::WebEv::FailedSaveAgainstEffect { src, tgt, name: atk_name });
-            }
             None
         } else {
             let sp = self.units[src].pos;

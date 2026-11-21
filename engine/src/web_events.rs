@@ -75,7 +75,6 @@ pub enum WebEv {
     BlindHitTarget {
         target: usize,
     },
-    FailedSaveAgainstEffect { src: usize, tgt: usize, name: &'static str },
     RiderDamage {
         tgt: usize,
         applied_damage: i32,

@@ -1211,12 +1211,6 @@ impl WebArena {
                         }
                     }
                 }
-                WebEv::FailedSaveAgainstEffect { src, tgt, name } if self.replay_version >= 4 => {
-                    let caster = self.unit_display_name(src);
-                    let target = self.unit_display_name(tgt);
-                    let effect = present_text::title_words(name);
-                    self.push_log(&format!("{target} fails its save against {caster}'s {effect}."), "info", round);
-                }
                 WebEv::RiderDamage { tgt, applied_damage, dt } => {
                     if self.replay_version >= 4 {
                         let name = self.unit_display_name(tgt);
@@ -1607,6 +1601,11 @@ impl WebArena {
                             && e.get("target_id").and_then(Value::as_str) == Some(tgt_id.as_str())
                     });
                     if !shown {
+                        if self.replay_version >= 4 {
+                            let caster = self.unit_display_name(src);
+                            let target = self.unit_display_name(t);
+                            self.push_log(&format!("{target} fails its save against {caster}'s Command."), "spell", self.current_round());
+                        }
                         let mut m = Map::new();
                         m.insert("type".into(), json!("attack"));
                         m.insert("style".into(), json!("command"));
