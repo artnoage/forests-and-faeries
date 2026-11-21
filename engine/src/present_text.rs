@@ -238,7 +238,7 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, l
                     ("Shatter", "Level 2. 10-ft sphere within 60 ft, CON save, 3d8 thunder (half on a success)."),
                     ("Scorching Ray", "Level 2. Three fire rays, 2d6 each; split them as you like."),
                     ("Dragon's Breath", "Level 2, bonus action, concentration. A willing creature may exhale a 15-ft cone of damage as an action."),
-                    ("Blur", "Level 2, concentration. Attackers have Disadvantage against you."),
+                    ("Blur", "Level 2, concentration. Attackers have Disadvantage against you unless they perceive you with Blindsight or Truesight."),
                     ("Command", "Level 1. WIS save or the target falls Prone."),
                     ("Shield", "Level 1 reaction (automatic): +5 AC against the triggering hit."),
                 ],

@@ -501,6 +501,8 @@ pub struct Template {
     pub construct: bool,
     /// Blindsight range in feet (zero for ordinary vision).
     pub blindsight: i32,
+    /// Truesight range in feet.
+    pub truesight: i32,
     /// Stealth threshold for detecting hidden creatures with ordinary vision.
     pub passive_perception: i32,
     /// Nimble Escape (bonus-action Disengage or Hide): the Hide check's
@@ -848,6 +850,8 @@ pub struct ContentDoc {
     pub passive_perception: i32,
     #[serde(default)]
     pub blindsight: i32,
+    #[serde(default)]
+    pub truesight: i32,
     /// Heroes only (monsters: null).
     #[serde(default)]
     pub loadout: Option<LoadoutDoc>,
@@ -1021,6 +1025,7 @@ impl Template {
             pack_tactics: false,
             construct: d.races.iter().any(|r| r == "construct"),
             blindsight: d.blindsight,
+            truesight: d.truesight,
             nimble_escape: None,
             barbarian: false,
             rage_uses: 0,

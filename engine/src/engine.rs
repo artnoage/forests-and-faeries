@@ -1637,7 +1637,7 @@ impl Fight {
             if o.spell == SpellId::ProtectionFromEvilAndGood && s.t.pfeg_protected {
                 dis = true;
             }
-            if matches!(o.kind, crate::effects::ObjKind::Blur) {
+            if matches!(o.kind, crate::effects::ObjKind::Blur) && !self.ignores_blur(src, tgt) {
                 dis = true;
             }
         }

@@ -1,9 +1,10 @@
 //! Directed SRD 5.2.1 cases shared with the rules oracle.
 use std::sync::Arc;
 
-use ember_rs::content::ContentPool;
+use ember_rs::content::{ContentPool, SpellId, Template};
 use ember_rs::engine::{Fight, St};
 use ember_rs::map::Grid;
+use ember_rs::spells::Cast;
 use ember_rs::tape::Placement;
 use ember_rs::trace::Trace;
 
@@ -40,4 +41,32 @@ fn armor_blindsight_obeys_range_and_total_cover() {
         f.units[0].hidden_stealth = Some(25);
         assert_eq!(f.can_see(1, 0), visible);
     }
+}
+
+#[test]
+fn blur_scores_and_attack_rolls_use_the_attackers_sense() {
+    let pool = ContentPool::global();
+    let armor = pool.template(pool.tid("animated_armor").unwrap());
+    let truesight = Box::leak(Box::new(Template { blindsight: 0, truesight: 60, ..armor.clone() }));
+    let blur = Cast { spell: SpellId::Blur, at_level: 2, free: false, targets: vec![0],
+                      multi: false, point: None, mm: None, dt: None };
+    for observer in [armor, truesight] {
+        for (lane, x, valuable, disadvantage) in [
+            ("H..............H", 4, false, false),
+            ("H..............H", 13, false, false), // exactly 60 feet
+            ("H..............H", 14, false, true),  // outside sense and melee threat range
+            ("H.H............H", 4, true, true),    // wall blocks the sense
+        ] {
+            let mut f = fight(&["HHHHHHHHHHHHHHHH", "H..............H", lane, "H..............H", "HHHHHHHHHHHHHHHH"],
+                              &[("curogana", x, 2), ("animated_armor-1", 1, 2)]);
+            f.units[1].t = observer;
+            assert_eq!(f.spell_ai_value(0, &blur) > 0.0, valuable);
+            f.do_spell(0, &blur);
+            assert_eq!(f.advantage(1, 0, &observer.attacks[0]).1, disadvantage);
+        }
+    }
+    let mut f = fight(&["HHHHHHH", "H.....H", "HHHHHHH"], &[("curogana", 3, 1), ("ghoul-1", 2, 1)]);
+    assert!(f.spell_ai_value(0, &blur) > 0.0);
+    f.do_spell(0, &blur);
+    assert!(f.advantage(1, 0, &f.units[1].t.attacks[0]).1);
 }

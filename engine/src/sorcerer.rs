@@ -915,6 +915,13 @@ impl Fight {
         None
     }
 
+    /// Blur has no effect when the attacker perceives the caster with Blindsight or Truesight.
+    pub(crate) fn ignores_blur(&self, attacker: usize, caster: usize) -> bool {
+        let observer = &self.units[attacker];
+        let range = observer.t.blindsight.max(observer.t.truesight);
+        range > 0 && self.feet(attacker, caster) <= range && self.grid.los(observer.pos, self.units[caster].pos)
+    }
+
     /// `cone_value(breather, ..., origin, aim, damage_type, dice, dc)`.
     fn cone_value(&self, breather: usize, origin: Pos, aim: Pos, dt: Dmg, dice: i32, dc: i32) -> f64 {
         let squares = self.squares_in_cone(origin, aim, 3, true);
@@ -985,7 +992,7 @@ impl Fight {
         }
         let mut total = 0.0;
         for foe in self.opponents_of(caster) {
-            if !self.units[foe].conscious() || self.units[foe].incapacitated() {
+            if !self.units[foe].conscious() || self.units[foe].incapacitated() || self.ignores_blur(foe, caster) {
                 continue;
             }
             let profiles = self.attack_profiles(foe);
