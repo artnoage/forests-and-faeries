@@ -1,0 +1,147 @@
+{
+ "id": "lantern_mine",
+ "name": "Lantern Mine",
+ "order": 4,
+ "map": "lantern_mine",
+ "theme": "caverns",
+ "blurb": "Two winding galleries join around a seam of uncut rock.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_lamp_shelf_r2a",
+   "name": "The Lamp Shelf",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The rock spine splits the gallery before the far lamp shelf.",
+   "party": ["guy_l1", "ilyra_l1"],
+   "roster": ["ghast", "zombie"],
+   "placements": {
+    "guy_l1": [2, 3],
+    "ilyra_l1": [2, 7],
+    "ghast-1": [12, 3],
+    "zombie-1": [9, 4]
+   },
+   "variant_of": "lantern_mine/l1_the_lamp_shelf"
+  },
+  {
+   "id": "l1_the_lamp_shelf_r2b",
+   "name": "The Lamp Shelf",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The rock spine splits the gallery before the far lamp shelf.",
+   "party": ["guy_l1", "ilyra_l1"],
+   "roster": ["ghast", "zombie", "kobold_warrior"],
+   "placements": {
+    "guy_l1": [2, 3],
+    "ilyra_l1": [2, 7],
+    "ghast-1": [12, 3],
+    "zombie-1": [13, 7],
+    "kobold_warrior-1": [12, 2]
+   },
+   "variant_of": "lantern_mine/l1_the_lamp_shelf"
+  },
+  {
+   "id": "l1_the_lamp_shelf_r2c",
+   "name": "The Lamp Shelf",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The rock spine splits the gallery before the far lamp shelf.",
+   "party": ["guy_l1", "ilyra_l1"],
+   "roster": ["ghast", "shadow"],
+   "placements": {
+    "guy_l1": [2, 3],
+    "ilyra_l1": [2, 7],
+    "ghast-1": [12, 3],
+    "shadow-1": [13, 7]
+   },
+   "variant_of": "lantern_mine/l1_the_lamp_shelf"
+  },
+  {
+   "id": "l3_the_old_claim_r2a",
+   "name": "The Old Claim",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Beyond the rock spur, the passage opens into a working chamber.",
+   "party": ["mara_l3", "ilyra_l3", "chruna"],
+   "roster": ["animated_armor", "animated_armor", "animated_armor", "animated_armor", "animated_armor", "goblin_minion", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "mara_l3": [6, 6],
+    "ilyra_l3": [6, 8],
+    "chruna": [4, 6],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 7],
+    "animated_armor-3": [11, 2],
+    "animated_armor-4": [13, 5],
+    "animated_armor-5": [9, 3],
+    "goblin_minion-1": [13, 3],
+    "goblin_warrior-1": [11, 7],
+    "goblin_warrior-2": [11, 1],
+    "goblin_warrior-3": [14, 7],
+    "goblin_warrior-4": [13, 2],
+    "goblin_warrior-5": [12, 9],
+    "goblin_warrior-6": [10, 4],
+    "kobold_warrior-1": [10, 7]
+   },
+   "variant_of": "lantern_mine/l3_the_old_claim"
+  },
+  {
+   "id": "l3_the_old_claim_r2b",
+   "name": "The Old Claim",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Beyond the rock spur, the passage opens into a working chamber.",
+   "party": ["mara_l3", "ilyra_l3", "chruna"],
+   "roster": ["animated_armor", "animated_armor", "animated_armor", "animated_armor", "animated_armor", "zombie", "goblin_minion", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "mara_l3": [6, 6],
+    "ilyra_l3": [6, 8],
+    "chruna": [4, 6],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 7],
+    "animated_armor-3": [11, 2],
+    "animated_armor-4": [13, 5],
+    "animated_armor-5": [9, 3],
+    "zombie-1": [13, 7],
+    "goblin_minion-1": [13, 3],
+    "goblin_warrior-1": [11, 7],
+    "goblin_warrior-2": [11, 1],
+    "goblin_warrior-3": [14, 7],
+    "goblin_warrior-4": [13, 2],
+    "goblin_warrior-5": [12, 9],
+    "goblin_warrior-6": [10, 4],
+    "kobold_warrior-1": [10, 7]
+   },
+   "variant_of": "lantern_mine/l3_the_old_claim"
+  },
+  {
+   "id": "l3_the_old_claim_r2c",
+   "name": "The Old Claim",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Beyond the rock spur, the passage opens into a working chamber.",
+   "party": ["mara_l3", "ilyra_l3", "chruna"],
+   "roster": ["animated_armor", "animated_armor", "animated_armor", "animated_armor", "animated_armor", "goblin_warrior", "goblin_minion", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "goblin_warrior", "kobold_warrior"],
+   "placements": {
+    "mara_l3": [6, 6],
+    "ilyra_l3": [6, 8],
+    "chruna": [4, 6],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 7],
+    "animated_armor-3": [11, 2],
+    "animated_armor-4": [13, 5],
+    "animated_armor-5": [9, 3],
+    "goblin_warrior-1": [13, 7],
+    "goblin_minion-1": [13, 3],
+    "goblin_warrior-2": [11, 7],
+    "goblin_warrior-3": [11, 1],
+    "goblin_warrior-4": [14, 7],
+    "goblin_warrior-5": [13, 2],
+    "goblin_warrior-6": [12, 9],
+    "goblin_warrior-7": [10, 4],
+    "kobold_warrior-1": [10, 7]
+   },
+   "variant_of": "lantern_mine/l3_the_old_claim"
+  }
+ ]
+}

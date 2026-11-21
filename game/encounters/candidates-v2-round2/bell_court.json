@@ -1,0 +1,123 @@
+{
+ "id": "bell_court",
+ "name": "Bell Court",
+ "order": 3,
+ "map": "bell_court",
+ "theme": "sanctum",
+ "blurb": "The bell piers divide a paved court into an open aisle and two covered approaches.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_rope_walk_r2a",
+   "name": "The Rope Walk",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The arcade screens the diagonal route across the court.",
+   "party": ["guy_l1", "chruna_l1"],
+   "roster": ["ghast", "kobold_warrior", "kobold_warrior", "skeleton"],
+   "placements": {
+    "guy_l1": [2, 8],
+    "chruna_l1": [4, 8],
+    "ghast-1": [12, 1],
+    "kobold_warrior-1": [12, 3],
+    "kobold_warrior-2": [10, 1],
+    "skeleton-1": [12, 4]
+   },
+   "variant_of": "bell_court/l1_the_rope_walk"
+  },
+  {
+   "id": "l1_the_rope_walk_r2b",
+   "name": "The Rope Walk",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The arcade screens the diagonal route across the court.",
+   "party": ["guy_l1", "chruna_l1"],
+   "roster": ["ghast", "kobold_warrior", "kobold_warrior", "skeleton"],
+   "placements": {
+    "guy_l1": [2, 8],
+    "chruna_l1": [4, 8],
+    "ghast-1": [13, 3],
+    "kobold_warrior-1": [12, 3],
+    "kobold_warrior-2": [10, 1],
+    "skeleton-1": [12, 4]
+   },
+   "variant_of": "bell_court/l1_the_rope_walk"
+  },
+  {
+   "id": "l1_the_rope_walk_r2c",
+   "name": "The Rope Walk",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The arcade screens the diagonal route across the court.",
+   "party": ["guy_l1", "chruna_l1"],
+   "roster": ["ghast", "kobold_warrior", "goblin_minion", "skeleton"],
+   "placements": {
+    "guy_l1": [2, 8],
+    "chruna_l1": [4, 8],
+    "ghast-1": [10, 2],
+    "kobold_warrior-1": [12, 3],
+    "goblin_minion-1": [10, 1],
+    "skeleton-1": [12, 4]
+   },
+   "variant_of": "bell_court/l1_the_rope_walk"
+  },
+  {
+   "id": "l1_a_key_for_the_belfry_r2a",
+   "name": "A Key for the Belfry",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The middle aisle joins the upper and lower courts.",
+   "party": ["guy_l1", "curogana_l1", "ilyra_l1"],
+   "roster": ["animated_armor", "animated_armor", "goblin_warrior", "skeleton"],
+   "placements": {
+    "guy_l1": [6, 6],
+    "curogana_l1": [9, 8],
+    "ilyra_l1": [6, 7],
+    "animated_armor-1": [3, 2],
+    "animated_armor-2": [11, 3],
+    "goblin_warrior-1": [3, 3],
+    "skeleton-1": [11, 2]
+   },
+   "variant_of": "bell_court/l1_a_key_for_the_belfry"
+  },
+  {
+   "id": "l1_a_key_for_the_belfry_r2b",
+   "name": "A Key for the Belfry",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The middle aisle joins the upper and lower courts.",
+   "party": ["guy_l1", "curogana_l1", "ilyra_l1"],
+   "roster": ["animated_armor", "animated_armor", "kobold_warrior", "skeleton"],
+   "placements": {
+    "guy_l1": [6, 8],
+    "curogana_l1": [9, 8],
+    "ilyra_l1": [6, 7],
+    "animated_armor-1": [3, 2],
+    "animated_armor-2": [11, 3],
+    "kobold_warrior-1": [3, 3],
+    "skeleton-1": [11, 2]
+   },
+   "variant_of": "bell_court/l1_a_key_for_the_belfry"
+  },
+  {
+   "id": "l1_a_key_for_the_belfry_r2c",
+   "name": "A Key for the Belfry",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The middle aisle joins the upper and lower courts.",
+   "party": ["guy_l1", "curogana_l1", "ilyra_l1"],
+   "roster": ["animated_armor", "animated_armor", "goblin_warrior", "goblin_minion"],
+   "placements": {
+    "guy_l1": [6, 8],
+    "curogana_l1": [9, 8],
+    "ilyra_l1": [6, 7],
+    "animated_armor-1": [3, 2],
+    "animated_armor-2": [11, 3],
+    "goblin_warrior-1": [3, 3],
+    "goblin_minion-1": [11, 2]
+   },
+   "variant_of": "bell_court/l1_a_key_for_the_belfry"
+  }
+ ]
+}

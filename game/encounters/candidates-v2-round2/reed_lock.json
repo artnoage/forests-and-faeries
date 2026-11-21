@@ -1,0 +1,279 @@
+{
+ "id": "reed_lock",
+ "name": "Reed Lock",
+ "order": 5,
+ "map": "reed_lock",
+ "theme": "catacombs",
+ "blurb": "Two crossings lead between the banks of a stone lock. A central divide screens the opposite towpath.",
+ "split": "test",
+ "grading_status": "candidate",
+ "presets": [
+  {
+   "id": "l1_the_reed_cutters_r2a",
+   "name": "The Reed Cutters",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["curogana_l1", "mara_l1", "ilyra_l1"],
+   "roster": ["skeleton", "wight"],
+   "placements": {
+    "curogana_l1": [13, 5],
+    "mara_l1": [13, 7],
+    "ilyra_l1": [11, 5],
+    "skeleton-1": [4, 3],
+    "wight-1": [2, 8]
+   },
+   "variant_of": "reed_lock/l1_the_reed_cutters"
+  },
+  {
+   "id": "l1_the_reed_cutters_r2b",
+   "name": "The Reed Cutters",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["curogana_l1", "mara_l1", "ilyra_l1"],
+   "roster": ["skeleton", "wight"],
+   "placements": {
+    "curogana_l1": [13, 5],
+    "mara_l1": [11, 8],
+    "ilyra_l1": [11, 5],
+    "skeleton-1": [4, 3],
+    "wight-1": [4, 8]
+   },
+   "variant_of": "reed_lock/l1_the_reed_cutters"
+  },
+  {
+   "id": "l1_the_reed_cutters_r2c",
+   "name": "The Reed Cutters",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["curogana_l1", "mara_l1", "ilyra_l1"],
+   "roster": ["kobold_warrior", "wight"],
+   "placements": {
+    "curogana_l1": [13, 5],
+    "mara_l1": [13, 7],
+    "ilyra_l1": [11, 5],
+    "kobold_warrior-1": [4, 3],
+    "wight-1": [4, 8]
+   },
+   "variant_of": "reed_lock/l1_the_reed_cutters"
+  },
+  {
+   "id": "l1_the_roped_gate_r2a",
+   "name": "The Roped Gate",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The near crossing leaves little cover once a figure reaches the far bank.",
+   "party": ["guy_l1", "elion_l1", "mara_l1"],
+   "roster": ["animated_armor", "animated_armor", "kobold_warrior", "kobold_warrior", "kobold_warrior"],
+   "placements": {
+    "guy_l1": [5, 5],
+    "elion_l1": [6, 8],
+    "mara_l1": [6, 5],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 6],
+    "kobold_warrior-1": [11, 2],
+    "kobold_warrior-2": [12, 7],
+    "kobold_warrior-3": [12, 8]
+   },
+   "variant_of": "reed_lock/l1_the_roped_gate"
+  },
+  {
+   "id": "l1_the_roped_gate_r2b",
+   "name": "The Roped Gate",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The near crossing leaves little cover once a figure reaches the far bank.",
+   "party": ["guy_l1", "elion_l1", "mara_l1"],
+   "roster": ["animated_armor", "animated_armor", "kobold_warrior", "kobold_warrior", "goblin_minion"],
+   "placements": {
+    "guy_l1": [5, 5],
+    "elion_l1": [6, 8],
+    "mara_l1": [6, 5],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 6],
+    "kobold_warrior-1": [11, 2],
+    "kobold_warrior-2": [12, 7],
+    "goblin_minion-1": [13, 5]
+   },
+   "variant_of": "reed_lock/l1_the_roped_gate"
+  },
+  {
+   "id": "l1_the_roped_gate_r2c",
+   "name": "The Roped Gate",
+   "difficulty": "Hard",
+   "hero_level": 1,
+   "blurb": "The near crossing leaves little cover once a figure reaches the far bank.",
+   "party": ["guy_l1", "elion_l1", "mara_l1"],
+   "roster": ["animated_armor", "animated_armor", "kobold_warrior", "ghoul"],
+   "placements": {
+    "guy_l1": [5, 5],
+    "elion_l1": [6, 8],
+    "mara_l1": [6, 5],
+    "animated_armor-1": [11, 3],
+    "animated_armor-2": [12, 6],
+    "kobold_warrior-1": [11, 2],
+    "ghoul-1": [12, 7]
+   },
+   "variant_of": "reed_lock/l1_the_roped_gate"
+  },
+  {
+   "id": "l3_the_broken_capstan_r2a",
+   "name": "The Broken Capstan",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["guy", "ilyra_l3"],
+   "roster": ["shadow", "wight"],
+   "placements": {
+    "guy": [4, 2],
+    "ilyra_l3": [8, 3],
+    "shadow-1": [11, 9],
+    "wight-1": [11, 7]
+   },
+   "variant_of": "reed_lock/l3_the_broken_capstan"
+  },
+  {
+   "id": "l3_the_broken_capstan_r2b",
+   "name": "The Broken Capstan",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["guy", "ilyra_l3"],
+   "roster": ["shadow", "wight"],
+   "placements": {
+    "guy": [4, 2],
+    "ilyra_l3": [4, 6],
+    "shadow-1": [11, 9],
+    "wight-1": [6, 9]
+   },
+   "variant_of": "reed_lock/l3_the_broken_capstan"
+  },
+  {
+   "id": "l3_the_broken_capstan_r2c",
+   "name": "The Broken Capstan",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide breaks sight between the upper and lower landings.",
+   "party": ["guy", "ilyra_l3"],
+   "roster": ["shadow", "wight"],
+   "placements": {
+    "guy": [7, 3],
+    "ilyra_l3": [8, 3],
+    "shadow-1": [11, 9],
+    "wight-1": [6, 9]
+   },
+   "variant_of": "reed_lock/l3_the_broken_capstan"
+  },
+  {
+   "id": "l3_the_flood_bell_r2a",
+   "name": "The Flood Bell",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["mara_l3", "chruna"],
+   "roster": ["ghast", "ghoul", "ghoul", "skeleton", "skeleton", "skeleton"],
+   "placements": {
+    "mara_l3": [13, 5],
+    "chruna": [13, 7],
+    "ghast-1": [6, 3],
+    "ghoul-1": [4, 8],
+    "ghoul-2": [4, 2],
+    "skeleton-1": [5, 8],
+    "skeleton-2": [2, 3],
+    "skeleton-3": [3, 8]
+   },
+   "variant_of": "reed_lock/l3_the_flood_bell"
+  },
+  {
+   "id": "l3_the_flood_bell_r2b",
+   "name": "The Flood Bell",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["mara_l3", "chruna"],
+   "roster": ["ghast", "ghoul", "ghoul", "skeleton", "skeleton", "skeleton", "goblin_minion"],
+   "placements": {
+    "mara_l3": [13, 5],
+    "chruna": [13, 7],
+    "ghast-1": [4, 3],
+    "ghoul-1": [4, 8],
+    "ghoul-2": [4, 2],
+    "skeleton-1": [5, 8],
+    "skeleton-2": [2, 3],
+    "skeleton-3": [3, 8],
+    "goblin_minion-1": [6, 8]
+   },
+   "variant_of": "reed_lock/l3_the_flood_bell"
+  },
+  {
+   "id": "l3_the_flood_bell_r2c",
+   "name": "The Flood Bell",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The wide upper crossing gives both banks access to the lock.",
+   "party": ["mara_l3", "chruna"],
+   "roster": ["ghast", "ghoul", "specter", "skeleton", "skeleton", "skeleton"],
+   "placements": {
+    "mara_l3": [13, 5],
+    "chruna": [13, 7],
+    "ghast-1": [4, 3],
+    "ghoul-1": [4, 8],
+    "specter-1": [4, 2],
+    "skeleton-1": [5, 8],
+    "skeleton-2": [2, 3],
+    "skeleton-3": [3, 8]
+   },
+   "variant_of": "reed_lock/l3_the_flood_bell"
+  },
+  {
+   "id": "l3_the_dry_channel_r2a",
+   "name": "The Dry Channel",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide hides part of the opposite approach.",
+   "party": ["mara_l3"],
+   "roster": ["ghast", "skeleton", "zombie"],
+   "placements": {
+    "mara_l3": [4, 4],
+    "ghast-1": [12, 6],
+    "skeleton-1": [13, 3],
+    "zombie-1": [11, 6]
+   },
+   "variant_of": "reed_lock/l3_the_dry_channel"
+  },
+  {
+   "id": "l3_the_dry_channel_r2b",
+   "name": "The Dry Channel",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide hides part of the opposite approach.",
+   "party": ["mara_l3"],
+   "roster": ["ghast", "skeleton", "zombie"],
+   "placements": {
+    "mara_l3": [4, 4],
+    "ghast-1": [12, 10],
+    "skeleton-1": [9, 8],
+    "zombie-1": [11, 6]
+   },
+   "variant_of": "reed_lock/l3_the_dry_channel"
+  },
+  {
+   "id": "l3_the_dry_channel_r2c",
+   "name": "The Dry Channel",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "The central divide hides part of the opposite approach.",
+   "party": ["mara_l3"],
+   "roster": ["ghast", "zombie", "zombie"],
+   "placements": {
+    "mara_l3": [4, 4],
+    "ghast-1": [12, 6],
+    "zombie-1": [9, 8],
+    "zombie-2": [11, 6]
+   },
+   "variant_of": "reed_lock/l3_the_dry_channel"
+  }
+ ]
+}

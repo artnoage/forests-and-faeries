@@ -59,8 +59,9 @@ def game_levels(encounters=Path('game/encounters')):
                        difficulty=preset['difficulty'], party=preset['party'], roster=preset['roster'],
                        map=dict(name=grid['name'], rows=grid['rows']),
                        layout=dict(rule='fixed', placements=placements), max_rounds=30)
-            if 'hero_level' in preset:
-                row['hero_level'] = preset['hero_level']
+            for field in ('hero_level', 'variant_of'):
+                if field in preset:
+                    row[field] = preset[field]
             if 'grading_status' in book:
                 row['grading_status'] = book['grading_status']
                 row['recorded'] = preset.get('balance')
