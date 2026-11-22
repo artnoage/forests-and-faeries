@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 12;
+pub const CURRENT_RULE_VERSION: i32 = 13;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1929,6 +1929,12 @@ impl Fight {
         self.units[u].dodge && !self.units[u].incapacitated() && self.speed_of(u) > 0
     }
 
+    pub(crate) fn lose_dodge_if_ineligible(&mut self, u: usize) {
+        if self.rule_version >= 13 && self.units[u].dodge && !self.benefits_from_dodge(u) {
+            self.units[u].dodge = false;
+        }
+    }
+
     fn ranged_attack_threatened(&self, src: usize) -> bool {
         if self.rule_version < 6 { return self.enemy_in_melee_range(src); }
         self.units.iter().enumerate().any(|(i, unit)| self.opposing(i, src) && !unit.incapacitated()
@@ -2531,6 +2537,7 @@ impl Fight {
                         unit.add_status(St::Paralyzed);
                         unit.paralysis.push(own_turn);
                         // `TimedConditionEffect.apply_to`: Incapacitated ends a rage
+                        self.lose_dodge_if_ineligible(tgt);
                         self.end_rage_if_incapacitated(tgt);
                     }
                 }
@@ -2912,7 +2919,9 @@ impl Fight {
             self.notes.kill_at_zero += 1;
             self.make_dead(u);
         } else if hp < 0 && overflow >= max_now {
-            self.emit_web(crate::web_events::WebEv::MassiveDamage { target: u, excess: overflow, maximum: max_now });
+            if self.rule_version < 13 || t.pc {
+                self.emit_web(crate::web_events::WebEv::MassiveDamage { target: u, excess: overflow, maximum: max_now });
+            }
             self.make_dead(u);
         } else if hp <= 0 {
             if already_down {
@@ -3000,6 +3009,7 @@ impl Fight {
         }
         unit.do_prone();
         unit.statuses.push(St::Unconscious);
+        self.lose_dodge_if_ineligible(u);
         self.end_rage_if_incapacitated(u);
         let unit = &mut self.units[u];
         unit.remove_status(St::Stable);
@@ -3040,10 +3050,16 @@ impl Fight {
 
     /// `Entity.death_saving_throw`.
     fn death_saving_throw(&mut self, u: usize) {
-        let face = self.roll_d20(u, "death_saving_throw", RollMode::Normal);
+        let (face, draw) = self.roll_d20_raw(u, "death_saving_throw", RollMode::Normal);
+        let bless = (self.rule_version >= 13 && self.has_effect(u, EffKey::Bless))
+            .then(|| self.roll_dice(u, "bless", 1, 4)[0]);
+        let passed = face != 1 && face + bless.unwrap_or(0) >= 10;
         if self.web_events.is_some() {
-            let passed = face >= 10;
-            let outcome = DeathSave::Roll { passed, description: format!("d20({face}) = {face}") };
+            let mut description = crate::web_events::fmt_d20_roll(draw, RollMode::Normal, 0, bless);
+            if self.rule_version >= 13 && face == 1 {
+                description.push_str(" (2 failures)");
+            }
+            let outcome = DeathSave::Roll { passed, description };
             self.emit_web(crate::web_events::WebEv::DeathSave { u, outcome, round: self.round });
         }
         // a cursed creature can't regain the Hit Point: a plain success (N20-044)
@@ -3052,7 +3068,7 @@ impl Fight {
             unit.remove_status(St::Unconscious);
             unit.remove_status(St::Stable);
             self.heal(u, 1);
-        } else if face >= 10 {
+        } else if passed {
             let unit = &mut self.units[u];
             unit.death_saves += 1;
             if unit.death_saves >= 3 {
@@ -3246,6 +3262,47 @@ mod srd_level_tests {
         let mut f = Fight::on_map(ContentPool::global(), Grid::shared(rows).unwrap(), &units, &places, 30, Trace::recording(17)).unwrap();
         f.order = (0..units.len()).collect();
         f
+    }
+
+    #[test]
+    fn blessed_death_saves_keep_the_natural_faces_and_legacy_draws() {
+        use crate::effects::{EffKey, ObjKind};
+        use crate::tape::{DrawVal, Ev};
+        for (version, face, bonus, cursed, saves, fails, hp) in [
+            (13, 8, Some(2), false, 1, 0, 0), (13, 5, Some(4), false, 0, 1, 0),
+            (13, 1, Some(4), false, 0, 2, 0), (13, 20, Some(1), false, 0, 0, 1),
+            (13, 20, Some(1), true, 1, 0, 0), (12, 8, None, false, 0, 1, 0),
+        ] {
+            let mut f = fight(&["....."], &[("guy", (0,0)), ("elion", (1,0))]);
+            f.set_rule_version(version);
+            f.units[0].hp = 0;
+            f.make_unconscious(0);
+            f.units[0].cursed = cursed;
+            let obj = f.new_obj(SpellId::Bless, ObjKind::Spell, 1, vec![0], false);
+            f.register_effect(0, EffKey::Bless, obj, None);
+            let draw = |tag: &str, sides, value| Ev::Draw {
+                who: "guy".into(), tag: tag.into(), sides, mode: "n".into(), v: DrawVal::One(value), expr: None,
+            };
+            let mut draws = vec![draw("death_saving_throw", 20, face)];
+            if let Some(value) = bonus { draws.push(draw("bless", 4, value)); }
+            f.trace = Trace::web_replay_draws(draws);
+            f.death_saving_throw(0);
+            assert_eq!((f.units[0].death_saves, f.units[0].death_fails, f.units[0].hp), (saves, fails, hp));
+            assert_eq!(f.trace.remaining(), 0);
+        }
+    }
+
+    #[test]
+    fn dodge_is_lost_on_knockout_even_if_healed_before_the_next_turn() {
+        for version in [12, 13] {
+            let mut f = fight(&["....."], &[("guy", (0,0)), ("elion", (1,0))]);
+            f.set_rule_version(version);
+            f.units[0].dodge = true;
+            f.units[0].hp = 0;
+            f.make_unconscious(0);
+            f.heal(0, 5);
+            assert_eq!(f.benefits_from_dodge(0), version == 12);
+        }
     }
 
     #[test]

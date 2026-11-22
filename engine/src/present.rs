@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 13;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 14;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -968,6 +968,12 @@ impl WebArena {
     fn process_non_action_events(&mut self, evs: Vec<WebEv>) {
         for ev in evs {
             match ev {
+                WebEv::RageEnded { target } => {
+                    if !self.concealed_from_heroes(target) {
+                        let who = self.unit_display_name(target);
+                        self.push_log(&format!("{who}’s Rage ends."), "status", self.current_round());
+                    }
+                }
                 WebEv::Initiative { u, roll_total } => {
                     let uid = self.fight.as_ref().unwrap().units[u].id.clone();
                     self.initiative_rolls.insert(uid, roll_total);
@@ -1173,6 +1179,12 @@ impl WebArena {
         } else { evs };
         for ev in evs {
             match ev {
+                WebEv::RageEnded { target } => {
+                    if !self.concealed_from_heroes(target) {
+                        let who = self.unit_display_name(target);
+                        self.push_log(&format!("{who}’s Rage ends."), "status", self.current_round());
+                    }
+                }
                 WebEv::HiddenFound { target } => {
                     let who = self.unit_display_name(target);
                     self.push_log(&format!("{who} is spotted and loses Hidden."), "status", round);

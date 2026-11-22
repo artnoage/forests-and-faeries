@@ -1379,6 +1379,7 @@ impl Fight {
             if !self.units[t].frightened_by.is_empty() {
                 self.expire_fear(t);
             }
+            self.lose_dodge_if_ineligible(t);
             // a rage ends on the Incapacitated condition, whatever applied it
             if self.units[t].raging {
                 self.end_rage_if_incapacitated(t);
@@ -1850,6 +1851,7 @@ impl Fight {
             SpareTheDying => items.push(Item::Stabilize(t0.unwrap())),
             LesserRestoration => items.push(Item::Restore(t0.unwrap_or(u))),
             MageArmor => items.push(Item::MageArmor(t0.unwrap())),
+            ChromaticOrb if self.rule_version >= 13 => {}
             _ => rerolled = self.resolve_sorcerer(u, c, &mut items, &mut rolls),
         }
         // `metamagic.finish`: disarm Heightened, spend Sorcery Points, Empowered rerolls
@@ -1879,6 +1881,17 @@ impl Fight {
         } else {
             None
         };
+        if self.rule_version >= 13 && c.spell == ChromaticOrb {
+            let rerolls = self.resolve_sorcerer(u, c, &mut items, &mut rolls);
+            if c.mm == Some(Mm::Empowered) && rerolls > 0 && self.units[u].sorcery_points >= Mm::Empowered.cost() {
+                self.units[u].sorcery_points -= Mm::Empowered.cost();
+            }
+        }
+        self.commit_spell_items(u, c, items, &rolls, spell_obj);
+    }
+
+    pub(crate) fn commit_spell_items(&mut self, u: usize, c: &Cast, items: Vec<Item>, rolls: &[RollObj], spell_obj: Option<u32>) {
+        use SpellId::*;
         let spell_atk_name = crate::web_events::spell_attack_name(c.spell);
         let spell_style_name = c.spell.key();
         let mut hs = HitState::default();

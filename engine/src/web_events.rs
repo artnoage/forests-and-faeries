@@ -111,6 +111,7 @@ pub enum WebEv {
         src_pos: Pos,
         tgt_pos: Pos,
     },
+    RageEnded { target: usize },
     MassiveDamage { target: usize, excess: i32, maximum: i32 },
     ConcentrationEnded { target: usize, spell: SpellId },
     ConcentrationReplaced { caster: usize, prior: SpellId },

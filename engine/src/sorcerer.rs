@@ -1490,6 +1490,10 @@ impl Fight {
                     if leaps_left <= 0 || !dup {
                         break;
                     }
+                    if self.rule_version >= 13 {
+                        self.commit_spell_items(u, c, std::mem::take(items), rolls, None);
+                        self.expire_timed_conditions();
+                    }
                     let (next, _) = self.orb_leap(u, target, &used, dt, hit_dmg, crit_dmg);
                     let Some(next) = next else { break };
                     if self.rule_version >= 6 && self.web_events.is_some() { items.push(Item::OrbLeap { from: target, to: next }); }
@@ -1670,6 +1674,7 @@ impl Fight {
                 let obj = self.new_obj(SpellId::RayOfFrost, ObjKind::Spell, u, vec![action_t], false);
                 self.add_casted(u, t, obj, None);
                 self.register_effect(t, EffKey::SpeedOverride, obj, None);
+                self.lose_dodge_if_ineligible(t);
                 self.register_hook(u, HookEv::StartOfTurn, HookKind::RayOfFrostStart, obj, None);
             }
             &Item::Push { t, to } => self.push_to(t, to),

@@ -132,6 +132,18 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, r
                 "remarkable_athlete" => "Advantage on initiative and Athletics. A critical hit permits half-speed movement without opportunity attacks.",
                 "potent_cantrip" => "Missed cantrip attacks and successful saves still deal half damage with no additional effects.",
                 "evocation_savant" => "Adds two evocations to the spellbook.",
+                _ if replay_version < 14 => "",
+                "savage_attacker" => "Once per turn on a weapon hit, roll the weapon’s damage dice twice and use either roll.",
+                "alert" => "Add your Proficiency Bonus to Initiative.",
+                "defense" => "Gain +1 AC while wearing armor.",
+                "resourceful" => "Gain Heroic Inspiration when you finish a Long Rest.",
+                "skillful" => "Gain proficiency in one skill of your choice.",
+                "versatile" => "Gain an Origin feat of your choice.",
+                "second_wind" => "As a Bonus Action, regain 1d10 HP plus your Fighter level.",
+                "weapon_mastery" => "Use the mastery properties of your chosen weapons.",
+                "action_surge" => "Once per Short or Long Rest, take one extra action on your turn, except the Magic action.",
+                "martial_archetype" => "Your Fighter subclass is Champion.",
+                "improved_critical" => "Your weapon attacks and Unarmed Strikes score a Critical Hit on a natural 19 or 20.",
                 _ => "",
             };
             json!({"name": title_words(&f.id), "text": detail})

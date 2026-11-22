@@ -106,6 +106,9 @@ impl Fight {
         unit.raging = false;
         unit.rage_rounds = 0;
         unit.rage_extended = false;
+        if self.rule_version >= 13 {
+            self.emit_web(crate::web_events::WebEv::RageEnded { target: u });
+        }
     }
 
     /// `barbarian.end_rage_if_incapacitated`.
