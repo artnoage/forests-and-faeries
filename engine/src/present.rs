@@ -2793,13 +2793,17 @@ impl WebArena {
                 pools.push(json!({"label": "Reckless", "value": "active", "max": null}));
             }
         }
-        json!({
+        let mut resources = json!({
             "action": unit.action,
             "bonus_action": unit.bonus,
             "reaction": unit.reaction,
             "movement": unit.movement,
             "pools": pools,
-        })
+        });
+        if self.replay_version >= 13 && unit.champion_movement > 0 {
+            resources["champion_movement"] = json!(unit.champion_movement);
+        }
+        resources
     }
 
     fn with_interrupt_state(&self, mut state: Value) -> Value {
