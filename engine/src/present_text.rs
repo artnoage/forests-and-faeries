@@ -298,7 +298,9 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, r
         ],
         "goblin_boss" => &[
             ("Multiattack", "Two attacks with its scimitar or shortbow: +4, 1d6+2, plus 1d4 with Advantage."),
-            ("Redirect Attack", if replay_version >= 3 {
+            ("Redirect Attack", if replay_version >= 13 {
+                "When a creature it can see makes an attack roll against it, the boss can use its reaction to swap places with a Small or Medium ally within 5 ft. The ally becomes the target."
+            } else if replay_version >= 3 {
                 "Reaction: when an attack would hit it, it swaps places with a Small or Medium ally within 5 ft, which becomes the target."
             } else { "Reaction: when an attack would hit it, it swaps places with a goblin ally within 5 ft, which becomes the target." }),
             ("Nimble Escape", "Bonus action: Disengage or Hide."),

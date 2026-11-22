@@ -2228,7 +2228,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             row[ai!("uses_bonus_action")] = 1.0;
         }
         // a native reaction option, never an external row
-        Act::RedirectAttack { ally } => {
+        Act::RedirectAttack { ally, .. } => {
             row[ai!("uses_reaction")] = 1.0;
             tg.add(*ally);
         }

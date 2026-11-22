@@ -308,7 +308,7 @@ pub struct AttackDef {
 }
 
 /// An NPC `swap_retarget` reaction (`natural20/utils/npc_reactions.py`, the
-/// Goblin Boss's Redirect Attack): when an attack roll against it would hit,
+/// Goblin Boss's Redirect Attack): when a creature makes an attack roll against it,
 /// it may swap places with an ally within `range` feet, which becomes the
 /// target.
 #[derive(Clone, Debug)]

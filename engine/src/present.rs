@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 12;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 13;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -1565,7 +1565,14 @@ impl WebArena {
                     let msg = if success { "keeps it standing at 1 HP" } else { "fails" };
                     self.push_log(&format!("{name}'s Undead Fortitude {msg}."), "info", round);
                 }
-                WebEv::StrengthDrain { attacker, target, src_pos, tgt_pos, drain, died } => {
+                WebEv::StrengthDrain { attacker, target, src_pos, tgt_pos, drain, strength_before, died } => {
+                    if self.replay_version >= 13 {
+                        let source = self.unit_display_name(attacker);
+                        let who = self.unit_display_name(target);
+                        let remaining = (strength_before - drain).max(0);
+                        let text = format!("{source}'s Strength Drain rolls 1d4 = {drain}, reducing {who}'s Strength from {strength_before} to {remaining}.");
+                        self.push_log(&text, "status", round);
+                    }
                     let (src_id, tgt_id) = {
                         let f = self.fight.as_ref().unwrap();
                         (f.units[attacker].id.clone(), f.units[target].id.clone())

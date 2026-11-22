@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 11;
+pub const CURRENT_RULE_VERSION: i32 = 12;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -321,7 +321,7 @@ pub enum Act {
     /// `RedirectAttackAction` (an NPC `swap_retarget` reaction, the Goblin
     /// Boss's Redirect Attack): swap with `ally`, which becomes the target.
     /// A `select_reaction` option only, never a turn candidate.
-    RedirectAttack { ally: usize },
+    RedirectAttack { ally: usize, would_hit: bool },
     /// Barbarian: `RageAction` (bonus action).
     Rage,
     /// Barbarian (2024): `ExtendRageAction` (bonus action).
@@ -716,8 +716,17 @@ impl Fight {
 
     #[inline]
     pub(crate) fn emit_web(&mut self, ev: crate::web_events::WebEv) {
+        use crate::web_events::WebEv;
         if let Some(buf) = &mut self.web_events {
-            buf.push(ev);
+            // Discovery takes effect on the crossed square. Announce the relocation
+            // before the discoveries it caused, within this movement segment.
+            if self.rule_version >= 12 && matches!(ev, WebEv::MoveExecuted { .. }
+                | WebEv::ThunderwavePush { .. } | WebEv::Redirected { .. }) {
+                let found = buf.iter().rev().take_while(|e| matches!(e, WebEv::HiddenFound { .. })).count();
+                buf.insert(buf.len() - found, ev);
+            } else {
+                buf.push(ev);
+            }
         }
     }
 
@@ -2548,7 +2557,9 @@ impl Fight {
                     let v = self.trace.draw("", "fn:apply", 4, RollMode::Normal).one();
                     let sp = self.units[src].pos;
                     let tp = self.units[tgt].pos;
-                    if self.units[tgt].strength() - v < 1 {
+                    let strength_before = self.units[tgt].strength();
+                    let event_index = self.web_events.as_ref().map(Vec::len);
+                    if strength_before - v < 1 {
                         self.make_dead(tgt);
                     } else {
                         let unit = &mut self.units[tgt];
@@ -2559,14 +2570,17 @@ impl Fight {
                     }
                     // `attack_action.py:498`: `'died': target.dead()`
                     let is_dead = self.units[tgt].dead();
-                    self.emit_web(crate::web_events::WebEv::StrengthDrain {
-                        attacker: src,
-                        target: tgt,
-                        src_pos: sp,
-                        tgt_pos: tp,
-                        drain: v,
-                        died: is_dead,
-                    });
+                    if let (Some(index), Some(events)) = (event_index, &mut self.web_events) {
+                        let event = crate::web_events::WebEv::StrengthDrain {
+                            attacker: src, target: tgt, src_pos: sp, tgt_pos: tp,
+                            drain: v, strength_before, died: is_dead,
+                        };
+                        if self.rule_version >= 12 {
+                            events.insert(index, event); // Roll before a death caused by the drain.
+                        } else {
+                            events.push(event);
+                        }
+                    }
                 }
             }
         }
@@ -2643,13 +2657,11 @@ impl Fight {
 
     /// `npc_reactions.attack_roll_window` (`swap_retarget`, the Goblin Boss's
     /// Redirect Attack), after the attack roll is final and before the AC
-    /// comparison: offered when the roll would hit the target (natural 1 no,
-    /// natural 20 yes, natural 19+ with Improved Critical on a weapon attack,
-    /// else the total against its AC), the target is conscious with its
-    /// reaction and (`requires_sight`) sees the attacker. Each conscious ally
+    /// comparison. Any roll opens the window if the target is conscious, has
+    /// its reaction and (`requires_sight`) sees the attacker. Each conscious ally
     /// of an allowed size within range (Map.distance in squares x 5 ft) is an
-    /// option (sorted by unit id); `select_reaction` picks (score: the
-    /// ally's HP). The two swap squares (no movement, no opportunity
+    /// option, sorted by unit id. The native controller prefers the healthiest
+    /// ally on a hit and keeps its reaction on a miss. The two swap squares (no movement, no opportunity
     /// attacks), the target's reaction is spent, and the ally becomes the
     /// target. No draws. Returns the ally.
     pub(crate) fn redirect_window(&mut self, attacker: usize, tgt: usize, face: i32, total: i32, weapon: bool, origin: Pos) -> Option<usize> {
@@ -2668,7 +2680,7 @@ impl Fight {
         } else {
             total >= self.attack_ac(origin, tgt)
         };
-        if !would_hit || (spec.requires_sight && !self.can_see(tgt, attacker)) {
+        if (self.rule_version < 12 && !would_hit) || (spec.requires_sight && !self.can_see(tgt, attacker)) {
             return None;
         }
         let mut allies: Vec<usize> = (0..self.units.len())
@@ -2687,8 +2699,8 @@ impl Fight {
             return None;
         }
         allies.sort_by(|&a, &b| self.units[a].id.cmp(&self.units[b].id));
-        let opts: Vec<Act> = allies.into_iter().map(|ally| Act::RedirectAttack { ally }).collect();
-        let Some(Act::RedirectAttack { ally }) = self.select_reaction(tgt, opts) else { return None };
+        let opts: Vec<Act> = allies.into_iter().map(|ally| Act::RedirectAttack { ally, would_hit }).collect();
+        let Some(Act::RedirectAttack { ally, .. }) = self.select_reaction(tgt, opts) else { return None };
         self.swap_places(tgt, ally);
         let unit = &mut self.units[tgt];
         unit.reaction = (unit.reaction - 1).max(0);
@@ -3199,7 +3211,7 @@ impl Fight {
             Act::CreateSpellSlot { level } | Act::ConvertSpellSlot { level } => format!("{}:L{level}", act.kind()),
             Act::SpiritualWeaponMove { to } => format!("spiritual_weapon_move:@{},{}", to.0, to.1),
             Act::SpiritualWeaponAttack { target } => format!("spiritual_weapon_attack:>{}", self.units[*target].id),
-            Act::RedirectAttack { ally } => format!("redirect_attack:>{}:reaction", self.units[*ally].id),
+            Act::RedirectAttack { ally, .. } => format!("redirect_attack:>{}:reaction", self.units[*ally].id),
             Act::Cleave { target, .. } => format!("cleave:>{}", self.units[*target].id),
             other => other.kind().to_string(),
         }
@@ -3352,8 +3364,9 @@ mod srd_level_tests {
             assert_eq!(f.units[mover].pos, (5,3));
             assert!(!f.sees_hider_clearly(1, 0));
             assert!(!f.units[0].hidden());
-            assert_eq!(f.take_web_events().iter().filter(|e| matches!(e,
-                crate::web_events::WebEv::HiddenFound { target: 0 })).count(), 1);
+            use crate::web_events::WebEv;
+            let events = f.take_web_events();
+            assert!(matches!(events.as_slice(), [WebEv::MoveExecuted { u, .. }, WebEv::HiddenFound { target: 0 }] if *u == mover));
         }
         let mut f = fight(&rows, &[("goblin_boss-1", (2,3)), ("guy", (3,0))]);
         assert!(f.can_see(1, 0));
@@ -3363,6 +3376,26 @@ mod srd_level_tests {
         f.set_rule_version(10);
         f.move_to(0, (3,3));
         assert!(f.units[0].hidden());
+    }
+
+    #[test]
+    fn redirect_on_a_miss_can_be_declined_or_chosen() {
+        let mut f = fight(&["....."; 3], &[("mara", (1, 1)), ("goblin_boss-1", (2, 1)), ("goblin_minion-1", (3, 1))]);
+        let origin = f.units[0].pos;
+        f.set_rule_version(11);
+        assert_eq!(f.redirect_window(0, 1, 10, 15, true, origin), None);
+        assert!(f.trace.recorded().is_empty());
+
+        f.set_rule_version(CURRENT_RULE_VERSION);
+        assert_eq!(f.redirect_window(0, 1, 1, 25, false, origin), None);
+        assert!(matches!(f.trace.recorded().as_slice(), [Ev::Dec { cands, chosen, .. }]
+            if cands == &["redirect_attack:>goblin_minion-1:reaction"] && chosen == "none"));
+        assert_eq!(f.units[1].reaction, 1);
+
+        f.prefer.push("goblin_boss:redirect_attack".into());
+        assert_eq!(f.redirect_window(0, 1, 10, 15, true, origin), Some(2));
+        assert_eq!((f.units[1].pos, f.units[2].pos), ((3, 1), (2, 1)));
+        assert_eq!(f.units[1].reaction, 0);
     }
 
     #[test]

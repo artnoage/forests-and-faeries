@@ -121,7 +121,7 @@ impl Fight {
             Act::CreateSpellSlot { level } | Act::ConvertSpellSlot { level } => k.at_level = level.to_string(),
             Act::SpiritualWeaponMove { to } => k.point = vec![to.0, to.1],
             Act::SpiritualWeaponAttack { target } => k.ids = vec![self.units[*target].id.clone()],
-            Act::RedirectAttack { ally } => k.ids = vec![self.units[*ally].id.clone()],
+            Act::RedirectAttack { ally, .. } => k.ids = vec![self.units[*ally].id.clone()],
             // `CleaveAttackAction.using` is the weapon
             Act::Cleave { atk, target } => {
                 k.weapon = self.units[src].t.attacks[*atk].name;
@@ -760,8 +760,7 @@ impl Fight {
                     let value = self.ai_hide_value(u);
                     if self.rule_version >= 7 && value == 0.0 { SKIP_NATIVE } else { value }
                 },
-                // `RedirectAttackAction.ai_value`: the ally's current HP
-                Act::RedirectAttack { ally } => self.units[*ally].hp as f64,
+                Act::RedirectAttack { ally, would_hit } => if *would_hit { self.units[*ally].hp as f64 } else { 0.0 },
                 Act::ActionSurge => 0.0,
                 // `RageAction`, `ExtendRageAction`, `RecklessAttackAction`
                 // `.ai_value`; a Cleave is an `AttackAction` (`ai_value`)
@@ -992,10 +991,13 @@ impl Fight {
     }
 
     /// `GenericController.select_reaction`: the first of the sorted options
-    /// (Shield).
+    /// for Shield. A native Boss can decline a zero-value Redirect Attack.
     pub fn select_reaction(&mut self, u: usize, cands: Vec<Act>) -> Option<Act> {
         let (cands, fin) = self.decide(u, "select_reaction", cands);
-        let chosen = fin.first().map(|&(i, _)| cands[i].clone());
+        let chosen = fin.first().and_then(|&(i, score)| {
+            let decline = matches!(cands[i], Act::RedirectAttack { would_hit: false, .. }) && score <= 0.0;
+            (!decline).then(|| cands[i].clone())
+        });
         self.emit_decision(u, &fin, chosen.as_ref());
         chosen
     }

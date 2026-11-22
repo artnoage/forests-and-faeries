@@ -175,6 +175,7 @@ pub enum WebEv {
         src_pos: Pos,
         tgt_pos: Pos,
         drain: i32,
+        strength_before: i32,
         died: bool,
     },
     Died {

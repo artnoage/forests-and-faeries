@@ -306,7 +306,7 @@ fn minion_daggers() {
 }
 
 /// Redirect Attack: a Boss next to a Small or Medium ally swaps places when
-/// an attack roll would hit it; the ally becomes the target.
+/// its native controller chooses to redirect a hit; the ally becomes the target.
 #[test]
 fn redirect_attack() {
     let mut notes = Notes::default();
