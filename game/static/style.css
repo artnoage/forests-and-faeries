@@ -346,6 +346,9 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .tt-action.attack { color: #f29d85; }
 .tt-action.warn { color: #ff9c8a; }
 .tt-cover { color: #d8c7a0; }
+.tt-defense { margin-top: 2px; font-size: 11px; line-height: 1.3; color: #f2c97d; }
+.tt-defense.is-vuln { color: #8ef5b4; font-weight: 700; }
+.tt-defense.is-immune { color: #ff9c8a; font-weight: 700; }
 .tt-hits { margin-top: 2px; font-size: 11px; color: var(--gold-bright); line-height: 1.3; }
 .tt-hits.friendly-fire { color: #ff9c8a; font-weight: 700; }
 

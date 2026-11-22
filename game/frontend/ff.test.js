@@ -243,4 +243,29 @@ test('r9 combat rules UI guards cover, Scorching Ray follow-ups, OA/heal warning
   assert.match(html, /Scorching Ray.*one ray at a time/i, 'How to play documents ray-by-ray Scorching Ray');
   assert.match(html, /cover.*corner-to-corner/i, 'How to play documents corner-to-corner cover');
   assert.match(html, /Command.*Grovel\/Halt/i, 'How to play documents the current Command limitation');
+  // Verify DAMAGE_DEFENSES in app.js stays in exact sync with engine/content/srd/*.json
+  const m = app.match(/const DAMAGE_DEFENSES = (\{[\s\S]*?\n  \});/);
+  assert.ok(m, 'DAMAGE_DEFENSES table present in app.js');
+  const uiDefenses = Function(`"use strict"; return (${m[1]});`)();
+  const srdDir = path.resolve(ff, '../engine/content/srd');
+  const expected = {};
+  for (const file of readdirSync(srdDir).filter(f => f.endsWith('.json')).sort()) {
+    const doc = JSON.parse(readFileSync(path.join(srdDir, file), 'utf8'));
+    const dmg = doc.damage || {};
+    if ((dmg.resistances?.length || 0) + (dmg.immunities?.length || 0) + (dmg.vulnerabilities?.length || 0) > 0) {
+      expected[doc.id] = {
+        resistances: [...(dmg.resistances || [])].sort(),
+        immunities: [...(dmg.immunities || [])].sort(),
+        vulnerabilities: [...(dmg.vulnerabilities || [])].sort(),
+      };
+    }
+  }
+  assert.deepEqual(Object.keys(uiDefenses).sort(), Object.keys(expected).sort(), 'DAMAGE_DEFENSES keys match SRD content pack');
+  for (const [id, exp] of Object.entries(expected)) {
+    assert.deepEqual({
+      resistances: [...uiDefenses[id].resistances].sort(),
+      immunities: [...uiDefenses[id].immunities].sort(),
+      vulnerabilities: [...uiDefenses[id].vulnerabilities].sort(),
+    }, exp, `${id} defenses match SRD JSON`);
+  }
 });

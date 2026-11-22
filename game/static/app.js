@@ -320,6 +320,68 @@
     return list.filter(a => paymentKey(a) === (level ?? null) && (a.option || '') === opt);
   };
 
+  const DAMAGE_DEFENSES = {
+    animated_armor: { resistances: [], immunities: ['poison', 'psychic'], vulnerabilities: [] },
+    ghast: { resistances: ['necrotic'], immunities: ['poison'], vulnerabilities: [] },
+    ghoul: { resistances: [], immunities: ['poison'], vulnerabilities: [] },
+    mummy: { resistances: [], immunities: ['necrotic', 'poison'], vulnerabilities: ['fire'] },
+    shadow: { resistances: ['acid', 'cold', 'fire', 'lightning', 'thunder'], immunities: ['necrotic', 'poison'], vulnerabilities: ['radiant'] },
+    skeleton: { resistances: [], immunities: ['poison'], vulnerabilities: ['bludgeoning'] },
+    specter: { resistances: ['acid', 'bludgeoning', 'cold', 'fire', 'lightning', 'piercing', 'slashing', 'thunder'], immunities: ['necrotic', 'poison'], vulnerabilities: [] },
+    wight: { resistances: ['necrotic'], immunities: ['poison'], vulnerabilities: [] },
+    zombie: { resistances: [], immunities: ['poison'], vulnerabilities: [] },
+  };
+  const DAMAGE_TYPES = new Set(['acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder']);
+  const SPELL_DAMAGE = {
+    acid_splash: 'acid', firebolt: 'fire', fire_bolt: 'fire', burning_hands: 'fire', scorching_ray: 'fire',
+    shatter: 'thunder', thunderwave: 'thunder', sacred_flame: 'radiant', guiding_bolt: 'radiant',
+    magic_missile: 'force', spiritual_weapon: 'force', spiritual_weapon_attack: 'force',
+    ray_of_frost: 'cold', shocking_grasp: 'lightning', toll_the_dead: 'necrotic', chill_touch: 'necrotic',
+  };
+  const WEAPON_DAMAGE = {
+    warhammer: 'bludgeoning', mace: 'bludgeoning', club: 'bludgeoning', quarterstaff: 'bludgeoning', slam: 'bludgeoning',
+    greatsword: 'slashing', longsword: 'slashing', halberd: 'slashing', handaxe: 'slashing', scimitar: 'slashing', claw: 'slashing',
+    longbow: 'piercing', shortbow: 'piercing', shortsword: 'piercing', dagger: 'piercing', javelin: 'piercing', spear: 'piercing',
+  };
+  function actionDamageType(a) {
+    if (!a || a.spell === 'dragons_breath') return null;
+    const paren = String(a.label || '').match(/\(([^)]+)\)/);
+    if (paren) {
+      const t = paren[1].trim().toLowerCase();
+      if (DAMAGE_TYPES.has(t)) return t;
+    }
+    for (const key of [a.option, a.mode]) {
+      const t = String(key || '').trim().toLowerCase();
+      if (DAMAGE_TYPES.has(t)) return t;
+    }
+    if (a.spell && SPELL_DAMAGE[a.spell]) return SPELL_DAMAGE[a.spell];
+    if (SPELL_DAMAGE[a.kind]) return SPELL_DAMAGE[a.kind];
+    if (a.kind === 'attack' || a.kind === 'cleave' || a.category === 'attack') {
+      const base = String(a.label || '').replace(/\s*\(.*$/, '').replace(/\s+at unseen.*$/i, '').trim().toLowerCase();
+      if (WEAPON_DAMAGE[base]) return WEAPON_DAMAGE[base];
+    }
+    return null;
+  }
+  function defenseTags(a, focusId = null) {
+    const dtype = actionDamageType(a);
+    const actor = activeUnit();
+    if (!dtype || !actor) return [];
+    const rawIds = a.cells ? (a.hits || []) : (a.target_ids?.length ? a.target_ids : (hasTarget(a) ? [a.target_id] : []));
+    const ids = focusId && rawIds.includes(focusId) ? [focusId] : [...new Set(rawIds)];
+    const solo = ids.length === 1 && (focusId || !a.cells);
+    const out = [];
+    for (const id of ids) {
+      const u = (state?.units || []).find(unit => unit.id === id);
+      if (!u || u.team === actor.team) continue;
+      const d = DAMAGE_DEFENSES[u.content || u.kind || ''];
+      if (!d) continue;
+      if (d.vulnerabilities.includes(dtype)) out.push({ kind: 'vuln', text: `${solo ? 'takes double' : `${u.name} takes double`} ${dtype}` });
+      else if (d.immunities.includes(dtype)) out.push({ kind: 'immune', text: `${solo ? 'immune to' : `${u.name} immune to`} ${dtype}` });
+      else if (d.resistances.includes(dtype)) out.push({ kind: 'resist', text: `${solo ? 'resists' : `${u.name} resists`} ${dtype}` });
+    }
+    return out;
+  }
+  const defenseText = (a, focusId = null) => defenseTags(a, focusId).map(t => t.text).join('; ');
   const isSplit = list => list.some(a => (a.target_ids || []).length > 1);
   const isRayContinuation = () => actions().some(a => a.ray_number > 1);
   const HEAL_SPELLS = new Set(['healing_word', 'cure_wounds']);
@@ -528,6 +590,11 @@
       parts.push(`<div class="tt-action ${actCls}">${escape(text)}</div>`);
       const cov = coverText(matchingAct, hoveredUnit?.id);
       if (cov) parts.push(`<div class="tt-cover">${escape(cov)}</div>`);
+      const defs = defenseTags(matchingAct, hoveredUnit?.id);
+      if (defs.length) {
+        const cls = defs.some(d => d.kind === 'immune') ? 'is-immune' : defs.some(d => d.kind === 'vuln') ? 'is-vuln' : '';
+        parts.push(`<div class="tt-defense ${cls}">${escape(defs.map(d => d.text).join(' · '))}</div>`);
+      }
       const hits = hitsLabel(matchingAct);
       if (hits) parts.push(`<div class="tt-hits${matchingAct.allies?.length ? ' friendly-fire' : ''}">${escape(hits)}</div>`);
       for (const w of warns) parts.push(`<div class="tt-hits friendly-fire">${escape(w)}</div>`);
@@ -1003,10 +1070,12 @@
       if (armed && cur.some(a => a.id === armed.id)) {
         const tgt = armed.cells ? aimLabel(armed) : chipTargetText(armed);
         const cov = coverText(armed);
+        const defTxt = defenseText(armed);
         const warns = actionWarnings(armed);
         const bits = [
           tgt ? `Confirm ${armed.label} → ${tgt}` : `Confirm ${armed.label}`,
           hitsLabel(armed),
+          defTxt,
           cov,
           ...warns,
           armed.cost,
@@ -1017,10 +1086,10 @@
       for (const a of targetActs) {
         if (seen.has(a.id) || (armed && armed.id === a.id)) continue;
         seen.add(a.id);
-        const tgt = chipTargetText(a), hits = hitsLabel(a), cov = coverText(a), warns = actionWarnings(a);
+        const tgt = chipTargetText(a), hits = hitsLabel(a), cov = coverText(a), defTxt = defenseText(a), warns = actionWarnings(a);
         const rayTag = a.ray_count ? ` [Ray ${a.ray_number}/${a.ray_count}]` : '';
         const head = tgt ? `${a.label}${rayTag} → ${tgt}` : `${a.label}${rayTag}`;
-        const bits = [head, cov, ...warns, a.cost, hits].filter(Boolean);
+        const bits = [head, defTxt, cov, ...warns, a.cost, hits].filter(Boolean);
         chips.push(`<button class="target-chip ${hasWarning(a) ? 'friendly-fire' : ''}" data-action="${escape(a.id)}" title="${escape(a.description || head)}">${escape(bits.join(' · '))}</button>`);
       }
     }
