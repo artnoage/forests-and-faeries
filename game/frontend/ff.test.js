@@ -269,3 +269,74 @@ test('r9 combat rules UI guards cover, Scorching Ray follow-ups, OA/heal warning
     }, exp, `${id} defenses match SRD JSON`);
   }
 });
+
+test('release copy covers Unbeatable tier, reaction refresh, engine credits, and sheet clarifications', () => {
+  const app = read('static/app.js');
+  const html = read('static/index.html');
+  const licenses = read('static/licenses.html');
+  const css = read('static/style.css');
+
+  // Unbeatable fourth difficulty tier & accurate threshold copy
+  assert.match(app, /id:\s*'Unbeatable'/, 'DIFFICULTIES includes Unbeatable');
+  assert.match(app, /No language-model player won these levels, and both game AIs won fewer than half of their 500 games\./, 'Unbeatable description states the AI win threshold');
+  assert.match(css, /\.tier-unbeatable\b/, 'style.css styles .tier-unbeatable');
+  assert.match(css, /\.level-tier\.unbeatable\b/, 'style.css styles .level-tier.unbeatable');
+
+  // Reaction refresh and engine attribution copy
+  assert.match(html, /regain your reaction at the start of your turn/i, 'How to play explains when reactions refresh');
+  assert.match(html, /Reactions are currently automatic/i, 'How to play notes automatic reactions');
+  assert.match(html, /ember-rs/i, 'meta description credits ember-rs');
+  assert.match(licenses, /ember-rs/i, 'licenses.html credits ember-rs');
+  assert.match(licenses, /rules reference/i, 'licenses.html describes Natural20 as rules reference');
+
+  // Sheet-text clarifications for the r9 wheel (codex rules-review.md)
+  const fnMatch = app.match(/function normalizeSheetItem\(item\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(fnMatch, 'normalizeSheetItem helper present in app.js');
+  const normalizeSheetItem = Function(`"use strict"; ${fnMatch[0]}; return normalizeSheetItem;`)();
+
+  const cmd = normalizeSheetItem({ name: 'Command', text: 'Level 1. WIS save or the target falls Prone.' });
+  assert.match(cmd.text, /Grovel/i);
+  assert.match(cmd.text, /Halt/i);
+
+  const glare = normalizeSheetItem({ name: 'Dreadful Glare', text: "One creature within 60 ft makes a WIS save (DC 11) or is Frightened until the end of the mummy's next turn. On a success it is immune to this mummy's Glare." });
+  assert.match(glare.text, /can see/i);
+  assert.match(glare.text, /24 hours/i);
+
+  const savage = normalizeSheetItem({ name: 'Savage Attacker', text: "Once per turn, roll a weapon hit's damage dice twice and keep the higher total." });
+  assert.match(savage.text, /either roll/i);
+  assert.match(savage.text, /automatically/i);
+
+  const surge = normalizeSheetItem({ name: 'Action Surge', text: 'Take one extra action this turn. One use.' });
+  assert.match(surge.text, /except the Magic action/i);
+  const surgeL3 = normalizeSheetItem({ name: 'Action Surge', text: 'Once per Short or Long Rest, take one extra action on your turn, except the Magic action.' });
+  assert.equal(surgeL3.text, 'Once per Short or Long Rest, take one extra action on your turn, except the Magic action.');
+
+  const orb = normalizeSheetItem({ name: 'Chromatic Orb', text: 'Level 1. Ranged attack, 3d8 damage of a type you pick.' });
+  assert.match(orb.text, /leaps to another target within 30 ft/i);
+
+  const shield = normalizeSheetItem({ name: 'Shield', text: 'Level 1 reaction (automatic): +5 AC against the triggering hit.' });
+  assert.match(shield.text, /start of your next turn/i);
+  assert.match(shield.text, /Magic Missile/i);
+
+  // Promoted encounters keep the 4 ranked cards at 10 / 10 / 13 / 3 (with Crypt & Vault separated into Classic)
+  const pubEncounters = encounterFiles('encounters');
+  const legacyIds = new Set(['crypt', 'vault']);
+  const rankedCounts = { Easy: 0, Medium: 0, Hard: 0, Unbeatable: 0 };
+  let classicCount = 0;
+  for (const e of pubEncounters) {
+    for (const p of e.presets) {
+      if (legacyIds.has(e.id)) classicCount++;
+      else rankedCounts[p.difficulty] = (rankedCounts[p.difficulty] || 0) + 1;
+      assert.doesNotMatch(p.name, /\(\+[12] monsters?\)/i, `${e.id}/${p.id} has no dev suffix`);
+    }
+  }
+  assert.deepEqual(rankedCounts, { Easy: 10, Medium: 10, Hard: 13, Unbeatable: 3 });
+  assert.equal(classicCount, 11);
+  assert.match(app, /LEGACY_ENCOUNTERS = new Set\(\['crypt', 'vault'\]\)/, 'app.js separates legacy Crypt & Vault into Classic');
+  const unbeatable = pubEncounters.filter(e => !legacyIds.has(e.id)).flatMap(e => e.presets.filter(p => p.difficulty === 'Unbeatable').map(p => `${e.id}/${p.id}`)).sort();
+  assert.deepEqual(unbeatable, [
+    'bell_court/l1_the_bell_steps_plus1_v3',
+    'reed_lock/l1_the_towpath_v3',
+    'reed_lock/l3_the_stone_sill_plus1_v3',
+  ]);
+});

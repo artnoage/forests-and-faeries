@@ -83,7 +83,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 }
 
 .start-modal {
-  width: min(1160px, 100%);
+  width: min(1220px, 100%);
   max-height: calc(100vh - 28px);
   overflow: hidden;
   background: linear-gradient(180deg, rgba(16, 18, 24, 0.90), rgba(10, 12, 16, 0.94));
@@ -179,6 +179,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .level-tier.easy { color: #7ee2b8; border-color: rgba(126, 226, 184, 0.35); }
 .level-tier.medium { color: #f0c675; border-color: rgba(240, 198, 117, 0.38); }
 .level-tier.hard { color: #f2846b; border-color: rgba(242, 132, 107, 0.42); }
+.level-tier.unbeatable { color: #e2a4ff; border-color: rgba(226, 164, 255, 0.46); background: rgba(164, 76, 226, 0.14); }
 .level-tier.classic { color: #9fc4ff; border-color: rgba(159, 196, 255, 0.38); }
 
 .level-card-body {
@@ -1006,8 +1007,8 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 .levels-step { display: flex; flex-direction: column; gap: 13px; }
 .difficulty-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
   padding: 4px 0 6px;
 }
 .difficulty-card {
@@ -1050,6 +1051,12 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
   background: linear-gradient(180deg, rgba(58, 28, 25, 0.74), rgba(18, 16, 21, 0.96));
   box-shadow: 0 0 24px rgba(242, 132, 107, 0.24);
 }
+.difficulty-card.tier-unbeatable { border-color: rgba(212, 132, 255, 0.40); }
+.difficulty-card.tier-unbeatable:hover, .difficulty-card.tier-unbeatable.is-active {
+  border-color: #df9eff;
+  background: linear-gradient(180deg, rgba(64, 26, 78, 0.78), rgba(19, 14, 26, 0.97));
+  box-shadow: 0 0 26px rgba(212, 132, 255, 0.28);
+}
 .difficulty-card-head {
   display: flex;
   justify-content: space-between;
@@ -1077,6 +1084,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 .difficulty-card.tier-easy .difficulty-card-title { color: #a7f2d2; }
 .difficulty-card.tier-medium .difficulty-card-title { color: #f6dc9f; }
 .difficulty-card.tier-hard .difficulty-card-title { color: #f8a997; }
+.difficulty-card.tier-unbeatable .difficulty-card-title { color: #e8b8ff; }
 .difficulty-card-tagline {
   margin: 3px 0 0;
   font-size: 11px;
@@ -1205,6 +1213,56 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
   border-color: #f2846b;
   background: rgba(242, 132, 107, 0.18);
   color: #f8a997;
+}
+.difficulty-tab.is-active.tier-unbeatable {
+  border-color: #df9eff;
+  background: rgba(212, 132, 255, 0.20);
+  color: #efd0ff;
+}
+.difficulty-tab.tier-classic {
+  margin-left: 6px;
+  border-color: rgba(159, 196, 255, 0.28);
+}
+.difficulty-tab.is-active.tier-classic {
+  border-color: #9fc4ff;
+  background: rgba(159, 196, 255, 0.16);
+  color: #cfe3ff;
+}
+.classic-banner {
+  margin-top: 8px;
+}
+.classic-banner-btn {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 11px;
+  border: 1px solid rgba(159, 196, 255, 0.24);
+  background: rgba(20, 26, 36, 0.72);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.classic-banner-btn:hover {
+  border-color: #9fc4ff;
+  background: rgba(28, 38, 54, 0.86);
+  color: var(--text-main);
+}
+.classic-banner-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.classic-banner-cta {
+  color: #9fc4ff;
+  font-weight: 750;
+  white-space: nowrap;
 }
 .difficulty-tab.is-active .difficulty-tab-count,
 .hero-level-tab.is-active .difficulty-tab-count {
@@ -1361,6 +1419,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
   .result-overlay { left: 6px; right: 6px; transform: none; top: 28%; }
 }
 @media (max-width: 1120px) {
+  .difficulty-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .level-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {

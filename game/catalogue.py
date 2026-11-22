@@ -34,7 +34,7 @@ ENCOUNTERS = ROOT / 'encounters'
 MAPS = ROOT / 'maps'
 THEMES = ('ossuary', 'catacombs', 'caverns', 'reliquary', 'sanctum', 'crucible', 'forged_hall',
           'mausoleum', 'mausoleum_crypt', 'mausoleum_caves')
-DIFFICULTIES = ('Easy', 'Medium', 'Hard')
+DIFFICULTIES = ('Easy', 'Medium', 'Hard', 'Unbeatable')
 PROP_KINDS = ('pillar', 'brazier', 'table', 'bench', 'shelf', 'barrel', 'crate', 'rug',
               'sarcophagus', 'altar', 'stained_glass', 'bell', 'lantern_post', 'ore_vein', 'water_lock', 'kiln')
 MAX_SIZE = 32

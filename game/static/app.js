@@ -1,7 +1,6 @@
-/* Forests and Faeries: a 3D tactical tabletop over the Natural20 engine.
- * Ported from the Ember Crucible prototype. Every legal move, target, saving throw,
- * hit point change and die roll comes from the server (webgame/ff/server.py);
- * this page only shows them and sends the player's choices. */
+/* Forests and Faeries: a 3D tactical tabletop over the ember-rs engine (checked against Natural20).
+ * Every legal move, target, saving throw, hit point change and die roll comes from
+ * the server (game/server.py); this page only shows them and sends the player's choices. */
 (() => {
   'use strict';
 
@@ -265,8 +264,10 @@
   const DIFFICULTIES = [
     { id: 'Easy', label: 'Easy', tagline: 'Skirmishes and openings', desc: 'Shorter fights to learn the board, positioning and spells.', fallbackLead: 'skeleton' },
     { id: 'Medium', label: 'Medium', tagline: 'Balanced tactics', desc: 'Mixed threats with spellcasters, hazards and tougher foes.', fallbackLead: 'wight' },
-    { id: 'Hard', label: 'Hard', tagline: 'Deadly encounters', desc: 'Multi-threat battles built for a full party and sharp play.', fallbackLead: 'mummy' },
+    { id: 'Hard', label: 'Hard', tagline: 'Deadly encounters', desc: 'Multi-threat battles built for a full party and sharp play.', fallbackLead: 'ghast' },
+    { id: 'Unbeatable', label: 'Unbeatable', tagline: 'Unconquered by our agents', desc: 'No language-model player won these levels, and both game AIs won fewer than half of their 500 games.', fallbackLead: 'mummy' },
   ];
+  const LEGACY_ENCOUNTERS = new Set(['crypt', 'vault']);
 
   let startScreenOpen = true;
   let startStep = 'difficulty';  // 'difficulty' | 'levels'
@@ -862,10 +863,34 @@
     }).join('');
   }
 
+  function normalizeSheetItem(item) {
+    const name = item?.name || '';
+    let text = item?.text || '';
+    if (name === 'Command' && !/Halt/i.test(text)) {
+      text = 'Level 1. WIS save or obey a one-word command. This build picks Grovel (falls Prone and ends its turn) or Halt (stays put and takes no action or Bonus Action) automatically from the SRD’s five words.';
+    } else if (name === 'Dreadful Glare' && !/24 hours/i.test(text)) {
+      text = "One creature the Mummy can see within 60 ft makes a WIS save (DC 11) or is Frightened until the end of the Mummy's next turn. On a success it is immune to this Mummy's Dreadful Glare for 24 hours.";
+    } else if (name === 'Savage Attacker' && !/automatically/i.test(text)) {
+      text = "Once per turn on a weapon hit, roll the weapon's damage dice twice and use either roll (this build selects the higher total automatically).";
+    } else if (name === 'Action Surge' && !/Magic action/i.test(text)) {
+      text = 'Take one extra action on your turn, except the Magic action. One use.';
+    } else if (name === 'Chromatic Orb' && !/leap/i.test(text)) {
+      text = 'Level 1. Ranged attack, 3d8 damage of a type you pick. If two or more damage dice show the same number, the orb leaps to another target within 30 ft (up to the spell slot’s level of leaps; automatic in this build).';
+    } else if (name === 'Shield' && !/next turn/i.test(text)) {
+      text = 'Level 1 reaction: +5 AC (including against the triggering attack) until the start of your next turn, and you take no damage from Magic Missile. This build spends the reaction automatically on eligible attacks.';
+    } else if (name === 'Scorching Ray' && /split them as you like/i.test(text)) {
+      text = 'Level 2. Three fire rays (2d6 fire each), aimed one ray at a time after seeing the previous ray resolve.';
+    }
+    return { name, text };
+  }
+
   function sheetHtml(unit, open = false) {
     const sheet = unit?.sheet;
     if (!sheet) return '';
-    const list = items => items?.length ? `<ul class="sheet-list">${items.map(i => `<li><b>${escape(i.name)}</b> ${escape(i.text)}</li>`).join('')}</ul>` : '';
+    const list = items => items?.length ? `<ul class="sheet-list">${items.map(raw => {
+      const i = normalizeSheetItem(raw);
+      return `<li><b>${escape(i.name)}</b> ${escape(i.text)}</li>`;
+    }).join('')}</ul>` : '';
     return `<div class="sheet"><p class="sheet-stats">${escape(sheet.stats)}</p><details ${open ? 'open' : ''}><summary>Traits and attacks</summary>${list(sheet.features)}</details>${sheet.spells?.length ? `<details><summary>Spells</summary>${list(sheet.spells)}</details>` : ''}</div>`;
   }
 
@@ -1515,25 +1540,31 @@
     const kinds = (level.roster || []).map(r => r.content);
     return LEAD_ORDER.find(k => kinds.includes(k)) || kinds[0] || 'skeleton';
   }
+  function isLegacyGroup(group) {
+    return LEGACY_ENCOUNTERS.has(group?.id);
+  }
   function normalizeDifficulty(value) {
-    const match = DIFFICULTIES.find(d => d.id.toLowerCase() === String(value || '').toLowerCase());
+    const low = String(value || '').toLowerCase();
+    if (low === 'classic') return 'Classic';
+    const match = DIFFICULTIES.find(d => d.id.toLowerCase() === low);
     return match ? match.id : 'Medium';
   }
+  function bucketFor(group, preset) {
+    return isLegacyGroup(group) ? 'Classic' : normalizeDifficulty(preset?.difficulty);
+  }
   function levelsForDifficulty(diff) {
-    const target = normalizeDifficulty(diff).toLowerCase();
+    const target = normalizeDifficulty(diff);
     const out = [];
     for (const group of catalogue) {
       for (const preset of group.presets || []) {
-        if (String(preset.difficulty || '').toLowerCase() === target) out.push({ group, preset });
+        if (bucketFor(group, preset) === target) out.push({ group, preset });
       }
     }
     return out;
   }
   function difficultyLead(diff) {
     const info = DIFFICULTIES.find(d => d.id === diff) || DIFFICULTIES[0];
-    const list = levelsForDifficulty(diff);
-    const kinds = list.flatMap(item => (item.preset.roster || []).map(r => r.content));
-    return LEAD_ORDER.find(k => kinds.includes(k)) || info.fallbackLead;
+    return info.fallbackLead;
   }
   function heroLevelsOf(preset, override = null) {
     if (override) return [Number(override)];
@@ -1607,7 +1638,20 @@
       </button>`;
     }).join('');
 
-    $('difficulty-tabs').innerHTML = DIFFICULTIES.map(d => {
+    const classicList = levelsForDifficulty('Classic');
+    const banner = $('classic-banner');
+    if (banner) {
+      banner.hidden = !classicList.length;
+      banner.innerHTML = classicList.length
+        ? `<button type="button" class="classic-banner-btn" data-difficulty="Classic"><span class="classic-banner-left"><span class="level-tier classic">Classic · ungraded</span><span>${escape(classicList.length)} earlier fights from The Crypt and The Vault (outside the 36 agent-ranked levels)</span></span><span class="classic-banner-cta">Browse classic fights →</span></button>`
+        : '';
+    }
+
+    const tabSpecs = [
+      ...DIFFICULTIES,
+      ...(classicList.length ? [{ id: 'Classic', label: 'Classic' }] : []),
+    ];
+    $('difficulty-tabs').innerHTML = tabSpecs.map(d => {
       const count = levelsForDifficulty(d.id).length;
       const tier = d.id.toLowerCase();
       return `<button type="button" class="difficulty-tab tier-${escape(tier)}" data-difficulty-tab="${escape(d.id)}" role="tab" aria-selected="false" ${count ? '' : 'disabled'}><span>${escape(d.label)}</span><span class="difficulty-tab-count">${escape(count)}</span></button>`;
@@ -1634,10 +1678,12 @@
           const badge = heroBadgeFor(lv);
           const mapLabel = lv.map?.name ? `${lv.map.name} · ${lv.map.width}×${lv.map.height}` : `${lv.map.width}×${lv.map.height}`;
           const mixedParty = heroLevelsOf(lv).length > 1;
-          return `<button type="button" class="level-card ${on ? 'is-selected' : ''}" data-encounter="${escape(group.id)}" data-preset="${escape(lv.id)}" data-difficulty="${escape(normalizeDifficulty(lv.difficulty))}" data-hero-tier="${escape(sec.key)}" role="option" aria-selected="${on}">
+          const bucket = bucketFor(group, lv);
+          const tierLabel = isLegacyGroup(group) ? 'Classic' : lv.difficulty;
+          return `<button type="button" class="level-card ${on ? 'is-selected' : ''}" data-encounter="${escape(group.id)}" data-preset="${escape(lv.id)}" data-difficulty="${escape(bucket)}" data-hero-tier="${escape(sec.key)}" role="option" aria-selected="${on}">
             <div class="level-card-top">
               <div class="level-card-pills">
-                <span class="level-tier ${escape(lv.difficulty.toLowerCase())}">${escape(lv.difficulty)}</span>
+                <span class="level-tier ${escape(bucket.toLowerCase())}">${escape(tierLabel)}</span>
                 <span class="level-hero-badge ${escape(badge.cls)}">${escape(badge.label)}</span>
                 ${group.private ? '<span class="private-tag">private</span>' : ''}
               </div>
@@ -1689,10 +1735,16 @@
     const diffList = levelsForDifficulty(selectedDifficulty);
     $('start-screen-title').textContent = startStep === 'difficulty'
       ? 'Choose your difficulty'
-      : `${selectedDifficulty} levels`;
+      : selectedDifficulty === 'Classic'
+        ? 'Classic fights (ungraded)'
+        : `${selectedDifficulty} levels`;
     $('start-screen-subtitle').textContent = startStep === 'difficulty'
-      ? 'Pick a difficulty to browse its fights — from quick skirmishes to deadly vaults.'
-      : `${diffList.length} ${selectedDifficulty.toLowerCase()} ${diffList.length === 1 ? 'fight' : 'fights'} across hero levels. Your heroes start on the left, monsters on the right. Pick a level, then press Fight.`;
+      ? 'Pick a difficulty across 36 agent-graded fights — from quick skirmishes to levels none of our agents beat.'
+      : selectedDifficulty === 'Unbeatable'
+        ? `${diffList.length} ${diffList.length === 1 ? 'fight' : 'fights'} where no language-model player won and both game AIs won fewer than half of their 500 games. Pick one, then press Fight.`
+        : selectedDifficulty === 'Classic'
+          ? `${diffList.length} earlier fights from The Crypt and The Vault (ungraded, outside the 36 agent-ranked levels). Pick a level, then press Fight.`
+          : `${diffList.length} ${selectedDifficulty.toLowerCase()} ${diffList.length === 1 ? 'fight' : 'fights'} across hero levels. Pick a level, then press Fight — or Place the figures to arrange the board yourself.`;
 
     for (const card of $('difficulty-grid').querySelectorAll('[data-difficulty]')) {
       card.classList.toggle('is-active', card.dataset.difficulty === selectedDifficulty);
@@ -1786,7 +1838,7 @@
     selectedDifficulty = norm;
     const current = selectedStart ? levelByKey(selectedStart.encounter, selectedStart.preset) : null;
     const matchesTier = item => selectedHeroLevelFilter === 'all' || heroTierKeyOf(item.preset) === selectedHeroLevelFilter;
-    if (!current || normalizeDifficulty(current.preset.difficulty) !== norm || !matchesTier(current)) {
+    if (!current || bucketFor(current.group, current.preset) !== norm || !matchesTier(current)) {
       const pick = list.find(matchesTier) || list[0];
       selectedStart = { encounter: pick.group.id, preset: pick.preset.id };
     }
@@ -1806,7 +1858,7 @@
     const lv = levelByKey(encounter, preset);
     if (!lv) return;
     selectedStart = { encounter, preset };
-    selectedDifficulty = normalizeDifficulty(lv.preset.difficulty);
+    selectedDifficulty = bucketFor(lv.group, lv.preset);
     startStep = 'levels';
     viewer?.setBiome?.(themeFor());
     renderStartScreen();
@@ -1816,7 +1868,7 @@
     clearTimer(); watching = false;
     const active = currentLevel();
     if (active) {
-      selectedDifficulty = normalizeDifficulty(active.preset.difficulty);
+      selectedDifficulty = bucketFor(active.group, active.preset);
       selectedStart = { encounter: active.group.id, preset: active.preset.id };
     }
     startStep = step;
@@ -1889,7 +1941,11 @@
 
   // --- How to play: the encounters part comes from the catalogue -----------------------
   function renderHelpEncounters() {
-    $('help-encounters').innerHTML = catalogue.map(group => `<li><b>${escape(group.name)}.</b> ${escape(group.blurb)} Levels: ${group.presets.map(p => `${escape(p.name)} (${escape(p.difficulty.toLowerCase())})`).join(', ')}.</li>`).join('');
+    $('help-encounters').innerHTML = catalogue.map(group => {
+      const legacy = isLegacyGroup(group);
+      const tag = p => legacy ? 'classic, ungraded' : p.difficulty.toLowerCase();
+      return `<li><b>${escape(group.name)}.</b> ${escape(group.blurb)} Levels: ${group.presets.map(p => `${escape(p.name)} (${escape(tag(p))})`).join(', ')}.</li>`;
+    }).join('');
   }
 
   // ===========================================================================
@@ -1898,6 +1954,10 @@
   $('difficulty-grid').addEventListener('click', e => {
     const card = e.target.closest('[data-difficulty]');
     if (card && !card.disabled) selectDifficulty(card.dataset.difficulty, { openLevels: true });
+  });
+  $('classic-banner')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-difficulty]');
+    if (btn) selectDifficulty(btn.dataset.difficulty, { openLevels: true });
   });
   $('difficulty-grid').addEventListener('keydown', e => {
     const card = e.target.closest('[data-difficulty]');
@@ -2285,7 +2345,7 @@
     const wantedDiff = params.get('difficulty');
     if (wantedLevel) {
       selectedStart = { encounter: wantedLevel.group.id, preset: wantedLevel.preset.id };
-      selectedDifficulty = normalizeDifficulty(wantedLevel.preset.difficulty);
+      selectedDifficulty = bucketFor(wantedLevel.group, wantedLevel.preset);
       startStep = 'levels';
     } else if (wantedDiff && levelsForDifficulty(wantedDiff).length) {
       selectedDifficulty = normalizeDifficulty(wantedDiff);
