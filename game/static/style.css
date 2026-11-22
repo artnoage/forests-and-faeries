@@ -344,6 +344,8 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .tt-sub { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
 .tt-action { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-subtle); font-weight: 700; color: var(--hero); font-size: 11.5px; }
 .tt-action.attack { color: #f29d85; }
+.tt-action.warn { color: #ff9c8a; }
+.tt-cover { color: #d8c7a0; }
 .tt-hits { margin-top: 2px; font-size: 11px; color: var(--gold-bright); line-height: 1.3; }
 .tt-hits.friendly-fire { color: #ff9c8a; font-weight: 700; }
 
@@ -605,6 +607,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .log-entry.hit { border-left-color: var(--enemy); background: rgba(222, 111, 89, 0.09); }
 .log-entry.spell { border-left-color: var(--violet); background: rgba(182, 148, 246, 0.09); }
 .log-entry.turn { border-left-color: var(--hero); color: var(--text-soft); }
+.log-entry.status { border-left-color: #d9ae66; background: rgba(217, 174, 102, 0.08); }
 .log-entry.end { border-left-color: var(--gold); background: rgba(217, 174, 102, 0.14); font-weight: 700; color: var(--gold-bright); }
 .log-round { font-size: 9.5px; font-weight: 800; color: var(--gold); min-width: 20px; }
 .latest-button {
@@ -780,6 +783,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 }
 .action-options, .target-options { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .option-row { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
+.option-row.option-warn { color: #ffb3a3; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: rgba(222, 111, 89, 0.16); border: 1px solid rgba(222, 111, 89, 0.55); }
 .option-name { font-size: 10.5px; font-weight: 750; color: var(--gold); text-transform: uppercase; }
 .option-pill {
   appearance: none; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--border-subtle);
@@ -800,6 +804,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .target-chip.confirm { background: linear-gradient(180deg, #e3b96f, #aa7930); color: #15110a; border-color: #fff2c6; font-weight: 800; }
 .target-chip.friendly-fire { border-color: var(--enemy); background: rgba(222, 111, 89, 0.2); color: #ffd4cb; }
 .target-chip.confirm.friendly-fire { background: linear-gradient(180deg, #e36a58, #9c2b20); color: #fff6f4; border-color: #ffd4cb; }
+.button.primary.friendly-fire { background: linear-gradient(180deg, #e36a58, #9c2b20); color: #fff6f4; border-color: #ffd4cb; }
 
 .hotbar-main {
   display: grid;
@@ -832,6 +837,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .res-orb.spent { opacity: 0.38; }
 .res-orb.spent i { background: #555c63; box-shadow: none; }
 .slot-gems { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; color: var(--violet); font-weight: 700; padding: 1px 6px; border-radius: 99px; background: rgba(182, 148, 246, 0.12); border: 1px solid rgba(182, 148, 246, 0.3); }
+.slot-gems.champion-free-move { color: #7ff0d6; background: rgba(94, 199, 178, 0.16); border-color: rgba(94, 199, 178, 0.5); }
 
 /* Center Direct-Cast Ability Card Hotbar */
 .hotbar-center { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
@@ -1290,6 +1296,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 
 /* Move destination chips. */
 .target-chip.move-chip { border-color: rgba(94, 199, 178, 0.55); background: rgba(94, 199, 178, 0.12); }
+.target-chip.move-chip.friendly-fire { border-color: var(--enemy); background: rgba(222, 111, 89, 0.22); color: #ffd4cb; }
 .target-options { max-height: min(124px, 18vh); overflow-y: auto; }
 
 /* How to play. */

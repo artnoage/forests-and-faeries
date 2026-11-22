@@ -110,7 +110,7 @@
     const vals = Array.isArray(d.v) ? d.v : [d.v];
     return d.mode === 'a' ? Math.max(...vals) : d.mode === 'd' ? Math.min(...vals) : vals[0];
   };
-  const isCheckDraw = d => /attack|sav|initiative|check/i.test(d.tag || '');
+  const isCheckDraw = d => !/^savage_attacker$/i.test(d.tag || '') && /attack|sav|initiative|check/i.test(d.tag || '');
 
   const diceArena = (() => {
     const canvas = $('dice-canvas');
@@ -321,8 +321,100 @@
   };
 
   const isSplit = list => list.some(a => (a.target_ids || []).length > 1);
+  const isRayContinuation = () => actions().some(a => a.ray_number > 1);
+  const HEAL_SPELLS = new Set(['healing_word', 'cure_wounds']);
+  const HEAL_KINDS = new Set(['second_wind', 'preserve_life']);
+  const isHealAction = a => Boolean(a) && (
+    HEAL_SPELLS.has(a.spell)
+    || HEAL_KINDS.has(a.kind)
+    || (a.kind === 'divine_spark' && (a.option === 'heal' || a.mode === 'heal'))
+  );
+  function cursedTargets(a) {
+    if (!isHealAction(a)) return [];
+    const ids = [];
+    if (Array.isArray(a.target_ids) && a.target_ids.length) ids.push(...a.target_ids);
+    else if (hasTarget(a)) ids.push(a.target_id);
+    else if (a.kind === 'second_wind' && activeUnit()) ids.push(activeUnit().id);
+    else if (a.kind === 'preserve_life') {
+      const lbl = String(a.label || '');
+      for (const u of state?.units || []) {
+        if (u.team === 'heroes' && u.name && lbl.includes(u.name)) ids.push(u.id);
+      }
+    }
+    const seen = new Set(), out = [];
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const u = (state?.units || []).find(unit => unit.id === id);
+      if (u && (u.marks || []).includes('cursed')) out.push(u.name || id);
+    }
+    return out;
+  }
+  const cursedWarning = a => {
+    const list = cursedTargets(a);
+    return list.length ? `⚠ Cursed (cannot regain HP): ${list.join(', ')}.` : '';
+  };
   const aidWarning = a => a?.aid_no_hp_targets?.length
-    ? 'Already aided. No HP gain for ' + a.aid_no_hp_targets.map(nameOf).join(', ') + '.' : '';
+    ? '⚠ Already aided — no HP gain for ' + a.aid_no_hp_targets.map(nameOf).join(', ') + '.' : '';
+  function coverText(a, focusId = null) {
+    if (!a?.cover) return '';
+    const entries = Object.entries(a.cover);
+    if (!entries.length) return '';
+    if (focusId && a.cover[focusId]) return `cover +${a.cover[focusId]}`;
+    if (entries.length === 1 && hasTarget(a) && entries[0][0] === a.target_id) return `cover +${entries[0][1]}`;
+    return 'cover ' + entries.map(([id, bonus]) => `${nameOf(id)} +${bonus}`).join(', ');
+  }
+  function isDisengagedThisTurn() {
+    const actor = activeUnit();
+    if (!actor) return false;
+    const flags = [...(actor.conditions || []), ...(actor.marks || [])].map(v => String(v || '').toLowerCase());
+    if (flags.some(f => f.includes('disengag'))) return true;
+    const logs = Array.isArray(state?.log) ? state.log : [];
+    const curRound = Number(state?.round) || 0;
+    const turnStart = `${actor.name} — turn begins.`;
+    const prefix = `${actor.name} uses Disengage`;
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const entry = logs[i];
+      if ((Number(entry.round) || 0) < curRound) break;
+      const txt = String(entry.text || '');
+      if (txt.startsWith(prefix)) return true;
+      if (txt === turnStart) break;
+    }
+    return false;
+  }
+  const moveCostFeet = a => {
+    const m = String(a?.cost || '').match(/(\d+)\s*ft/i);
+    return m ? Number(m[1]) : 0;
+  };
+  function moveProvokers(a) {
+    if (!a || a.kind !== 'move' || !Array.isArray(a.path) || a.path.length < 2) return [];
+    const actor = activeUnit();
+    if (!actor || state?.champion_interrupt) return [];
+    const protectedFt = Number(state?.resources?.champion_movement) || 0;
+    const costFt = moveCostFeet(a);
+    if (protectedFt > 0 && costFt > 0 && costFt <= protectedFt) return [];
+    if (isDisengagedThisTurn()) return [];
+    const blocked = new Set(['incapacitated', 'unconscious', 'paralyzed', 'stunned', 'petrified']);
+    const out = [];
+    for (const u of state?.units || []) {
+      if (u.team === actor.team || u.dead || u.alive === false) continue;
+      const conds = (u.conditions || []).map(c => String(c || '').toLowerCase());
+      if (conds.some(c => blocked.has(c))) continue;
+      const w = u.width || 1, d = u.depth || 1;
+      const near = p => p[0] >= u.x - 1 && p[0] <= u.x + w && p[1] >= u.y - 1 && p[1] <= u.y + d;
+      for (let i = 0; i + 1 < a.path.length; i++) {
+        if (near(a.path[i]) && !near(a.path[i + 1])) { out.push(u.name || u.id); break; }
+      }
+    }
+    return out;
+  }
+  const oaWarning = a => {
+    const list = moveProvokers(a);
+    return list.length ? `⚠ Provokes opportunity attack from ${list.join(', ')}` : '';
+  };
+  const actionWarnings = a => [oaWarning(a), aidWarning(a), cursedWarning(a)].filter(Boolean);
+  const hasWarning = a => Boolean(a?.allies?.length || oaWarning(a) || aidWarning(a) || cursedWarning(a));
+  const needsConfirmAction = a => Boolean(a) && (Boolean(a.cells) || hasWarning(a));
   const cellsOf = a => a?.cells || [];
   const previewCells = () => cellsOf(preview || armed);
   const allocationKey = ids => [...ids].sort().join(',');
@@ -383,10 +475,13 @@
     const matchingAct = moves.length ? cheapestMove(moves)
       : cur.find(a => targetsCell(a, x, y) || (hoveredUnit && targetsUnit(a, hoveredUnit)))
       || cur.find(a => coLocated.some(u => targetsUnit(a, u)));
-    let pathCells = null, arcFrom = null, arcTo = null, arcColor = '#ffd478', hoverColor = '#ffe194', areaCells = null, areaColor = '#ff7a3d';
+    let pathCells = null, pathColor = '#6af7df', pathDotColor = '#a8fff0', arcFrom = null, arcTo = null, arcColor = '#ffd478', hoverColor = '#ffe194', areaCells = null, areaColor = '#ff7a3d';
     if (matchingAct && actor) {
       if (matchingAct.kind === 'move') {
-        hoverColor = '#5be2ca';
+        const provokes = moveProvokers(matchingAct).length > 0;
+        hoverColor = provokes ? '#ff744d' : '#5be2ca';
+        pathColor = provokes ? '#ff744d' : '#6af7df';
+        pathDotColor = provokes ? '#ffc2ae' : '#a8fff0';
         pathCells = Array.isArray(matchingAct.path) ? matchingAct.path : null;
       } else if (matchingAct.kind === 'spiritual_weapon_move') {
         hoverColor = '#7cc4ff';
@@ -395,7 +490,7 @@
         arcFrom = { x: force.x, y: force.y };
         arcTo = { x, y };
       } else {
-        hoverColor = matchingAct.allies?.length ? '#ff6454' : (matchingAct.kind === 'spell' ? '#c29eff' : '#ff8c6e');
+        hoverColor = hasWarning(matchingAct) ? '#ff6454' : (matchingAct.kind === 'spell' ? '#c29eff' : '#ff8c6e');
         arcColor = hoverColor;
         arcFrom = { x: actor.x, y: actor.y };
         arcTo = { x: hoveredUnit?.x ?? x, y: hoveredUnit?.y ?? y };
@@ -407,7 +502,7 @@
     } else if (state.phase === 'setup' && setupFigure && state.map.tiles[y]?.[x] !== '#') {
       hoverColor = '#eec373';
     }
-    viewer?.setTacticalPreview?.({ hoverCell: { x, y, color: hoverColor }, pathCells, arcFrom, arcTo, arcColor, areaCells, areaColor });
+    viewer?.setTacticalPreview?.({ hoverCell: { x, y, color: hoverColor }, pathCells, pathColor, pathDotColor, arcFrom, arcTo, arcColor, areaCells, areaColor });
     if (!hoveredUnit && !matchingAct) { tip.hidden = true; return; }
     const parts = [];
     if (hoveredUnit) {
@@ -422,14 +517,20 @@
       parts.push(`<div class="tt-head"><span>Floor</span><span class="tt-coord">${escape(cellName(x, y))}</span></div>`);
     }
     if (matchingAct) {
+      const rayTag = matchingAct.ray_count ? ` [Ray ${matchingAct.ray_number}/${matchingAct.ray_count}]` : '';
       const text = matchingAct.kind === 'move'
         ? `Move here · ${matchingAct.cost || ''}`
         : matchingAct.kind === 'spiritual_weapon_move'
           ? `Move Spiritual Weapon → ${cellName(x, y)}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`
-          : `${matchingAct.label}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`;
-      parts.push(`<div class="tt-action ${matchingAct.kind !== 'move' && matchingAct.kind !== 'spiritual_weapon_move' ? 'attack' : ''}">${escape(text)}</div>`);
+          : `${matchingAct.label}${rayTag}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`;
+      const warns = actionWarnings(matchingAct);
+      const actCls = warns.length ? 'warn' : (matchingAct.kind !== 'move' && matchingAct.kind !== 'spiritual_weapon_move' ? 'attack' : '');
+      parts.push(`<div class="tt-action ${actCls}">${escape(text)}</div>`);
+      const cov = coverText(matchingAct, hoveredUnit?.id);
+      if (cov) parts.push(`<div class="tt-cover">${escape(cov)}</div>`);
       const hits = hitsLabel(matchingAct);
       if (hits) parts.push(`<div class="tt-hits${matchingAct.allies?.length ? ' friendly-fire' : ''}">${escape(hits)}</div>`);
+      for (const w of warns) parts.push(`<div class="tt-hits friendly-fire">${escape(w)}</div>`);
     }
     tip.innerHTML = parts.join('');
     tip.style.left = `${Math.max(4, Math.min(window.innerWidth - 290, clientX))}px`;
@@ -557,6 +658,8 @@
   const unitName = id => state?.units.find(u => u.id === id)?.name || state?.setup?.roster?.find(u => u.id === id)?.name || id || '';
   function tagText(tag) {
     const t = String(tag || 'roll');
+    if (t === 'death_saving_throw') return 'Death save';
+    if (t === 'savage_attacker') return 'Savage Attacker';
     if (t.startsWith('spells.')) return `${niceName(t.slice(7))} damage`;
     if (/saving_throw/.test(t)) return `${t.split('_')[0].toUpperCase().slice(0, 3)} save`;
     if (t.startsWith('fn:')) return 'roll';
@@ -614,7 +717,8 @@
         const tab = focusCell.x === x && focusCell.y === y ? 0 : -1;
         const unit = targets().find(u => atCell(u, x, y) && u.alive !== false);
         const move = !setup && isLeg && !isAtk ? cheapestMove(movesTo(x, y)) : null;
-        const label = `${cellName(x, y)}${unit ? ', ' + unit.name : ''}${move ? `, move here (${move.cost || ''})` : isLeg ? (setup ? ', place here' : ', target') : ''}`;
+        const oaTag = move && moveProvokers(move).length ? ', provokes opportunity attack' : '';
+        const label = `${cellName(x, y)}${unit ? ', ' + unit.name : ''}${move ? `, move here (${move.cost || ''}${oaTag})` : isLeg ? (setup ? ', place here' : ', target') : ''}`;
         cells.push(`<g class="tile${isLeg ? ' is-legal' : ''}${isAtk ? ' target-tile' : ''}${previewSet.has(x + ',' + y) ? ' is-preview' : ''}" data-x="${x}" data-y="${y}" role="button" tabindex="${tab}" aria-label="${escape(label)}"><rect class="tile-face" x="${x}" y="${y}" width="1" height="1"/><rect class="focus-ring" x="${x + 0.05}" y="${y + 0.05}" width=".9" height=".9"/></g>`);
       }
     }
@@ -729,9 +833,11 @@
     const orb = (cls, lbl, ready, name) => `<span class="res-orb ${cls} ${ready ? 'ready' : 'spent'}" title="${escape(name)}: ${ready ? 'available' : 'spent'}"><i></i>${lbl}</span>`;
     const pools = Array.isArray(res.pools)
       ? res.pools.map(p => `<span class="slot-gems">${escape(p.label)}: ${escape(p.value)}${p.max != null ? '/' + escape(p.max) : ''}</span>`).join('') : '';
+    const freeMove = Number(res.champion_movement) > 0
+      ? `<span class="slot-gems champion-free-move" title="Remarkable Athlete: next ${escape(res.champion_movement)} ft provoke no opportunity attacks">Free move: ${escape(res.champion_movement)} ft (no OA)</span>` : '';
     $('resources').innerHTML = ['finished', 'setup'].includes(state.phase) || !unit ? ''
       : orb('act', 'ACT', res.action, 'Action') + orb('bon', 'BON', res.bonus_action, 'Bonus action') + orb('rct', 'RCT', res.reaction, 'Reaction')
-        + `<span class="res-orb move-left" title="Movement left">${escape(res.movement ?? '0')} ft</span>` + pools;
+        + `<span class="res-orb move-left" title="Movement left">${escape(res.movement ?? '0')} ft</span>` + freeMove + pools;
 
     const inspected = targets().find(u => u.id === inspectedId) || unit;
     $('zoom-inspected-btn').disabled = !inspected || sceneUnavailable;
@@ -778,7 +884,7 @@
     $('cat-tabs').innerHTML = cats.map(([id, lbl]) => `<button class="cat-tab ${activeCatFilter === id ? 'is-on' : ''}" data-cat-filter="${id}" aria-pressed="${activeCatFilter === id}">${lbl}</button>`).join('');
     const matchesFilter = g => {
       if (activeCatFilter === 'all') return true;
-      if (activeCatFilter === 'defense') return ['dodge', 'dash', 'stand'].includes(g.kind);
+      if (activeCatFilter === 'defense') return ['dodge', 'dash', 'stand', 'disengage', 'disengage_bonus', 'hide', 'hide_bonus'].includes(g.kind);
       if (activeCatFilter === 'feature') return ['feature', 'second_wind', 'action_surge'].includes(g.kind);
       return g.kind === activeCatFilter;
     };
@@ -788,8 +894,11 @@
     } else {
       $('action-bar').innerHTML = visibleGroups.map((g, idx) => {
         const selected = g.key === selectedGroup;
-        const rawCost = g.kind === 'move' ? 'Move' : (g.actions[0]?.cost?.replace(/ \+ sorcery points$/, '') || 'Action');
-        const shortCost = rawCost.replace('Magic Initiate free cast', 'Free cast').replace('level ', 'Lv').replace('bonus action', 'Bonus').replace('action', 'Action');
+        const firstAct = g.actions[0];
+        const rawCost = g.kind === 'move' ? 'Move' : (firstAct?.cost?.replace(/ \+ sorcery points$/, '') || 'Action');
+        const shortCost = firstAct?.ray_count
+          ? (firstAct.ray_number > 1 ? `Ray ${firstAct.ray_number}/${firstAct.ray_count} · same cast` : `Ray 1/${firstAct.ray_count}`)
+          : rawCost.replace('Magic Initiate free cast', 'Free cast').replace('level ', 'Lv').replace('bonus action', 'Bonus').replace('action', 'Action');
         const cardName = g.label
           .replace(/^Font of Magic: create level (\d+) spell slot \((\d+) sorcery points\)$/i, 'Create Lv$1 Slot ($2 SP)')
           .replace(/^Font of Magic: convert level (\d+) spell slot to sorcery points$/i, 'Lv$1 Slot → SP');
@@ -811,6 +920,8 @@
     const group = groups.find(g => g.key === selectedGroup);
     const list = group ? groupActions() : [];
     const pop = $('hotbar-popbar'), optBox = $('action-options'), tgtBox = $('target-options');
+    const rayLocked = isRayContinuation();
+    $('chooser-back').hidden = rayLocked;
     if (!group || !canAct() || !list.length) {
       pop.hidden = true;
       optBox.replaceChildren(); tgtBox.replaceChildren();
@@ -831,6 +942,7 @@
     if (opts.length > 1) optParts.push(`<span class="option-row"><span class="option-name">${group.kind === 'spell' ? 'Metamagic' : 'Mode'}</span>${opts.map(o => pill('option', o, o === '' ? 'Standard' : niceName(o), o === op)).join('')}</span>`);
 
     const cur = currentActions();
+    if (cur[0]?.spell === 'command') optParts.push('<span class="option-row">Command currently chooses Grovel or Halt automatically.</span>');
     if (isSplit(cur)) {
       const total = Math.max(...cur.map(a => a.target_ids.length));
       const ids = [...new Set(cur.flatMap(a => a.target_ids))].sort();
@@ -838,16 +950,21 @@
       const used = allocationIds().length;
       const noun = SPLIT_NOUNS[cur[0].spell] || 'targets';
       const match = allocationMatch(cur);
-      if (aidWarning(match)) optParts.push('<span class="option-row">' + escape(aidWarning(match)) + '</span>');
+      const splitWarns = match ? actionWarnings(match) : [];
+      for (const w of splitWarns) optParts.push(`<span class="option-row option-warn">${escape(w)}</span>`);
       optParts.push(`<span class="allocation"><span class="option-name">${noun} ${used}/${total}</span>${ids.map(id => {
         const c = allocation.get(id) || 0;
         return `<span class="alloc-row"><span>${escape(nameOf(id))}</span><button class="alloc-step" data-alloc-dec="${escape(id)}" aria-label="One fewer on ${escape(nameOf(id))}" ${!c ? 'disabled' : ''}>−</button><b>${c}</b><button class="alloc-step" data-alloc-inc="${escape(id)}" aria-label="One more on ${escape(nameOf(id))}" ${used >= total || c >= cap(id) ? 'disabled' : ''}>+</button></span>`;
-      }).join('')}<button class="button primary" data-alloc-confirm="1" ${!match ? 'disabled' : ''}>Cast ${escape(group.label)}${match?.cost ? ' · ' + escape(match.cost) : ''}</button></span>`);
+      }).join('')}<button class="button primary${splitWarns.length ? ' friendly-fire' : ''}" data-alloc-confirm="1" ${!match ? 'disabled' : ''}>Cast ${escape(group.label)}${match?.cost ? ' · ' + escape(match.cost) : ''}</button></span>`);
     }
     optBox.innerHTML = optParts.join('');
 
     const chips = [];
     if (group.kind === 'move') {
+      if (armed && cur.some(a => a.id === armed.id)) {
+        const oa = oaWarning(armed);
+        chips.push(`<button class="target-chip confirm friendly-fire" data-action="${escape(armed.id)}">Confirm move → ${escape(cellName(armed.x, armed.y))}${armed.cost ? ' · ' + escape(armed.cost) : ''}${oa ? ' · ' + escape(oa) : ''}</button>`);
+      }
       // Destination chips: the 2D fallback and keyboard players need them; one per square, cheapest path.
       if (sceneUnavailable || $('move-chips-toggle').checked) {
         const bySquare = new Map();
@@ -858,8 +975,10 @@
         const actor = activeUnit();
         const ordered = [...bySquare.values()].sort((a, b) => pathCost(a) - pathCost(b) || (a.y - b.y) || (a.x - b.x));
         for (const a of ordered) {
+          if (armed && armed.id === a.id) continue;
           const dir = actor ? compass(a.x - actor.x, a.y - actor.y) : '';
-          chips.push(`<button class="target-chip move-chip" data-action="${escape(a.id)}">→ ${escape(cellName(a.x, a.y))} · ${escape(a.cost || '')}${dir ? ' · ' + escape(dir) : ''}</button>`);
+          const oa = oaWarning(a);
+          chips.push(`<button class="target-chip move-chip${oa ? ' friendly-fire' : ''}" data-action="${escape(a.id)}">→ ${escape(cellName(a.x, a.y))} · ${escape(a.cost || '')}${dir ? ' · ' + escape(dir) : ''}${oa ? ' · ' + escape(oa) : ''}</button>`);
         }
       }
     } else if (cur.length && cur.every(a => a.kind === 'spiritual_weapon_move')) {
@@ -882,26 +1001,42 @@
     } else if (!isSplit(cur)) {
       const seen = new Set();
       if (armed && cur.some(a => a.id === armed.id)) {
-        chips.push(`<button class="target-chip confirm${armed.allies?.length ? ' friendly-fire' : ''}" data-action="${escape(armed.id)}">Confirm ${escape(armed.label)} · ${escape(aimLabel(armed))}${hitsLabel(armed) ? ' · ' + escape(hitsLabel(armed)) : ''}${armed.cost ? ' · ' + escape(armed.cost) : ''}</button>`);
+        const tgt = armed.cells ? aimLabel(armed) : chipTargetText(armed);
+        const cov = coverText(armed);
+        const warns = actionWarnings(armed);
+        const bits = [
+          tgt ? `Confirm ${armed.label} → ${tgt}` : `Confirm ${armed.label}`,
+          hitsLabel(armed),
+          cov,
+          ...warns,
+          armed.cost,
+        ].filter(Boolean);
+        chips.push(`<button class="target-chip confirm${hasWarning(armed) ? ' friendly-fire' : ''}" data-action="${escape(armed.id)}">${escape(bits.join(' · '))}</button>`);
       }
       const targetActs = choices.length ? choices : cur.filter(a => hasTarget(a) || a.target_ids?.length || !hasPosition(a) || a.cells);
       for (const a of targetActs) {
         if (seen.has(a.id) || (armed && armed.id === a.id)) continue;
         seen.add(a.id);
-        const tgt = chipTargetText(a), hits = hitsLabel(a);
-        const text = [tgt ? `${a.label} → ${tgt}` : a.label, aidWarning(a)].filter(Boolean).join(' · ');
-        chips.push(`<button class="target-chip ${a.allies?.length ? 'friendly-fire' : ''}" data-action="${escape(a.id)}" title="${escape(a.description || text)}">${escape(text)}${a.cost ? ' · ' + escape(a.cost) : ''}${hits ? ' · ' + escape(hits) : ''}</button>`);
+        const tgt = chipTargetText(a), hits = hitsLabel(a), cov = coverText(a), warns = actionWarnings(a);
+        const rayTag = a.ray_count ? ` [Ray ${a.ray_number}/${a.ray_count}]` : '';
+        const head = tgt ? `${a.label}${rayTag} → ${tgt}` : `${a.label}${rayTag}`;
+        const bits = [head, cov, ...warns, a.cost, hits].filter(Boolean);
+        chips.push(`<button class="target-chip ${hasWarning(a) ? 'friendly-fire' : ''}" data-action="${escape(a.id)}" title="${escape(a.description || head)}">${escape(bits.join(' · '))}</button>`);
       }
     }
     tgtBox.innerHTML = chips.join('');
     pop.hidden = !optParts.length && !chips.length;
     $('action-hint').textContent = cur[0]?.ray_count
-      ? `Choose a target for Scorching Ray ${cur[0].ray_number} of ${cur[0].ray_count}.`
-      : group.kind === 'move'
-      ? `${group.label}: click a highlighted square${sceneUnavailable ? ' on the map or a square below' : ''}.`
-      : cur[0]?.kind === 'spiritual_weapon_move'
-        ? `${group.label}: click a highlighted square on the map or a square above.`
-        : `${group.label}: click a highlighted creature or a choice above.`;
+      ? `Choose a target for Scorching Ray ${cur[0].ray_number} of ${cur[0].ray_count}${cur[0].cost ? ` (${cur[0].cost})` : ''}.`
+      : armed && armed.kind === 'move' && oaWarning(armed)
+        ? `${oaWarning(armed)}. Press Confirm above (or click ${cellName(armed.x, armed.y)} again) to move anyway.`
+        : armed && !armed.cells && actionWarnings(armed).length
+          ? `${actionWarnings(armed).join(' ')} Press Confirm above to proceed anyway.`
+          : group.kind === 'move'
+            ? `${group.label}: click a highlighted square${sceneUnavailable ? ' on the map or a square below' : ''}.`
+            : cur[0]?.kind === 'spiritual_weapon_move'
+              ? `${group.label}: click a highlighted square on the map or a square above.`
+              : `${group.label}: click a highlighted creature or a choice above.`;
   }
 
   function renderLog() {
@@ -913,7 +1048,7 @@
     const fresh = logs.slice(lastLogIds.length);
     for (const entry of fresh) {
       const row = document.createElement('div');
-      row.className = `log-entry ${['info', 'hit', 'miss', 'spell', 'turn', 'end'].includes(entry.tone) ? entry.tone : 'info'}`;
+      row.className = `log-entry ${['info', 'hit', 'miss', 'spell', 'turn', 'status', 'end'].includes(entry.tone) ? entry.tone : 'info'}`;
       const r = document.createElement('span');
       r.className = 'log-round';
       r.textContent = `R${(Number(entry.round) || 0) + 1}`;
@@ -1024,7 +1159,7 @@
     const actor = (data.units || []).find(u => u.id === data.turn_id);
     data.actions = data.actions.map(row => {
       const action = { ...(data.action_defs[row.d] || {}), id: row.id };
-      for (const k of ['target_ids', 'x', 'y', 'hits', 'allies', 'path', 'cost', 'aid_no_hp_targets']) if (row[k] !== undefined) action[k] = row[k];
+      for (const k of ['target_ids', 'x', 'y', 'hits', 'allies', 'path', 'cost', 'cover', 'aid_no_hp_targets']) if (row[k] !== undefined) action[k] = row[k];
       if (action.target_ids?.length) action.target_id = action.target_ids[0];
       if (row.area && data.areas?.[row.area]) action.cells = data.areas[row.area];
       const counts = new Map();
@@ -1224,15 +1359,15 @@
     const group = groupedActions().find(g => g.key === key);
     if (!group) return;
     if (selectedGroup === key) {
-      // Clicking the selected Move card keeps it (its squares stay lit); other cards toggle off.
-      if (group.kind !== 'move') { selectedGroup = null; armed = null; preview = null; }
+      // Clicking the selected Move card (or a Scorching Ray continuation) keeps it open; other cards toggle off.
+      if (group.kind !== 'move' && !isRayContinuation()) { selectedGroup = null; armed = null; preview = null; }
       render();
       return;
     }
     selectedGroup = key; selectedLevel = null; selectedOption = null;
     allocation = new Map(); armed = null; preview = null;
     const immediate = group.actions.filter(a => !hasTarget(a) && !hasPosition(a));
-    const confirmFirst = immediate.some(a => NEEDS_CONFIRM.has(a.kind));
+    const confirmFirst = immediate.some(a => NEEDS_CONFIRM.has(a.kind) || hasWarning(a));
     if (immediate.length === 1 && group.actions.length === 1 && !confirmFirst) {
       request('action', { action_id: immediate[0].id });
     } else {
@@ -1281,14 +1416,27 @@
       return;
     }
     const moves = cur.filter(a => a.kind === 'move' && targetsCell(a, x, y));
-    if (moves.length) { executeAction(cheapestMove(moves).id); return; }
+    if (moves.length) {
+      const move = cheapestMove(moves);
+      if (moveProvokers(move).length && armed?.id !== move.id) {
+        armed = move; preview = null; render();
+        $('target-options').scrollTop = 0;
+        viewer?.setTacticalPreview?.({ hoverCell: { x: move.x, y: move.y, color: '#ff744d' }, pathCells: move.path || null, pathColor: '#ff744d', pathDotColor: '#ffc2ae' });
+        return;
+      }
+      executeAction(move.id);
+      return;
+    }
     let matches = cur.filter(a => targetsCell(a, x, y) || (unit && targetsUnit(a, unit)));
     if (!matches.length && coLocated.length) {
       matches = cur.filter(a => coLocated.some(u => targetsUnit(a, u)));
     }
-    if (matches.length === 1 && matches[0].cells) { armed = matches[0]; preview = null; render(); return; }
-    if (matches.length === 1) executeAction(matches[0].id);
-    else { choices = matches.length > 1 ? matches : []; render(); }
+    if (matches.length === 1 && matches[0].cells) { armed = matches[0]; preview = null; render(); $('target-options').scrollTop = 0; return; }
+    if (matches.length === 1) {
+      const act = matches[0];
+      if (needsConfirmAction(act) && armed?.id !== act.id) { armed = act; preview = null; render(); $('target-options').scrollTop = 0; return; }
+      executeAction(act.id);
+    } else { choices = matches.length > 1 ? matches : []; render(); }
   }
 
   // ===========================================================================
@@ -1844,7 +1992,8 @@
     if (b && !b.disabled) chooseGroup(b.dataset.group);
   });
   $('chooser-back').addEventListener('click', () => {
-    selectedGroup = null; choices = []; armed = null; preview = null;
+    if (!isRayContinuation()) selectedGroup = null;
+    choices = []; armed = null; preview = null;
     viewer?.clearHoverPreview?.();
     render();
   });
@@ -1873,13 +2022,27 @@
     const actor = activeUnit();
     if (act && actor && viewer && !sceneUnavailable) {
       if (act.kind === 'move') {
-        viewer.setTacticalPreview({ hoverCell: { x: act.x, y: act.y, color: '#5be2ca' }, pathCells: act.path || null });
+        const provokes = moveProvokers(act).length > 0;
+        viewer.setTacticalPreview({
+          hoverCell: { x: act.x, y: act.y, color: provokes ? '#ff744d' : '#5be2ca' },
+          pathCells: act.path || null,
+          pathColor: provokes ? '#ff744d' : '#6af7df',
+          pathDotColor: provokes ? '#ffc2ae' : '#a8fff0',
+        });
       } else {
         const t = targets().find(u => u.id === act.target_id);
         const tx = t?.x ?? act.x, ty = t?.y ?? act.y;
         if (Number.isInteger(tx) && Number.isInteger(ty)) {
-          viewer.setTacticalPreview({ hoverCell: { x: tx, y: ty, color: '#ffd478' }, arcFrom: { x: actor.x, y: actor.y },
-            arcTo: { x: tx, y: ty }, arcColor: act.kind === 'spell' ? '#c29eff' : '#ff8c6e' });
+          const warn = hasWarning(act);
+          const color = warn ? '#ff6454' : (act.kind === 'spell' ? '#c29eff' : '#ff8c6e');
+          viewer.setTacticalPreview({
+            hoverCell: { x: tx, y: ty, color: warn ? '#ff6454' : '#ffd478' },
+            arcFrom: { x: actor.x, y: actor.y },
+            arcTo: { x: tx, y: ty },
+            arcColor: color,
+            areaCells: act.cells?.length ? act.cells : null,
+            areaColor: act.allies?.length ? '#ff4a38' : '#ff7a3d',
+          });
         }
       }
     } else {
@@ -1893,7 +2056,18 @@
   $('target-options').addEventListener('focusout', () => previewChipTarget(null));
   $('target-options').addEventListener('click', e => {
     const b = e.target.closest('[data-action]');
-    if (b && !b.disabled) executeAction(b.dataset.action);
+    if (!b || b.disabled) return;
+    const act = actions().find(a => a.id === b.dataset.action);
+    if (!act) return;
+    if (!b.classList.contains('confirm') && hasWarning(act) && armed?.id !== act.id) {
+      armed = act; preview = null; render();
+      $('target-options').scrollTop = 0;
+      if (act.kind === 'move') {
+        viewer?.setTacticalPreview?.({ hoverCell: { x: act.x, y: act.y, color: '#ff744d' }, pathCells: act.path || null, pathColor: '#ff744d', pathDotColor: '#ffc2ae' });
+      }
+      return;
+    }
+    executeAction(act.id);
   });
 
   $('battlefield').addEventListener('click', e => {
@@ -1980,7 +2154,8 @@
       return;  // no game shortcuts behind the start screen
     }
     if (e.key === 'Escape') {
-      selectedGroup = null; setupFigure = null; choices = []; armed = null; preview = null;
+      if (!isRayContinuation()) selectedGroup = null;
+      setupFigure = null; choices = []; armed = null; preview = null;
       viewer?.clearHoverPreview?.();
       render();
       return;

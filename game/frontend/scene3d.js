@@ -1669,7 +1669,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     while (hoverGeoms.length) hoverGeoms.pop().dispose();
   }
 
-  function setTacticalPreview({ hoverCell = null, pathCells = null, arcFrom = null, arcTo = null, arcColor = '#ffd478', areaCells = null, areaColor = '#ff7a3d' } = {}) {
+  function setTacticalPreview({ hoverCell = null, pathCells = null, pathColor = '#6af7df', pathDotColor = '#a8fff0', arcFrom = null, arcTo = null, arcColor = '#ffd478', areaCells = null, areaColor = '#ff7a3d' } = {}) {
     if (disposed || unavailable) return;
     clearHoverPreview();
     // 1. 3D Floor Hover Cursor Reticle
@@ -1699,11 +1699,11 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.15);
       const tubeG = new THREE.TubeGeometry(curve, Math.max(8, pathCells.length * 6), 0.042, 8, false);
       hoverGeoms.push(tubeG);
-      const tubeM = new THREE.Mesh(tubeG, glow('#6af7df', 0.88));
+      const tubeM = new THREE.Mesh(tubeG, glow(pathColor, 0.88));
       hoverGroup.add(tubeM);
       for (let i = 1; i < pathCells.length; i++) {
         const [px, py] = pathCells[i];
-        const dot = mesh(hoverGroup, cylinder, glow('#a8fff0', 0.92), px, 0.10, py, 0.11, 0.03, 0.11);
+        const dot = mesh(hoverGroup, cylinder, glow(pathDotColor, 0.92), px, 0.10, py, 0.11, 0.03, 0.11);
         dot.castShadow = false;
       }
     }

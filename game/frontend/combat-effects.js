@@ -1080,7 +1080,9 @@ export function createCombatEffects({ scene, units, requestRender, reducedMotion
     const rider = event.outcome === 'hit' && Number(event.rider) > 0
       ? `+${event.rider} ${String((event.rider_types || [])[0] || '').toUpperCase()}`.trim() : '';
     const cursed = event.style === 'rotting_fist' && event.outcome === 'hit';
-    const subline = isCrit ? 'CRITICAL!' : drained ? 'MAX HP' : rider ? (cursed ? `${rider} · CURSED` : rider) : cursed ? 'CURSED' : '';
+    const subline = isCrit
+      ? (drained ? 'CRITICAL! · MAX HP' : cursed ? 'CRITICAL! · CURSED' : 'CRITICAL!')
+      : drained ? 'MAX HP' : rider ? (cursed ? `${rider} · CURSED` : rider) : cursed ? 'CURSED' : '';
     if (subline) ctx.font = '800 62px system-ui, sans-serif';
     const fillTone = isCrit ? '#ffd95e' : color;
     ctx.strokeText(text, 192, subline ? 50 : 67); ctx.fillStyle = fillTone; ctx.fillText(text, 192, subline ? 50 : 67);

@@ -229,3 +229,18 @@ test('clip transitions crossfade smoothly and reset snaps deterministically', ()
   assert.equal(mesh.position.y, 0);
   inst.rig.dispose();
 });
+
+test('r9 combat rules UI guards cover, Scorching Ray follow-ups, OA/heal warnings, and dice tags', () => {
+  const app = read('static/app.js');
+  assert.match(app, /for \(const k of \[[^\]]*'cover'[^\]]*'aid_no_hp_targets'/, 'expandState unpacks cover and aid_no_hp_targets');
+  assert.match(app, /if \(t === 'death_saving_throw'\) return 'Death save';/, 'death_saving_throw has its own dice label');
+  assert.match(app, /if \(t === 'savage_attacker'\) return 'Savage Attacker';/, 'savage_attacker has its own dice label');
+  assert.match(app, /\$\('chooser-back'\)\.hidden = rayLocked;/, 'Scorching Ray follow-ups cannot be dismissed');
+  assert.match(app, /moveProvokers\(/, 'opportunity-attack move guard is wired');
+  assert.match(app, /cursedWarning\(/, 'cursed-target heal warning is wired');
+  assert.match(app, /champion-free-move/, 'Remarkable Athlete free movement badge is rendered');
+  const html = read('static/index.html');
+  assert.match(html, /Scorching Ray.*one ray at a time/i, 'How to play documents ray-by-ray Scorching Ray');
+  assert.match(html, /cover.*corner-to-corner/i, 'How to play documents corner-to-corner cover');
+  assert.match(html, /Command.*Grovel\/Halt/i, 'How to play documents the current Command limitation');
+});
