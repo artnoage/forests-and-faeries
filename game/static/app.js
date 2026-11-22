@@ -1542,7 +1542,7 @@
     return LEAD_ORDER.find(k => kinds.includes(k)) || kinds[0] || 'skeleton';
   }
   function isLegacyGroup(group) {
-    return LEGACY_ENCOUNTERS.has(group?.id);
+    return LEGACY_ENCOUNTERS.has(group?.id) || Boolean(group?.private);  // private fights are never graded
   }
   function normalizeDifficulty(value) {
     const low = String(value || '').toLowerCase();
@@ -1644,7 +1644,7 @@
     if (banner) {
       banner.hidden = !classicList.length;
       banner.innerHTML = classicList.length
-        ? `<button type="button" class="classic-banner-btn" data-difficulty="Classic"><span class="classic-banner-left"><span class="level-tier classic">Classic · ungraded</span><span>${escape(classicList.length)} earlier fights from The Crypt and The Vault (outside the 36 agent-ranked levels)</span></span><span class="classic-banner-cta">Browse classic fights →</span></button>`
+        ? `<button type="button" class="classic-banner-btn" data-difficulty="Classic"><span class="classic-banner-left"><span class="level-tier classic">Classic · ungraded</span><span>${escape(classicList.length)} earlier fights (ungraded, outside the 36 agent-ranked levels)</span></span><span class="classic-banner-cta">Browse classic fights →</span></button>`
         : '';
     }
 
@@ -1744,7 +1744,7 @@
       : selectedDifficulty === 'Unbeatable'
         ? `${diffList.length} ${diffList.length === 1 ? 'fight' : 'fights'} where no language-model player won and both game AIs won fewer than half of their 500 games. Pick one, then press Fight.`
         : selectedDifficulty === 'Classic'
-          ? `${diffList.length} earlier fights from The Crypt and The Vault (ungraded, outside the 36 agent-ranked levels). Pick a level, then press Fight.`
+          ? `${diffList.length} earlier fights (ungraded, outside the 36 agent-ranked levels). Pick a level, then press Fight.`
           : `${diffList.length} ${selectedDifficulty.toLowerCase()} ${diffList.length === 1 ? 'fight' : 'fights'} across hero levels. Pick a level, then press Fight — or Place the figures to arrange the board yourself.`;
 
     for (const card of $('difficulty-grid').querySelectorAll('[data-difficulty]')) {
