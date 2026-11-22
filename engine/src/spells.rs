@@ -1612,9 +1612,16 @@ impl Fight {
         let mut best: Option<Vec<Pos>> = None;
         let mut best_d = dist(here);
         if self.rule_version >= 6 {
+            let avoid_walls = self.rule_version >= 11 && self.incorporeal(t);
+            let starts_in_wall = avoid_walls && self.grid.is_wall(here.0, here.1);
+            let mut best_rank = (!starts_in_wall, best_d);
             for path in crate::batch::movement_paths(self, t, 0, false, None) {
-                let d = dist(*path.last().unwrap());
-                if d > best_d { best_d = d; best = Some(path); }
+                let end = *path.last().unwrap();
+                let floor = !avoid_walls || !self.grid.is_wall(end.0, end.1);
+                let d = dist(end);
+                if d < best_d || (d == best_d && !(starts_in_wall && floor)) { continue; }
+                let rank = (floor, d);
+                if rank > best_rank { best_rank = rank; best = Some(path); }
             }
             return best;
         }

@@ -851,7 +851,7 @@ impl Fight {
         for &c in creatures {
             let w = self.side_weight(src, c);
             if w != 0.0 {
-                let amount = self.save_for_half(c, ab, dc - self.save_cover(origin, c, ab), full, half, shatter && self.units[c].t.construct);
+                let amount = self.save_for_half(c, ab, dc - self.point_save_cover(origin, c, ab), full, half, shatter && self.units[c].t.construct);
                 total += w * (self.damage_multiplier(c, dt) * amount);
             }
         }
@@ -1315,7 +1315,7 @@ impl Fight {
         if matches!(ab, Ability::Str | Ability::Dex) && (self.units[c].has(St::Paralyzed) || !self.units[c].conscious()) {
             return (false, false);
         }
-        (self.save_throw_with_cover(c, ab, disadvantage, self.save_cover(origin, c, ab)).0 >= dc, true)
+        (self.save_throw_with_cover(c, ab, disadvantage, self.point_save_cover(origin, c, ab)).0 >= dc, true)
     }
 
     /// `push_from(map, x, y, distance=10, reserved=...)` for a 1x1 creature:
@@ -1672,11 +1672,11 @@ impl Fight {
                 self.register_effect(t, EffKey::SpeedOverride, obj, None);
                 self.register_hook(u, HookEv::StartOfTurn, HookKind::RayOfFrostStart, obj, None);
             }
-            &Item::Push { t, to } => self.move_to(t, to),
+            &Item::Push { t, to } => self.push_to(t, to),
             &Item::PushFrom { t, origin } => {
                 let from = self.units[t].pos;
                 let to = self.push_square(t, origin, &[]);
-                self.move_to(t, to);
+                self.push_to(t, to);
                 if self.rule_version >= 8 {
                     self.emit_web(crate::web_events::WebEv::ThunderwavePush { target: t, from, to });
                 }

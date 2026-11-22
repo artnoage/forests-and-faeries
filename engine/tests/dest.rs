@@ -319,7 +319,8 @@ fn a_new_enemy_in_sight_stops_the_walk() {
     let row = dest_row(&g, (1, 2));
     let (_, kinds) = g.presented().unwrap();
     let RowKind::Walk(path) = kinds[row].clone() else { panic!() };
-    let first_seen = path.iter().position(|&p| g.env.fight.grid.los(p, (7, 2))).unwrap();
+    // At the mouth of the passage a corner sees the target before the centre ray clears.
+    let first_seen = path.iter().position(|&p| p == (0, 1)).unwrap();
     assert!(first_seen > 0 && first_seen + 1 < path.len(), "the skeleton comes into view before the end: {path:?}");
     g.step(row, &cfg()).unwrap();
     assert_eq!(g.info(&cfg()).moved as usize, first_seen, "stopped where it came into view");

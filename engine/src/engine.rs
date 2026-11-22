@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 10;
+pub const CURRENT_RULE_VERSION: i32 = 11;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -752,6 +752,26 @@ impl Fight {
         self.clear_sight(u.pos, pos)
     }
 
+    pub(crate) fn sees_hider_clearly(&self, observer: usize, hider: usize) -> bool {
+        let pos = self.units[hider].pos;
+        if self.rule_version < 11 { return self.sees_lit_square(observer, pos); }
+        self.grid.light_level(pos) > 0 && self.sees_lit_square(observer, pos)
+            && self.grid.corner_wall_grade(self.units[observer].pos, pos) < 3
+    }
+
+    fn reveal_exposed_hiders(&mut self) {
+        if self.rule_version < 11 { return; }
+        for hider in 0..self.units.len() {
+            if !self.units[hider].hidden() { continue; }
+            let exposed = (0..self.units.len()).any(|observer| self.opposing(observer, hider)
+                && self.units[observer].conscious() && self.sees_hider_clearly(observer, hider));
+            if exposed {
+                self.units[hider].break_stealth();
+                self.emit_web(crate::web_events::WebEv::HiddenFound { target: hider });
+            }
+        }
+    }
+
     #[inline]
     pub fn can_see(&self, a: usize, b: usize) -> bool {
         if a == b {
@@ -817,11 +837,29 @@ impl Fight {
     }
 
     pub(crate) fn known_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
+        if self.rule_version < 11 { return self.known_point_cover(origin, target, hidden); }
+        let pos = self.units[target].pos;
+        let grade = self.grid.corner_cover_grade(origin, pos, |p| {
+            self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
+        });
+        match grade {
+            4 if !self.clear_sight(origin, pos) => 0, // Total cover excludes direct targeting.
+            3..=4 => 5,
+            2 => 2,
+            _ => 0,
+        }
+    }
+
+    pub(crate) fn known_point_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
         if self.rule_version < 9 { return 0; }
         let (walls, creatures) = self.grid.cover_rays(origin, self.units[target].pos, |p| {
             self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
         });
-        if walls == 15 && !self.clear_sight(origin, self.units[target].pos) { return 0; } // Total cover excludes attacks.
+        if walls == 15 {
+            let pos = self.units[target].pos;
+            let visible = if self.rule_version >= 11 { self.clear_effect(origin, pos) } else { self.clear_sight(origin, pos) };
+            if !visible { return 0; }
+        }
         if walls.count_ones() >= 3 { 5 }
         else if (walls | creatures).count_ones() >= 2 { 2 }
         else { 0 }
@@ -848,6 +886,10 @@ impl Fight {
         if ability == Ability::Dex { self.cover_bonus_from(origin, target) } else { 0 }
     }
 
+    pub(crate) fn point_save_cover(&self, origin: Pos, target: usize, ability: Ability) -> i32 {
+        if ability == Ability::Dex { self.known_point_cover(origin, target, 0) } else { 0 }
+    }
+
     pub(crate) fn clear_effect(&self, a: Pos, b: Pos) -> bool {
         if self.grid.los(a, b) { return true; }
         self.rule_version >= 9 && !self.grid.is_wall(a.0, a.1) && !self.grid.is_wall(b.0, b.1)
@@ -857,6 +899,8 @@ impl Fight {
     /// Either creature can look through the same gap. An area has a fixed point of origin.
     pub(crate) fn clear_sight(&self, a: Pos, b: Pos) -> bool {
         self.clear_effect(a, b) || (self.rule_version >= 10 && self.clear_effect(b, a))
+            || (self.rule_version >= 11 && !self.grid.is_wall(a.0, a.1) && !self.grid.is_wall(b.0, b.1)
+                && self.grid.corner_wall_grade(a, b) < 4)
     }
 
     pub(crate) fn incorporeal(&self, u: usize) -> bool {
@@ -1668,7 +1712,11 @@ impl Fight {
         }
         let Some(&dest) = seg.last() else { return };
         let champion_move = self.champion_move_fits(src, &seg);
-        self.move_to(src, dest);
+        if self.rule_version >= 11 && self.units.iter().any(Unit::hidden) {
+            for &step in seg.iter().skip(1) { self.move_to(src, step); }
+        } else {
+            self.move_to(src, dest);
+        }
         if champion_move {
             self.units[src].champion_movement -= cost * 5;
         } else {
@@ -1706,6 +1754,21 @@ impl Fight {
         } else if self.rule_version < 7 { self.occ[fi] = None; }
         if self.rule_version < 8 || !self.units[u].dead() { self.occ[di] = Some(u as u8); }
         self.units[u].pos = dest;
+        if dest != from { self.reveal_exposed_hiders(); }
+    }
+
+    /// Forced movement traverses each square but does not provoke opportunity attacks.
+    pub(crate) fn push_to(&mut self, u: usize, dest: Pos) {
+        if self.rule_version >= 11 && self.units.iter().any(Unit::hidden) {
+            let mut pos = self.units[u].pos;
+            while pos != dest {
+                pos.0 += (dest.0 - pos.0).signum();
+                pos.1 += (dest.1 - pos.1).signum();
+                self.move_to(u, pos);
+            }
+        } else {
+            self.move_to(u, dest);
+        }
     }
 
     /// `opportunity_attack_list` + `retrieve_opportunity_attacks`:
@@ -2563,10 +2626,9 @@ impl Fight {
         let mode = RollMode::from_flags(false, unit.poisoned() || feared);
         let face = self.roll_d20(u, "dice roll for stealth", mode);
         let total = face + plus_string_modifier(modifier);
-        let pos = self.units[u].pos;
         let seen = (0..self.units.len()).any(|o| {
             let x = &self.units[o];
-            o != u && !x.dead() && self.opposing(o, u) && x.conscious() && self.sees_lit_square(o, pos)
+            o != u && !x.dead() && self.opposing(o, u) && x.conscious() && self.sees_hider_clearly(o, u)
         });
         self.emit_web(crate::web_events::WebEv::HideResult { actor: u, total, seen });
         if !seen && total >= 15 {
@@ -2644,6 +2706,7 @@ impl Fight {
         self.occ[ib] = Some(a as u8);
         self.units[a].pos = pb;
         self.units[b].pos = pa;
+        self.reveal_exposed_hiders();
     }
 
     /// `AttackAction.consume_resource` (thrown weapons, action economy and
@@ -3222,6 +3285,10 @@ mod srd_level_tests {
         assert!(!f.grid.los(a, b));
         assert!(f.can_see(0, 1) && f.can_see(1, 0));
         assert!(f.clear_effect(a, b) && !f.clear_effect(b, a));
+        assert_eq!(f.cover_bonus_from(b, 0), 2);
+        assert_eq!(f.known_point_cover(a, 1, 0), 5);
+        assert_eq!(f.known_point_cover(b, 0, 0), 0);
+        f.set_rule_version(10);
         assert_eq!(f.cover_bonus_from(b, 0), 5);
         f.set_rule_version(9);
         assert!(f.can_see(0, 1));
@@ -3243,10 +3310,86 @@ mod srd_level_tests {
         let mut edge = fight(&[".....","..H..",".....",".....","....."], &[("guy",(0,0)),("shadow-1",(4,1))]);
         assert!(edge.clear_effect((0,0), (4,1)));
         assert_eq!(edge.cover_bonus_from((0,0), 1), 2);
+        assert_eq!(edge.point_save_cover((0,0), 1, Ability::Dex), 2);
         edge.move_to(1, (4,0));
         assert!(edge.clear_effect((0,1), (4,0)));
-        assert_eq!(edge.cover_bonus_from((0,1), 1), 5);
+        assert_eq!(edge.cover_bonus_from((0,1), 1), 2);
+        assert_eq!(edge.point_save_cover((0,1), 1, Ability::Dex), 5);
         assert!(!edge.clear_effect((0,1), (4,1)));
+    }
+
+    #[test]
+    fn best_corner_clears_diagonal_figures_and_one_wall_but_not_two_walls() {
+        let src = (1, 1);
+        let dst = (2, 2);
+        let mut f = fight(&["...."; 4], &[("mara", src), ("goblin_boss-1", dst),
+            ("guy", (1, 2)), ("animated_armor-1", (2, 1))]);
+        assert_eq!(f.known_point_cover(src, 1, 0), 2);
+        assert_eq!(f.attack_ac(src, 1), f.armor_class(1));
+        f.set_rule_version(10);
+        assert_eq!(f.attack_ac(src, 1), f.armor_class(1) + 2);
+
+        for (side, visible) in [("....", true), (".H..", false)] {
+            let f = fight(&["....", "..H.", side, "...."], &[("mara", src), ("goblin_boss-1", dst)]);
+            assert_eq!(f.clear_sight(src, dst), visible);
+            assert_eq!(f.clear_sight(dst, src), visible);
+            assert_eq!(f.grid.corner_wall_grade(src, dst), if visible { 0 } else { 4 });
+        }
+    }
+
+    #[test]
+    fn either_movers_exposed_step_ends_hide_even_if_both_endpoints_are_protected() {
+        let rows = [".......", ".......", ".HH.HH.", ".......", "......."];
+        let path = [(1,3), (2,3), (3,3), (4,3), (5,3)];
+        for (goblin, hero, mover) in [((1,3), (3,0), 0), ((3,0), (1,3), 1)] {
+            let mut f = fight(&rows, &[("goblin_boss-1", goblin), ("guy", hero)]);
+            assert!(!f.sees_hider_clearly(1, 0));
+            f.units[0].hidden_stealth = Some(40);
+            f.units[0].add_status(St::Hidden);
+            f.units[mover].movement = 30;
+            f.web_events = Some(Vec::new());
+            f.commit_move_segment(mover, path.to_vec());
+            assert_eq!(f.units[mover].pos, (5,3));
+            assert!(!f.sees_hider_clearly(1, 0));
+            assert!(!f.units[0].hidden());
+            assert_eq!(f.take_web_events().iter().filter(|e| matches!(e,
+                crate::web_events::WebEv::HiddenFound { target: 0 })).count(), 1);
+        }
+        let mut f = fight(&rows, &[("goblin_boss-1", (2,3)), ("guy", (3,0))]);
+        assert!(f.can_see(1, 0));
+        assert_eq!(f.cover_bonus_from((3,0), 0), 5);
+        assert!(!f.sees_hider_clearly(1, 0));
+        f.units[0].hidden_stealth = Some(40);
+        f.set_rule_version(10);
+        f.move_to(0, (3,3));
+        assert!(f.units[0].hidden());
+    }
+
+    #[test]
+    fn turned_specter_crosses_walls_to_retreat_without_ending_on_one() {
+        let mut f = fight(&["..H..H", "..H.HH", "..H.HH", "....HH"], &[("specter-1", (1,0)), ("elion", (0,0))]);
+        f.units[0].turned_by.push((1, 60, true));
+        f.units[0].add_status(St::Incapacitated);
+        f.units[0].movement = 50;
+        let path = f.flee_step(0).unwrap();
+        assert_eq!(path, [(1,0), (2,0), (3,0), (4,0)]);
+        f.commit_move_segment(0, path);
+        assert!(f.units[0].movement >= 10);
+        assert!(f.flee_step(0).is_none());
+        let hp = f.units[0].hp;
+        f.battle_end_turn();
+        assert_eq!(f.units[0].hp, hp);
+        assert!(f.is_turned(0));
+        f.move_to(0, (5,0));
+        f.battle_end_turn();
+        assert!((1..=10).contains(&(hp - f.units[0].hp)));
+        assert!(!f.is_turned(0));
+
+        let mut f = fight(&["....H", "....."], &[("specter-1", (3,0)), ("elion", (0,0))]);
+        f.move_to(0, (4,0));
+        f.units[0].turned_by.push((1, 60, true));
+        f.units[0].movement = 5;
+        assert_eq!(f.flee_step(0).as_deref(), Some([(4,0), (4,1)].as_slice()));
     }
 
     #[test]

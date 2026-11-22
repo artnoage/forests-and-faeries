@@ -80,6 +80,7 @@ pub struct Grid {
     /// Line of sight from each source cell, computed on first use.
     los: Vec<OnceLock<Bits>>,
     wall_cover: Vec<OnceLock<Vec<u8>>>,
+    corner_walls: Vec<OnceLock<Vec<u8>>>,
     /// Passable neighbours of each cell for 1x1 movement, in natural20's
     /// `get_neighbors` order (see `path.rs`): `nbr[nbr_start[i]..nbr_start[i + 1]]`.
     nbr_start: Vec<u32>,
@@ -167,6 +168,7 @@ impl Grid {
             comp: Vec::new(),
             los: (0..n).map(|_| OnceLock::new()).collect(),
             wall_cover: (0..n).map(|_| OnceLock::new()).collect(),
+            corner_walls: (0..n).map(|_| OnceLock::new()).collect(),
             nbr_start: Vec::new(),
             nbr: Vec::new(),
             static_planes: OnceLock::new(),
@@ -453,6 +455,70 @@ impl Grid {
             (0..self.cells()).map(|i| self.cover_rays(origin, self.pos_of(i), |_| false).0).collect()
         });
         row[self.index(target.0, target.1)]
+    }
+
+    /// Best corner wall coverage, independent of the creatures on this map.
+    pub(crate) fn corner_wall_grade(&self, origin: Pos, target: Pos) -> u8 {
+        let row = self.corner_walls[self.index(origin.0, origin.1)].get_or_init(|| {
+            (0..self.cells()).map(|i| {
+                let p = self.pos_of(i);
+                if self.is_wall(p.0, p.1) { 4 } else { self.corner_cover_grade(origin, p, |_| false) }
+            }).collect()
+        });
+        row[self.index(target.0, target.1)]
+    }
+
+    /// Grade the least-covered origin: 0 clear, 2 half, 3 three-quarters, 4 total.
+    /// Intervening creatures can grant at most half cover.
+    pub(crate) fn corner_cover_grade(&self, origin: Pos, target: Pos, occupied: impl Fn(Pos) -> bool) -> u8 {
+        let (dx, dy) = ((target.0 - origin.0).abs(), (target.1 - origin.1).abs());
+        if dx.max(dy) <= 1 {
+            let sealed = dx == 1 && dy == 1 && self.is_wall(origin.0, target.1) && self.is_wall(target.0, origin.1);
+            return if sealed { 4 } else { 0 };
+        }
+        // An infinitesimal inset picks the interior side of a corner. A ray along the
+        // outer face of a wall cannot see two squares that are both behind that face.
+        // This scale keeps the inset smaller than the separation of distinct grid crossings.
+        let scale = 4 * (dx + dy + 1) + 4;
+        let corners = [(1, 1), (scale - 1, 1), (1, scale - 1), (scale - 1, scale - 1)];
+        let tile = |p: Pos| {
+            if self.is_wall(p.0, p.1) { 2 } else { u8::from(occupied(p)) }
+        };
+        let mut best = 4;
+        for (ox, oy) in corners {
+            let start = (origin.0 * scale + ox, origin.1 * scale + oy);
+            let mut walls = 0;
+            let mut blocked = 0;
+            for (tx, ty) in corners {
+                let end = (target.0 * scale + tx, target.1 * scale + ty);
+                let grade = self.corner_ray(origin, target, start, end, scale, &tile);
+                walls += u8::from(grade == 2);
+                blocked += u8::from(grade != 0);
+            }
+            best = best.min(walls.max(blocked.min(2)));
+            if best < 2 { return 0; }
+        }
+        best
+    }
+
+    fn corner_ray(&self, origin: Pos, target: Pos, start: Pos, end: Pos, scale: i32, tile: &impl Fn(Pos) -> u8) -> u8 {
+        let (dx, dy) = (end.0 - start.0, end.1 - start.1);
+        let (sx, sy) = (dx.signum(), dy.signum());
+        let to_edge = |v: i32, step: i32| if step > 0 { scale - v.rem_euclid(scale) } else { v.rem_euclid(scale) };
+        let (mut nx, mut ny) = (to_edge(start.0, sx), to_edge(start.1, sy));
+        let mut p = origin;
+        let mut grade = 0;
+        while p != target {
+            let cross = nx * dy.abs() - ny * dx.abs();
+            if cross == 0 && self.is_wall(p.0 + sx, p.1) && self.is_wall(p.0, p.1 + sy) { return 2; }
+            if cross <= 0 { p.0 += sx; nx += scale; }
+            if cross >= 0 { p.1 += sy; ny += scale; }
+            if p != target {
+                grade = grade.max(tile(p));
+                if grade == 2 { break; }
+            }
+        }
+        grade
     }
 
     /// Sample the four quadrants of the defender's square from the effect origin.

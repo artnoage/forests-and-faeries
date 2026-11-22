@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 11;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 12;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -1173,6 +1173,10 @@ impl WebArena {
         } else { evs };
         for ev in evs {
             match ev {
+                WebEv::HiddenFound { target } => {
+                    let who = self.unit_display_name(target);
+                    self.push_log(&format!("{who} is spotted and loses Hidden."), "status", round);
+                }
                 WebEv::HideResult { actor, total, seen } if self.replay_version >= 6 => {
                     let who = self.unit_display_name(actor);
                     let result = if seen { "an enemy can see the attempt" } else if total < 15 { "the check falls short" } else { "the creature is hidden" };
@@ -2629,7 +2633,9 @@ impl WebArena {
                     .flatten().filter_map(Value::as_str);
                 for id in target_ids.iter().map(String::as_str).chain(affected) {
                     if let Some(t) = f.units.iter().position(|unit| unit.id == id) {
-                        let bonus = f.known_cover(origin, t, hidden);
+                        let area = matches!(&cand.act, Act::DragonsBreathExhale)
+                            || matches!(&cand.act, Act::Spell(c) if matches!(c.spell, SpellId::AcidSplash | SpellId::BurningHands));
+                        let bonus = if area { f.known_point_cover(origin, t, hidden) } else { f.known_cover(origin, t, hidden) };
                         if bonus > 0 && hidden & (1 << t) == 0 { bonuses.insert(id.to_owned(), json!(bonus)); }
                     }
                 }
@@ -3126,7 +3132,8 @@ mod movement_preview_tests {
     fn concealed_adjacent_token_has_the_same_routes_as_empty_floor() {
         let level = LevelInput {
             encounter_id: "preview".into(), preset_id: "test".into(), theme: "ossuary".into(),
-            map_name: "room".into(), rows: vec!["........".into(); 8], scene: json!({}), level_view: json!({}),
+            map_name: "room".into(), rows: ["........", "........", "........", "........", "....D...", "........", "........", ".......D"]
+                .into_iter().map(String::from).collect(), scene: json!({}), level_view: json!({}),
             heroes: vec!["ilyra_l1".into()],
             monsters: vec![("goblin_warrior-1".into(), "goblin_warrior".into(), "Goblin".into())],
             suggested_placements: vec![Placement { id: "ilyra_l1".into(), x: 3, y: 3 },

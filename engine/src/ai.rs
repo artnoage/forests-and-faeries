@@ -451,10 +451,9 @@ impl Fight {
         if opponents.is_empty() {
             return 0.0;
         }
-        let pos = unit.pos;
         let mut need = 0;
         for &o in &opponents {
-            if self.sees_lit_square(o, pos) {
+            if self.sees_hider_clearly(o, u) {
                 return 0.0;
             }
             need = need.max(self.units[o].t.passive_perception + 1);
