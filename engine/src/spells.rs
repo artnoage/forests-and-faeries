@@ -50,7 +50,7 @@ pub struct Cast {
 /// The unpaid damage rerolls and targets still to choose in one casting.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScorchingRays {
-    caster: usize,
+    pub caster: usize,
     level: i32,
     pub next: i32,
     free: bool,

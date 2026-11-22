@@ -623,6 +623,9 @@ impl Env {
             units[m(old)] = Some(u);
         }
         f.units = units.into_iter().map(Option::unwrap).collect();
+        if let Some(rays) = &mut f.scorching_rays {
+            rays.caster = m(rays.caster);
+        }
         for o in f.occ.iter_mut() {
             *o = o.map(|x| m(x as usize) as u8);
         }
