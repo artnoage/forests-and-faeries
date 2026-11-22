@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 14;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 15;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -611,6 +611,11 @@ impl WebArena {
         if !self.can_act() {
             return Err("It is not a human-controlled combat turn.".to_string());
         }
+        if let Some(f) = &self.fight {
+            if f.pending_rays(self.acting_unit(f)).is_some() {
+                return Err("Choose a target for the next Scorching Ray.".to_string());
+            }
+        }
         if self.interrupted_move.is_some() {
             self.resume_interrupted_move();
         } else {
@@ -640,7 +645,9 @@ impl WebArena {
             return Err("Use autoplay=true to automate a human-controlled figure.".to_string());
         }
         let mut hit_cap = true;
-        for _ in 0..ACTION_CAP {
+        let mut actions_taken = 0;
+        while actions_taken < ACTION_CAP || self.fight.as_ref().unwrap().pending_rays(actor).is_some() {
+            actions_taken += 1;
             if self.finished {
                 hit_cap = false;
                 break;
@@ -719,11 +726,16 @@ impl WebArena {
         while !self.finish_if_needed() {
             let (actor, acted_ready) = self.fight.as_mut().unwrap().open_turn_step();
             let evs = self.fight.as_mut().unwrap().take_web_events();
-            self.process_non_action_events(evs);
             let round = self.current_round();
             let who = self.unit_display_name(actor).to_string();
-            if acted_ready {
+            if acted_ready && self.replay_version >= 15 {
                 self.push_log(&format!("{who} — turn begins."), "turn", round);
+            }
+            self.process_non_action_events(evs);
+            if acted_ready {
+                if self.replay_version < 15 {
+                    self.push_log(&format!("{who} — turn begins."), "turn", round);
+                }
                 return;
             }
             self.push_log(&format!("{who} cannot act; turn skipped."), "turn", round);
@@ -748,6 +760,10 @@ impl WebArena {
 
         // Pre-action chronicle line (`FFArena._execute`, lines 159-172)
         match &cand.act {
+            Act::Spell(c) if self.fight.as_ref().unwrap().pending_rays(src).is_some() => {
+                let rays = self.fight.as_ref().unwrap().pending_rays(src).unwrap();
+                self.push_log(&format!("{who} aims Scorching Ray {} of {}.", rays.next, crate::spells::ScorchingRays::count(c.at_level)), "spell", round);
+            }
             Act::Spell(c) => {
                 let name = present_text::spell_display_name(c.spell.key());
                 let mut extra = Vec::new();
@@ -1211,6 +1227,15 @@ impl WebArena {
                 WebEv::BlindHitTarget { target } => {
                     blind_hit_target = Some(target);
                 }
+                WebEv::SavageRoll { source, sides, kept, discarded } => {
+                    let who = self.unit_display_name(source);
+                    let show = |dice: &[i32]| crate::web_events::fmt_dice_roll(sides, dice, 0, false, dice.iter().sum());
+                    self.push_log(&format!("{who} uses Savage Attacker. Kept {}, discarded {}.", show(&kept), show(&discarded)), "info", round);
+                }
+                WebEv::LifeDrainMaximum { target, before, after } => {
+                    let who = self.unit_display_name(target);
+                    self.push_log(&format!("Life Drain reduces {who}'s maximum HP from {before} to {after}."), "status", round);
+                }
                 WebEv::RayAtCorpse { src, target } => {
                     let caster = self.unit_display_name(src);
                     let name = self.unit_display_name(target);
@@ -1252,7 +1277,11 @@ impl WebArena {
                             let roll = dmg_roll_fmt.as_deref().map(|r| format!(" ({r})")).unwrap_or_default();
                             format!(" and takes {applied_damage} {} damage{roll}", ty.name())
                         }).unwrap_or_default();
-                        self.push_log(&format!("{tgt_name} {verb} against {src_name}'s {name}{damage}."), if hit { "hit" } else { "miss" }, round);
+                        let potent = self.replay_version >= 15 && matches!(result, SaveOutcome::Made)
+                            && matches!(spell_style, Some("acid_splash" | "sacred_flame"))
+                            && self.fight.as_ref().unwrap().units[src].t.potent_cantrip && dt.is_some();
+                        let feature = if potent { " (Potent Cantrip)" } else { "" };
+                        self.push_log(&format!("{tgt_name} {verb} against {src_name}'s {name}{damage}{feature}."), if hit { "hit" } else { "miss" }, round);
                     } else if !hit && dt.is_some() && self.replay_version >= 7 {
                         let damage_type = dt.unwrap().name();
                         let roll = dmg_roll_fmt.as_deref().unwrap_or("");
@@ -1261,8 +1290,9 @@ impl WebArena {
                         let dt_str = dt.map_or("", |d| d.name());
                         let dmg_str = dmg_roll_fmt.as_deref().unwrap_or("");
                         let amount = if current_text { applied_damage } else { raw_damage };
+                        let verb = if crit && self.replay_version >= 15 { "critically hits" } else { "hits" };
                         self.push_log(
-                            &format!("{src_name}: {pretty_atk} hits {tgt_name}{check}; {dmg_str} → {amount} {dt_str} damage."),
+                            &format!("{src_name}: {pretty_atk} {verb} {tgt_name}{check}; {dmg_str} → {amount} {dt_str} damage."),
                             "hit",
                             round,
                         );
@@ -2062,6 +2092,9 @@ impl WebArena {
             raw_cands.extend(self.movement_candidates(actor).into_iter().filter(|act|
                 matches!(act, Act::Move(path) if f_ref.champion_move_fits(actor, path)))
                 .map(|act| HumanCandidate { act, exhale_aim: None }));
+        } else if let Some(rays) = f_ref.pending_rays(actor) {
+            raw_cands.extend(f_ref.ray_choices(actor, rays).into_iter()
+                .map(|act| HumanCandidate { act, exhale_aim: None }));
         } else if incap {
             if let Some(step) = self.fight.as_mut().unwrap().flee_step(actor) {
                 raw_cands.push(HumanCandidate { act: Act::Move(step), exhale_aim: None });
@@ -2444,6 +2477,20 @@ impl WebArena {
             }
         }
 
+        let f = self.fight.as_ref().unwrap();
+        let ray = spell_opt.filter(|c| self.replay_version >= 15 && c.spell == SpellId::ScorchingRay).map(|c| {
+            let number = f.pending_rays(actor).map_or(1, |rays| rays.next);
+            (number, crate::spells::ScorchingRays::count(c.at_level))
+        });
+        let mut aid_no_hp = Vec::new();
+        if let Some(c) = spell_opt.filter(|c| self.replay_version >= 15 && c.spell == SpellId::Aid) {
+            let bonus = 5 * (1 + (c.at_level - 2).max(0));
+            for &t in targets {
+                if f.units[t].hp == 0 && f.aid_effect(t).is_some_and(|old| old >= bonus) {
+                    aid_no_hp.push(t);
+                }
+            }
+        }
         let mode_opt: Option<&str> = match &cand.act {
             Act::DivineSpark { heal, .. } => Some(if *heal { "heal" } else { "harm" }),
             _ => None,
@@ -2460,6 +2507,7 @@ impl WebArena {
 
         // Exact `UndeadWebArena._cost` + `FFArena._action_view`
         let cost = match kind {
+            "spell" if ray.is_some_and(|(number, _)| number > 1) => "part of the same cast".to_string(),
             "move" => {
                 if let Act::Move(p) = &cand.act {
                     let steps = if self.replay_version >= 3 {
@@ -2565,6 +2613,13 @@ impl WebArena {
             view.insert("y".into(), json!(ay));
         }
         view.insert("cost".into(), json!(cost));
+        if let Some((number, count)) = ray {
+            view.insert("ray_number".into(), json!(number));
+            view.insert("ray_count".into(), json!(count));
+        }
+        if !aid_no_hp.is_empty() {
+            view.insert("aid_no_hp_targets".into(), json!(aid_no_hp.iter().map(|&t| &f.units[t].id).collect::<Vec<_>>()));
+        }
         if let Act::CreateSpellSlot { level } | Act::ConvertSpellSlot { level } = &cand.act {
             view.insert("at_level".into(), json!(level));
         }
@@ -3089,8 +3144,8 @@ impl WebArena {
         let Some(obj) = state.as_object_mut() else { return state };
         let Some(actions) = obj.get("actions").and_then(Value::as_array).cloned() else { return state };
 
-        let static_keys = ["kind", "category", "label", "cost", "spell", "spell_level", "at_level", "free_cast", "metamagic", "mode", "option"];
-        let row_keys = ["target_ids", "x", "y", "area", "hits", "allies", "path", "cover"];
+        let static_keys = ["kind", "category", "label", "cost", "spell", "spell_level", "at_level", "free_cast", "metamagic", "mode", "option", "ray_number", "ray_count"];
+        let row_keys = ["target_ids", "x", "y", "area", "hits", "allies", "path", "cover", "aid_no_hp_targets"];
 
         let mut defs: Vec<Value> = Vec::new();
         let mut def_index: HashMap<String, usize> = HashMap::new();

@@ -953,7 +953,7 @@ impl BatchEnv {
         me.info_dict(py, &targets)
     }
 
-    /// Tape descriptors of the pending decision's rows (`end_turn` last);
+    /// Tape descriptors of the pending decision's rows (`end_turn` last when offered);
     /// empty when the slot is done.
     fn describe(&self, slot: usize) -> PyResult<Vec<String>> {
         let s = self.slots_one(slot)?;

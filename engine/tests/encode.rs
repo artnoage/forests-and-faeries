@@ -227,7 +227,15 @@ fn check_obs_v1(env: &Env, o: &Obs, off: (i32, i32)) {
                     assert!(!o.native_dropped[r]);
                 }
             }
-            assert_eq!(o.cand_ids[(legal - 1) * 3], 14, "End Turn last");
+            if let Some(end) = d.end_turn_row() {
+                assert_eq!(o.cand_ids[end * 3], 14, "End Turn last");
+            } else {
+                for r in 0..legal {
+                    assert_eq!(&o.cand_ids[r * 3..r * 3 + 2], &[7, 20], "Scorching Ray target choice");
+                    assert_eq!(o.cands[r * F_A + a("no_cost")], 1.0);
+                    assert_eq!(o.cands[r * F_A + a("uses_action")], 0.0);
+                }
+            }
             for (r, act) in d.legal.iter().enumerate() {
                 check_row(env, o, r, act, off);
             }

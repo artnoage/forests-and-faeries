@@ -321,6 +321,8 @@
   };
 
   const isSplit = list => list.some(a => (a.target_ids || []).length > 1);
+  const aidWarning = a => a?.aid_no_hp_targets?.length
+    ? 'Already aided. No HP gain for ' + a.aid_no_hp_targets.map(nameOf).join(', ') + '.' : '';
   const cellsOf = a => a?.cells || [];
   const previewCells = () => cellsOf(preview || armed);
   const allocationKey = ids => [...ids].sort().join(',');
@@ -836,6 +838,7 @@
       const used = allocationIds().length;
       const noun = SPLIT_NOUNS[cur[0].spell] || 'targets';
       const match = allocationMatch(cur);
+      if (aidWarning(match)) optParts.push('<span class="option-row">' + escape(aidWarning(match)) + '</span>');
       optParts.push(`<span class="allocation"><span class="option-name">${noun} ${used}/${total}</span>${ids.map(id => {
         const c = allocation.get(id) || 0;
         return `<span class="alloc-row"><span>${escape(nameOf(id))}</span><button class="alloc-step" data-alloc-dec="${escape(id)}" aria-label="One fewer on ${escape(nameOf(id))}" ${!c ? 'disabled' : ''}>−</button><b>${c}</b><button class="alloc-step" data-alloc-inc="${escape(id)}" aria-label="One more on ${escape(nameOf(id))}" ${used >= total || c >= cap(id) ? 'disabled' : ''}>+</button></span>`;
@@ -886,13 +889,15 @@
         if (seen.has(a.id) || (armed && armed.id === a.id)) continue;
         seen.add(a.id);
         const tgt = chipTargetText(a), hits = hitsLabel(a);
-        const text = tgt ? `${a.label} → ${tgt}` : a.label;
+        const text = [tgt ? `${a.label} → ${tgt}` : a.label, aidWarning(a)].filter(Boolean).join(' · ');
         chips.push(`<button class="target-chip ${a.allies?.length ? 'friendly-fire' : ''}" data-action="${escape(a.id)}" title="${escape(a.description || text)}">${escape(text)}${a.cost ? ' · ' + escape(a.cost) : ''}${hits ? ' · ' + escape(hits) : ''}</button>`);
       }
     }
     tgtBox.innerHTML = chips.join('');
     pop.hidden = !optParts.length && !chips.length;
-    $('action-hint').textContent = group.kind === 'move'
+    $('action-hint').textContent = cur[0]?.ray_count
+      ? `Choose a target for Scorching Ray ${cur[0].ray_number} of ${cur[0].ray_count}.`
+      : group.kind === 'move'
       ? `${group.label}: click a highlighted square${sceneUnavailable ? ' on the map or a square below' : ''}.`
       : cur[0]?.kind === 'spiritual_weapon_move'
         ? `${group.label}: click a highlighted square on the map or a square above.`
@@ -934,7 +939,7 @@
     $('pause-button').textContent = paused ? '▷' : '⏸';
     $('pause-button').setAttribute('aria-label', paused ? 'Resume' : 'Pause');
     $('step-button').disabled = !state || busy || finished || (!computerTurn && !watching);
-    $('end-button').disabled = !canAct();
+    $('end-button').disabled = !canAct() || actions().some(a => a.ray_number > 1);
     $('end-button').querySelector('span').textContent = state?.champion_interrupt ? 'STAY HERE' : 'END TURN';
     $('end-button').querySelector('small').textContent = state?.champion_interrupt ? 'Decline the free move' : 'Next creature →';
     $('new-button').disabled = busy || !state;
@@ -1019,7 +1024,7 @@
     const actor = (data.units || []).find(u => u.id === data.turn_id);
     data.actions = data.actions.map(row => {
       const action = { ...(data.action_defs[row.d] || {}), id: row.id };
-      for (const k of ['target_ids', 'x', 'y', 'hits', 'allies', 'path', 'cost']) if (row[k] !== undefined) action[k] = row[k];
+      for (const k of ['target_ids', 'x', 'y', 'hits', 'allies', 'path', 'cost', 'aid_no_hp_targets']) if (row[k] !== undefined) action[k] = row[k];
       if (action.target_ids?.length) action.target_id = action.target_ids[0];
       if (row.area && data.areas?.[row.area]) action.cells = data.areas[row.area];
       const counts = new Map();
@@ -1099,6 +1104,9 @@
           viewer.focusUnit(u.id, activeCamPreset === 'heroic');
         }
       }
+    } else if (actions().some(a => a.ray_number > 1)) {
+      selectedGroup = groupKey(actions()[0]);
+      activeCatFilter = 'all';
     } else if (!groupedActions().some(g => g.key === selectedGroup)) {
       selectedGroup = null;
     }

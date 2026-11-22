@@ -151,7 +151,7 @@ pub struct Decision {
     /// Actions already executed in this turn (the cap is `ACTION_CAP`).
     pub step: u32,
     /// The rows: native candidates in canonical order, deduplicated, then
-    /// `Act::EndTurn` (always last).
+    /// `Act::EndTurn` when the actor may finish the turn (always last if offered).
     pub legal: Vec<Act>,
     /// Native score per row after the scenario adjustments (the value the
     /// controller sorts by); End Turn 0.0 if an enemy is in melee range of
@@ -189,9 +189,9 @@ impl Decision {
         self.legal.is_empty()
     }
 
-    /// The End Turn row (the last).
-    pub fn end_turn_row(&self) -> usize {
-        self.legal.len() - 1
+    /// The last row ends the turn unless this is a mandatory target choice.
+    pub fn end_turn_row(&self) -> Option<usize> {
+        self.legal.last().filter(|act| **act == Act::EndTurn).map(|_| self.legal.len() - 1)
     }
 
     /// The same decision with other rows (`ember_rs.BatchEnv(moves='dest')`:
@@ -273,8 +273,9 @@ impl Fight {
         if self.creature_space_rules && (self.rule_version < 6 || self.units[u].t.pc) {
             legal.extend(crate::batch::movement_paths(self, u, 0, true, None).into_iter().map(Act::Move));
         }
-        legal.push(Act::EndTurn);
-        let end = legal.len() - 1;
+        let aiming = self.pending_rays(u).is_some();
+        let end = legal.len();
+        if !aiming { legal.push(Act::EndTurn); }
         if stand {
             // move_for stands up before scoring anything (no second
             // _observe_enemies, no marker ageing).
@@ -287,7 +288,7 @@ impl Fight {
             for m in self.units[u].mem.investigate.iter_mut() {
                 m.1 += 1;
             }
-            if legal.len() == 1 {
+            if !aiming && legal.len() == 1 {
                 return Decision { native_choice: Some(0), forced: Some(Forced::EndTurn), ..blank(legal) };
             }
             return blank(legal);
@@ -309,10 +310,13 @@ impl Fight {
         let melee = self.enemy_in_melee_range(u);
         raw.resize(end, f64::NEG_INFINITY);
         dropped.resize(end, false);
-        raw.push(if melee { 0.0 } else { f64::NEG_INFINITY });
-        dropped.push(false);
+        if !aiming {
+            raw.push(if melee { 0.0 } else { f64::NEG_INFINITY });
+            dropped.push(false);
+        }
         // The native choice (move_for after scoring).
         let native = match fin.first() {
+            None if aiming => 0,
             None => end,
             Some(&(i, score)) => match &cands[i] {
                 Act::Move(path) if (score < 0.0 && melee) || simplify_path(path).len() < 2 => end,
@@ -331,7 +335,7 @@ impl Fight {
             native_raw: Some(raw),
             native_dropped: Some(dropped),
             native_choice: Some(native),
-            forced: (legal.len() == 1).then_some(Forced::EndTurn),
+            forced: (!aiming && legal.len() == 1).then_some(Forced::EndTurn),
             tape,
             ..blank(legal)
         }
@@ -829,7 +833,7 @@ impl Env {
         self.counts.external_actions += 1;
         let t = self.turn.as_mut().expect("an external turn in progress");
         t.1 += 1;
-        if t.1 >= ACTION_CAP {
+        if t.1 >= ACTION_CAP && self.fight.pending_rays(d.actor).is_none() {
             self.close_turn();
         }
     }
@@ -841,7 +845,7 @@ impl Env {
         let u = d.actor;
         let legal: Vec<String> = d.legal.iter().map(|a| f.describe(u, a)).collect();
         let chosen = match d.native_choice {
-            Some(n) if n != d.end_turn_row() => legal[n].clone(),
+            Some(n) if Some(n) != d.end_turn_row() => legal[n].clone(),
             _ => "none".to_string(),
         };
         let raw = d.native_raw.as_ref().map(|r| {

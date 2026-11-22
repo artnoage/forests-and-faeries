@@ -201,6 +201,7 @@ const DIRECTIONS: [Pos; 8] = [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1
 /// first free square after occupied space ends the atomic move. Free
 /// neighbours are already represented by the native one-square rows.
 pub(crate) fn movement_paths(f: &Fight, a: usize, masked: u32, crossings_only: bool, first_rows: Option<&[Act]>) -> Vec<Vec<Pos>> {
+    if f.pending_rays(a).is_some() { return Vec::new(); }
     movement_paths_with_budget(f, a, masked, crossings_only, first_rows, f.units[a].available_movement() / 5)
 }
 

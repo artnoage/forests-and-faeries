@@ -3,11 +3,11 @@ from game.arena import FFArena
 from game.catalogue import Level
 
 
-def arena(actor, seed=1):
-    positions = {actor: [2, 2], 'guy': [2, 3], 'goblin_minion-1': [3, 2], 'goblin_minion-2': [4, 2]}
+def arena(actor, seed=1, foe='goblin_minion'):
+    positions = {actor: [2, 2], 'guy': [2, 3], f'{foe}-1': [3, 2], f'{foe}-2': [4, 2]}
     level = Level(dict(id='room', name='Room', theme='crypt'),
                   dict(id='test', name='Test', difficulty='Easy', blurb='', hero_level=3,
-                       party=[actor, 'guy'], roster=['goblin_minion'] * 2, placements=positions),
+                       party=[actor, 'guy'], roster=[foe] * 2, placements=positions),
                   ['HHHHHHH', 'H.....H', 'H.....H', 'H.....H', 'HHHHHHH'], {}, 'room')
     game = FFArena(level, seed=seed)
     game.configure(level.suggested_placements(), 'manual')
@@ -197,3 +197,25 @@ def test_attack_preview_reports_only_the_intervening_creatures_cover():
     covered = next(a for a in frost if a['target_id'] == target['id'])
     game.perform(covered['id'])
     assert any(f"vs AC {target['ac'] + 2} including cover +2" in line['text'] for line in game.state()['log'])
+
+
+def test_scorching_ray_offers_fresh_targets_and_pays_once():
+    game, state = arena('curogana', foe='wight')
+
+    def slots(s):
+        return next(p['value'] for p in s['resources']['pools'] if p['label'] == 'Level 2 slots')
+    before = slots(state)
+    first = next(a for a in state['actions'] if a.get('spell') == 'scorching_ray'
+                 and a['at_level'] == 2 and not a.get('metamagic'))
+    assert first['ray_number'] == 1 and first['ray_count'] == 3
+    game.perform(first['id'])
+    for number in (2, 3):
+        state = game.state()
+        assert slots(state) == before - 1 and state['resources']['action'] == 0
+        assert state['actions'] and all(a['spell'] == 'scorching_ray' and a['ray_number'] == number
+                                        and a['cost'] == 'part of the same cast' for a in state['actions'])
+        eligible = {u['id'] for u in state['units'] if u['id'].startswith('wight') and u['hp'] > 0}
+        assert {a['target_id'] for a in state['actions']} == eligible
+        game.perform(state['actions'][0]['id'])
+    assert slots(game.state()) == before - 1
+    assert not any(a.get('ray_number', 0) > 1 for a in game.state()['actions'])

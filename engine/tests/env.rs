@@ -79,9 +79,13 @@ fn check_decision(env: &Env, d: &Decision) {
     assert_eq!(d.team, f.units[d.actor].team);
     assert_eq!(env.controllers()[d.team as usize], EXT);
     assert!(d.forced.is_none(), "forced decisions are never offered");
-    assert!(d.legal.len() >= 2, "an offered decision has a row besides End Turn");
-    assert_eq!(*d.legal.last().unwrap(), Act::EndTurn);
-    assert_eq!(d.legal.iter().filter(|a| **a == Act::EndTurn).count(), 1);
+    assert!(!d.legal.is_empty());
+    if d.end_turn_row().is_some() {
+        assert!(d.legal.len() >= 2);
+        assert_eq!(d.legal.iter().filter(|a| **a == Act::EndTurn).count(), 1);
+    } else {
+        assert!(d.legal.iter().all(|a| matches!(a, Act::Spell(c) if c.spell == ember_rs::content::SpellId::ScorchingRay)));
+    }
     let descs = env.describe();
     let mut sorted = descs.clone();
     sorted.sort();
@@ -92,14 +96,11 @@ fn check_decision(env: &Env, d: &Decision) {
             assert!(env.scores() && d.unscored.is_none());
             assert_eq!(raw.len(), d.legal.len());
             assert_eq!(dropped.len(), d.legal.len());
-            let end = *raw.last().unwrap();
-            if f.enemy_in_melee_range(d.actor) {
-                assert_eq!(end, 0.0);
-            } else {
-                assert_eq!(end, f64::NEG_INFINITY);
+            if let Some(end) = d.end_turn_row() {
+                assert_eq!(raw[end], if f.enemy_in_melee_range(d.actor) { 0.0 } else { f64::NEG_INFINITY });
+                assert!(!dropped[end]);
             }
-            assert!(!dropped.last().unwrap());
-            for (k, v) in raw.iter().enumerate().take(raw.len() - 1) {
+            for (k, v) in raw.iter().enumerate().take(d.end_turn_row().unwrap_or(raw.len())) {
                 if matches!(&d.legal[k], Act::Move(path) if path.len() > 2 && (f.units[d.actor].t.pc || f.rule_version() < 6)) {
                     assert_eq!(*v, f64::NEG_INFINITY, "external-only paths have no native score");
                 } else {

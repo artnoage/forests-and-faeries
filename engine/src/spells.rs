@@ -47,6 +47,24 @@ pub struct Cast {
     pub dt: Option<Dmg>,
 }
 
+/// The unpaid damage rerolls and targets still to choose in one casting.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScorchingRays {
+    caster: usize,
+    level: i32,
+    pub next: i32,
+    free: bool,
+    metamagic: Option<Mm>,
+    rerolls_left: usize,
+    pub paid_empowered: bool,
+}
+
+impl ScorchingRays {
+    pub fn count(level: i32) -> i32 {
+        3 + (level - 2).max(0)
+    }
+}
+
 /// `natural20/utils/metamagic.py` options.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mm {
@@ -673,6 +691,7 @@ impl Fight {
         let extra = (at_level - spell.level()).max(0);
         let _ = u;
         match spell {
+            ScorchingRay if self.rule_version >= 14 => (120, TargetTypes::Enemies, 1, 1),
             SacredFlame => (60, TargetTypes::Enemies, 1, 1),
             GuidingBolt => (120, TargetTypes::Enemies, 1, 1),
             SpiritualWeapon => (65, TargetTypes::Enemies, 1, 1),
@@ -1694,8 +1713,53 @@ impl Fight {
     }
 
     /// `SpellAction.resolve` + `Battle.commit` for one casting.
+    pub(crate) fn pending_rays(&self, caster: usize) -> Option<ScorchingRays> {
+        self.scorching_rays.filter(|rays| rays.caster == caster)
+    }
+
+    pub(crate) fn ray_choices(&self, caster: usize, rays: ScorchingRays) -> Vec<Act> {
+        self.acquire_targets(caster, 120, TargetTypes::Enemies).into_iter().map(|target| {
+            Act::Spell(Box::new(Cast {
+                spell: SpellId::ScorchingRay, at_level: rays.level, free: rays.free,
+                targets: vec![target], multi: false, point: None, mm: rays.metamagic, dt: None,
+            }))
+        }).collect()
+    }
+
+    fn resolve_ray(&mut self, u: usize, c: &Cast, mut rays: ScorchingRays) {
+        let mut items = Vec::new();
+        let mut rolls = Vec::new();
+        self.resolve_sorcerer(u, c, &mut items, &mut rolls);
+        if rays.rerolls_left > 0 {
+            let damage: Vec<_> = items.iter().filter_map(|item| match item {
+                Item::RDamage(d) => Some(d.clone()),
+                _ => None,
+            }).collect();
+            let used = self.empower(u, &damage, &mut rolls, rays.rerolls_left);
+            rays.rerolls_left -= used;
+            if used > 0 && !rays.paid_empowered {
+                self.units[u].sorcery_points -= Mm::Empowered.cost();
+                rays.paid_empowered = true;
+            }
+        }
+        self.commit_spell_items(u, c, items, &rolls, None);
+        self.expire_timed_conditions();
+        rays.next += 1;
+        self.scorching_rays = if rays.next <= ScorchingRays::count(rays.level)
+            && !self.units[u].incapacitated()
+            && !self.acquire_targets(u, 120, TargetTypes::Enemies).is_empty() {
+            Some(rays)
+        } else { None };
+    }
+
     pub fn do_spell(&mut self, u: usize, c: &Cast) {
         use SpellId::*;
+        if c.spell == ScorchingRay {
+            if let Some(rays) = self.pending_rays(u) {
+                self.resolve_ray(u, c, rays);
+                return;
+            }
+        }
         let prior = self.units[u].concentration;
         if self.rule_version >= 8 && c.spell.concentration() {
             if let Some(obj) = prior {
@@ -1851,6 +1915,7 @@ impl Fight {
             SpareTheDying => items.push(Item::Stabilize(t0.unwrap())),
             LesserRestoration => items.push(Item::Restore(t0.unwrap_or(u))),
             MageArmor => items.push(Item::MageArmor(t0.unwrap())),
+            ScorchingRay if self.rule_version >= 14 => {}
             ChromaticOrb if self.rule_version >= 13 => {}
             _ => rerolled = self.resolve_sorcerer(u, c, &mut items, &mut rolls),
         }
@@ -1881,6 +1946,15 @@ impl Fight {
         } else {
             None
         };
+        if self.rule_version >= 14 && c.spell == ScorchingRay {
+            let rerolls_left = if c.mm == Some(Mm::Empowered) {
+                ability_mod(self.units[u].t.abil[Ability::Cha.idx()]).max(1) as usize
+            } else { 0 };
+            let rays = ScorchingRays { caster: u, level: c.at_level, next: 1,
+                free: c.free, metamagic: c.mm, rerolls_left, paid_empowered: false };
+            self.resolve_ray(u, c, rays);
+            return;
+        }
         if self.rule_version >= 13 && c.spell == ChromaticOrb {
             let rerolls = self.resolve_sorcerer(u, c, &mut items, &mut rolls);
             if c.mm == Some(Mm::Empowered) && rerolls > 0 && self.units[u].sorcery_points >= Mm::Empowered.cost() {

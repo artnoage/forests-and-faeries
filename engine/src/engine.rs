@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 13;
+pub const CURRENT_RULE_VERSION: i32 = 14;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -555,6 +555,7 @@ pub struct Fight {
     pub objs: Vec<EffObj>,
     /// `metamagic._ACTIVE_HEIGHTENED`: (caster, used) while a Heightened spell resolves.
     pub heightened: Option<(usize, bool)>,
+    pub(crate) scorching_rays: Option<crate::spells::ScorchingRays>,
     /// Move-scoring search cache (no game state; see `ai.rs`).
     pub move_cache: crate::ai::MoveCache,
     pub notes: Notes,
@@ -708,6 +709,7 @@ impl Fight {
             prefer: Vec::new(),
             objs: Vec::new(),
             heightened: None,
+            scorching_rays: None,
             move_cache: Default::default(),
             notes: Notes::default(),
             web_events: None,
@@ -1389,6 +1391,7 @@ impl Fight {
 
     /// `Battle.end_turn`.
     fn battle_end_turn(&mut self) {
+        self.scorching_rays = None;
         let current = self.current();
         self.units[current].champion_movement = 0;
         if self.rule_version >= 8 && !self.units[current].dead() && self.units[current].t.size != "tiny" {
@@ -1465,7 +1468,7 @@ impl Fight {
     pub fn advance(&mut self) {
         let actor = self.current();
         let mut n = 0;
-        while n < 24 {
+        while n < 24 || self.pending_rays(actor).is_some() {
             n += 1;
             if self.finished || !self.can_take_turn(actor) {
                 break;
@@ -2342,7 +2345,10 @@ impl Fight {
                 apply_gwf(&mut second);
             }
             if second.iter().sum::<i32>() > base.iter().sum::<i32>() {
-                base = second;
+                std::mem::swap(&mut base, &mut second);
+            }
+            if self.rule_version >= 14 && self.web_events.is_some() {
+                self.emit_web(crate::web_events::WebEv::SavageRoll { source: src, sides: dmg.sides, kept: base.clone(), discarded: second });
             }
         }
         // Berserker Frenzy: Rage Damage d6s on the turn's first Strength hit
@@ -2598,8 +2604,12 @@ impl Fight {
         if amount <= 0 || self.units[u].dead() {
             return;
         }
+        let before = self.max_hp_of(u);
         self.units[u].max_hp_reduction += amount;
         let mhp = self.max_hp_of(u);
+        if self.rule_version >= 14 && mhp != before {
+            self.emit_web(crate::web_events::WebEv::LifeDrainMaximum { target: u, before, after: mhp });
+        }
         if mhp <= 0 {
             self.units[u].hp = 0;
             self.make_dead(u);

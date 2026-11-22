@@ -1158,11 +1158,20 @@ impl Fight {
                     3.5 * f.damage_multiplier(t, Dmg::Force)
                 }
             }),
-            ScorchingRay => self.clamped_multi_value(u, &c.targets, |f, t| {
-                let (p_hit, p_crit) = f.spell_attack_estimate(u, t, WeaponKind::spell_ranged(120));
-                let mult = f.damage_multiplier(t, Dmg::Fire);
-                mult * ((p_hit - p_crit) * 7.0 + p_crit * 2.0 * 7.0)
-            }),
+            ScorchingRay => {
+                let volley;
+                let targets = if self.rule_version >= 14 && self.pending_rays(u).is_none() {
+                    volley = vec![c.targets[0]; crate::spells::ScorchingRays::count(c.at_level) as usize];
+                    &volley
+                } else {
+                    &c.targets
+                };
+                self.clamped_multi_value(u, targets, |f, t| {
+                    let (p_hit, p_crit) = f.spell_attack_estimate(u, t, WeaponKind::spell_ranged(120));
+                    let mult = f.damage_multiplier(t, Dmg::Fire);
+                    mult * ((p_hit - p_crit) * 7.0 + p_crit * 2.0 * 7.0)
+                })
+            }
             AcidSplash | Shatter => {
                 let Some(p) = c.point else { return POINTLESS };
                 let (radius, ab, full, dt, half) = if c.spell == AcidSplash {
@@ -1496,7 +1505,11 @@ impl Fight {
                     }
                     let (next, _) = self.orb_leap(u, target, &used, dt, hit_dmg, crit_dmg);
                     let Some(next) = next else { break };
-                    if self.rule_version >= 6 && self.web_events.is_some() { items.push(Item::OrbLeap { from: target, to: next }); }
+                    if self.rule_version >= 14 {
+                        self.emit_web(crate::web_events::WebEv::OrbLeap { from: target, to: next });
+                    } else if self.rule_version >= 6 && self.web_events.is_some() {
+                        items.push(Item::OrbLeap { from: target, to: next });
+                    }
                     used.push(next);
                     target = next;
                     leaps_left -= 1;

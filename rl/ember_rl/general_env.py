@@ -81,7 +81,9 @@ NONE_ID = -1
 # Action-kind ids from content/vocab.json (`action_kinds`); used to tell moves
 # from other rows (per-class temperature) and to find End Turn.
 MOVE_KIND = 0
+SPELL_KIND = 7
 END_TURN_KIND = 14
+SCORCHING_RAY_ID = 20
 
 MODEL_INPUTS = ('creatures', 'creature_ids', 'creature_mask', 'map', 'global', 'cands', 'cand_ids',
                 'cand_tgt', 'cand_tgt_n', 'cand_cell', 'cand_mask', 'actor', 'creature_rel')
@@ -382,8 +384,10 @@ def validate_obs(obs: Mapping[str, np.ndarray], dims: Mapping[str, int] | None =
             continue
         _require(legal >= 1, f'slot {i}: a live slot needs a legal row')
         _require(0 <= actor < real, f'slot {i}: actor {actor} is not a real creature')
-        _require(int(obs['cand_ids'][i, legal - 1, 0]) == end_turn_kind, f'slot {i}: End Turn must be the last legal row')
         cids = obs['cand_ids'][i, :legal]
+        aiming_rays = np.all((cids[:, 0] == SPELL_KIND) & (cids[:, 1] == SCORCHING_RAY_ID))
+        _require(aiming_rays or (cids[-1, 0] == end_turn_kind and not np.any(cids[:-1, 0] == end_turn_kind)),
+                 f'slot {i}: End Turn must be last unless choosing the next Scorching Ray')
         _require(np.all((cids >= -1) & (cids < ID_SLOTS)) and np.all(cids[:, 0] >= 0), f'slot {i}: candidate ids out of range')
         tgt, tn = obs['cand_tgt'][i, :legal].astype(int), obs['cand_tgt_n'][i, :legal]
         _require(np.all((tgt >= -1) & (tgt < real)), f'slot {i}: pointer outside the real creatures')
@@ -397,7 +401,10 @@ def validate_obs(obs: Mapping[str, np.ndarray], dims: Mapping[str, int] | None =
             _require(0 <= choice < legal, f'slot {i}: native_choice {choice} not a legal row')
             _require(not dropped[choice], f'slot {i}: native_choice is a dropped row')
             _require(not np.any(np.isnan(raw)) and not np.any(raw == np.inf), f'slot {i}: native_raw must be finite or -inf')
-            _require(not dropped[legal - 1], f'slot {i}: End Turn is never dropped')
+            if aiming_rays:
+                _require(not np.any(dropped[:legal]), f'slot {i}: a mandatory ray target cannot be dropped')
+            else:
+                _require(not dropped[legal - 1], f'slot {i}: End Turn is never dropped')
         else:
             _require(choice == -1, f'slot {i}: native_choice must be -1 without scores')
     _require(np.all(obs['creature_mask'].sum(1) <= n), 'too many creatures')

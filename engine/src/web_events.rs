@@ -50,6 +50,8 @@ pub enum WebEv {
         passed: bool,
     },
     EmpoweredReroll { caster: usize, sides: i32, old: i32, new: i32 },
+    SavageRoll { source: usize, sides: i32, kept: Vec<i32>, discarded: Vec<i32> },
+    LifeDrainMaximum { target: usize, before: i32, after: i32 },
     HiddenFound { target: usize },
     HideResult { actor: usize, total: i32, seen: bool },
     SapApplied { source: usize, target: usize },

@@ -2654,17 +2654,22 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
     let level = s.level();
     let at = c.at_level;
     row[ai!("spell")] = 1.0;
-    if s.bonus_action() {
+    let rays = f.pending_rays(a).filter(|_| s == ScorchingRay);
+    if rays.is_some() {
+        row[ai!("no_cost")] = 1.0;
+    } else if s.bonus_action() {
         row[ai!("uses_bonus_action")] = 1.0;
     } else {
         row[ai!("uses_action")] = 1.0;
     }
-    if level > 0 && !c.free {
+    if level > 0 && !c.free && rays.is_none() {
         row[ai!("slot_level_div9")] = at as f32 / 9.0;
     }
     row[ai!("free_cast")] = b(c.free);
     if let Some(mm) = c.mm {
-        row[ai!("sorcery_points_div5")] = mm.cost() as f32 / 5.0;
+        if !rays.is_some_and(|r| r.paid_empowered) {
+            row[ai!("sorcery_points_div5")] = mm.cost() as f32 / 5.0;
+        }
         match mm {
             Mm::Empowered => row[ai!("mm_empowered")] = 1.0,
             Mm::Heightened => row[ai!("mm_heightened")] = 1.0,
@@ -2744,8 +2749,8 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
             row[ai!("spell_attack_roll")] = 1.0;
             row[ai!("ranged")] = 1.0;
             row[ai!("range_div120")] = 1.0;
-            let rays = 3 + (at - 2).max(0);
-            row[ai!("projectiles_div5")] = rays as f32 / 5.0;
+            let remaining = crate::spells::ScorchingRays::count(at) - rays.map_or(0, |r| r.next - 1);
+            row[ai!("projectiles_div5")] = remaining as f32 / 5.0;
             for &t in &c.targets {
                 tg.add(t);
             }

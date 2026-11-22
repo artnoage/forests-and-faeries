@@ -60,7 +60,7 @@ fn check_presented(game: &Game) -> (usize, usize) {
     let (p, kinds) = dest_decision(env).unwrap();
     assert_eq!((p.actor, p.team, p.step), (d.actor, d.team, d.step));
     assert_eq!(p.legal.len(), kinds.len());
-    assert!(matches!(p.legal.last(), Some(Act::EndTurn)), "End Turn last");
+    assert_eq!(p.end_turn_row().is_some(), d.end_turn_row().is_some());
     // the native non-move rows, in their order
     let others: Vec<usize> = (0..d.legal.len()).filter(|&r| !matches!(d.legal[r], Act::Move(_))).collect();
     let natives: Vec<usize> = kinds.iter().filter_map(|k| if let RowKind::Native(r) = k { Some(*r) } else { None }).collect();

@@ -281,6 +281,9 @@ impl Fight {
     /// `UndeadController._compute_available_moves`.
     pub(crate) fn available_moves(&mut self, u: usize) -> Vec<Act> {
         let observed = self.observe_enemies(u);
+        if let Some(rays) = self.pending_rays(u) {
+            return self.ray_choices(u, rays);
+        }
         let mut acts = Vec::new();
         // the attack builders' `blind_attack_variants` refresh the
         // unseen-creature memory (`sensed_creatures`)
@@ -804,7 +807,8 @@ impl Fight {
             if matches!(cands[i], Act::ActionSurge) {
                 s = if self.enemy_within(u, 1) && self.units[u].action <= 0 { 1.0 } else { -1.0 };
             }
-            let dropped = s == SKIP_NATIVE || (s < 0.0 && !matches!(cands[i], Act::Move(_) | Act::Attack { .. } | Act::BlindAttack { .. }));
+            let dropped = self.pending_rays(u).is_none()
+                && (s == SKIP_NATIVE || (s < 0.0 && !matches!(cands[i], Act::Move(_) | Act::Attack { .. } | Act::BlindAttack { .. })));
             if let Some(r) = rows.as_deref_mut() {
                 r[i] = (s, dropped);
             }
