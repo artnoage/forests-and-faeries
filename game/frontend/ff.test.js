@@ -333,6 +333,7 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
   assert.deepEqual(rankedCounts, { Easy: 10, Medium: 10, Hard: 13, Unbeatable: 3 });
   assert.equal(classicCount, 11);
   assert.match(app, /LEGACY_ENCOUNTERS = new Set\(\['crypt', 'vault'\]\)/, 'app.js separates legacy Crypt & Vault into Classic');
+  assert.match(app, /legacy \? 'Classic · ungraded' : p\.difficulty/, 'deployment preset dropdown marks legacy encounters as Classic · ungraded');
   const unbeatable = pubEncounters.filter(e => !legacyIds.has(e.id)).flatMap(e => e.presets.filter(p => p.difficulty === 'Unbeatable').map(p => `${e.id}/${p.id}`)).sort();
   assert.deepEqual(unbeatable, [
     'bell_court/l1_the_bell_steps_plus1_v3',

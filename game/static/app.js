@@ -829,7 +829,8 @@
     const select = $('setup-preset');
     const sig = `${level?.group.id}:${presets.map(p => p.id).join()}`;
     if (select.dataset.signature !== sig) {
-      select.innerHTML = presets.map(p => `<option value="${escape(p.id)}">${escape(p.name)} · ${escape(p.difficulty)}</option>`).join('');
+      const legacy = isLegacyGroup(level?.group);
+      select.innerHTML = presets.map(p => `<option value="${escape(p.id)}">${escape(p.name)} · ${escape(legacy ? 'Classic · ungraded' : p.difficulty)}</option>`).join('');
       select.dataset.signature = sig;
     }
     select.value = state.level?.id || '';
