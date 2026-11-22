@@ -488,11 +488,22 @@ impl Fight {
         value
     }
 
-    /// `divine_spell_ai.force_attack_value` (cast-time: `force` None, `level`
-    /// the cast level; live force: its level).
+    fn force_strike_position(&self, target: usize, pos: Pos) -> Option<Pos> {
+        let target_pos = self.units[target].pos;
+        if self.square_distance(pos, target_pos) <= 1 && (self.rule_version < 7 || self.clear_effect(pos, target_pos)) {
+            Some(pos)
+        } else {
+            self.landing_square(target, pos, Some(4))
+        }
+    }
+
+    /// Origin for cover, observation features and native attack estimates.
     pub(crate) fn force_attack_origin(&self, caster: usize, target: usize, force: Option<u32>) -> Pos {
         if let Some(id) = force {
-            if let ObjKind::Force { pos, .. } = self.objs[id as usize].kind { return pos; }
+            if let ObjKind::Force { pos, .. } = self.objs[id as usize].kind {
+                if self.rule_version < 12 { return pos; }
+                return self.force_strike_position(target, pos).unwrap_or(self.units[target].pos);
+            }
         }
         self.landing_square(target, self.units[caster].pos, Some(12)).unwrap_or(self.units[target].pos)
     }
@@ -921,8 +932,7 @@ impl Fight {
         (0..self.units.len())
             .filter(|&c| !self.units[c].dead() && self.opposing(src, c) && self.square_distance(pos, self.units[c].pos) <= 5
                 && (self.rule_version < 6 || !self.units[c].hidden() || self.can_see(src, c))
-                && (self.rule_version < 7 || (self.square_distance(pos, self.units[c].pos) <= 1 && self.clear_effect(pos, self.units[c].pos))
-                    || self.landing_square(c, pos, Some(4)).is_some()))
+                && (self.rule_version < 7 || self.force_strike_position(c, pos).is_some()))
             .collect()
     }
 
@@ -2334,10 +2344,11 @@ impl Fight {
                 let t = *target;
                 let Some(force) = self.active_force(u) else { return };
                 let ObjKind::Force { pos, level, modifier, .. } = self.objs[force as usize].kind else { return };
-                let mut position = pos;
-                if self.square_distance(pos, self.units[t].pos) > 1 || (self.rule_version >= 7 && !self.clear_effect(pos, self.units[t].pos)) {
-                    position = self.landing_square(t, pos, Some(4)).unwrap_or(self.units[t].pos);
-                }
+                let position = match self.force_strike_position(t, pos) {
+                    Some(landing) => landing,
+                    None if self.rule_version < 12 => self.units[t].pos,
+                    None => return,
+                };
                 let (hit, nat20, dismiss, t, atk_fmt) = self.evaluate_spell_attack_from(u, t, SpellId::SpiritualWeapon, WeaponKind::melee(), position);
                 let mut dmg = None;
                 if hit {

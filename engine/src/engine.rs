@@ -3399,6 +3399,22 @@ mod srd_level_tests {
     }
 
     #[test]
+    fn spiritual_weapon_previews_the_square_it_will_strike_from() {
+        use crate::effects::ObjKind;
+        let mut f = fight(&["HHHHHHH", ".......", "HHHHHHH"], &[("elion", (0, 1)), ("animated_armor-1", (5, 1))]);
+        let force = f.new_obj(SpellId::SpiritualWeapon, ObjKind::Force {
+            level: 2, pos: (1, 1), modifier: 3, cast_turn: (-1, 0), last_attack_turn: None, expires_at: 1000,
+        }, 0, Vec::new(), true);
+        f.set_rule_version(11);
+        assert_eq!(f.force_attack_origin(0, 1, Some(force)), (1, 1));
+        f.set_rule_version(CURRENT_RULE_VERSION);
+        assert_eq!(f.force_attack_origin(0, 1, Some(force)), (4, 1));
+        assert!(matches!(f.objs[force as usize].kind, ObjKind::Force { pos: (1, 1), .. }));
+        f.move_to(1, (2, 1));
+        assert_eq!(f.force_attack_origin(0, 1, Some(force)), (1, 1));
+    }
+
+    #[test]
     fn turned_specter_crosses_walls_to_retreat_without_ending_on_one() {
         let mut f = fight(&["..H..H", "..H.HH", "..H.HH", "....HH"], &[("specter-1", (1,0)), ("elion", (0,0))]);
         f.units[0].turned_by.push((1, 60, true));
