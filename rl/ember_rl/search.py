@@ -55,6 +55,10 @@ import numpy as np
 
 from ember_rl.general_env import MOVE_KIND, TEAM_CODE, TEAMS
 
+# Rows of one deferred leaf-value pass. The map encoder's activations grow with the batch (about 200 MiB at 64
+# rows of the 21M model), so a search's leaves are valued in bounded chunks; EMBER_VALUE_ROWS raises it on big GPUs.
+VALUE_ROWS = int(__import__('os').environ.get('EMBER_VALUE_ROWS') or 256)
+
 HORIZONS = ('turns', 'rounds', 'steps')
 SELECT = ('q', 'mix')
 HIDDEN_FEATURE = 98     # creature token `hidden` (ember-rs encode.rs CREATURE_FEATURES; enemy = 2)
@@ -399,7 +403,7 @@ class Lookahead:
         depth = np.ones(n, np.int64)       # decisions executed in the fork (the candidate included)
         kind, h = cfg.horizon_kind, cfg.horizon_n
         live = dst
-        truncated = []
+        truncated, leaves = [], []
         iterations = 0
         while len(live):
             iterations += 1
@@ -428,10 +432,18 @@ class Lookahead:
             leaf |= mine & (depth[alive] >= cfg.max_depth)
             last_actor[alive[mine]] = actor[mine]
             last_round[alive[mine]] = rnd[mine]
+            # Horizon leaves wait for one value pass after the loop: a leaf is never stepped again, so its
+            # state, potential and cost stay as they are now.
+            if leaf.any():
+                leaves.extend(alive[leaf].tolist())
+                keep = ~leaf
+                alive, team, mine = alive[keep], team[keep], mine[keep]
+                if not len(alive):
+                    break
             clock = time.time()
             obs = sc.observe(alive)
             stats['env_seconds'] += time.time() - clock
-            groups = defaultdict(list)          # (model id, leaf) -> positions in alive
+            groups = defaultdict(list)          # (model id, False) -> positions in alive
             models = {}
             for p, g in enumerate(alive):
                 name = TEAMS[int(team[p])]
@@ -439,43 +451,35 @@ class Lookahead:
                 if model is None:
                     raise RuntimeError(f'a fork surfaced a {name} decision but no {name} rollout policy was given')
                 models[id(model)] = model
-                groups[(id(model), bool(leaf[p]))].append(p)
-            step_slots, step_rows, step_own, step_move = [], [], [], []
+                groups[(id(model), False)].append(p)
             clock = time.time()
+            order, picks, kinds = [], [], []
             with torch.no_grad():
                 chunks = grouped_row_chunks if self.group_actions else row_chunks
-                for (mid, is_leaf), idx, part in self._chunks(obs, groups, chunks, models):
+                for (mid, _), idx, part in self._chunks(obs, groups, chunks, models):
                     batch = to_batch(part, self.device)
-                    model = models[mid]
-                    if is_leaf:
-                        with self.gpu_lock:
-                            values = model.value(batch, check=False)
-                        values = values.float().cpu().numpy()
-                        stats['value_rows'] += len(idx)
-                        for p, v in zip(idx, values):
-                            g = alive[p]
-                            utility[root_of[g]][jobs[g][1], jobs[g][2]] = (float(v) + sign[g] * float(cur['potential'][g])
-                                                                           - cost[g])
-                            self._leaf(stats, depth[g], terminal=False)
-                    else:
-                        with self.gpu_lock:
-                            logits, _ = model(batch, check=False)
-                            if cfg.rollout == 'greedy':
-                                chosen = logits.argmax(-1)
-                            else:
-                                chosen = torch.distributions.Categorical(logits=logits).sample()
-                        stats['forward_rows'] += len(idx)
-                        chosen = chosen.cpu().numpy()
-                        step_slots += [alive[p] for p in idx]
-                        step_rows += chosen.tolist()
-                        step_own += [bool(mine[p]) for p in idx]
-                        step_move += (part['cand_ids'][np.arange(len(idx)), chosen, 0] == MOVE_KIND).tolist()
+                    with self.gpu_lock:
+                        logits, _ = models[mid](batch, check=False)
+                        if cfg.rollout == 'greedy':
+                            chosen = logits.argmax(-1)
+                        else:
+                            chosen = torch.distributions.Categorical(logits=logits).sample()
+                        del logits
+                    stats['forward_rows'] += len(idx)
+                    order.append(idx)
+                    picks.append(chosen)            # stays on the GPU: one transfer for the whole iteration
+                    kinds.append(part['cand_ids'][:, :, 0])
+                chosen = torch.cat(picks).cpu().numpy() if picks else np.zeros(0, np.int64)
             stats['model_seconds'] += time.time() - clock     # .cpu() waits for the GPU
-            if not step_slots:
+            if not len(chosen):
                 break
-            step_slots = np.asarray(step_slots, np.int32)
+            order = np.concatenate(order)
+            step_slots = np.asarray(alive[order], np.int32)
+            step_own = mine[order]
+            step_move = np.concatenate([k[np.arange(len(k)), c] == MOVE_KIND
+                                        for k, c in zip(kinds, np.split(chosen, np.cumsum([len(k) for k in kinds])[:-1]))])
             clock = time.time()
-            info = sc.step(step_slots, np.asarray(step_rows, np.int32))
+            info = sc.step(step_slots, np.asarray(chosen, np.int32))
             stats['env_seconds'] += time.time() - clock
             if cfg.move_penalty:           # T's own walks only
                 walked = np.asarray(info['moved'], np.float64) if 'moved' in info else np.asarray(step_move, np.float64)
@@ -484,10 +488,18 @@ class Lookahead:
                 cur[k][step_slots] = v
             depth[step_slots] += 1
             live = step_slots
-        if truncated:
+        # One value pass for every leaf of this batch of forks: horizon leaves (the searching team is to act)
+        # and truncated games (round limit), both seen from the searching team's side.
+        pending = [(g, False) for g in leaves] + [(g, True) for g in truncated]
+        if pending:
+            from ember_rl.general_env import VALUE_INPUTS
+            from ember_rl.general_model import GeneralActorCritic, trimmed_rows
             clock = time.time()
-            idx = np.asarray(truncated, np.int32)
+            idx = np.asarray([g for g, _ in pending], np.int32)
             final = sc.observe(idx, team=own[idx])
+            stats['env_seconds'] += time.time() - clock
+            clock = time.time()
+            creatures = final['creature_mask'].sum(axis=1)
             by_model = defaultdict(list)
             models = {}
             for p, g in enumerate(idx):
@@ -496,15 +508,24 @@ class Lookahead:
                 by_model[id(model)].append(p)
             with torch.no_grad():
                 for mid, ps in by_model.items():
-                    batch = to_batch(select(final, ps), self.device)
-                    with self.gpu_lock:
-                        values = models[mid].value(batch, check=False)
-                    values = values.float().cpu().numpy()
+                    fields = final
+                    if type(models[mid]) is GeneralActorCritic:     # the built-in critic only encodes state
+                        fields = {name: final[name] for name in VALUE_INPUTS if name in final}
+                    width = fields['cand_mask'].shape[1] if 'cand_mask' in fields else 1
+                    outputs = []
+                    for at in range(0, len(ps), VALUE_ROWS):        # bounded: the map CNN's activations scale with B
+                        rows = np.asarray(ps[at:at + VALUE_ROWS])
+                        part = trimmed_rows(fields, rows, width, max(1, int(creatures[rows].max())))
+                        batch = to_batch(part, self.device)
+                        with self.gpu_lock:
+                            outputs.append(models[mid].value(batch, check=False).float())
+                    values = torch.cat(outputs).cpu().numpy()
+                    stats['value_rows'] += len(ps)
                     for p, v in zip(ps, values):
                         g = idx[p]
                         utility[root_of[g]][jobs[g][1], jobs[g][2]] = (float(v) + sign[g] * float(cur['potential'][g])
                                                                        - cost[g])
-                        self._leaf(stats, depth[g], terminal=True)
+                        self._leaf(stats, depth[g], terminal=pending[p][1])
             stats['truncated_leaves'] += len(truncated)
             stats['model_seconds'] += time.time() - clock
         stats['iterations'] += iterations
