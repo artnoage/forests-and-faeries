@@ -317,6 +317,20 @@ def test_leaf_graph_replays_new_inputs_and_weights(observation):
         torch.testing.assert_close(first, frozen, atol=0, rtol=0)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA graphs')
+def test_leaf_graphs_survive_the_loss_of_every_cached_model(observation):
+    """The shared graph pool is retired with its last graph; the next capture must take a new pool."""
+    import gc
+    batch = to_batch(observation, 'cuda')
+    with torch.no_grad():
+        for _ in range(3):
+            model = small().cuda()
+            model.graph_leaves = True
+            torch.testing.assert_close(model.value(batch), model._value(batch), atol=.02, rtol=.02)
+            del model
+            gc.collect()
+
+
 def test_policy_specialization_limit_keeps_ppo_trainable(monkeypatch):
     from torch._dynamo import config, reset_code
     from ember_rl import accelerated

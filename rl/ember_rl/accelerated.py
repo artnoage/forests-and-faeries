@@ -107,9 +107,16 @@ def _capture_resources(device):
     Gemini on 2026-11-23); a new stream per capture defeats the shared pool until PyTorch's 32-stream ring
     wraps. Graphs that share a pool must replay one at a time, which the single inference thread does."""
     key = str(device)
-    if key not in _CAPTURE:
-        _CAPTURE[key] = (torch.cuda.graph_pool_handle(), torch.cuda.Stream(device=device))
-    return _CAPTURE[key]
+    pool, stream = _CAPTURE.get(key, (None, None))
+    if stream is None:
+        stream = torch.cuda.Stream(device=device)
+    # PyTorch retires a pool when its last graph is destroyed; a handle kept past that fails an internal
+    # assertion on the next capture. Callers prune and evict before capturing, so no live graph on this
+    # device means the old pool is gone: take a new one.
+    if pool is None or not any(k[2] == device for k in _LEAF_GRAPHS):
+        pool = torch.cuda.graph_pool_handle()
+    _CAPTURE[key] = (pool, stream)
+    return pool, stream
 
 
 class _LeafGraph:
