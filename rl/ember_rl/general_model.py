@@ -431,7 +431,8 @@ def split_obs(obs: Mapping[str, np.ndarray], i: int) -> dict[str, np.ndarray]:
 def select(obs: Mapping[str, np.ndarray], index: Sequence[int] | np.ndarray) -> dict[str, np.ndarray]:
     """Rows `index` of a batched observation, trimmed to their own widest K and N."""
     index = np.asarray(index)
-    if (len(index) and index.dtype.kind in 'iu' and int(index[0]) >= 0 and int(index[-1]) - int(index[0]) + 1 == len(index)
+    if (len(index) and index.dtype.kind in 'iu' and int(index[0]) >= 0 and int(index[-1]) < len(obs['cand_mask'])
+            and int(index[-1]) - int(index[0]) + 1 == len(index)
             and (len(index) == 1 or (np.diff(index) == 1).all())):
         index = slice(int(index[0]), int(index[-1]) + 1)       # consecutive rows: views, no gather
     k = max(1, int(obs['cand_mask'][index].sum(1).max())) if obs['cand_mask'].shape[1] else 0
@@ -479,13 +480,16 @@ def row_chunks(obs: Mapping[str, np.ndarray], max_rows: int | None = None) -> li
 
 
 def grouped_row_chunks(obs, max_rows=None):
-    """Group wide, heterogeneous search batches when trimming saves at least 20% of padded actions."""
+    """Group wide, heterogeneous batches by action count when trimming saves at least 20% of padded actions.
+    The chunks are index arrays in the batch's coordinates and need not be in row order (see `_row_order`)."""
     mask = obs['cand_mask']
     count, width = mask.shape
     if count < 64 or width <= 32:
         return row_chunks(obs, max_rows)
     widths = mask.sum(axis=1)
-    codes = np.searchsorted((8, 32, 64, 128), widths)
+    # 192 and 256: without them every row above 128 actions was padded to the widest (372 with destination
+    # moves), although most fit in 192 (Gemini's measurement on 2,048 real slots: 26% fewer decoder tokens).
+    codes = np.searchsorted((8, 32, 64, 128, 192, 256), widths)
     groups = [np.flatnonzero(codes == code) for code in np.unique(codes)]
     padded = sum(len(group) * int(widths[group].max()) for group in groups)
     if padded >= .8 * count * width:
@@ -498,21 +502,33 @@ def grouped_row_chunks(obs, max_rows=None):
     return chunks
 
 
+def _row_order(chunks, device):
+    """Index that puts outputs concatenated in chunk order back into row order, or None if they already are."""
+    order = np.concatenate(chunks)
+    if (order[1:] > order[:-1]).all():
+        return None
+    return torch.from_numpy(np.argsort(order, kind='stable')).to(device)
+
+
 def forward_in_chunks(model, obs: Mapping[str, np.ndarray], device, max_rows: int | None = None, **kwargs):
-    """model(batch) over a batched observation in row_chunks: logits [B, K of obs] (-inf beyond each row's
-    own rows) and values [B]."""
-    chunks = row_chunks(obs, max_rows)
+    """model(batch) over a batched observation in width-grouped chunks: logits [B, K of obs] (-inf beyond each
+    row's own rows) and values [B], in row order."""
+    chunks = grouped_row_chunks(obs, max_rows)
     if len(chunks) == 1:
         return model(to_batch(obs, device), **kwargs)
     k = obs['cand_mask'].shape[1]
     parts = [model(to_batch(select(obs, c), device), **kwargs) for c in chunks]
     logits = torch.cat([F.pad(l, (0, k - l.shape[1]), value=-torch.inf) for l, _ in parts])
-    return logits, torch.cat([v for _, v in parts])
+    values = torch.cat([v for _, v in parts])
+    back = _row_order(chunks, logits.device)
+    return (logits, values) if back is None else (logits[back], values[back])
 
 
 def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = False, max_rows: int | None = None):
-    """model.act over a batched observation in row_chunks: indices, log_probs, values [B]."""
-    chunks = row_chunks(obs, max_rows)
+    """model.act over a batched observation in width-grouped chunks: indices, log_probs, values [B], in row
+    order. Rows of similar action counts share a pass, so a row with 40 actions is not padded to the 372 of the
+    widest; sampled rows draw their random numbers in chunk order."""
+    chunks = grouped_row_chunks(obs, max_rows)
     if len(chunks) == 1:
         return model.act(to_batch(obs, device), greedy=greedy)
     # The input and finiteness checks read flags back from the GPU, which makes the CPU wait for every chunk.
@@ -529,6 +545,9 @@ def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = F
         else:
             parts.append(model.act(batch, greedy=greedy))
     indices, log_probs, values = (torch.cat(x) for x in zip(*parts))
+    back = _row_order(chunks, indices.device)
+    if back is not None:
+        indices, log_probs, values = indices[back], log_probs[back], values[back]
     if deferred:
         ok = torch.stack(flags).all(0).tolist()
         if not all(ok):
