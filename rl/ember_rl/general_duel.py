@@ -552,6 +552,7 @@ class GeneralTrainer(Trainer):
                 if live:
                     stalls = 0
                     self._searched = False
+                    live = self.by_controller(live)
                     obs = env.observe(live)
                     rows = self.decide_batch(live, obs)
                     deciders = [self.infos[g]['team'] for g in live]
@@ -562,6 +563,7 @@ class GeneralTrainer(Trainer):
                         if self.infos[g]['done']:
                             finished.append(g)
                     self.record_moves(live, obs, rows, deciders)
+                    finished.sort()         # slot order, as before the controller grouping: resets draw in this order
                     if finished:
                         self.finish_games(finished)
                         release(finished)
@@ -672,6 +674,18 @@ class GeneralTrainer(Trainer):
                                    f'expected an external {learner} creature')
             if state['eval'] is not None and 'unit' not in state['eval']:
                 state['eval']['unit'] = content
+
+    def by_controller(self, live):
+        """`live` with the slots of each deciding controller side by side: the groups keep their order of first
+        appearance and their slots keep their order, so decide_batch draws the same random numbers as before,
+        and each group's rows are one slice of the observation (no gather of the whole batch)."""
+        rank, keys = {}, []
+        for g in live:
+            key = self.slot_state[g]['controllers'][self.infos[g]['team']]
+            keys.append(rank.setdefault(key, len(rank)))
+        if len(rank) <= 1:
+            return live
+        return [live[i] for i in np.argsort(np.asarray(keys), kind='stable')]
 
     def decide_batch(self, live, obs):
         """One forward pass per controller key; records learner transitions; returns int32 rows."""

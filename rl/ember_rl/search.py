@@ -55,9 +55,9 @@ import numpy as np
 
 from ember_rl.general_env import MOVE_KIND, TEAM_CODE, TEAMS
 
-# Rows of one deferred leaf-value pass. The map encoder's activations grow with the batch (about 200 MiB at 64
-# rows of the 21M model), so a search's leaves are valued in bounded chunks; EMBER_VALUE_ROWS raises it on big GPUs.
-VALUE_ROWS = int(__import__('os').environ.get('EMBER_VALUE_ROWS') or 256)
+# Rows of one deferred leaf-value pass. The map encoder's activations grow with the batch (about 1.25 MiB a row for the
+# 21M model; 512 rows stay under the policy pass's own peak on a 24 GB L4), so a search's leaves are valued in bounded chunks; EMBER_VALUE_ROWS raises it on big GPUs.
+VALUE_ROWS = int(__import__('os').environ.get('EMBER_VALUE_ROWS') or 512)
 
 HORIZONS = ('turns', 'rounds', 'steps')
 SELECT = ('q', 'mix')
@@ -476,13 +476,16 @@ class Lookahead:
             order = np.concatenate(order)
             step_slots = np.asarray(alive[order], np.int32)
             step_own = mine[order]
-            step_move = np.concatenate([k[np.arange(len(k)), c] == MOVE_KIND
-                                        for k, c in zip(kinds, np.split(chosen, np.cumsum([len(k) for k in kinds])[:-1]))])
             clock = time.time()
             info = sc.step(step_slots, np.asarray(chosen, np.int32))
             stats['env_seconds'] += time.time() - clock
             if cfg.move_penalty:           # T's own walks only
-                walked = np.asarray(info['moved'], np.float64) if 'moved' in info else np.asarray(step_move, np.float64)
+                if 'moved' in info:
+                    walked = np.asarray(info['moved'], np.float64)
+                else:
+                    cuts = np.cumsum([len(k) for k in kinds])[:-1]
+                    walked = np.concatenate([k[np.arange(len(k)), c] == MOVE_KIND
+                                             for k, c in zip(kinds, np.split(chosen, cuts))]).astype(np.float64)
                 cost[step_slots] += cfg.move_penalty * walked * np.asarray(step_own, np.float64)
             for k, v in info.items():
                 cur[k][step_slots] = v
@@ -514,7 +517,10 @@ class Lookahead:
                     width = fields['cand_mask'].shape[1] if 'cand_mask' in fields else 1
                     outputs = []
                     for at in range(0, len(ps), VALUE_ROWS):        # bounded: the map CNN's activations scale with B
-                        rows = np.asarray(ps[at:at + VALUE_ROWS])
+                        rows = ps[at:at + VALUE_ROWS]
+                        # one model's leaves are usually consecutive rows: a slice borrows the buffers (the map)
+                        rows = (slice(rows[0], rows[-1] + 1) if rows[-1] - rows[0] + 1 == len(rows)
+                                else np.asarray(rows))
                         part = trimmed_rows(fields, rows, width, max(1, int(creatures[rows].max())))
                         batch = to_batch(part, self.device)
                         with self.gpu_lock:

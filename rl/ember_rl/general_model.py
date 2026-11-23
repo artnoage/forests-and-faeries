@@ -364,9 +364,9 @@ class GeneralActorCritic(nn.Module):
         return distribution.log_prob(indices), distribution.entropy(), values
 
     @torch.no_grad()
-    def act(self, batch, greedy: bool = False):
+    def act(self, batch, greedy: bool = False, check: bool = True):
         """indices[B], log_probs[B], values[B]; greedy ties take the first maximum."""
-        logits, values = self(batch)
+        logits, values = self(batch, check=check)
         distribution = Categorical(logits=logits)
         indices = logits.argmax(-1) if greedy else distribution.sample()
         return indices, distribution.log_prob(indices), values
@@ -429,6 +429,8 @@ def split_obs(obs: Mapping[str, np.ndarray], i: int) -> dict[str, np.ndarray]:
 def select(obs: Mapping[str, np.ndarray], index: Sequence[int] | np.ndarray) -> dict[str, np.ndarray]:
     """Rows `index` of a batched observation, trimmed to their own widest K and N."""
     index = np.asarray(index)
+    if len(index) and int(index[-1]) - int(index[0]) + 1 == len(index) and (len(index) == 1 or (np.diff(index) == 1).all()):
+        index = slice(int(index[0]), int(index[-1]) + 1)       # consecutive rows: views, no gather
     k = max(1, int(obs['cand_mask'][index].sum(1).max())) if obs['cand_mask'].shape[1] else 0
     n = max(1, int(obs['creature_mask'][index].sum(1).max()))
     return trimmed_rows(obs, index, k, n)
@@ -510,8 +512,17 @@ def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = F
     chunks = row_chunks(obs, max_rows)
     if len(chunks) == 1:
         return model.act(to_batch(obs, device), greedy=greedy)
-    parts = [model.act(to_batch(select(obs, c), device), greedy=greedy) for c in chunks]
-    return tuple(torch.cat(x) for x in zip(*parts))
+    # The input and finiteness checks read a flag back from the GPU, which makes the CPU wait for every chunk.
+    # The first chunk keeps the full check; the rest queue up and one check covers their outputs (a chosen
+    # row's log-probability is finite only if its logits are).
+    try:
+        parts = [model.act(to_batch(select(obs, c), device), greedy=greedy, check=i == 0) for i, c in enumerate(chunks)]
+    except TypeError:               # a policy without the `check` argument
+        parts = [model.act(to_batch(select(obs, c), device), greedy=greedy) for c in chunks]
+    indices, log_probs, values = (torch.cat(x) for x in zip(*parts))
+    if not bool((torch.isfinite(log_probs).all() & torch.isfinite(values).all())):
+        raise FloatingPointError('non-finite logits or values')
+    return indices, log_probs, values
 
 
 def to_batch(obs: Mapping[str, np.ndarray], device='cpu') -> dict[str, Tensor]:
