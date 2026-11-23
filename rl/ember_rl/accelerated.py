@@ -138,7 +138,9 @@ class _LeafGraph:
         current.wait_stream(stream)
         self.graph = torch.cuda.CUDAGraph()
         # Captured casts and kernels read this model's parameters on every replay.
-        with _no_gc(), torch.cuda.graph(self.graph, pool=pool, stream=stream):
+        # relaxed: other threads may use the default stream during the capture (search worker threads copy
+        # results to the CPU outside the GPU lock); the default mode fails both sides (Gemini, 2026-11-23).
+        with _no_gc(), torch.cuda.graph(self.graph, pool=pool, stream=stream, capture_error_mode='relaxed'):
             self.outputs = model._value(self.inputs)
 
     def fill(self, batch):
