@@ -53,7 +53,7 @@ def test_parse_search_and_config_checks():
 @pytest.mark.parametrize('grouped', [False, True])
 @pytest.mark.parametrize('action_columns', [0, 160])
 def test_chunks_match_selecting_the_whole_group_first(grouped, action_columns):
-    from ember_rl.general_model import grouped_row_chunks, row_chunks
+    from ember_rl.general_model import row_chunks, search_row_chunks
 
     rows = np.arange(180)
     widths = np.resize([3, 27, 53, 86, 137], len(rows))
@@ -63,7 +63,7 @@ def test_chunks_match_selecting_the_whole_group_first(grouped, action_columns):
                creature_mask=creatures, creature_rel=np.arange(len(rows) * 49).reshape(-1, 7, 7),
                map=rows[:, None], actor=rows)
     groups = {(1, False): rows[8::2], (1, True): rows[:8], (2, False): rows[9::2]}
-    planner = grouped_row_chunks if grouped else row_chunks
+    planner = search_row_chunks if grouped else row_chunks
 
     def chunks(part):
         return planner(part, max_rows=640)
@@ -89,14 +89,14 @@ def test_chunks_match_selecting_the_whole_group_first(grouped, action_columns):
 
 
 def test_chunk_grouping_uses_the_groups_trimmed_width():
-    from ember_rl.general_model import grouped_row_chunks
+    from ember_rl.general_model import search_row_chunks
 
     widths = np.tile([50, 65], 48)
     obs = dict(cand_mask=np.arange(256)[None, :] < widths[:, None],
                creature_mask=np.ones((len(widths), 1), bool))
     group = np.arange(len(widths))
     # At width 65 the two buckets save less than 20%, so the policy keeps the original row order.
-    [(key, positions, part)] = Lookahead._chunks(obs, {(1, False): group}, grouped_row_chunks)
+    [(key, positions, part)] = Lookahead._chunks(obs, {(1, False): group}, search_row_chunks)
     assert key == (1, False) and part['cand_mask'].shape == (len(widths), 65)
     np.testing.assert_array_equal(positions, group)
 

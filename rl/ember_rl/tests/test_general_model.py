@@ -290,14 +290,21 @@ def test_bucketed_inputs_preserve_policy_values_and_gradients(observation):
 
 
 def test_search_width_groups_keep_every_slot_and_candidate_budget():
-    from ember_rl.general_model import grouped_row_chunks
+    from ember_rl.accelerated import action_bucket_width
+    from ember_rl.general_model import grouped_row_chunks, search_row_chunks
 
     widths = np.tile([7, 30, 55, 90, 140], 25)
-    masks = np.arange(140)[None, :] < widths[:, None]
-    chunks = grouped_row_chunks({'cand_mask': masks}, max_rows=700)
-    np.testing.assert_array_equal(np.sort(np.concatenate(chunks)), np.arange(len(widths)))
-    assert all(len(chunk) * widths[chunk].max() <= 700 for chunk in chunks)
-    assert all(len(set(widths[chunk])) == 1 for chunk in chunks)
+    obs = {'cand_mask': np.arange(140)[None, :] < widths[:, None]}
+    # Main-loop forwards retain the fixed cutoffs. Search merges the cheapest adjacent pair.
+    assert len(grouped_row_chunks(obs)) == 5
+    groups = search_row_chunks(obs, max_rows=20000)
+    assert [set(widths[g]) for g in groups] == [{7, 30}, {55}, {90}, {140}]
+    for budget in (20000, 700, 16):
+        chunks = search_row_chunks(obs, max_rows=budget)
+        np.testing.assert_array_equal(np.sort(np.concatenate(chunks)), np.arange(len(widths)))
+        assert all(np.all(np.diff(chunk) > 0) for chunk in chunks)
+        assert all(len(chunk) == 1 or len(chunk) * action_bucket_width(widths[chunk].max()) <= budget
+                   for chunk in chunks)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA graph capture requires a GPU')

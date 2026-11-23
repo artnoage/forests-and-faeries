@@ -466,16 +466,19 @@ FORWARD_ROWS = int(os.environ.get('EMBER_FORWARD_ROWS') or 1 << 18)
 def row_chunks(obs: Mapping[str, np.ndarray], max_rows: int | None = None) -> list[np.ndarray]:
     """Consecutive position chunks of a batched observation whose padded size (chunk length x its widest K)
     stays within max_rows (default FORWARD_ROWS; at least one row per chunk)."""
+    return _chunks_by_width(np.maximum(np.asarray(obs['cand_mask']).sum(1), 1), max_rows)
+
+
+def _chunks_by_width(widths, max_rows):
     max_rows = max_rows or FORWARD_ROWS
-    k = np.maximum(np.asarray(obs['cand_mask']).sum(1), 1)
     chunks, start, widest = [], 0, 0
-    for n, width in enumerate(k.tolist()):
+    for n, width in enumerate(widths.tolist()):
         wide = max(widest, width)
         if n > start and (n - start + 1) * wide > max_rows:
             chunks.append(np.arange(start, n))
             start, wide = n, width
         widest = wide
-    chunks.append(np.arange(start, len(k)))
+    chunks.append(np.arange(start, len(widths)))
     return chunks
 
 
@@ -498,6 +501,36 @@ def grouped_row_chunks(obs, max_rows=None):
     for group in groups:
         # row_chunks needs just the mask. Keep every index in the original batch's coordinates.
         for chunk in row_chunks({'cand_mask': mask[group]}, max_rows):
+            chunks.append(group[chunk])
+    return chunks
+
+
+def search_row_chunks(obs, max_rows=None):
+    """Merge neighboring padded widths into at most four groups for greedy rollout forwards.
+    Keep slot order within a group and split again wherever its forward-row budget requires it."""
+    from ember_rl.accelerated import action_bucket_width
+
+    mask = obs['cand_mask']
+    widths, inverse = np.unique(mask.sum(axis=1), return_inverse=True)
+    padded = np.array([max(1, action_bucket_width(int(w))) for w in widths], dtype=np.intp)[inverse]
+    if len(padded) < 64 or mask.shape[1] <= 32:
+        return _chunks_by_width(padded, max_rows)
+
+    limits, counts = np.unique(padded, return_counts=True)
+    while len(limits) > 4:
+        # Only the narrower group's rows gain padding. A tie goes to the lower pair.
+        left = int(np.argmin(counts[:-1] * np.diff(limits)))
+        counts[left + 1] += counts[left]
+        counts = np.delete(counts, left)
+        limits = np.delete(limits, left)
+    if counts @ limits >= .8 * len(padded) * limits[-1]:
+        return _chunks_by_width(padded, max_rows)
+
+    codes = np.searchsorted(limits, padded)
+    chunks = []
+    for code in range(len(limits)):
+        group = np.flatnonzero(codes == code)
+        for chunk in _chunks_by_width(padded[group], max_rows):
             chunks.append(group[chunk])
     return chunks
 

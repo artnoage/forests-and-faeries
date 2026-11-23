@@ -34,6 +34,11 @@ def _round_up(size, step):
     return (size + step - 1) // step * step
 
 
+def action_bucket_width(width):
+    """Width of the compiled policy's padded candidate axis."""
+    return _round_up(width, 8 if width <= 32 else 32)
+
+
 def _shape(name, shape, creatures, actions, targets):
     axes = list(shape)
     if name in CREATURE_FIELDS:
@@ -52,8 +57,7 @@ def bucket_batch(batch, *, value_only=False):
     creatures = _round_up(batch['creature_mask'].shape[1], 8)
     actions = targets = 0
     if not value_only:
-        width = batch['cand_mask'].shape[1]
-        actions = _round_up(width, 8 if width <= 32 else 32)
+        actions = action_bucket_width(batch['cand_mask'].shape[1])
         targets = max(4, _round_up(batch['cand_tgt'].shape[2], 4))
     result = {}
     for name, tensor in batch.items():

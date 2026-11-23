@@ -367,7 +367,7 @@ class Lookahead:
 
     def _rollouts(self, env, roots, results, jobs, utility, sc, stats):
         torch, cfg = self.torch, self.cfg
-        from ember_rl.general_model import grouped_row_chunks, row_chunks, select, to_batch
+        from ember_rl.general_model import row_chunks, search_row_chunks, select, to_batch
         n = len(jobs)
         dst = np.arange(n, dtype=np.int32)
         root_of = np.array([j[0] for j in jobs])
@@ -455,7 +455,7 @@ class Lookahead:
             clock = time.time()
             order, picks, kinds = [], [], []
             with torch.no_grad():
-                chunks = grouped_row_chunks if self.group_actions else row_chunks
+                chunks = search_row_chunks if self.group_actions else row_chunks
                 for (mid, _), idx, part in self._chunks(obs, groups, chunks, models):
                     batch = to_batch(part, self.device)
                     with self.gpu_lock:
