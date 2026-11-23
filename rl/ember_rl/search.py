@@ -48,6 +48,7 @@ import math
 import threading
 import time
 from collections import Counter, defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass, field, fields, replace
 from typing import Any, Mapping, Sequence
 
@@ -182,28 +183,38 @@ class Lookahead:
     """Batched decision-time search with the policy as prior and the value head as leaf evaluator."""
 
     def __init__(self, env, config: SearchConfig, device, *, seed: int = 0, threads: int | None = None, scratch=None,
-                 group_actions: bool = False, search_threads: int = 1):
+                 group_actions: bool = False, search_threads: int = 1, pipeline: bool = False):
         """search_threads T > 1: the forks of one search are split by root over T worker threads, each with its
         own scratch env (config.scratch / T slots, threads / T env threads). The env calls and the numpy
         gathers of the workers overlap (the engine releases the GIL); the network calls take turns behind one
         lock, so GPU memory and the compiled kernels are used as with T = 1. Candidates, Gumbel noise and dice
         seeds are drawn before the split, so the searched games are the same for every T; only the composition
-        of the network batches differs (BF16 rounding). A caller's own `scratch` forces T = 1."""
+        of the network batches differs (BF16 rounding). A caller's own `scratch` forces T = 1.
+        With pipeline=True, two scratch halves take turns at each of two independent stages. One half can
+        use the full engine thread budget while the other runs inference through its GPU readback."""
         import torch
         self.torch, self.env_template = torch, env
         self.cfg, self.device = config, device
         self.group_actions = group_actions and config.rollout == 'greedy'
         self.rng = np.random.default_rng(seed)
         self.stats = Counter()
-        self.gpu_lock = threading.Lock()
+        if pipeline and (scratch is not None or search_threads != 1 or config.scratch < 2 or config.rollout != 'greedy'):
+            raise ValueError('pipelined search needs its own scratch with at least two slots, greedy rollouts and search_threads=1')
+        self.pipeline = pipeline
+        self.env_stage = threading.Lock() if pipeline else nullcontext()
+        self.model_stage = threading.Lock() if pipeline else nullcontext()
+        self.gpu_lock = nullcontext() if pipeline else threading.Lock()
         self.search_threads = 1 if scratch is not None else max(1, int(search_threads))
+        if pipeline:
+            self.search_threads = 2
         self.pool = None
         if self.search_threads > 1:
             from concurrent.futures import ThreadPoolExecutor
             total = threads or getattr(env, 'threads', None) or self.search_threads
             slots = -(-config.scratch // self.search_threads)
-            self.workers = [scratch_like(env, slots, max(1, total // self.search_threads))
-                            for _ in range(self.search_threads)]
+            sizes = (slots, config.scratch - slots) if pipeline else [slots] * self.search_threads
+            lane_threads = total if pipeline else max(1, total // self.search_threads)
+            self.workers = [scratch_like(env, size, lane_threads) for size in sizes]
             self.scratch = self.workers[0]
             self.pool = ThreadPoolExecutor(self.search_threads, thread_name_prefix='search')
         else:
@@ -279,25 +290,34 @@ class Lookahead:
             self.stats['candidates'] += len(cands)
         utility = {i: np.full((len(res.cands), cfg.seeds), np.nan) for i, res in enumerate(results) if res.searched}
         cap = self.scratch.n_slots
-        if self.pool is None or len(jobs) <= max(64, cap // 4):     # a small search is not worth the hand-off
+        serial_limit = 1 if self.pipeline else max(64, cap // 4)
+        if self.pool is None or len(jobs) <= serial_limit:
             for start in range(0, len(jobs), cap):
                 self._rollouts(env, roots, results, jobs[start:start + cap], utility, self.scratch, self.stats)
         else:
-            # Whole roots per worker (their forks stay together), the next root to the least loaded worker.
-            # Workers write disjoint rows of `utility` and their own counters; `env` is only read (fork source).
+            # Workers write distinct candidate/seed entries and their own counters. The fork source is read-only.
             shares = [[] for _ in self.workers]
-            start = 0
-            while start < len(jobs):
-                end = start
-                while end < len(jobs) and jobs[end][0] == jobs[start][0]:
-                    end += 1
-                min(shares, key=len).extend(jobs[start:end])
-                start = end
+            if self.pipeline:
+                for start in range(0, len(jobs), cfg.scratch):
+                    wave = jobs[start:start + cfg.scratch]
+                    cut = (len(wave) + 1) // 2
+                    shares[0].extend(wave[:cut])
+                    shares[1].extend(wave[cut:])
+            else:
+                # Keep the forks of each root together on the least loaded worker.
+                start = 0
+                while start < len(jobs):
+                    end = start
+                    while end < len(jobs) and jobs[end][0] == jobs[start][0]:
+                        end += 1
+                    min(shares, key=len).extend(jobs[start:end])
+                    start = end
 
             def work(scratch, share):
                 stats = Counter()
-                for at in range(0, len(share), cap):
-                    self._rollouts(env, roots, results, share[at:at + cap], utility, scratch, stats)
+                size = scratch.n_slots
+                for at in range(0, len(share), size):
+                    self._rollouts(env, roots, results, share[at:at + size], utility, scratch, stats)
                 return stats
 
             futures = [self.pool.submit(work, sc, share) for sc, share in zip(self.workers, shares) if share]
@@ -378,11 +398,13 @@ class Lookahead:
             ctrls = [dict(heroes='external', monsters='external') for _ in jobs]
         elif any(roots[i].controllers is not None for i in root_of):
             ctrls = [roots[i].controllers for i in root_of]
-        clock = time.time()
-        sc.fork(src, dst, dice_seeds=seeds, controllers=ctrls, source=env)
         first = np.array([results[i].cands[ci] for i, ci, _, _ in jobs], np.int32)
+        with self.env_stage:
+            clock = time.time()
+            sc.fork(src, dst, dice_seeds=seeds, controllers=ctrls, source=env)
+            info = sc.step(dst, first)
+            stats['env_seconds'] += time.time() - clock
         cost = np.zeros(n)                 # move penalties of T's moves so far (the candidate's included)
-        info = sc.step(dst, first)
         if cfg.move_penalty:               # per square walked (info['moved']; else one per move row)
             if 'moved' in info:
                 cost += cfg.move_penalty * np.asarray(info['moved'], np.float64)
@@ -391,7 +413,6 @@ class Lookahead:
                     if roots[i].kinds is None:
                         raise ValueError('move_penalty needs Root.kinds (the action kind of every legal row)')
                     cost[g] = cfg.move_penalty * (int(roots[i].kinds[first[g]]) == MOVE_KIND)
-        stats['env_seconds'] += time.time() - clock
         stats['forks'] += n
         cur = {k: np.array(v) for k, v in info.items()}
         own = np.array([TEAM_CODE[roots[i].team] for i in root_of], np.int8)
@@ -440,9 +461,10 @@ class Lookahead:
                 alive, team, mine = alive[keep], team[keep], mine[keep]
                 if not len(alive):
                     break
-            clock = time.time()
-            obs = sc.observe(alive)
-            stats['env_seconds'] += time.time() - clock
+            with self.env_stage:
+                clock = time.time()
+                obs = sc.observe(alive)
+                stats['env_seconds'] += time.time() - clock
             groups = defaultdict(list)          # (model id, False) -> positions in alive
             models = {}
             for p, g in enumerate(alive):
@@ -452,9 +474,9 @@ class Lookahead:
                     raise RuntimeError(f'a fork surfaced a {name} decision but no {name} rollout policy was given')
                 models[id(model)] = model
                 groups[(id(model), False)].append(p)
-            clock = time.time()
             order, picks, kinds = [], [], []
-            with torch.no_grad():
+            with self.model_stage, torch.no_grad():
+                clock = time.time()
                 chunks = search_row_chunks if self.group_actions else row_chunks
                 for (mid, _), idx, part in self._chunks(obs, groups, chunks, models):
                     batch = to_batch(part, self.device)
@@ -470,15 +492,16 @@ class Lookahead:
                     picks.append(chosen)            # stays on the GPU: one transfer for the whole iteration
                     kinds.append(part['cand_ids'][:, :, 0])
                 chosen = torch.cat(picks).cpu().numpy() if picks else np.zeros(0, np.int64)
-            stats['model_seconds'] += time.time() - clock     # .cpu() waits for the GPU
+                stats['model_seconds'] += time.time() - clock     # .cpu() waits for the GPU
             if not len(chosen):
                 break
             order = np.concatenate(order)
             step_slots = np.asarray(alive[order], np.int32)
             step_own = mine[order]
-            clock = time.time()
-            info = sc.step(step_slots, np.asarray(chosen, np.int32))
-            stats['env_seconds'] += time.time() - clock
+            with self.env_stage:
+                clock = time.time()
+                info = sc.step(step_slots, np.asarray(chosen, np.int32))
+                stats['env_seconds'] += time.time() - clock
             if cfg.move_penalty:           # T's own walks only
                 if 'moved' in info:
                     walked = np.asarray(info['moved'], np.float64)
@@ -497,7 +520,6 @@ class Lookahead:
         if pending:
             from ember_rl.general_env import VALUE_INPUTS
             from ember_rl.general_model import GeneralActorCritic, trimmed_rows
-            clock = time.time()
             idx = np.asarray([g for g, _ in pending], np.int32)
             by_model = defaultdict(list)
             models = {}
@@ -511,10 +533,13 @@ class Lookahead:
             observe_seconds = 0.
             final = None
             if not state_only:
-                start = time.time()
-                final = sc.observe(idx, team=own[idx])
-                observe_seconds += time.time() - start
-            with torch.no_grad():
+                with self.env_stage:
+                    start = time.time()
+                    final = sc.observe(idx, team=own[idx])
+                    observe_seconds += time.time() - start
+            value_observe_wait = 0.
+            with self.model_stage, torch.no_grad():
+                clock = time.time()
                 for mid, ps in by_model.items():
                     fields = final
                     if final is not None and type(models[mid]) is GeneralActorCritic:
@@ -531,9 +556,12 @@ class Lookahead:
                             if copies and chunk >= 2:
                                 copies[chunk % 2].synchronize()
                             slots = idx[rows]
-                            start = time.time()
-                            fields = observe_value(slots, team=own[slots])
-                            observe_seconds += time.time() - start
+                            waiting = time.time()
+                            with self.env_stage:
+                                start = time.time()
+                                fields = observe_value(slots, team=own[slots])
+                                observe_seconds += time.time() - start
+                            value_observe_wait += time.time() - waiting
                             rows = slice(None)
                         elif rows[-1] - rows[0] + 1 == len(rows):
                             rows = slice(rows[0], rows[-1] + 1)
@@ -552,9 +580,9 @@ class Lookahead:
                         utility[root_of[g]][jobs[g][1], jobs[g][2]] = (float(v) + sign[g] * float(cur['potential'][g])
                                                                        - cost[g])
                         self._leaf(stats, depth[g], terminal=pending[p][1])
+                stats['model_seconds'] += time.time() - clock - value_observe_wait
             stats['truncated_leaves'] += len(truncated)
             stats['env_seconds'] += observe_seconds
-            stats['model_seconds'] += time.time() - clock - observe_seconds
         stats['iterations'] += iterations
         stats['batches'] += 1
 

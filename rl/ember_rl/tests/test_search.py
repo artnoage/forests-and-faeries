@@ -311,20 +311,21 @@ def test_move_penalty_charges_own_moves_between_root_and_leaf():
 
 
 @pytest.mark.parametrize('explore', [False, True])
-def test_search_threads_search_the_same_games_as_one_thread(explore):
-    """T worker threads split the forks by root: same candidates, same dice seeds, so the same utilities."""
-    def run(search_threads):
+@pytest.mark.parametrize('pipeline', [False, True])
+def test_search_threads_search_the_same_games_as_one_thread(explore, pipeline):
+    """Both schedules preserve root noise, fork dice and utility placement across odd-sized waves."""
+    def run(search_threads, piped=False):
         env = FakeBatchEnv(24, scores=False, max_rounds=12)
         infos = start(env, 24, EXTERNAL)
         models = tiny_models(3)
-        la = Lookahead(env, SearchConfig(k=3, seeds=2, horizon='rounds:1', skip_p=1.1, scratch=96), DEVICE, seed=9,
-                       search_threads=search_threads)
+        la = Lookahead(env, SearchConfig(k=3, seeds=2, horizon='rounds:1', skip_p=1.1, scratch=47), DEVICE, seed=9,
+                       search_threads=search_threads, pipeline=piped)
         results = la.search(env, roots_of(env, infos, models, range(24), models), explore=explore)
         return la, results
 
     one, base = run(1)
-    many, split = run(3)
-    assert many.search_threads == 3 and len(many.workers) == 3 and many.workers[0].n_slots == 32
+    many, split = run(1, True) if pipeline else run(3)
+    assert [w.n_slots for w in many.workers] == ([24, 23] if pipeline else [16, 16, 16])
     assert sum(r.searched for r in base) > 8                # enough forks to leave the single-thread shortcut
     for a, b in zip(base, split):
         assert a.searched == b.searched and a.row == b.row and a.cands == b.cands
@@ -340,3 +341,12 @@ def test_a_callers_scratch_env_keeps_the_search_on_one_thread():
     la = Lookahead(env, SearchConfig(k=2, seeds=1, scratch=16), DEVICE, scratch=FakeBatchEnv(16, scores=False,
                                                                                               max_rounds=12), search_threads=4)
     assert la.search_threads == 1 and la.pool is None
+
+
+@pytest.mark.parametrize('config,kwargs', [
+    (SearchConfig(scratch=1), {}), (SearchConfig(rollout='sample'), {}),
+    (SearchConfig(), {'search_threads': 2}), (SearchConfig(), {'scratch': object()}),
+])
+def test_pipeline_requires_two_private_halves_and_greedy_rollouts(config, kwargs):
+    with pytest.raises(ValueError, match='pipelined search'):
+        Lookahead(FakeBatchEnv(2), config, DEVICE, pipeline=True, **kwargs)

@@ -1336,6 +1336,8 @@ def add_ember_arguments(p):
     g.add_argument('--search-threads', type=int, default=1,
                    help='worker threads of one training search: its forks are split by root over this many scratch '
                         'envs, whose engine calls overlap; network calls take turns. Speed only (default 1)')
+    g.add_argument('--pipeline-search', action='store_true',
+                   help='overlap greedy GPU rollouts on one scratch half with engine steps on the other')
     g.add_argument('--search-start-decisions', type=int, default=0,
                    help='PPO-only warm-up: a team\'s learner decisions are searched only after this many of them')
     g.add_argument('--search-start-ev', type=float, default=None,
@@ -1378,6 +1380,8 @@ def prepare_args(args):
                 raise SystemExit(f'--{name.replace("_", "-")} and its per-team forms must be >= 0')
     if args.search and (args.backend != 'ember' or args.mode != 'ppo'):
         raise SystemExit('--search needs --backend ember --mode ppo')
+    if args.pipeline_search and (not args.search or args.search_threads != 1):
+        raise SystemExit('--pipeline-search needs --search and --search-threads 1')
     if not 0 <= args.search_prob <= 1 or not 0 <= args.search_step_prob <= 1 or args.search_coef < 0:
         raise SystemExit('--search-prob and --search-step-prob must be in [0, 1] and --search-coef >= 0')
     if args.search_start_decisions < 0 or args.eval_substeps < 0:
