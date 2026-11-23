@@ -499,30 +499,50 @@ class Lookahead:
             from ember_rl.general_model import GeneralActorCritic, trimmed_rows
             clock = time.time()
             idx = np.asarray([g for g, _ in pending], np.int32)
-            final = sc.observe(idx, team=own[idx])
-            stats['env_seconds'] += time.time() - clock
-            clock = time.time()
-            creatures = final['creature_mask'].sum(axis=1)
             by_model = defaultdict(list)
             models = {}
             for p, g in enumerate(idx):
                 model = roots[root_of[g]].models[roots[root_of[g]].team]
                 models[id(model)] = model
                 by_model[id(model)].append(p)
+            # Older wheels and custom critics retain the full observation contract.
+            observe_value = getattr(sc, 'observe_value', None)
+            state_only = observe_value is not None and all(type(m) is GeneralActorCritic for m in models.values())
+            observe_seconds = 0.
+            final = None
+            if not state_only:
+                start = time.time()
+                final = sc.observe(idx, team=own[idx])
+                observe_seconds += time.time() - start
             with torch.no_grad():
                 for mid, ps in by_model.items():
                     fields = final
-                    if type(models[mid]) is GeneralActorCritic:     # the built-in critic only encodes state
+                    if final is not None and type(models[mid]) is GeneralActorCritic:
                         fields = {name: final[name] for name in VALUE_INPUTS if name in final}
-                    width = fields['cand_mask'].shape[1] if 'cand_mask' in fields else 1
                     outputs = []
-                    for at in range(0, len(ps), VALUE_ROWS):        # bounded: the map CNN's activations scale with B
+                    # Rust alternates two borrowed buffers. Before reusing one, wait only for its
+                    # host-to-device copies. The value readback below drains the model group's stream.
+                    copies = []
+                    if state_only and len(ps) > 2 * VALUE_ROWS and torch.device(self.device).type == 'cuda':
+                        copies = [torch.cuda.Event(), torch.cuda.Event()]
+                    for chunk, at in enumerate(range(0, len(ps), VALUE_ROWS)):
                         rows = ps[at:at + VALUE_ROWS]
-                        # one model's leaves are usually consecutive rows: a slice borrows the buffers (the map)
-                        rows = (slice(rows[0], rows[-1] + 1) if rows[-1] - rows[0] + 1 == len(rows)
-                                else np.asarray(rows))
-                        part = trimmed_rows(fields, rows, width, max(1, int(creatures[rows].max())))
+                        if state_only:
+                            if copies and chunk >= 2:
+                                copies[chunk % 2].synchronize()
+                            slots = idx[rows]
+                            start = time.time()
+                            fields = observe_value(slots, team=own[slots])
+                            observe_seconds += time.time() - start
+                            rows = slice(None)
+                        elif rows[-1] - rows[0] + 1 == len(rows):
+                            rows = slice(rows[0], rows[-1] + 1)
+                        width = fields['cand_mask'].shape[1] if 'cand_mask' in fields else 0
+                        creatures = fields['creature_mask'][rows].sum(axis=1)
+                        part = trimmed_rows(fields, rows, width, max(1, int(creatures.max())))
                         batch = to_batch(part, self.device)
+                        if copies:
+                            copies[chunk % 2].record(torch.cuda.current_stream(self.device))
                         with self.gpu_lock:
                             outputs.append(models[mid].value(batch, check=False).float())
                     values = torch.cat(outputs).cpu().numpy()
@@ -533,7 +553,8 @@ class Lookahead:
                                                                        - cost[g])
                         self._leaf(stats, depth[g], terminal=pending[p][1])
             stats['truncated_leaves'] += len(truncated)
-            stats['model_seconds'] += time.time() - clock
+            stats['env_seconds'] += observe_seconds
+            stats['model_seconds'] += time.time() - clock - observe_seconds
         stats['iterations'] += iterations
         stats['batches'] += 1
 

@@ -962,12 +962,30 @@ pub fn encode_decision(
     obj: &Objective,
     out: &mut ObsSlot,
 ) -> Result<Encoded, String> {
-    out.check()?;
-    let f = &env.fight;
     if dec.is_some() != env.decision().is_some() || dec.zip(env.decision()).is_some_and(|(a, b)| a.actor != b.actor) {
         return Err("the rows must belong to the pending decision".into());
     }
-    let view = match (dec, team) {
+    encode_rows(env, dec, team, offset, obj, out)
+}
+
+/// Encode just the critic's state, including the current actor, path costs
+/// and trail. No destination menu or candidate buffers are needed.
+pub fn encode_value(env: &Env, team: Option<u8>, offset: (i32, i32), obj: &Objective, out: &mut ObsSlot) -> Result<Encoded, String> {
+    encode_rows(env, None, team, offset, obj, out)
+}
+
+fn encode_rows(
+    env: &Env,
+    rows: Option<&crate::env::Decision>,
+    team: Option<u8>,
+    offset: (i32, i32),
+    obj: &Objective,
+    out: &mut ObsSlot,
+) -> Result<Encoded, String> {
+    out.check()?;
+    let f = &env.fight;
+    let pending = env.decision();
+    let view = match (pending, team) {
         (Some(d), None) => d.team,
         (Some(d), Some(t)) if t == d.team => t,
         (Some(d), Some(t)) => return Err(format!("the pending decision belongs to team {}, not team {t}", d.team)),
@@ -979,7 +997,7 @@ pub fn encode_decision(
     if n > N {
         return Err(format!("{n} creatures (the observation holds {N})"));
     }
-    let legal = dec.map_or(0, |d| d.legal.len());
+    let legal = rows.map_or(0, |d| d.legal.len());
     if legal > out.k() {
         return Err(format!("{legal} legal rows, buffers hold {}", out.k()));
     }
@@ -989,14 +1007,14 @@ pub fn encode_decision(
         return Err(format!("a {}x{} map does not fit the {S}x{S} canvas at offset ({ox}, {oy})", g.w, g.h));
     }
     let ids = EncIds::of(f.pool);
-    let actor = dec.map(|d| d.actor);
+    let actor = pending.map(|d| d.actor);
     let v2 = out.version != Version::V1;
     SCRATCH.with(|cell| {
         let mut sc = cell.borrow_mut();
         let masked = masked_from(f, view);
-        let moves = dec.is_some_and(|d| d.legal.iter().any(|a| matches!(a, Act::Move(_))));
+        let moves = rows.is_some_and(|d| d.legal.iter().any(|a| matches!(a, Act::Move(_))));
         // destination rows: the enemy distances everywhere, not only around the actor
-        let far = dec.is_some_and(|d| d.legal.iter().any(|a| matches!(a, Act::Move(p) if p.len() > 2)));
+        let far = rows.is_some_and(|d| d.legal.iter().any(|a| matches!(a, Act::Move(p) if p.len() > 2)));
         prepare(f, view, actor, moves, far, masked, &mut sc);
         if v2 {
             relation_masks(f, &mut sc);
@@ -1034,7 +1052,7 @@ pub fn encode_decision(
         }
         *out.actor = actor.map_or(-1, |a| a as i16);
         *out.native_choice = -1;
-        if let Some(d) = dec {
+        if let Some(d) = rows {
             let a = d.actor;
             for (r, act) in d.legal.iter().enumerate() {
                 let row = &mut out.cands[r * fa..(r + 1) * fa];

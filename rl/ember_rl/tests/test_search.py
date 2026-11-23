@@ -123,6 +123,36 @@ def test_builtin_leaf_gathers_only_state_and_custom_critics_keep_the_full_batch(
         torch.testing.assert_close(model.value(to_batch(parts[1, True]), check=False), expected, atol=0, rtol=0)
 
 
+def test_deferred_critic_observations_are_bounded_and_match_full_observations(monkeypatch):
+    from ember_rl.general_env import VALUE_INPUTS
+    from ember_rl import search
+
+    env = FakeBatchEnv(8, max_steps=2)
+    infos = start(env, 8, EXTERNAL)
+    models = tiny_models()
+    roots = roots_of(env, infos, models, range(8), models)
+    cfg = SearchConfig(k=3, seeds=2, horizon='steps:1', scratch=48)
+    monkeypatch.setattr(search, 'VALUE_ROWS', 3)
+    baseline = Lookahead(env, cfg, DEVICE, seed=15)
+    expected = baseline.search(env, roots)
+    candidate = Lookahead(env, cfg, DEVICE, seed=15)
+    scratch = candidate.scratch
+    sizes = []
+
+    def observe_value(slots, team):
+        sizes.append(len(slots))
+        return {k: v for k, v in scratch.observe(slots, team=team).items() if k in VALUE_INPUTS}
+
+    monkeypatch.setattr(scratch, 'observe_value', observe_value, raising=False)
+    actual = candidate.search(env, roots)
+    assert max(sizes) <= 3 and sum(sizes) == baseline.stats['value_rows'] > 3
+    for old, new in zip(expected, actual):
+        assert (old.row, old.cands) == (new.row, new.cands)
+        if old.searched:
+            np.testing.assert_allclose(old.u, new.u, rtol=0, atol=1e-6)
+            np.testing.assert_allclose(old.target, new.target, rtol=0, atol=2e-6)
+
+
 @pytest.mark.parametrize('horizon', ['steps:1', 'turns:1', 'rounds:1'])
 def test_search_leaves_the_game_alone_and_returns_valid_targets(horizon):
     env = FakeBatchEnv(6)

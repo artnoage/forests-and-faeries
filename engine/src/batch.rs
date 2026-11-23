@@ -438,6 +438,11 @@ impl Game {
                 kinds.into_iter().nth(row).ok_or_else(|| format!("row {row} out of range (0..{})", n.max(1) - 1))?
             }
         };
+        self.step_kind(kind, cfg)
+    }
+
+    /// Execute a row resolved from this game's current presented decision.
+    pub fn step_kind(&mut self, kind: RowKind, cfg: &EnvConfig) -> Result<(), String> {
         match kind {
             RowKind::Native(r) => {
                 let movement = self.env.decision().and_then(|d| match d.legal.get(r) {
@@ -623,9 +628,14 @@ impl Game {
     /// Descriptors of the presented rows (a destination row: natural20's
     /// move descriptor of its whole path).
     pub fn describe(&self) -> Vec<String> {
-        match self.presented() {
+        self.describe_decision(self.presented().as_ref().map(|(d, _)| d))
+    }
+
+    /// Descriptors of an already resolved presentation of this game's pending decision.
+    pub fn describe_decision(&self, decision: Option<&Decision>) -> Vec<String> {
+        match decision {
             None => Vec::new(),
-            Some((d, _)) => d.legal.iter().map(|a| self.env.fight.describe(d.actor, a)).collect(),
+            Some(d) => d.legal.iter().map(|a| self.env.fight.describe(d.actor, a)).collect(),
         }
     }
 

@@ -16,7 +16,7 @@ import pytest
 ember_rs = pytest.importorskip('ember_rs')
 
 from ember_rl.general_env import (  # noqa: E402
-    DEFAULT_DIMS, FEATURE_VERSION, TEAMS, BatchEnv, EpisodeSpec, SpecSource, check_contract, encounter_units,
+    DEFAULT_DIMS, FEATURE_VERSION, TEAMS, VALUE_INPUTS, BatchEnv, EpisodeSpec, SpecSource, check_contract, encounter_units,
     info_row, normalize_dims, validate_info, validate_obs,
 )
 
@@ -75,6 +75,35 @@ def play(env, slots, rng, *, check=True, scores=True, max_calls=10_000):
             for team in (0, 1):
                 validate_obs(env.observe([s], team=[team]), env.dims, live=[False], scores=scores)
     return finals
+
+
+@pytest.mark.parametrize('version', ['ember-gen-v1', 'ember-gen-v2', 'ember-gen-v3'])
+@pytest.mark.parametrize('moves', ['step', 'dest'])
+def test_critic_observation_matches_active_and_final_views(version, moves):
+    env = make(2, feature_version=version, moves=moves, max_steps=1)
+    env.reset([0, 1], [spec_for('vault-undead-skel3', k) for k in range(2)], [EXTERNAL] * 2)
+    snapshot = env.snapshot(0)
+    full = env.observe([0, 1])
+    legal = full['cand_mask'].sum(axis=1)
+    before = env.describe(0)
+    with pytest.raises(ValueError):
+        env.step([0, 1], [0, int(legal[1])])
+    assert env.describe(0) == before
+    assert env.step([0], [0])['truncated'][0]
+    actor_team = int(env.info([1])['team'][0])
+    slots, teams = [1, 0, 1, 0], [actor_team, 0, actor_team, 1]
+    full = env.observe(slots, team=teams)
+    values = env.observe_value(slots, team=teams)
+    assert set(values) == set(VALUE_INPUTS).intersection(full)
+    for name, actual in values.items():
+        np.testing.assert_array_equal(actual, full[name])
+    with pytest.raises(ValueError):
+        env.observe_value([1], team=[1 - actor_team])
+    env.restore(0, snapshot, dice_seed=93)
+    assert env.describe(0) == before
+    full = env.observe([0])
+    for name, actual in env.observe_value([0]).items():
+        np.testing.assert_array_equal(actual, full[name])
 
 
 def test_module_contract():

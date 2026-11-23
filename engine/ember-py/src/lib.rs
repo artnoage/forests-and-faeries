@@ -9,7 +9,8 @@
 //!   slot, one rayon task per slot, the GIL released while games run and
 //!   observations are encoded. Observation arrays are zero-copy numpy views of
 //!   two buffer sets used in turn: valid until the next mutating call
-//!   (`reset`, `step`, `restore`, `fork`) or the second `observe` after them.
+//!   (`reset`, `step`, `restore`, `fork`) or two further observation calls
+//!   (`observe` and `observe_value` share these buffers).
 //!   `snapshot`/`restore` copy one slot's game; `fork` copies many in one
 //!   parallel call, optionally reseeded and with other controllers (search).
 //! - `place(row, layout_seed)`: a catalog row placed by the Rust zone-layout
@@ -26,11 +27,11 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
 use rayon::prelude::*;
 
-use ember::batch::{EnvConfig, EpisodeSpec, Game, Info, MoveMode, UnitRef, NATURAL20_COMMIT};
+use ember::batch::{dest_decision, EnvConfig, EpisodeSpec, Game, Info, MoveMode, RowKind, UnitRef, NATURAL20_COMMIT};
 use ember::catalog::Catalog;
 use ember::content::{embedded_files, ContentPool as CorePool};
-use ember::encode::{ObsSlot, Version, CELLS, FEATURE_VERSION, N, S, T};
-use ember::env::Controller;
+use ember::encode::{encode_decision, encode_value, ObsSlot, Version, CELLS, FEATURE_VERSION, N, S, T};
+use ember::env::{Controller, Decision};
 
 fn verr(msg: impl Into<String>) -> PyErr {
     PyValueError::new_err(msg.into())
@@ -419,6 +420,39 @@ impl Snapshot {
     }
 }
 
+/// A menu belongs to one pending decision. Snapshots contain the game alone.
+/// Search forks share a resolved menu until their first step.
+struct Slot {
+    game: Game,
+    destinations: OnceLock<Option<Arc<(Decision, Vec<RowKind>)>>>,
+}
+
+impl Slot {
+    fn new(game: Game) -> Self {
+        Self { game, destinations: OnceLock::new() }
+    }
+
+    fn destinations(&self) -> Option<&(Decision, Vec<RowKind>)> {
+        self.destinations.get_or_init(|| dest_decision(&self.game.env).map(Arc::new)).as_deref()
+    }
+
+    fn decision(&self) -> Option<&Decision> {
+        match self.game.moves {
+            MoveMode::Step => self.game.env.decision(),
+            MoveMode::Dest => self.destinations().map(|(d, _)| d),
+        }
+    }
+
+    fn step(&mut self, row: usize, cfg: &EnvConfig) -> Result<(), String> {
+        let kind = match self.game.moves {
+            MoveMode::Step => RowKind::Native(row),
+            MoveMode::Dest => self.destinations().and_then(|(_, kinds)| kinds.get(row)).ok_or("no such destination row")?.clone(),
+        };
+        self.destinations.take();
+        self.game.step_kind(kind, cfg)
+    }
+}
+
 #[pyclass(module = "ember_rs")]
 struct BatchEnv {
     n_slots: usize,
@@ -429,7 +463,7 @@ struct BatchEnv {
     content: Py<ContentPool>,
     catalog: Arc<Catalog>,
     rt: rayon::ThreadPool,
-    games: Vec<Option<Game>>,
+    games: Vec<Option<Slot>>,
     bufs: [Bufs; 2],
     cur: usize,
     /// The observation schema of `observe` (`feature_version`).
@@ -456,8 +490,12 @@ impl BatchEnv {
         Ok(out)
     }
 
-    fn game(&self, slot: usize) -> PyResult<&Game> {
+    fn slot(&self, slot: usize) -> PyResult<&Slot> {
         self.games.get(slot).and_then(Option::as_ref).ok_or_else(|| verr(format!("slot {slot} was never reset")))
+    }
+
+    fn game(&self, slot: usize) -> PyResult<&Game> {
+        Ok(&self.slot(slot)?.game)
     }
 
     fn info_dict<'py>(&self, py: Python<'py>, slots: &[usize]) -> PyResult<Bound<'py, PyDict>> {
@@ -670,7 +708,7 @@ impl BatchEnv {
         }
         for (&s, mut g) in slots.iter().zip(games) {
             g.moves = self.moves;
-            self.games[s] = Some(g);
+            self.games[s] = Some(Slot::new(g));
         }
         self.info_dict(py, &slots)
     }
@@ -685,12 +723,13 @@ impl BatchEnv {
             return Err(verr(format!("{} slots but {} rows", slots.len(), rows.len())));
         }
         for (&s, &r) in slots.iter().zip(&rows) {
-            let g = self.game(s)?;
-            if g.done() {
+            let slot = self.slot(s)?;
+            if slot.game.done() {
                 return Err(verr(format!("slot {s} is done")));
             }
-            if r < 0 || r as usize >= g.legal() {
-                return Err(verr(format!("slot {s}: row {r} is not legal ({} rows)", g.legal())));
+            let legal = slot.decision().map_or(0, |d| d.legal.len());
+            if r < 0 || r as usize >= legal {
+                return Err(verr(format!("slot {s}: row {r} is not legal ({legal} rows)")));
             }
         }
         let cfg = self.cfg;
@@ -698,7 +737,7 @@ impl BatchEnv {
         for (i, &s) in slots.iter().enumerate() {
             index[s] = i;
         }
-        let mut work: Vec<(usize, &mut Game, usize)> = self
+        let mut work: Vec<(usize, &mut Slot, usize)> = self
             .games
             .iter_mut()
             .enumerate()
@@ -725,82 +764,13 @@ impl BatchEnv {
     /// The observation arrays (numpy views; see the module doc).
     #[pyo3(signature = (slots, team=None))]
     fn observe<'py>(slf: Bound<'py, Self>, slots: &Bound<'py, PyAny>, team: Option<Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyDict>> {
-        let py = slf.py();
-        let (b, k, p) = {
-            let mut me = slf.borrow_mut();
-            let slots = me.slots(slots, false)?;
-            let teams: Vec<i64> = match &team {
-                Some(t) if !t.is_none() => ints(t, "team")?,
-                _ => vec![-1; slots.len()],
-            };
-            if teams.len() != slots.len() {
-                return Err(verr(format!("{} slots but {} teams", slots.len(), teams.len())));
-            }
-            let mut views = Vec::with_capacity(slots.len());
-            let mut k = 0;
-            for (&s, &t) in slots.iter().zip(&teams) {
-                let g = me.game(s)?;
-                let view = match (g.env.decision(), t) {
-                    (None, 0 | 1) => Some(t as u8),
-                    (None, _) => return Err(verr(format!("slot {s} is done: observe it with team 0 or 1, not {t}"))),
-                    (Some(_), -1) => None,
-                    (Some(d), t) if t == d.team as i64 => None,
-                    (Some(d), t) => return Err(verr(format!("slot {s}: the decision belongs to team {}, not {t}", d.team))),
-                };
-                k = k.max(g.legal());
-                views.push(view);
-            }
-            let b = slots.len();
-            me.cur ^= 1;
-            let cur = me.cur;
-            let obj = me.cfg.objective();
-            let me = &mut *me;
-            let p = me.bufs[cur].prepare(b, k, me.version);
-            let games = &me.games;
-            let errors: Vec<String> = py.allow_threads(|| {
-                me.rt.install(|| {
-                    (0..b)
-                        .into_par_iter()
-                        .filter_map(|i| {
-                            let g = games[slots[i]].as_ref().unwrap();
-                            // SAFETY: row i of buffers sized for b rows at this k; rows are disjoint.
-                            let mut out = unsafe { p.slot(i, k) };
-                            g.encode(views[i], &obj, &mut out).err().map(|e| format!("slot {}: {e}", slots[i]))
-                        })
-                        .collect()
-                })
-            });
-            if let Some(e) = errors.first() {
-                return Err(PyRuntimeError::new_err(e.clone()));
-            }
-            (b, k, p)
-        };
-        let owner = slf.as_any();
-        let d = PyDict::new(py);
-        // SAFETY: the buffers live in `slf` (kept alive by every view) and
-        // hold these shapes; they are rewritten only by a later observe.
-        let v = p.version;
-        unsafe {
-            d.set_item("creatures", view(py, p.creatures, &[b, N, v.creature()], owner))?;
-            d.set_item("creature_ids", view(py, p.creature_ids, &[b, N, 3], owner))?;
-            d.set_item("creature_mask", view(py, p.creature_mask, &[b, N], owner))?;
-            d.set_item("map", view(py, p.map, &[b, v.map_channels(), S, S], owner))?;
-            d.set_item("global", view(py, p.global, &[b, v.global()], owner))?;
-            d.set_item("cands", view(py, p.cands, &[b, k, v.cand()], owner))?;
-            d.set_item("cand_ids", view(py, p.cand_ids, &[b, k, 3], owner))?;
-            d.set_item("cand_tgt", view(py, p.cand_tgt, &[b, k, T], owner))?;
-            d.set_item("cand_tgt_n", view(py, p.cand_tgt_n, &[b, k, T], owner))?;
-            d.set_item("cand_cell", view(py, p.cand_cell, &[b, k], owner))?;
-            d.set_item("cand_mask", view(py, p.cand_mask, &[b, k], owner))?;
-            d.set_item("actor", view(py, p.actor, &[b], owner))?;
-            d.set_item("native_raw", view(py, p.native_raw, &[b, k], owner))?;
-            d.set_item("native_dropped", view(py, p.native_dropped, &[b, k], owner))?;
-            d.set_item("native_choice", view(py, p.native_choice, &[b], owner))?;
-            if v.relations() > 0 {
-                d.set_item("creature_rel", view(py, p.creature_rel, &[b, N, N, v.relations()], owner))?;
-            }
-        }
-        Ok(d)
+        Self::observations(slf, slots, team, false)
+    }
+
+    /// The critic's state fields, with the same team and buffer lifetime as `observe`.
+    #[pyo3(signature = (slots, team=None))]
+    fn observe_value<'py>(slf: Bound<'py, Self>, slots: &Bound<'py, PyAny>, team: Option<Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyDict>> {
+        Self::observations(slf, slots, team, true)
     }
 
     /// An opaque copy of the slot's whole game.
@@ -815,18 +785,9 @@ impl BatchEnv {
     fn restore(&mut self, slot: usize, snapshot: PyRef<'_, Snapshot>, dice_seed: Option<i64>) -> PyResult<()> {
         let s = self.slots_one(slot)?;
         let seed = dice_seed.map(|d| seed(d, "dice_seed")).transpose()?;
-        match &mut self.games[s] {
-            Some(g) => g.restore(&snapshot.game, seed),
-            empty => {
-                let mut g = snapshot.game.clone();
-                g.restore(&snapshot.game, seed);
-                *empty = Some(g);
-            }
-        }
-        // the slot plays with this env's moves, whoever made the snapshot
-        if let Some(g) = &mut self.games[s] {
-            g.moves = self.moves;
-        }
+        let mut game = snapshot.game.fork(seed);
+        game.moves = self.moves;
+        self.games[s] = Some(Slot::new(game));
         Ok(())
     }
 
@@ -915,7 +876,8 @@ impl BatchEnv {
             }
             _ => vec![None; n],
         };
-        let built: Vec<Result<Game, String>> = {
+        let moves = me.moves;
+        let built: Vec<Result<Slot, String>> = {
             let games = match &other {
                 Some(o) => &o.games,
                 None => &me.games,
@@ -931,10 +893,17 @@ impl BatchEnv {
                     (0..n)
                         .into_par_iter()
                         .map(|i| {
-                            let mut g = games[sources[i]].as_ref().unwrap().fork(seeds[i]);
+                            let source = games[sources[i]].as_ref().unwrap();
+                            let mut g = Slot::new(source.game.fork(seeds[i]));
                             if let Some((teams, units)) = &ctrls[i] {
-                                g.set_control(*teams, units).map_err(|e| format!("slot {} (copy of {}): {e}", targets[i], sources[i]))?;
+                                g.game.set_control(*teams, units).map_err(|e| format!("slot {} (copy of {}): {e}", targets[i], sources[i]))?;
                             }
+                            if moves == MoveMode::Dest {
+                                // Reseeding affects future rolls and set_control affects future decisions.
+                                // Both leave this pending decision and its board position intact.
+                                g.destinations = source.destinations.clone();
+                            }
+                            g.game.moves = moves;
                             Ok(g)
                         })
                         .collect()
@@ -945,9 +914,7 @@ impl BatchEnv {
         for g in built {
             games.push(g.map_err(verr)?);
         }
-        let moves = me.moves;
-        for (&t, mut g) in targets.iter().zip(games) {
-            g.moves = moves;
+        for (&t, g) in targets.iter().zip(games) {
             me.games[t] = Some(g);
         }
         me.info_dict(py, &targets)
@@ -957,7 +924,8 @@ impl BatchEnv {
     /// empty when the slot is done.
     fn describe(&self, slot: usize) -> PyResult<Vec<String>> {
         let s = self.slots_one(slot)?;
-        Ok(self.game(s)?.describe())
+        let slot = self.slot(s)?;
+        Ok(slot.game.describe_decision(slot.decision()))
     }
 
     /// Write the slot's game as a tape `ember replay` accepts (GENERAL_ENV.md
@@ -1001,6 +969,98 @@ impl BatchEnv {
 }
 
 impl BatchEnv {
+    fn observations<'py>(
+        slf: Bound<'py, Self>, slots: &Bound<'py, PyAny>, team: Option<Bound<'py, PyAny>>, value_only: bool,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let py = slf.py();
+        let (b, k, p) = {
+            let mut me = slf.borrow_mut();
+            let slots = me.slots(slots, false)?;
+            let teams: Vec<i64> = match &team {
+                Some(t) if !t.is_none() => ints(t, "team")?,
+                _ => vec![-1; slots.len()],
+            };
+            if teams.len() != slots.len() {
+                return Err(verr(format!("{} slots but {} teams", slots.len(), teams.len())));
+            }
+            let mut views = Vec::with_capacity(slots.len());
+            for (&s, &t) in slots.iter().zip(&teams) {
+                let g = me.game(s)?;
+                let view = match (g.env.decision(), t) {
+                    (None, 0 | 1) => Some(t as u8),
+                    (None, _) => return Err(verr(format!("slot {s} is done: observe it with team 0 or 1, not {t}"))),
+                    (Some(_), -1) => None,
+                    (Some(d), t) if t == d.team as i64 => None,
+                    (Some(d), t) => return Err(verr(format!("slot {s}: the decision belongs to team {}, not {t}", d.team))),
+                };
+                views.push(view);
+            }
+            let me = &mut *me;
+            // Build cold menus in parallel; duplicate slot indices share the same decision.
+            let k = if value_only { 0 } else {
+                py.allow_threads(|| me.rt.install(|| slots.par_iter().filter_map(|&s| {
+                    me.games[s].as_ref().unwrap().decision().map(|d| d.legal.len())
+                }).max().unwrap_or(0)))
+            };
+            let b = slots.len();
+            me.cur ^= 1;
+            let cur = me.cur;
+            let obj = me.cfg.objective();
+            let p = me.bufs[cur].prepare(b, k, me.version);
+            let games = &me.games;
+            let errors: Vec<String> = py.allow_threads(|| {
+                me.rt.install(|| {
+                    (0..b)
+                        .into_par_iter()
+                        .filter_map(|i| {
+                            let g = games[slots[i]].as_ref().unwrap();
+                            // SAFETY: row i of buffers sized for b rows at this k; rows are disjoint.
+                            let mut out = unsafe { p.slot(i, k) };
+                            let encoded = if value_only {
+                                encode_value(&g.game.env, views[i], g.game.offset, &obj, &mut out)
+                            } else {
+                                encode_decision(&g.game.env, g.decision(), views[i], g.game.offset, &obj, &mut out)
+                            };
+                            encoded.err().map(|e| format!("slot {}: {e}", slots[i]))
+                        })
+                        .collect()
+                })
+            });
+            if let Some(e) = errors.first() {
+                return Err(PyRuntimeError::new_err(e.clone()));
+            }
+            (b, k, p)
+        };
+        let owner = slf.as_any();
+        let d = PyDict::new(py);
+        // SAFETY: the buffers live in `slf` (kept alive by every view) and
+        // hold these shapes; they are rewritten only by a later observe.
+        let v = p.version;
+        unsafe {
+            d.set_item("creatures", view(py, p.creatures, &[b, N, v.creature()], owner))?;
+            d.set_item("creature_ids", view(py, p.creature_ids, &[b, N, 3], owner))?;
+            d.set_item("creature_mask", view(py, p.creature_mask, &[b, N], owner))?;
+            d.set_item("map", view(py, p.map, &[b, v.map_channels(), S, S], owner))?;
+            d.set_item("global", view(py, p.global, &[b, v.global()], owner))?;
+            if !value_only {
+                d.set_item("cands", view(py, p.cands, &[b, k, v.cand()], owner))?;
+                d.set_item("cand_ids", view(py, p.cand_ids, &[b, k, 3], owner))?;
+                d.set_item("cand_tgt", view(py, p.cand_tgt, &[b, k, T], owner))?;
+                d.set_item("cand_tgt_n", view(py, p.cand_tgt_n, &[b, k, T], owner))?;
+                d.set_item("cand_cell", view(py, p.cand_cell, &[b, k], owner))?;
+                d.set_item("cand_mask", view(py, p.cand_mask, &[b, k], owner))?;
+                d.set_item("actor", view(py, p.actor, &[b], owner))?;
+                d.set_item("native_raw", view(py, p.native_raw, &[b, k], owner))?;
+                d.set_item("native_dropped", view(py, p.native_dropped, &[b, k], owner))?;
+                d.set_item("native_choice", view(py, p.native_choice, &[b], owner))?;
+            }
+            if v.relations() > 0 {
+                d.set_item("creature_rel", view(py, p.creature_rel, &[b, N, N, v.relations()], owner))?;
+            }
+        }
+        Ok(d)
+    }
+
     fn slots_one(&self, slot: usize) -> PyResult<usize> {
         if slot >= self.n_slots {
             return Err(verr(format!("slot {slot} out of range [0, {})", self.n_slots)));

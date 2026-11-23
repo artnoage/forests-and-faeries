@@ -219,6 +219,9 @@ class BatchEnv(Protocol):
       no-actor values. For a slot with a decision, `team[i]` must be -1 or its
       deciding team. Arrays may be views into preallocated buffers, valid
       until the next mutating call (reset, step, restore); copy what you keep.
+    - The Rust backend also provides `observe_value(slots, team=None)` for
+      critics. It returns the available `VALUE_INPUTS` with the same team
+      perspectives and buffer lifetime as `observe`.
     - `step(slots, rows)`: execute row `rows[i]` (int32) for each slot, then
       forced steps and native turns until the next external decision or the
       end. Every row is checked first: a done slot, a padded or out-of-range
