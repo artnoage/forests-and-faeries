@@ -369,9 +369,13 @@ class GeneralActorCritic(nn.Module):
     def act(self, batch, greedy: bool = False, check: bool = True):
         """indices[B], log_probs[B], values[B]; greedy ties take the first maximum."""
         logits, values = self(batch, check=check)
-        distribution = Categorical(logits=logits)
-        indices = logits.argmax(-1) if greedy else distribution.sample()
-        return indices, distribution.log_prob(indices), values
+        return _actions_from_logits(logits, values, greedy)
+
+
+def _actions_from_logits(logits, values, greedy):
+    distribution = Categorical(logits=logits)
+    indices = logits.argmax(-1) if greedy else distribution.sample()
+    return indices, distribution.log_prob(indices), values
 
 
 def finite(logits: Tensor, values: Tensor, mask: Tensor) -> Tensor:
@@ -557,6 +561,26 @@ def forward_in_chunks(model, obs: Mapping[str, np.ndarray], device, max_rows: in
     return (logits, values) if back is None else (logits[back], values[back])
 
 
+@torch.no_grad()
+def _checked_chunk_actions(model, obs, chunks, device, greedy):
+    # Keep only the policy outputs while checking every chunk on device. Sampling after the
+    # single flag readback also keeps invalid distributions out of the CUDA sampler.
+    outputs, flags = [], []
+    for chunk in chunks:
+        batch = to_batch(select(obs, chunk), device)
+        names, input_ok = model._check(batch, need_candidates=True, defer=True)
+        logits, values = model(batch, check=False)
+        output_ok = finite(logits, values, batch['cand_mask'])
+        flags.append(torch.cat((input_ok, output_ok.reshape(1))))
+        outputs.append((logits, values))
+    *input_ok, output_ok = torch.stack(flags).all(0).tolist()
+    if not all(input_ok):
+        raise ValueError('invalid batch: ' + '; '.join(name for name, ok in zip(names, input_ok) if not ok))
+    if not output_ok:
+        raise FloatingPointError('non-finite logits or values')
+    return [_actions_from_logits(logits, values, greedy) for logits, values in outputs]
+
+
 def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = False, max_rows: int | None = None):
     """model.act over a batched observation in width-grouped chunks: indices, log_probs, values [B], in row
     order. Rows of similar action counts share a pass, so a row with 40 actions is not padded to the 372 of the
@@ -564,29 +588,15 @@ def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = F
     chunks = grouped_row_chunks(obs, max_rows)
     if len(chunks) == 1:
         return model.act(to_batch(obs, device), greedy=greedy)
-    # The input and finiteness checks read flags back from the GPU, which makes the CPU wait for every chunk.
-    # Here every chunk is still checked in full, but the flags stay on the device and are read once at the end
-    # (a chosen row's log-probability is finite only if its logits are).
-    deferred = hasattr(model, '_check') and 'defer' in model._check.__code__.co_varnames
-    parts, flags, names = [], [], []
-    for c in chunks:
-        batch = to_batch(select(obs, c), device)
-        if deferred:
-            names, ok = model._check(batch, need_candidates=True, defer=True)
-            flags.append(ok)
-            parts.append(model.act(batch, greedy=greedy, check=False))
-        else:
-            parts.append(model.act(batch, greedy=greedy))
+    # Custom policies and action wrappers keep their own sampling and validation.
+    if type(model) is GeneralActorCritic and 'act' not in vars(model) and '_check' not in vars(model):
+        parts = _checked_chunk_actions(model, obs, chunks, device, greedy)
+    else:
+        parts = [model.act(to_batch(select(obs, chunk), device), greedy=greedy) for chunk in chunks]
     indices, log_probs, values = (torch.cat(x) for x in zip(*parts))
     back = _row_order(chunks, indices.device)
     if back is not None:
         indices, log_probs, values = indices[back], log_probs[back], values[back]
-    if deferred:
-        ok = torch.stack(flags).all(0).tolist()
-        if not all(ok):
-            raise ValueError('invalid batch: ' + '; '.join(name for name, flag in zip(names, ok) if not flag))
-        if not bool((torch.isfinite(log_probs).all() & torch.isfinite(values).all())):
-            raise FloatingPointError('non-finite logits or values')
     return indices, log_probs, values
 
 

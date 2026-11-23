@@ -68,6 +68,34 @@ def test_masked_rows_are_minus_inf_and_legal_rows_finite(observation):
             model.evaluate_actions(b, bad)
 
 
+@pytest.mark.parametrize('bad_logit', [-torch.inf, torch.inf, torch.nan])
+@pytest.mark.parametrize('greedy', [False, True])
+def test_chunked_act_checks_all_legal_logits_before_sampling(observation, monkeypatch, bad_logit, greedy):
+    from ember_rl.general_model import act_in_chunks
+
+    slots = np.flatnonzero(observation['cand_mask'].sum(1) >= 2)[:2]
+    assert len(slots) == 2
+    obs = select(observation, slots)
+    model = small()
+    policy = model._policy
+    calls = 0
+
+    def inject_in_second_chunk(batch):
+        nonlocal calls
+        calls += 1
+        logits, values = policy(batch)
+        if calls == 2:
+            logits[0, 0] = bad_logit
+        return logits, values
+
+    monkeypatch.setattr(model, '_policy', inject_in_second_chunk)
+    rng = torch.get_rng_state()
+    with pytest.raises(FloatingPointError, match='non-finite logits'):
+        act_in_chunks(model, obs, 'cpu', greedy=greedy, max_rows=1)
+    assert calls == 2
+    assert torch.equal(torch.get_rng_state(), rng)
+
+
 def test_permuting_candidates_permutes_logits(observation):
     model = small()
     b = batch_of(observation)
@@ -296,7 +324,7 @@ def test_search_width_groups_keep_every_slot_and_candidate_budget():
     widths = np.tile([7, 30, 55, 90, 140], 25)
     obs = {'cand_mask': np.arange(140)[None, :] < widths[:, None]}
     # Main-loop forwards retain the fixed cutoffs. Search merges the cheapest adjacent pair.
-    assert len(grouped_row_chunks(obs)) == 5
+    assert len(grouped_row_chunks(obs, max_rows=20000)) == 5
     groups = search_row_chunks(obs, max_rows=20000)
     assert [set(widths[g]) for g in groups] == [{7, 30}, {55}, {90}, {140}]
     for budget in (20000, 700, 16):
