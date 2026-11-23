@@ -32,6 +32,7 @@ plus two: "none" (-1) and "unknown" (-2, id dropout). Row = id + 2.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -451,7 +452,9 @@ def trimmed_rows(obs, index, k, n):
 # Inference forward passes take at most this many candidate rows (B x K after padding) at a time. Destination
 # moves (--moves dest) make K reach several hundred, and one pass over 1024 slots, or over a search's 4096
 # forks, would hold gigabytes of decoder activations. With one-square moves a pass stays one chunk.
-FORWARD_ROWS = 1 << 18
+# EMBER_FORWARD_ROWS lowers it on small GPUs (a 24 GB L4 ran out of memory on 8 GiB search passes); the chunk size
+# changes memory and speed only, never the result.
+FORWARD_ROWS = int(os.environ.get('EMBER_FORWARD_ROWS') or 1 << 18)
 
 
 def row_chunks(obs: Mapping[str, np.ndarray], max_rows: int | None = None) -> list[np.ndarray]:
