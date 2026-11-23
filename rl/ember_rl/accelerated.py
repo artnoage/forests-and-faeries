@@ -12,6 +12,7 @@ from ember_rl.general_env import CAND_FIELDS, CREATURE_FIELDS, PAIR_FIELDS, VALU
 
 _NEGATIVE_PADDING = {'cand_ids', 'creature_ids', 'cand_tgt', 'cand_cell'}
 _LEAF_GRAPHS = OrderedDict()
+_LEAF_GRAPH_LIMIT = 48
 
 
 @contextmanager
@@ -140,7 +141,10 @@ def accelerated_value(model, batch, detach_trunk):
         key = (weakref.ref(model), model.training, batch['map'].device, size)
         graph = _LEAF_GRAPHS.get(key)
         if graph is None:
-            if len(_LEAF_GRAPHS) >= 8:
+            # Two learners x four sizes already fill eight entries; frozen league and evaluation models then
+            # evicted them on every phase, and each rebuild costs a full gc.collect() plus a capture
+            # (11% of the H200 trainer's main thread, 2026-11-23). A graph holds only its small input buffers.
+            if len(_LEAF_GRAPHS) >= _LEAF_GRAPH_LIMIT:
                 _LEAF_GRAPHS.popitem(last=False)
             graph = _LEAF_GRAPHS[key] = _LeafGraph(model, batch, size)
         _LEAF_GRAPHS.move_to_end(key)
