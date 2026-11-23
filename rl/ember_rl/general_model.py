@@ -223,7 +223,7 @@ class GeneralActorCritic(nn.Module):
         return list(self.value_head.parameters())
 
     # ---- input checks (one host sync) ----
-    def _check(self, b: Mapping[str, Tensor], need_candidates: bool) -> None:
+    def _check(self, b: Mapping[str, Tensor], need_candidates: bool, defer: bool = False):
         cfg = self._config
         missing = [k for k in MODEL_INPUTS if k not in b and not (k in OPTIONAL_INPUTS and not self.relations)]
         if missing:
@@ -256,6 +256,8 @@ class GeneralActorCritic(nn.Module):
         if need_candidates:
             checks['each row needs a legal candidate and an actor'] = am.any(1).all() & (b['actor'] >= 0).all()
         ok = torch.stack(list(checks.values()))
+        if defer:                   # the caller reads the flags later (no wait for the GPU here)
+            return list(checks), ok
         if not bool(ok.all()):
             failed = [name for name, flag in zip(checks, ok.tolist()) if not flag]
             raise ValueError('invalid batch: ' + '; '.join(failed))
@@ -429,7 +431,8 @@ def split_obs(obs: Mapping[str, np.ndarray], i: int) -> dict[str, np.ndarray]:
 def select(obs: Mapping[str, np.ndarray], index: Sequence[int] | np.ndarray) -> dict[str, np.ndarray]:
     """Rows `index` of a batched observation, trimmed to their own widest K and N."""
     index = np.asarray(index)
-    if len(index) and int(index[-1]) - int(index[0]) + 1 == len(index) and (len(index) == 1 or (np.diff(index) == 1).all()):
+    if (len(index) and index.dtype.kind in 'iu' and int(index[0]) >= 0 and int(index[-1]) - int(index[0]) + 1 == len(index)
+            and (len(index) == 1 or (np.diff(index) == 1).all())):
         index = slice(int(index[0]), int(index[-1]) + 1)       # consecutive rows: views, no gather
     k = max(1, int(obs['cand_mask'][index].sum(1).max())) if obs['cand_mask'].shape[1] else 0
     n = max(1, int(obs['creature_mask'][index].sum(1).max()))
@@ -512,16 +515,26 @@ def act_in_chunks(model, obs: Mapping[str, np.ndarray], device, greedy: bool = F
     chunks = row_chunks(obs, max_rows)
     if len(chunks) == 1:
         return model.act(to_batch(obs, device), greedy=greedy)
-    # The input and finiteness checks read a flag back from the GPU, which makes the CPU wait for every chunk.
-    # The first chunk keeps the full check; the rest queue up and one check covers their outputs (a chosen
-    # row's log-probability is finite only if its logits are).
-    try:
-        parts = [model.act(to_batch(select(obs, c), device), greedy=greedy, check=i == 0) for i, c in enumerate(chunks)]
-    except TypeError:               # a policy without the `check` argument
-        parts = [model.act(to_batch(select(obs, c), device), greedy=greedy) for c in chunks]
+    # The input and finiteness checks read flags back from the GPU, which makes the CPU wait for every chunk.
+    # Here every chunk is still checked in full, but the flags stay on the device and are read once at the end
+    # (a chosen row's log-probability is finite only if its logits are).
+    deferred = hasattr(model, '_check') and 'defer' in model._check.__code__.co_varnames
+    parts, flags, names = [], [], []
+    for c in chunks:
+        batch = to_batch(select(obs, c), device)
+        if deferred:
+            names, ok = model._check(batch, need_candidates=True, defer=True)
+            flags.append(ok)
+            parts.append(model.act(batch, greedy=greedy, check=False))
+        else:
+            parts.append(model.act(batch, greedy=greedy))
     indices, log_probs, values = (torch.cat(x) for x in zip(*parts))
-    if not bool((torch.isfinite(log_probs).all() & torch.isfinite(values).all())):
-        raise FloatingPointError('non-finite logits or values')
+    if deferred:
+        ok = torch.stack(flags).all(0).tolist()
+        if not all(ok):
+            raise ValueError('invalid batch: ' + '; '.join(name for name, flag in zip(names, ok) if not flag))
+        if not bool((torch.isfinite(log_probs).all() & torch.isfinite(values).all())):
+            raise FloatingPointError('non-finite logits or values')
     return indices, log_probs, values
 
 
