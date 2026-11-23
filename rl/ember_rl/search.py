@@ -45,6 +45,7 @@ see; `hidden_roots` counts root decisions where an enemy token is flagged hidden
 from __future__ import annotations
 
 import math
+import threading
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, fields, replace
@@ -177,14 +178,33 @@ class Lookahead:
     """Batched decision-time search with the policy as prior and the value head as leaf evaluator."""
 
     def __init__(self, env, config: SearchConfig, device, *, seed: int = 0, threads: int | None = None, scratch=None,
-                 group_actions: bool = False):
+                 group_actions: bool = False, search_threads: int = 1):
+        """search_threads T > 1: the forks of one search are split by root over T worker threads, each with its
+        own scratch env (config.scratch / T slots, threads / T env threads). The env calls and the numpy
+        gathers of the workers overlap (the engine releases the GIL); the network calls take turns behind one
+        lock, so GPU memory and the compiled kernels are used as with T = 1. Candidates, Gumbel noise and dice
+        seeds are drawn before the split, so the searched games are the same for every T; only the composition
+        of the network batches differs (BF16 rounding). A caller's own `scratch` forces T = 1."""
         import torch
         self.torch, self.env_template = torch, env
         self.cfg, self.device = config, device
         self.group_actions = group_actions and config.rollout == 'greedy'
         self.rng = np.random.default_rng(seed)
-        self.scratch = scratch if scratch is not None else scratch_like(env, config.scratch, threads)
         self.stats = Counter()
+        self.gpu_lock = threading.Lock()
+        self.search_threads = 1 if scratch is not None else max(1, int(search_threads))
+        self.pool = None
+        if self.search_threads > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            total = threads or getattr(env, 'threads', None) or self.search_threads
+            slots = -(-config.scratch // self.search_threads)
+            self.workers = [scratch_like(env, slots, max(1, total // self.search_threads))
+                            for _ in range(self.search_threads)]
+            self.scratch = self.workers[0]
+            self.pool = ThreadPoolExecutor(self.search_threads, thread_name_prefix='search')
+        else:
+            self.scratch = scratch if scratch is not None else scratch_like(env, config.scratch, threads)
+            self.workers = [self.scratch]
 
     @staticmethod
     def _chunks(obs, groups, row_chunks, models=None):
@@ -255,8 +275,32 @@ class Lookahead:
             self.stats['candidates'] += len(cands)
         utility = {i: np.full((len(res.cands), cfg.seeds), np.nan) for i, res in enumerate(results) if res.searched}
         cap = self.scratch.n_slots
-        for start in range(0, len(jobs), cap):
-            self._rollouts(env, roots, results, jobs[start:start + cap], utility)
+        if self.pool is None or len(jobs) <= max(64, cap // 4):     # a small search is not worth the hand-off
+            for start in range(0, len(jobs), cap):
+                self._rollouts(env, roots, results, jobs[start:start + cap], utility, self.scratch, self.stats)
+        else:
+            # Whole roots per worker (their forks stay together), the next root to the least loaded worker.
+            # Workers write disjoint rows of `utility` and their own counters; `env` is only read (fork source).
+            shares = [[] for _ in self.workers]
+            start = 0
+            while start < len(jobs):
+                end = start
+                while end < len(jobs) and jobs[end][0] == jobs[start][0]:
+                    end += 1
+                min(shares, key=len).extend(jobs[start:end])
+                start = end
+
+            def work(scratch, share):
+                stats = Counter()
+                for at in range(0, len(share), cap):
+                    self._rollouts(env, roots, results, share[at:at + cap], utility, scratch, stats)
+                return stats
+
+            futures = [self.pool.submit(work, sc, share) for sc, share in zip(self.workers, shares) if share]
+            for future in futures:          # every worker ends before an error is raised
+                future.exception()
+            for future in futures:
+                self.stats.update(future.result())     # env/model seconds add up over the workers
         for i, res in enumerate(results):
             if res.searched:
                 self._choose(roots[i], res, utility[i], explore)
@@ -317,8 +361,8 @@ class Lookahead:
         res.target = softmax(logits + completed / cfg.tau).astype(np.float32)
         del res._gumbel
 
-    def _rollouts(self, env, roots, results, jobs, utility):
-        torch, cfg, sc = self.torch, self.cfg, self.scratch
+    def _rollouts(self, env, roots, results, jobs, utility, sc, stats):
+        torch, cfg = self.torch, self.cfg
         from ember_rl.general_model import grouped_row_chunks, row_chunks, select, to_batch
         n = len(jobs)
         dst = np.arange(n, dtype=np.int32)
@@ -343,8 +387,8 @@ class Lookahead:
                     if roots[i].kinds is None:
                         raise ValueError('move_penalty needs Root.kinds (the action kind of every legal row)')
                     cost[g] = cfg.move_penalty * (int(roots[i].kinds[first[g]]) == MOVE_KIND)
-        self.stats['env_seconds'] += time.time() - clock
-        self.stats['forks'] += n
+        stats['env_seconds'] += time.time() - clock
+        stats['forks'] += n
         cur = {k: np.array(v) for k, v in info.items()}
         own = np.array([TEAM_CODE[roots[i].team] for i in root_of], np.int8)
         sign = np.where(own == 0, 1., -1.)
@@ -363,7 +407,7 @@ class Lookahead:
             for g in live[done]:
                 if cur['terminated'][g]:
                     utility[root_of[g]][jobs[g][1], jobs[g][2]] = self._terminal(cur, g, own[g]) - cost[g]
-                    self._leaf(depth[g], terminal=True)
+                    self._leaf(stats, depth[g], terminal=True)
                 else:
                     truncated.append(int(g))
             alive = live[~done]
@@ -386,7 +430,7 @@ class Lookahead:
             last_round[alive[mine]] = rnd[mine]
             clock = time.time()
             obs = sc.observe(alive)
-            self.stats['env_seconds'] += time.time() - clock
+            stats['env_seconds'] += time.time() - clock
             groups = defaultdict(list)          # (model id, leaf) -> positions in alive
             models = {}
             for p, g in enumerate(alive):
@@ -404,32 +448,35 @@ class Lookahead:
                     batch = to_batch(part, self.device)
                     model = models[mid]
                     if is_leaf:
-                        values = model.value(batch, check=False).float().cpu().numpy()
-                        self.stats['value_rows'] += len(idx)
+                        with self.gpu_lock:
+                            values = model.value(batch, check=False)
+                        values = values.float().cpu().numpy()
+                        stats['value_rows'] += len(idx)
                         for p, v in zip(idx, values):
                             g = alive[p]
                             utility[root_of[g]][jobs[g][1], jobs[g][2]] = (float(v) + sign[g] * float(cur['potential'][g])
                                                                            - cost[g])
-                            self._leaf(depth[g], terminal=False)
+                            self._leaf(stats, depth[g], terminal=False)
                     else:
-                        logits, _ = model(batch, check=False)
-                        if cfg.rollout == 'greedy':
-                            chosen = logits.argmax(-1)
-                        else:
-                            chosen = torch.distributions.Categorical(logits=logits).sample()
-                        self.stats['forward_rows'] += len(idx)
+                        with self.gpu_lock:
+                            logits, _ = model(batch, check=False)
+                            if cfg.rollout == 'greedy':
+                                chosen = logits.argmax(-1)
+                            else:
+                                chosen = torch.distributions.Categorical(logits=logits).sample()
+                        stats['forward_rows'] += len(idx)
                         chosen = chosen.cpu().numpy()
                         step_slots += [alive[p] for p in idx]
                         step_rows += chosen.tolist()
                         step_own += [bool(mine[p]) for p in idx]
                         step_move += (part['cand_ids'][np.arange(len(idx)), chosen, 0] == MOVE_KIND).tolist()
-            self.stats['model_seconds'] += time.time() - clock     # .cpu() waits for the GPU
+            stats['model_seconds'] += time.time() - clock     # .cpu() waits for the GPU
             if not step_slots:
                 break
             step_slots = np.asarray(step_slots, np.int32)
             clock = time.time()
             info = sc.step(step_slots, np.asarray(step_rows, np.int32))
-            self.stats['env_seconds'] += time.time() - clock
+            stats['env_seconds'] += time.time() - clock
             if cfg.move_penalty:           # T's own walks only
                 walked = np.asarray(info['moved'], np.float64) if 'moved' in info else np.asarray(step_move, np.float64)
                 cost[step_slots] += cfg.move_penalty * walked * np.asarray(step_own, np.float64)
@@ -449,21 +496,25 @@ class Lookahead:
                 by_model[id(model)].append(p)
             with torch.no_grad():
                 for mid, ps in by_model.items():
-                    values = models[mid].value(to_batch(select(final, ps), self.device), check=False).float().cpu().numpy()
+                    batch = to_batch(select(final, ps), self.device)
+                    with self.gpu_lock:
+                        values = models[mid].value(batch, check=False)
+                    values = values.float().cpu().numpy()
                     for p, v in zip(ps, values):
                         g = idx[p]
                         utility[root_of[g]][jobs[g][1], jobs[g][2]] = (float(v) + sign[g] * float(cur['potential'][g])
                                                                        - cost[g])
-                        self._leaf(depth[g], terminal=True)
-            self.stats['truncated_leaves'] += len(truncated)
-            self.stats['model_seconds'] += time.time() - clock
-        self.stats['iterations'] += iterations
-        self.stats['batches'] += 1
+                        self._leaf(stats, depth[g], terminal=True)
+            stats['truncated_leaves'] += len(truncated)
+            stats['model_seconds'] += time.time() - clock
+        stats['iterations'] += iterations
+        stats['batches'] += 1
 
-    def _leaf(self, depth, terminal):
-        self.stats['leaves'] += 1
-        self.stats['depth'] += int(depth)
-        self.stats['terminal_leaves'] += int(terminal)
+    @staticmethod
+    def _leaf(stats, depth, terminal):
+        stats['leaves'] += 1
+        stats['depth'] += int(depth)
+        stats['terminal_leaves'] += int(terminal)
 
     @staticmethod
     def _terminal(cur, g, own):

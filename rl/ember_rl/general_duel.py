@@ -291,7 +291,8 @@ class GeneralTrainer(Trainer):
             # The search scores the training return: the move penalty is part of it.
             self.search_config = replace(self.search_config, move_penalty=getattr(args, 'move_penalty', 0.))
             self.lookahead = Lookahead(self.env, self.search_config, self.device, seed=args.seed + 7919,
-                                       group_actions=getattr(args, 'group_search_actions', False), threads=args.env_threads)
+                                       group_actions=getattr(args, 'group_search_actions', False), threads=args.env_threads,
+                                       search_threads=getattr(args, 'search_threads', 1))
             if self._search_resume:
                 self.lookahead.rng.bit_generator.state = self._search_resume['rng']
                 self.lookahead.stats.update(self._search_resume['stats'])

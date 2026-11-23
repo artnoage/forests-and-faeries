@@ -278,3 +278,35 @@ def test_move_penalty_charges_own_moves_between_root_and_leaf():
     la = Lookahead(env, SearchConfig(k=2, seeds=1, move_penalty=.1, scratch=64), DEVICE, scratch=NoMoved(64))
     with pytest.raises(ValueError, match='kinds'):
         la.search(env, roots)
+
+
+@pytest.mark.parametrize('explore', [False, True])
+def test_search_threads_search_the_same_games_as_one_thread(explore):
+    """T worker threads split the forks by root: same candidates, same dice seeds, so the same utilities."""
+    def run(search_threads):
+        env = FakeBatchEnv(24, scores=False, max_rounds=12)
+        infos = start(env, 24, EXTERNAL)
+        models = tiny_models(3)
+        la = Lookahead(env, SearchConfig(k=3, seeds=2, horizon='rounds:1', skip_p=1.1, scratch=96), DEVICE, seed=9,
+                       search_threads=search_threads)
+        results = la.search(env, roots_of(env, infos, models, range(24), models), explore=explore)
+        return la, results
+
+    one, base = run(1)
+    many, split = run(3)
+    assert many.search_threads == 3 and len(many.workers) == 3 and many.workers[0].n_slots == 32
+    assert sum(r.searched for r in base) > 8                # enough forks to leave the single-thread shortcut
+    for a, b in zip(base, split):
+        assert a.searched == b.searched and a.row == b.row and a.cands == b.cands
+        if a.searched:
+            np.testing.assert_allclose(a.u, b.u, rtol=0, atol=1e-5)
+            np.testing.assert_allclose(a.target, b.target, rtol=0, atol=1e-5)
+    for name in ('roots', 'searched', 'candidates', 'forks', 'leaves', 'depth', 'forward_rows', 'value_rows'):
+        assert one.stats[name] == many.stats[name], name
+
+
+def test_a_callers_scratch_env_keeps_the_search_on_one_thread():
+    env = FakeBatchEnv(4, scores=False, max_rounds=12)
+    la = Lookahead(env, SearchConfig(k=2, seeds=1, scratch=16), DEVICE, scratch=FakeBatchEnv(16, scores=False,
+                                                                                              max_rounds=12), search_threads=4)
+    assert la.search_threads == 1 and la.pool is None

@@ -1333,6 +1333,9 @@ def add_ember_arguments(p):
     g.add_argument('--search-opponent', choices=('game', 'native'), default='game',
                    help='game: forks keep the game\'s controllers (a frozen opponent net plays in the rollouts); '
                         'native: forks hand the other team to the native AI (fewer network rows per search)')
+    g.add_argument('--search-threads', type=int, default=1,
+                   help='worker threads of one training search: its forks are split by root over this many scratch '
+                        'envs, whose engine calls overlap; network calls take turns. Speed only (default 1)')
     g.add_argument('--search-start-decisions', type=int, default=0,
                    help='PPO-only warm-up: a team\'s learner decisions are searched only after this many of them')
     g.add_argument('--search-start-ev', type=float, default=None,
