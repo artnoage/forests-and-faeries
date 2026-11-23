@@ -98,6 +98,20 @@ def compiled_policy(model, batch):
     return logits[:, :batch['cand_mask'].shape[1]], values
 
 
+_CAPTURE = {}
+
+
+def _capture_resources(device):
+    """One graph memory pool and one capture stream per device, shared by every leaf graph. A private
+    pool per graph kept each graph's activations (about 100 MiB each: 48 graphs took 5 GiB, measured by
+    Gemini on 2026-11-23); a new stream per capture defeats the shared pool until PyTorch's 32-stream ring
+    wraps. Graphs that share a pool must replay one at a time, which the single inference thread does."""
+    key = str(device)
+    if key not in _CAPTURE:
+        _CAPTURE[key] = (torch.cuda.graph_pool_handle(), torch.cuda.Stream(device=device))
+    return _CAPTURE[key]
+
+
 class _LeafGraph:
     def __init__(self, model, batch, count):
         self.inputs = {}
@@ -108,7 +122,7 @@ class _LeafGraph:
                 self.inputs[name] = tensor.new_zeros((count, *shape[1:]))
         self.fill(batch)
         device = self.inputs['map'].device
-        stream = torch.cuda.Stream(device=device)
+        pool, stream = _capture_resources(device)
         current = torch.cuda.current_stream(device)
         stream.wait_stream(current)
         with torch.cuda.stream(stream):
@@ -117,7 +131,7 @@ class _LeafGraph:
         current.wait_stream(stream)
         self.graph = torch.cuda.CUDAGraph()
         # Captured casts and kernels read this model's parameters on every replay.
-        with _no_gc(), torch.cuda.graph(self.graph, stream=stream):
+        with _no_gc(), torch.cuda.graph(self.graph, pool=pool, stream=stream):
             self.outputs = model._value(self.inputs)
 
     def fill(self, batch):
@@ -141,6 +155,8 @@ def accelerated_value(model, batch, detach_trunk):
         key = (weakref.ref(model), model.training, batch['map'].device, size)
         graph = _LEAF_GRAPHS.get(key)
         if graph is None:
+            for dead in [k for k in _LEAF_GRAPHS if k[0]() is None]:    # graphs of collected models
+                del _LEAF_GRAPHS[dead]
             # Two learners x four sizes already fill eight entries; frozen league and evaluation models then
             # evicted them on every phase, and each rebuild costs a full gc.collect() plus a capture
             # (11% of the H200 trainer's main thread, 2026-11-23). A graph holds only its small input buffers.
