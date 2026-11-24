@@ -1,0 +1,551 @@
+{
+  "id": "gemini",
+  "title": "The Unrung Bell",
+  "subtitle": "A Tale of Alderreach Valley",
+  "author": "Gemini",
+  "world_map": {
+    "image": "media/world_map.webp",
+    "music": "map_theme",
+    "width": 1600,
+    "height": 900
+  },
+  "heroes": {
+    "guy": {
+      "name": "Guy",
+      "role": "Champion Fighter",
+      "accent": "#5f8dc4",
+      "portrait": "media/portraits/guy.webp"
+    },
+    "elion": {
+      "name": "Elion",
+      "role": "Life Cleric",
+      "accent": "#e8c468",
+      "portrait": "media/portraits/elion.webp"
+    },
+    "curogana": {
+      "name": "Curogana",
+      "role": "Draconic Sorcerer",
+      "accent": "#d95b4e",
+      "portrait": "media/portraits/curogana.webp"
+    },
+    "chruna": {
+      "name": "Chruna",
+      "role": "Berserker",
+      "accent": "#6aa1d8",
+      "portrait": "media/portraits/chruna.webp"
+    },
+    "mara": {
+      "name": "Mara",
+      "role": "Soldier Fighter",
+      "accent": "#4ea898",
+      "portrait": "media/portraits/mara.webp"
+    },
+    "ilyra": {
+      "name": "Ilyra",
+      "role": "Scholar Wizard",
+      "accent": "#6ec2e6",
+      "portrait": "media/portraits/ilyra.webp"
+    }
+  },
+  "music": {
+    "map_theme": {
+      "src": "media/music/map_theme.m4a",
+      "duration": 171.5
+    },
+    "act1_mist": {
+      "src": "media/music/act1_mist.m4a",
+      "duration": 30.7
+    },
+    "act2_depths": {
+      "src": "media/music/act2_depths.m4a",
+      "duration": 30.8
+    },
+    "act3_reliquary": {
+      "src": "media/music/act3_reliquary.m4a",
+      "duration": 30.8
+    },
+    "epilogue_dawn": {
+      "src": "media/music/epilogue_dawn.m4a",
+      "duration": 30.8
+    }
+  },
+  "chapters": [
+    {
+      "index": 0,
+      "id": "ch1_loose_mooring",
+      "chapter_label": "Chapter I",
+      "title": "The Loose Mooring",
+      "location": "Reed Lock \u2014 Lower Crossing",
+      "blurb": "Dusk fog climbs uphill from Reed Lock as the dead cross the lower sluice gates.",
+      "act": 1,
+      "hero_level": 1,
+      "encounter": "reed_lock",
+      "preset": "l1_the_loose_mooring_v3",
+      "party": [
+        "guy",
+        "elion",
+        "chruna"
+      ],
+      "music": "act1_mist",
+      "map": {
+        "x": 13.0,
+        "y": 63.0,
+        "label_pos": "below"
+      },
+      "scene": {
+        "id": "scene_01_prologue",
+        "title": "The Bell That Did Not Toll",
+        "still": "media/scenes/scene_01_prologue.webp",
+        "video": "media/video/scene_01_prologue.mp4",
+        "audio": "media/voice/scene_01_prologue.m4a",
+        "audio_duration": 42.4,
+        "cues": [
+          {
+            "speaker": "Narrator",
+            "speaker_id": "narrator",
+            "text": "For three hundred winters, the great bronze Vesper Bell rang at dusk across Alderreach \u2014 sealing the river locks, the kilns, the mines, and the old Reliquary beneath the hills. Tonight, the sun sank in dead silence.",
+            "start": 0.2,
+            "end": 21.6
+          },
+          {
+            "speaker": "Elion",
+            "speaker_id": "elion",
+            "text": "Not a single chime, Guy. And look at the canal \u2014 the fog is climbing uphill against the wind.",
+            "start": 22.05,
+            "end": 30.37
+          },
+          {
+            "speaker": "Guy",
+            "speaker_id": "guy",
+            "text": "The mooring rope just snapped on the far bank. Something is crossing the sluice gates.",
+            "start": 30.82,
+            "end": 36.1
+          },
+          {
+            "speaker": "Chruna",
+            "speaker_id": "chruna",
+            "text": "Good. Whatever crawled out of the mud gets sharp iron instead of prayer.",
+            "start": 36.55,
+            "end": 42.03
+          }
+        ]
+      }
+    },
+    {
+      "index": 1,
+      "id": "ch2_brick_stack",
+      "chapter_label": "Chapter II",
+      "title": "Cold Fire",
+      "location": "Split Kiln \u2014 The Brickworks",
+      "blurb": "Follow the smoke to Split Kiln where goblin scavengers pry ward-plates off the furnaces.",
+      "act": 1,
+      "hero_level": 1,
+      "encounter": "split_kiln",
+      "preset": "l1_the_brick_stack_v3",
+      "party": [
+        "guy",
+        "elion"
+      ],
+      "music": "act1_mist",
+      "map": {
+        "x": 37.0,
+        "y": 67.0,
+        "label_pos": "below"
+      },
+      "scene": {
+        "id": "scene_02_kiln",
+        "title": "Pried Brass",
+        "still": "media/scenes/scene_02_kiln.webp",
+        "video": "media/video/scene_02_kiln.mp4",
+        "audio": "media/voice/scene_02_kiln.m4a",
+        "audio_duration": 23.9,
+        "cues": [
+          {
+            "speaker": "Elion",
+            "speaker_id": "elion",
+            "text": "The lock ward did not crack from age. See these gouges? Someone pried the brass plate loose with an iron bar.",
+            "start": 0.2,
+            "end": 8.8
+          },
+          {
+            "speaker": "Chruna",
+            "speaker_id": "chruna",
+            "text": "Then the bell wasn't an accident either. I'll sprint up the ridge road to Bell Court \u2014 you two follow the smoke from Split Kiln.",
+            "start": 9.25,
+            "end": 15.93
+          },
+          {
+            "speaker": "Guy",
+            "speaker_id": "guy",
+            "text": "The furnaces are half dead, and those aren't kiln-hands hiding behind the brick stacks. Stay close, Elion.",
+            "start": 16.38,
+            "end": 23.54
+          }
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "id": "ch3_side_gate",
+      "chapter_label": "Chapter III",
+      "title": "The Stolen Clapper",
+      "location": "Bell Court \u2014 The Side Gate",
+      "blurb": "Curogana uncovers the severed bell chain in Bell Court while raiders swarm the side gate.",
+      "act": 1,
+      "hero_level": 1,
+      "encounter": "bell_court",
+      "preset": "l1_the_side_gate_v3",
+      "party": [
+        "elion",
+        "curogana",
+        "chruna"
+      ],
+      "music": "act1_mist",
+      "map": {
+        "x": 34.0,
+        "y": 27.0,
+        "label_pos": "above"
+      },
+      "scene": {
+        "id": "scene_03_bell_court",
+        "title": "The Empty Throat",
+        "still": "media/scenes/scene_03_bell_court.webp",
+        "video": "media/video/scene_03_bell_court.mp4",
+        "audio": "media/voice/scene_03_bell_court.m4a",
+        "audio_duration": 29.0,
+        "cues": [
+          {
+            "speaker": "Narrator",
+            "speaker_id": "narrator",
+            "text": "High above the mist-choked valley, beneath the vaulted arches of Bell Court, Curogana waited by an empty iron chain.",
+            "start": 0.2,
+            "end": 11.24
+          },
+          {
+            "speaker": "Curogana",
+            "speaker_id": "curogana",
+            "text": "The bronze is intact, Elion \u2014 someone cut the silver clapper clean out of its throat. And whoever hauled it away tracked white mine-chalk across every step.",
+            "start": 11.69,
+            "end": 22.17
+          },
+          {
+            "speaker": "Chruna",
+            "speaker_id": "chruna",
+            "text": "Save the tracking. The goblin rear-guard is still looting the side gate \u2014 let's ask them where they ran.",
+            "start": 22.62,
+            "end": 28.58
+          }
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "id": "ch4_lamp_trimmer",
+      "chapter_label": "Chapter IV",
+      "title": "Hollow Watch",
+      "location": "Lantern Mine \u2014 Upper Gallery",
+      "blurb": "Empty ceremonial armor marches out of Lantern Mine behind Mara's defensive line.",
+      "act": 2,
+      "hero_level": 1,
+      "encounter": "lantern_mine",
+      "preset": "l1_the_lamp_trimmer_v3",
+      "party": [
+        "curogana",
+        "mara",
+        "chruna"
+      ],
+      "music": "act2_depths",
+      "map": {
+        "x": 59.0,
+        "y": 53.0,
+        "label_pos": "above"
+      },
+      "scene": {
+        "id": "scene_04_lantern_mine",
+        "title": "Walking Iron",
+        "still": "media/scenes/scene_04_lantern_mine.webp",
+        "video": "media/video/scene_04_lantern_mine.mp4",
+        "audio": "media/voice/scene_04_lantern_mine.m4a",
+        "audio_duration": 29.5,
+        "cues": [
+          {
+            "speaker": "Mara",
+            "speaker_id": "mara",
+            "text": "You're from Bell Court? Keep behind the lamp posts. The miners fled an hour ago \u2014 not from goblins, from the gallery itself.",
+            "start": 0.2,
+            "end": 9.36
+          },
+          {
+            "speaker": "Curogana",
+            "speaker_id": "curogana",
+            "text": "Feel that hum in the stone? Those aren't soldiers in that plate armor. Something deep under the seam is wearing empty iron like a gauntlet.",
+            "start": 9.81,
+            "end": 22.77
+          },
+          {
+            "speaker": "Chruna",
+            "speaker_id": "chruna",
+            "text": "Empty iron rings louder when you split it. Mara \u2014 take the right flank.",
+            "start": 23.22,
+            "end": 29.06
+          }
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "id": "ch5_boss_guard",
+      "chapter_label": "Chapter V",
+      "title": "The Scholar's Key",
+      "location": "The Forged Vault \u2014 Cliff Gatehouse",
+      "blurb": "Mara and Ilyra storm the Forged Vault where terrified goblins barricaded the iron gate.",
+      "act": 2,
+      "hero_level": 2,
+      "encounter": "vault",
+      "preset": "boss_guard",
+      "party": [
+        "mara",
+        "ilyra"
+      ],
+      "music": "act2_depths",
+      "map": {
+        "x": 66.0,
+        "y": 21.0,
+        "label_pos": "above"
+      },
+      "scene": {
+        "id": "scene_05_vault",
+        "title": "Barricaded Thieves",
+        "still": "media/scenes/scene_05_vault.webp",
+        "video": "media/video/scene_05_vault.mp4",
+        "audio": "media/voice/scene_05_vault.m4a",
+        "audio_duration": 29.7,
+        "cues": [
+          {
+            "speaker": "Narrator",
+            "speaker_id": "narrator",
+            "text": "While the others cleared the upper ore gallery, Mara and the young scholar Ilyra climbed the cliff trail to the Forged Vault \u2014 where the goblin warband had bolted the iron doors from within.",
+            "start": 0.2,
+            "end": 10.6
+          },
+          {
+            "speaker": "Ilyra",
+            "speaker_id": "ilyra",
+            "text": "Mara, look at these panic marks on the lintel. The goblins didn't hoard the bell-clapper for treasure \u2014 they were terrified of what woke beneath the mine!",
+            "start": 11.05,
+            "end": 21.49
+          },
+          {
+            "speaker": "Mara",
+            "speaker_id": "mara",
+            "text": "Scared thieves still shoot straight. Stay behind my shield, Ilyra, and let's see what's left inside.",
+            "start": 21.94,
+            "end": 29.34
+          }
+        ]
+      }
+    },
+    {
+      "index": 5,
+      "id": "ch6_lockkeepers_shift",
+      "chapter_label": "Chapter VI",
+      "title": "The Price of Silence",
+      "location": "Reed Lock \u2014 The Upper Weir",
+      "blurb": "Ilyra deciphers the founder's charter \u2014 cut off the undead trail at the upper canal weir.",
+      "act": 2,
+      "hero_level": 2,
+      "encounter": "reed_lock",
+      "preset": "l2_the_lockkeepers_shift_v3",
+      "party": [
+        "elion",
+        "curogana",
+        "ilyra"
+      ],
+      "music": "act2_depths",
+      "map": {
+        "x": 66.0,
+        "y": 74.0,
+        "label_pos": "below"
+      },
+      "scene": {
+        "id": "scene_06_charter",
+        "title": "The Key Called Home",
+        "still": "media/scenes/scene_06_charter.webp",
+        "video": "media/video/scene_06_charter.mp4",
+        "audio": "media/voice/scene_06_charter.m4a",
+        "audio_duration": 32.5,
+        "cues": [
+          {
+            "speaker": "Ilyra",
+            "speaker_id": "ilyra",
+            "text": "The clapper is gone \u2014 the goblins dumped it down the upper sluice to buy their lives! And this founder's charter explains why: the bell's silver was forged from the Reliquary seal itself. Carry it back to the tomb, and the old ward unravels.",
+            "start": 0.2,
+            "end": 14.96
+          },
+          {
+            "speaker": "Curogana",
+            "speaker_id": "curogana",
+            "text": "So the dead didn't wake by accident. They whispered to greedy hands and called their own key home.",
+            "start": 15.41,
+            "end": 24.21
+          },
+          {
+            "speaker": "Elion",
+            "speaker_id": "elion",
+            "text": "Then we cut off their trail at the upper weir before the current drags the silver all the way under the mountain.",
+            "start": 24.66,
+            "end": 32.06
+          }
+        ]
+      }
+    },
+    {
+      "index": 6,
+      "id": "ch7_deep_shift",
+      "chapter_label": "Chapter VII",
+      "title": "Under the Loadstone",
+      "location": "Lantern Mine \u2014 The Deep Shift",
+      "blurb": "Break the iron vanguard under the glowing loadstone to open the breach to the Reliquary.",
+      "act": 3,
+      "hero_level": 3,
+      "encounter": "lantern_mine",
+      "preset": "l3_the_deep_shift_v3",
+      "party": [
+        "elion",
+        "mara",
+        "ilyra"
+      ],
+      "music": "act3_reliquary",
+      "map": {
+        "x": 91.0,
+        "y": 80.0,
+        "label_pos": "left"
+      },
+      "scene": {
+        "id": "scene_07_deep_shift",
+        "title": "The Iron Breach",
+        "still": "media/scenes/scene_07_deep_shift.webp",
+        "video": "media/video/scene_07_deep_shift.mp4",
+        "audio": "media/voice/scene_07_deep_shift.m4a",
+        "audio_duration": 29.5,
+        "cues": [
+          {
+            "speaker": "Narrator",
+            "speaker_id": "narrator",
+            "text": "Deep beneath Lantern Mine, where the ancient loadstone hums like a struck chord, five silent suits of iron stood sentinel before the cracked breach to the Reliquary.",
+            "start": 0.2,
+            "end": 12.72
+          },
+          {
+            "speaker": "Mara",
+            "speaker_id": "mara",
+            "text": "The Reliquary arch lies right behind that steel wall, Elion. If we smash this vanguard, Guy and the others get a clean path straight to the altar.",
+            "start": 13.17,
+            "end": 23.37
+          },
+          {
+            "speaker": "Ilyra",
+            "speaker_id": "ilyra",
+            "text": "My wards are ready. Let's break the iron and open the road.",
+            "start": 23.82,
+            "end": 29.1
+          }
+        ]
+      }
+    },
+    {
+      "index": 7,
+      "id": "ch8_mummies_tomb",
+      "chapter_label": "Chapter VIII \u2014 Finale",
+      "title": "The Sealed Reliquary",
+      "location": "The Crypt \u2014 The Mummies' Tomb",
+      "blurb": "Four Level-3 heroes stand shoulder to shoulder inside the Reliquary to reclaim the silver clapper before dawn.",
+      "act": 3,
+      "hero_level": 3,
+      "encounter": "crypt",
+      "preset": "mummies_tomb",
+      "party": [
+        "guy",
+        "elion",
+        "curogana",
+        "chruna"
+      ],
+      "music": "act3_reliquary",
+      "map": {
+        "x": 89.0,
+        "y": 23.0,
+        "label_pos": "left"
+      },
+      "scene": {
+        "id": "scene_08_reliquary",
+        "title": "Kings of Ash",
+        "still": "media/scenes/scene_08_reliquary.webp",
+        "video": "media/video/scene_08_reliquary.mp4",
+        "audio": "media/voice/scene_08_reliquary.m4a",
+        "audio_duration": 38.8,
+        "cues": [
+          {
+            "speaker": "Narrator",
+            "speaker_id": "narrator",
+            "text": "Through the shattered breach lies the Reliquary Crypt, sealed since the founding of Alderreach. Upon the cold altar rests the stolen silver clapper \u2014 and beside it rise the ancient lords of ash.",
+            "start": 0.2,
+            "end": 19.04
+          },
+          {
+            "speaker": "Guy",
+            "speaker_id": "guy",
+            "text": "Four of us, shoulder to shoulder. One last room before sunrise.",
+            "start": 19.49,
+            "end": 25.37
+          },
+          {
+            "speaker": "Curogana",
+            "speaker_id": "curogana",
+            "text": "Ancient wrappings burn fast. Let's remind them what living fire feels like.",
+            "start": 25.82,
+            "end": 33.22
+          },
+          {
+            "speaker": "Elion",
+            "speaker_id": "elion",
+            "text": "Hold nothing back. Dawn is waiting on that bell!",
+            "start": 33.67,
+            "end": 38.43
+          }
+        ]
+      }
+    }
+  ],
+  "epilogue": {
+    "id": "scene_09_epilogue",
+    "title": "The Dawn Toll",
+    "still": "media/scenes/scene_09_epilogue.webp",
+    "video": "media/video/scene_09_epilogue.mp4",
+    "audio": "media/voice/scene_09_epilogue.m4a",
+    "audio_duration": 35.4,
+    "cues": [
+      {
+        "speaker": "Narrator",
+        "speaker_id": "narrator",
+        "text": "When the last ash settled in the Reliquary, the six climbed the belfry stairs together with the silver clapper bound in cloth. Elion swung the chain home \u2014 and across Reed Lock, Split Kiln, and Lantern Mine, one clear golden note rang out into the morning sun.",
+        "start": 0.2,
+        "end": 23.04
+      },
+      {
+        "speaker": "Mara",
+        "speaker_id": "mara",
+        "text": "Three hundred years, and still not a crack in the bronze.",
+        "start": 23.49,
+        "end": 28.97
+      },
+      {
+        "speaker": "Elion",
+        "speaker_id": "elion",
+        "text": "And if the valley ever falls quiet again... Alderreach knows who will answer.",
+        "start": 29.42,
+        "end": 34.98
+      }
+    ],
+    "music": "epilogue_dawn"
+  }
+}

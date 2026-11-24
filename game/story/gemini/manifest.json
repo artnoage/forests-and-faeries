@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "id": "gemini",
+  "title": "The Unrung Bell",
+  "subtitle": "A Tale of Alderreach Valley",
+  "tagline": "The Vesper Bell falls silent at dusk; eight battles across Alderreach Valley to seal the Reliquary before dawn.",
+  "module": "story.js",
+  "style": "story.css",
+  "map": {
+    "image": "media/world_map.webp",
+    "width": 1600,
+    "height": 900,
+    "alt": "Hand-painted map of Alderreach Valley from Reed Lock to the Reliquary Crypt"
+  },
+  "chapters": [
+    {
+      "id": "ch1_loose_mooring",
+      "title": "The Loose Mooring",
+      "place": "Reed Lock \u2014 Lower Crossing",
+      "encounter": "reed_lock",
+      "preset": "l1_the_loose_mooring_v3",
+      "hero_level": 1,
+      "blurb": "Dusk fog climbs uphill from Reed Lock as the dead cross the lower sluice gates.",
+      "node": [
+        0.13,
+        0.63
+      ]
+    },
+    {
+      "id": "ch2_brick_stack",
+      "title": "Cold Fire",
+      "place": "Split Kiln \u2014 The Brickworks",
+      "encounter": "split_kiln",
+      "preset": "l1_the_brick_stack_v3",
+      "hero_level": 1,
+      "blurb": "Follow the smoke to Split Kiln where goblin scavengers pry ward-plates off the furnaces.",
+      "node": [
+        0.37,
+        0.67
+      ]
+    },
+    {
+      "id": "ch3_side_gate",
+      "title": "The Stolen Clapper",
+      "place": "Bell Court \u2014 The Side Gate",
+      "encounter": "bell_court",
+      "preset": "l1_the_side_gate_v3",
+      "hero_level": 1,
+      "blurb": "Curogana uncovers the severed bell chain in Bell Court while raiders swarm the side gate.",
+      "node": [
+        0.34,
+        0.27
+      ]
+    },
+    {
+      "id": "ch4_lamp_trimmer",
+      "title": "Hollow Watch",
+      "place": "Lantern Mine \u2014 Upper Gallery",
+      "encounter": "lantern_mine",
+      "preset": "l1_the_lamp_trimmer_v3",
+      "hero_level": 1,
+      "blurb": "Empty ceremonial armor marches out of Lantern Mine behind Mara's defensive line.",
+      "node": [
+        0.59,
+        0.53
+      ]
+    },
+    {
+      "id": "ch5_boss_guard",
+      "title": "The Scholar's Key",
+      "place": "The Forged Vault \u2014 Cliff Gatehouse",
+      "encounter": "vault",
+      "preset": "boss_guard",
+      "hero_level": 2,
+      "blurb": "Mara and Ilyra storm the Forged Vault where terrified goblins barricaded the iron gate.",
+      "node": [
+        0.66,
+        0.21
+      ]
+    },
+    {
+      "id": "ch6_lockkeepers_shift",
+      "title": "The Price of Silence",
+      "place": "Reed Lock \u2014 The Upper Weir",
+      "encounter": "reed_lock",
+      "preset": "l2_the_lockkeepers_shift_v3",
+      "hero_level": 2,
+      "blurb": "Ilyra deciphers the founder's charter \u2014 cut off the undead trail at the upper canal weir.",
+      "node": [
+        0.66,
+        0.74
+      ]
+    },
+    {
+      "id": "ch7_deep_shift",
+      "title": "Under the Loadstone",
+      "place": "Lantern Mine \u2014 The Deep Shift",
+      "encounter": "lantern_mine",
+      "preset": "l3_the_deep_shift_v3",
+      "hero_level": 3,
+      "blurb": "Break the iron vanguard under the glowing loadstone to open the breach to the Reliquary.",
+      "node": [
+        0.91,
+        0.8
+      ]
+    },
+    {
+      "id": "ch8_mummies_tomb",
+      "title": "The Sealed Reliquary",
+      "place": "The Crypt \u2014 The Mummies' Tomb",
+      "encounter": "crypt",
+      "preset": "mummies_tomb",
+      "hero_level": 3,
+      "blurb": "Four Level-3 heroes stand shoulder to shoulder inside the Reliquary to reclaim the silver clapper before dawn.",
+      "node": [
+        0.89,
+        0.23
+      ]
+    }
+  ]
+}
