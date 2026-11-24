@@ -1,0 +1,32 @@
+/* Off the Map (Story mode Claude): a surveyor's journal look over the shared story shell. */
+.story-layer[data-story="claude"] {
+  background: radial-gradient(circle at 50% 20%, #2a241b 0%, #14110d 70%);
+}
+.story-layer[data-story="claude"] .story-head { border-bottom-color: rgba(214, 186, 132, 0.25); }
+.story-layer[data-story="claude"] .story-head h1 { color: #f0dcae; letter-spacing: 0.03em; }
+.story-layer[data-story="claude"] .story-head p { color: #c9b994; font-style: italic; }
+.story-layer[data-story="claude"] .story-map { border: 2px solid #6b5132; box-shadow: 0 22px 60px rgba(0, 0, 0, 0.75), inset 0 0 40px rgba(60, 40, 15, 0.35); background: #d9c49a; }
+.story-layer[data-story="claude"] .story-route polyline { stroke: rgba(122, 38, 24, 0.72); stroke-width: 3; stroke-dasharray: 2 9; }
+.story-layer[data-story="claude"] .story-node { font-family: var(--font-display); background: #f1e2bd; border-color: #5a3d1e; color: #3a2610; }
+.story-layer[data-story="claude"] .story-node.is-open { background: #f7cf72; border-color: #7a2618; }
+.story-layer[data-story="claude"] .story-node.is-done { background: #c9d9b0; border-color: #3f5a2e; }
+.story-layer[data-story="claude"] .story-node.is-locked { background: #b9a988; border-color: #6d5c40; color: #5a4b33; }
+.story-layer[data-story="claude"] .story-node-label { color: #3a2610; text-shadow: 0 0 3px #f3e6c6, 0 0 6px #f3e6c6, 0 0 9px #f3e6c6; }
+.story-layer[data-story="claude"] .story-marker { background: #7a2618; }
+.story-layer[data-story="claude"] .story-panel {
+  background: linear-gradient(180deg, #efe1bf, #e2cfa3); color: #3a2a17; border: 1px solid #8a6b42;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+.story-layer[data-story="claude"] .story-panel .eyebrow { color: #7a2618; }
+.story-layer[data-story="claude"] .story-panel h2 { color: #3a2610; }
+.story-layer[data-story="claude"] .story-place { color: #7a4a1c; }
+.story-layer[data-story="claude"] .story-blurb { color: #4a3a24; }
+.story-layer[data-story="claude"] .story-party { color: #2f5a4a; }
+.story-layer[data-story="claude"] .story-the-end { color: #7a2618; }
+.story-layer[data-story="claude"] .story-panel-foot { border-top-color: rgba(90, 61, 30, 0.3); }
+.story-layer[data-story="claude"] .story-panel .button.quiet { background: rgba(255, 250, 235, 0.55); color: #3a2a17; border-color: rgba(90, 61, 30, 0.45); }
+.story-layer[data-story="claude"] .story-panel .button.danger { color: #8a2b1b; }
+.story-layer[data-story="claude"] .scene-caption { background: linear-gradient(180deg, rgba(20, 14, 6, 0) 0%, rgba(20, 14, 6, 0.74) 40%, rgba(16, 11, 5, 0.9) 100%); }
+.story-layer[data-story="claude"] .scene-title { color: #f0dcae; letter-spacing: 0.04em; }
+.story-layer[data-story="claude"] .scene-label { color: #d2a45e; }
+.story-layer[data-story="claude"] .scene-text { color: #f6ecd6; font-size: clamp(16px, 1.8vw, 20px); }

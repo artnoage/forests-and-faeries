@@ -516,6 +516,13 @@
       host.querySelector('.scene-text').textContent = shot.text || '';
       host.classList.toggle('is-title-card', Boolean(shot.title) && !shot.text);
       const ms = Number(shot.duration) > 0 ? Number(shot.duration) * 1000 : readingMs(shot);
+      // The shot moves on when its video and its narration have both ended (or failed).
+      const waits = new Set();
+      const release = (what, gap) => {
+        if (finished || index !== i || !waits.has(what)) return;
+        waits.delete(what);
+        if (!waits.size) advanceLater(gap);
+      };
       const frame = document.createElement('div');
       frame.className = 'scene-shot';
       if (shot.video) {
@@ -526,10 +533,11 @@
         video.preload = 'auto';
         if (shot.poster) video.poster = storyURL(id, shot.poster);
         video.src = storyURL(id, shot.video);
-        video.addEventListener('ended', () => advanceLater(shot.text ? 1500 : 400));
-        video.addEventListener('error', () => advanceLater(ms));
+        waits.add('video');
+        video.addEventListener('ended', () => release('video', shot.text ? 1500 : 400));
+        video.addEventListener('error', () => release('video', ms));
         frame.appendChild(video);
-        video.play().catch(() => advanceLater(ms));
+        video.play().catch(() => release('video', ms));
       } else if (shot.image) {
         const img = document.createElement('img');
         img.className = `scene-media motion-${reducedMotion() ? 'none' : (shot.motion || 'zoom-in')}`;
@@ -546,18 +554,17 @@
       window.setTimeout(() => old.forEach(n => n.remove()), 900);
       const nextShot = shots[i + 1];
       if (nextShot?.image) { const pre = new Image(); pre.src = storyURL(id, nextShot.image); }
-      if (shot.video) return;
       if (shot.audio && soundOn) {
+        waits.add('voice');
         voice = new Audio(storyURL(id, shot.audio));
         voice.volume = 1;
-        voice.addEventListener('ended', () => advanceLater(1100));
-        voice.addEventListener('error', () => advanceLater(ms));
-        voice.play().catch(() => advanceLater(ms));
-        // A stalled voice never traps the scene.
-        timer = window.setTimeout(next, Math.max(ms, 60000));
-      } else {
-        advanceLater(ms);
+        voice.addEventListener('ended', () => release('voice', 1100));
+        voice.addEventListener('error', () => release('voice', ms));
+        voice.play().catch(() => release('voice', ms));
       }
+      if (!waits.size) advanceLater(ms);
+      // A stalled video or voice never traps the scene.
+      else timer = window.setTimeout(next, Math.max(ms, 60000));
     }
     function next() {
       if (finished) return;

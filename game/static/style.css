@@ -1475,7 +1475,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 .story-head h1 { margin: 2px 0 2px; font-family: var(--font-display); font-size: 25px; color: var(--gold-bright); }
 .story-head p { margin: 0; color: var(--text-soft); font-size: 12.5px; max-width: 720px; }
 .story-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.story-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; padding: 14px 20px 20px; align-items: start; }
+.story-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; padding: 14px 20px 20px; align-items: start; align-content: start; }
 .story-map-wrap { display: flex; justify-content: center; }
 .story-map {
   position: relative; width: min(100%, calc((100vh - 150px) * var(--map-r, 1.6))); aspect-ratio: var(--map-ratio, 16 / 10);
