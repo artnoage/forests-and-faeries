@@ -140,7 +140,10 @@ def agent_file_problem(rel: str) -> str | None:
     return None
 
 
-BINARY_SKIP_TEXT = (".glb", ".webp", ".png", ".jpg", ".jpeg", ".woff2", ".ico")
+# Binary media is not scanned as text (random bytes would match short patterns); story
+# media (docs/STORY_MODE.md) is stripped of metadata and recorded in each PROVENANCE.md.
+BINARY_SKIP_TEXT = (".glb", ".webp", ".png", ".jpg", ".jpeg", ".woff2", ".ico",
+                    ".avif", ".opus", ".ogg", ".m4a", ".mp3", ".mp4", ".webm")
 ALLOWED_GIT_EMAIL = "17121688+artnoage@users.noreply.github.com"
 
 

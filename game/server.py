@@ -8,6 +8,7 @@ Protections:
 
 * static files only from an explicit allowlist (``PUBLIC_FILES``), the page at
   ``/``; models are served per figure key, textures and prop models by name;
+  story files (``/story/<id>/...``) by one rule, ``game.assets.story_path``;
 * the production security headers (strict CSP, frame and referrer policies,
   ``nosniff``, ``Permissions-Policy``) on every response;
 * a session cookie that is HttpOnly, ``SameSite=Strict`` and ``Secure`` behind
@@ -49,7 +50,9 @@ from game.assets import (
     PUBLIC_FILES,
     ROOT,
     STATIC,
+    STORY_TYPES,
     TEXTURE_FILES,
+    story_path,
 )
 
 COOKIE = 'ff_game'
@@ -57,7 +60,7 @@ PER_CLIENT = 4
 CAPACITY = 64
 TTL = 3600
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
-       "connect-src 'self' blob:; font-src 'self'; base-uri 'none'; form-action 'none'; "
+       "media-src 'self' blob:; connect-src 'self' blob:; font-src 'self'; base-uri 'none'; form-action 'none'; "
        "frame-ancestors 'none'; object-src 'none'")
 LOG = logging.getLogger('game.server')
 _DEFAULT_APP = None
@@ -188,6 +191,15 @@ def create_app():
     app.add_url_rule('/', 'index', lambda: static_file('index.html'), methods=['GET'])
     for name in PUBLIC_FILES:
         app.add_url_rule('/' + name, name, lambda name=name: static_file(name), methods=['GET'])
+
+    @app.get('/story/<path:name>')
+    def story_file(name):
+        # One rule for every story directory (docs/STORY_MODE.md): allowlisted suffixes only,
+        # no traversal or hidden files; Range requests work for audio and video seeking.
+        path = story_path(name)
+        if path is None:
+            return jsonify(error='Not found.'), 404
+        return send_from_directory(path.parent, path.name, mimetype=STORY_TYPES[path.suffix], conditional=True)
 
     def wire(game, payload):
         return game.wire(payload)

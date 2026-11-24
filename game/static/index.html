@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="./style.css?v=ff1">
   <script src="./scene3d.js?v=ff1" defer></script>
   <script src="./app.js?v=ff1" defer></script>
+  <script src="./story.js?v=ff1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#command-area">Skip to the command deck</a>
@@ -216,7 +217,7 @@
 
     <div class="cursor-tooltip" id="cursor-tooltip" hidden></div>
 
-    <!-- START SCREEN: choose difficulty, then a level -->
+    <!-- START SCREEN: choose a mode (Practice or a story), then a difficulty and a level -->
     <div class="start-screen" id="start-screen" role="dialog" aria-modal="true" aria-labelledby="start-screen-title">
       <div class="start-modal">
         <div class="start-header">
@@ -226,12 +227,35 @@
             <p class="start-subtitle" id="start-screen-subtitle">Pick a difficulty to browse its fights — from quick skirmishes to deadly vaults.</p>
           </div>
           <div class="start-header-actions">
+            <button type="button" class="button quiet" id="back-mode-btn" hidden>← Modes</button>
             <button type="button" class="button quiet" id="back-difficulty-btn" hidden>← Difficulty</button>
             <button type="button" class="button quiet" id="close-start-btn" hidden>✕ Back to the game</button>
           </div>
         </div>
 
-        <section class="difficulty-step" id="difficulty-step" aria-label="Choose difficulty">
+        <section class="mode-step" id="mode-step" aria-label="Choose a mode">
+          <div class="mode-grid" id="mode-grid" role="group" aria-label="Game modes">
+            <button type="button" class="mode-card mode-practice" data-mode="practice">
+              <span class="eyebrow">PRACTICE</span>
+              <h2 class="mode-card-title">Practice</h2>
+              <p class="mode-card-desc">Any of the graded fights, one at a time: choose a difficulty, then a level.</p>
+            </button>
+            <button type="button" class="mode-card mode-story" data-story="claude">
+              <span class="eyebrow">STORY — CLAUDE</span>
+              <h2 class="mode-card-title" data-story-title>Story — Claude</h2>
+              <p class="mode-card-desc" data-story-desc>Eight fights on a world map, with the story told between them.</p>
+              <span class="mode-card-status" data-story-status></span>
+            </button>
+            <button type="button" class="mode-card mode-story" data-story="gemini">
+              <span class="eyebrow">STORY — GEMINI</span>
+              <h2 class="mode-card-title" data-story-title>Story — Gemini</h2>
+              <p class="mode-card-desc" data-story-desc>Eight fights on a world map, with the story told between them.</p>
+              <span class="mode-card-status" data-story-status></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="difficulty-step" id="difficulty-step" aria-label="Choose difficulty" hidden>
           <div class="difficulty-grid" id="difficulty-grid" role="group" aria-label="Difficulty tiers">
             <p class="loading-label">Loading the levels…</p>
           </div>
@@ -279,6 +303,9 @@
         <p class="start-credits">Rules content from the SRD 5.1 and SRD 5.2.1 (CC BY 4.0). <a href="./licenses.html">Credits and licences</a>.</p>
       </div>
     </div>
+
+    <!-- STORY: the world map and scenes of a story (story.js; docs/STORY_MODE.md) -->
+    <div class="story-layer" id="story-layer" role="dialog" aria-modal="true" aria-label="Story" hidden></div>
 
     <!-- TOP HUD -->
     <header class="hud-top">
@@ -381,9 +408,14 @@
       <span class="eyebrow">THE FIGHT IS OVER</span>
       <h2 id="result-title"></h2>
       <p id="result-detail"></p>
-      <div class="result-actions">
+      <div class="result-actions" id="practice-result-actions">
         <button class="button quiet" id="result-levels-button">✦ Another level</button>
         <button class="button primary" id="again-button">⚔ Play this level again</button>
+      </div>
+      <div class="result-actions" id="story-result-actions" hidden>
+        <button class="button quiet" id="story-map-button">✦ Story map</button>
+        <button class="button primary" id="story-retry-button">⚔ Retry the battle</button>
+        <button class="button primary" id="story-continue-button">Continue the story →</button>
       </div>
     </div>
 

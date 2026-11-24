@@ -270,13 +270,17 @@
   const LEGACY_ENCOUNTERS = new Set(['crypt', 'vault']);
 
   let startScreenOpen = true;
-  let startStep = 'difficulty';  // 'difficulty' | 'levels'
+  let startStep = 'mode';        // 'mode' | 'difficulty' | 'levels'
   let selectedDifficulty = 'Easy';
   let selectedHeroLevelFilter = 'all';  // 'all' | '1' | '2' | '3' | 'mixed'
   let launched = false;          // the start screen can be closed once a level was chosen
   let selectedStart = null;      // {encounter, preset}
   let selectedTheme = 'auto';
   let themeManualOverride = false;
+  // A fight started from a story (story.js): {story, chapter, encounter, preset, hero_level, seed, title}.
+  // Practice launches clear it; the result overlay and the Levels button follow it.
+  let storyRun = null;
+  let finishedSignal = null;
 
   let activeCamPreset = 'tactical', followCamEnabled = true;
   let leftDrawerOpen = window.innerWidth > 900, rightDrawerOpen = false, minimapVisible = false;
@@ -1175,8 +1179,11 @@
     $('new-button').disabled = busy || !state;
     $('again-button').disabled = busy;
     if (!state) return;
-    $('map-name').textContent = state.level && state.level.encounter_name !== state.map.name
-      ? `${state.level.encounter_name} · ${state.map.name}` : state.map.name;
+    const inStory = !!storyRun && state.level?.encounter === storyRun.encounter && state.level?.id === storyRun.preset;
+    $('open-levels-btn').textContent = storyRun ? '✦ Story map' : '✦ Levels';
+    $('map-name').textContent = inStory && storyRun.title ? `${storyRun.title} · ${state.map.name}`
+      : state.level && state.level.encounter_name !== state.map.name
+        ? `${state.level.encounter_name} · ${state.map.name}` : state.map.name;
     const unit = activeUnit();
     const ind = $('turn-indicator');
     ind.classList.toggle('enemy', state.phase === 'enemy');
@@ -1191,11 +1198,26 @@
       const outcome = state.winner === 'heroes' ? 'win' : state.winner === 'monsters' ? 'loss' : 'draw';
       $('result-overlay').dataset.outcome = outcome;
       $('result-title').textContent = { win: 'The heroes prevail', loss: 'The party has fallen', draw: 'No one is left standing' }[outcome];
-      $('result-detail').textContent = {
+      $('result-detail').textContent = inStory ? {
+        win: 'Every roll is in the log. The story goes on.',
+        loss: 'Try another plan: the log shows every roll. Retry the battle, or go back to the map.',
+        draw: 'The fight ended without a winner. Retry the battle, or go back to the map.',
+      }[outcome] : {
         win: 'Every roll is in the log. Play the level again, or choose another.',
         loss: 'Try another plan: the log shows every roll.',
         draw: 'The fight ended without a winner.',
       }[outcome];
+      $('practice-result-actions').hidden = inStory;
+      $('story-result-actions').hidden = !inStory;
+      $('story-continue-button').hidden = outcome !== 'win';
+      $('story-retry-button').hidden = outcome === 'win';
+      const signal = `${state.encounter_id}:${state.revision}`;
+      if (finishedSignal !== signal) {
+        finishedSignal = signal;
+        document.dispatchEvent(new CustomEvent('ff:finished', { detail: {
+          outcome, encounter: state.level?.encounter, preset: state.level?.id, story: inStory ? { ...storyRun } : null,
+        } }));
+      }
     }
   }
 
@@ -1436,7 +1458,12 @@
       try {
         const fresh = await api('state');
         await presentState(fresh, err.status === 410, true);
-        if (err.status === 410) { startScreenOpen = true; }
+        if (err.status === 410) {
+          startScreenOpen = true;
+          const run = storyRun;
+          storyRun = null;
+          if (run) window.FFStory?.expired?.(run);
+        }
         showNotice(message);
         paused = false;
         return;
@@ -1729,17 +1756,23 @@
 
   function renderStartScreen() {
     $('start-screen').hidden = !startScreenOpen;
+    $('mode-step').hidden = startStep !== 'mode';
+    $('back-mode-btn').hidden = startStep !== 'difficulty';
     $('difficulty-step').hidden = startStep !== 'difficulty';
     $('levels-step').hidden = startStep !== 'levels';
     $('back-difficulty-btn').hidden = startStep !== 'levels';
     $('close-start-btn').hidden = !state || !launched;
     const diffList = levelsForDifficulty(selectedDifficulty);
-    $('start-screen-title').textContent = startStep === 'difficulty'
+    $('start-screen-title').textContent = startStep === 'mode'
+      ? 'How would you like to play?'
+      : startStep === 'difficulty'
       ? 'Choose your difficulty'
       : selectedDifficulty === 'Classic'
         ? 'Classic fights (ungraded)'
         : `${selectedDifficulty} levels`;
-    $('start-screen-subtitle').textContent = startStep === 'difficulty'
+    $('start-screen-subtitle').textContent = startStep === 'mode'
+      ? 'Practice any graded fight on its own, or play a story: eight fights on a world map, told between the battles.'
+      : startStep === 'difficulty'
       ? 'Pick a difficulty across 36 agent-graded fights — from quick skirmishes to levels none of our agents beat.'
       : selectedDifficulty === 'Unbeatable'
         ? `${diffList.length} ${diffList.length === 1 ? 'fight' : 'fights'} where no language-model player won and both game AIs won fewer than half of their 500 games. Pick one, then press Fight.`
@@ -1849,6 +1882,12 @@
     if (openLevels) $('level-grid').querySelector('[data-preset].is-selected:not([hidden]), [data-preset]:not([hidden])')?.focus();
   }
 
+  function showModeStep() {
+    startStep = 'mode';
+    renderStartScreen();
+    $('mode-grid').querySelector('[data-mode]')?.focus();
+  }
+
   function showDifficultyStep() {
     startStep = 'difficulty';
     renderStartScreen();
@@ -1894,11 +1933,14 @@
     return [...new Set(units.map(u => resolve(u)).filter(Boolean))];
   }
 
-  async function launchSelectedLevel(quickFight = true) {
-    if (busy || !selectedStart) return;
-    const lv = levelByKey(selectedStart.encounter, selectedStart.preset);
-    if (!lv) return;
-    const monsterControl = $('start-monster-control').value || 'ai';
+  // Practice launches read the start screen's options; a story passes its own (opts.story).
+  async function launchSelectedLevel(quickFight = true, opts = {}) {
+    const wanted = opts.story ? { encounter: opts.story.encounter, preset: opts.story.preset } : selectedStart;
+    if (busy || !wanted) return false;
+    const lv = levelByKey(wanted.encounter, wanted.preset);
+    if (!lv) return false;
+    const monsterControl = opts.story ? 'ai' : ($('start-monster-control').value || 'ai');
+    let launchedOk = false;
     clearTimer(); watching = false; paused = false;
     viewer?.cancelPlayback?.(); viewer?.clearHoverPreview?.();
     $('cursor-tooltip').hidden = true;
@@ -1910,8 +1952,9 @@
     window.EmberScene?.prepareAssets?.({ keys: castKeysFor(lv.preset) })?.catch?.(() => {});
     try {
       if (!state) state = await api('state');
-      const heroLevel = Number($('start-hero-level').value);
-      let fresh = await api('new', { encounter: lv.group.id, preset: lv.preset.id, ...(heroLevel && { hero_level: heroLevel }) });
+      const heroLevel = opts.story ? Number(opts.story.hero_level) || 0 : Number($('start-hero-level').value);
+      const seed = opts.story && Number.isInteger(opts.story.seed) ? opts.story.seed : null;
+      let fresh = await api('new', { encounter: lv.group.id, preset: lv.preset.id, ...(heroLevel && { hero_level: heroLevel }), ...(seed !== null && { seed }) });
       lastActionId = 0;
       if (quickFight) {
         fresh = await apiWith(fresh, 'setup', { placements: fresh.setup?.suggested_placements || [], monster_control: monsterControl });
@@ -1921,9 +1964,11 @@
       }
       startScreenOpen = false;
       launched = true;
+      storyRun = opts.story ? { ...opts.story } : null;
       await presentState(fresh, true, false);
       viewer?.setBiome?.(themeFor());
       applyCameraPreset('tactical');
+      launchedOk = true;
     } catch (err) {
       await recover(err);
     } finally {
@@ -1931,6 +1976,7 @@
       render();
       schedule();
     }
+    return launchedOk;
   }
   // A follow-up call in one launch sequence, with the CSRF token and revision of the state just returned.
   async function apiWith(previous, endpoint, body) {
@@ -1977,6 +2023,10 @@
     if (tab) selectHeroLevelFilter(tab.dataset.heroFilter);
   });
   $('back-difficulty-btn').addEventListener('click', () => showDifficultyStep());
+  $('back-mode-btn').addEventListener('click', () => showModeStep());
+  $('mode-grid').addEventListener('click', e => {
+    if (e.target.closest('[data-mode="practice"]')) showDifficultyStep();
+  });
   $('start-hero-level').addEventListener('change', () => renderStartScreen());
   $('level-grid').addEventListener('click', e => {
     const card = e.target.closest('[data-preset]');
@@ -2006,7 +2056,10 @@
   });
   $('start-quick-play').addEventListener('click', () => launchSelectedLevel(true));
   $('start-custom-place').addEventListener('click', () => launchSelectedLevel(false));
-  $('open-levels-btn').addEventListener('click', () => openStartScreen());
+  $('open-levels-btn').addEventListener('click', () => {
+    if (storyRun && window.FFStory?.showMap) window.FFStory.showMap(storyRun.story);
+    else openStartScreen();
+  });
   $('close-start-btn').addEventListener('click', () => closeStartScreen());
   $('result-levels-button').addEventListener('click', () => openStartScreen());
 
@@ -2275,10 +2328,12 @@
 
   document.addEventListener('keydown', e => {
     if (e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || help.open) return;
+    if (window.FFStory?.isOpen?.()) return;  // the story layer handles its own keys
     if (startScreenOpen) {
       if (e.key === 'Escape') {
         e.preventDefault();
         if (startStep === 'levels' && (!state || !launched)) showDifficultyStep();
+        else if (startStep === 'difficulty' && (!state || !launched)) showModeStep();
         else if (state && launched) closeStartScreen();
       }
       return;  // no game shortcuts behind the start screen
@@ -2326,8 +2381,27 @@
     getCatalogue: () => catalogue,
     selectDifficulty,
     showDifficultyStep,
+    showModeStep,
     selectStartLevel,
     launchSelectedLevel,
+    getStoryRun: () => storyRun,
+  };
+
+  // The story shell's view of the game (story.js; docs/STORY_MODE.md).
+  window.FFGame = {
+    ready: () => catalogue.length > 0,
+    level: (encounter, preset) => levelByKey(encounter, preset)?.preset || null,
+    launchStory: run => launchSelectedLevel(true, { story: run }),
+    retryStory: () => {
+      if (!storyRun || busy) return false;
+      return launchSelectedLevel(true, { story: storyRun });
+    },
+    storyRun: () => (storyRun ? { ...storyRun } : null),
+    battle: () => (state && launched && storyRun ? { ...storyRun, phase: state.phase,
+      outcome: state.phase === 'finished' ? (state.winner === 'heroes' ? 'win' : state.winner === 'monsters' ? 'loss' : 'draw') : null } : null),
+    isBusy: () => busy,
+    openStartScreen: (step = 'mode') => { if (step === 'mode') { clearTimer(); watching = false; startStep = 'mode'; startScreenOpen = true; renderStartScreen(); } else openStartScreen(step); },
+    closeStartScreen: () => closeStartScreen(),
   };
 
   setDrawer('left', leftDrawerOpen);
@@ -2360,7 +2434,7 @@
       const fallback = catalogue[0]?.presets[0];
       selectedStart = firstInDiff ? { encounter: firstInDiff.group.id, preset: firstInDiff.preset.id }
         : fallback ? { encounter: catalogue[0].id, preset: fallback.id } : null;
-      startStep = 'difficulty';
+      if (startStep !== 'difficulty' && startStep !== 'levels') startStep = 'mode';
     }
     buildStartScreenCatalog();
     renderStartScreen();
