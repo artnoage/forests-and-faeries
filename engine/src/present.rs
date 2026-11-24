@@ -2145,13 +2145,9 @@ impl WebArena {
                                     continue;
                                 }
                                 seen.push(sq);
-                                if !f.grid.in_bounds(sq.0, sq.1) || f.grid.is_wall(sq.0, sq.1) || sq == here {
-                                    continue;
+                                if f.can_blind_attack_square(here, sq, def.range_max) {
+                                    non_spell.push(Act::BlindAttack { atk: ai, square: sq, heard });
                                 }
-                                if f.square_distance(here, sq) * 5 > def.range_max || !f.grid.line_of_effect(here, sq) {
-                                    continue;
-                                }
-                                non_spell.push(Act::BlindAttack { atk: ai, square: sq, heard });
                             }
                         }
                     }
@@ -3203,8 +3199,38 @@ impl WebArena {
 }
 
 #[cfg(test)]
-mod movement_preview_tests {
+mod tests {
     use super::*;
+
+    #[test]
+    fn manual_shortbow_menu_replays_the_recorded_cover_rule() {
+        let level = LevelInput {
+            encounter_id: "range".into(), preset_id: "test".into(), theme: "ossuary".into(),
+            map_name: "range".into(), rows: ["...............", "..H............", "..............."]
+                .into_iter().map(String::from).collect(), scene: json!({}), level_view: json!({}),
+            heroes: vec!["guy".into()], monsters: vec![("skeleton-1".into(), "skeleton".into(), "Skeleton".into())],
+            suggested_placements: vec![Placement { id: "guy".into(), x: 0, y: 0 },
+                                       Placement { id: "skeleton-1".into(), x: 1, y: 1 }],
+        };
+        for version in [15, CURRENT_WEB_REPLAY_VERSION] {
+            let mut game = WebArena::with_trace(level.clone(), Trace::web_free(1), 0, "csrf".into(), "enc".into(), version).unwrap();
+            game.monster_control = "manual".into();
+            game.start().unwrap();
+            let f = game.fight.as_mut().unwrap();
+            let skeleton = f.units.iter().position(|u| u.id == "skeleton-1").unwrap();
+            let hero = f.units.iter().position(|u| u.id == "guy").unwrap();
+            f.turn_idx = f.order.iter().position(|&u| u == skeleton).unwrap();
+            f.units[hero].hidden_stealth = Some(40);
+            f.units[hero].statuses.push(St::Hidden);
+            f.units[skeleton].action = 1;
+            f.units[skeleton].unseen.push((hero, (13, 2), f.round));
+            game.cache_revision = None;
+            game.build_candidates();
+            let f = game.fight.as_ref().unwrap();
+            let offered = game.candidates.values().any(|c| f.describe(skeleton, &c.act) == "attack:shortbow:@13,2");
+            assert_eq!(offered, version >= 16);
+        }
+    }
 
     #[test]
     fn concealed_adjacent_token_has_the_same_routes_as_empty_floor() {

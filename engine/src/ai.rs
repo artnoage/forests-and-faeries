@@ -208,6 +208,19 @@ impl Fight {
         }
     }
 
+    /// Whether a blind weapon attack can reach a sensed square, regardless of its occupant.
+    pub(crate) fn can_blind_attack_square(&self, origin: Pos, target: Pos, range_ft: i32) -> bool {
+        if target == origin || !self.grid.in_bounds(target.0, target.1) || self.grid.is_wall(target.0, target.1)
+            || self.square_distance(origin, target) * 5 > range_ft {
+            return false;
+        }
+        if self.rule_version >= 15 {
+            !self.grid.is_wall(origin.0, origin.1) && self.grid.corner_wall_grade(origin, target) < 4
+        } else {
+            self.grid.line_of_effect(origin, target)
+        }
+    }
+
     /// `unseen_targets.blind_attack_variants`: per attack the creature can
     /// make now (not a save attack), one variant per sensed square of a
     /// non-ally (first entry per square) that passes `blind_attack_issue`:
@@ -229,21 +242,9 @@ impl Fight {
                     continue;
                 }
                 seen.push(square);
-                if !self.grid.in_bounds(square.0, square.1) || self.grid.is_wall(square.0, square.1) || square == here {
-                    continue;
+                if self.can_blind_attack_square(here, square, def.range_max) {
+                    out.push(Act::BlindAttack { atk: ai, square, heard });
                 }
-                if self.square_distance(here, square) * 5 > def.range_max {
-                    continue;
-                }
-                let path_open = if self.rule_version >= 15 {
-                    !self.grid.is_wall(here.0, here.1) && self.grid.corner_wall_grade(here, square) < 4
-                } else {
-                    self.grid.line_of_effect(here, square)
-                };
-                if !path_open {
-                    continue;
-                }
-                out.push(Act::BlindAttack { atk: ai, square, heard });
             }
         }
     }
