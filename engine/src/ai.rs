@@ -235,7 +235,12 @@ impl Fight {
                 if self.square_distance(here, square) * 5 > def.range_max {
                     continue;
                 }
-                if !self.grid.line_of_effect(here, square) {
+                let path_open = if self.rule_version >= 15 {
+                    !self.grid.is_wall(here.0, here.1) && self.grid.corner_wall_grade(here, square) < 4
+                } else {
+                    self.grid.line_of_effect(here, square)
+                };
+                if !path_open {
                     continue;
                 }
                 out.push(Act::BlindAttack { atk: ai, square, heard });

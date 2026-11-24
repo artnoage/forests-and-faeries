@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 14;
+pub const CURRENT_RULE_VERSION: i32 = 15;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3413,6 +3413,32 @@ mod srd_level_tests {
             assert_eq!(f.clear_sight(src, dst), visible);
             assert_eq!(f.clear_sight(dst, src), visible);
             assert_eq!(f.grid.corner_wall_grade(src, dst), if visible { 0 } else { 4 });
+        }
+    }
+
+    #[test]
+    fn skeleton_shortbow_uses_best_corner_for_remembered_squares() {
+        for (origin, target, wall_row, grade) in [
+            ((1, 9), (13, 10), "..H............", 2),
+            ((1, 10), (14, 9), "...........H.H.", 3),
+            ((1, 9), (13, 9), "..H............", 4),
+            ((1, 9), (13, 9), ".............H.", 4),
+        ] {
+            let mut rows = ["..............."; 11];
+            rows[9] = wall_row;
+            let mut f = fight(&rows, &[("skeleton-1", origin), ("guy", (0, 0))]);
+            f.units[0].action = 1;
+            f.units[0].unseen.push((1, target, f.round));
+            f.units[1].hidden_stealth = Some(40);
+            f.units[1].add_status(St::Hidden);
+            assert_eq!(f.grid.corner_wall_grade(origin, target), grade);
+            for version in [14, 15] {
+                f.set_rule_version(version);
+                let moves = f.available_moves(0);
+                let shortbow = moves.iter().any(|a| matches!(a, Act::BlindAttack { atk, square, heard: false }
+                    if f.units[0].t.attacks[*atk].name == "shortbow" && *square == target));
+                assert_eq!(shortbow, version >= 15 && grade < 4, "v{version} {origin:?} -> {target:?}");
+            }
         }
     }
 
