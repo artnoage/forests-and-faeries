@@ -619,12 +619,139 @@ def two_sided(obj):
             slot.material = m
 
 
+def drop_strays(body, max_verts=200, share=0.2):
+    """Delete small loose pieces skinned half to a hand and half to a leg or the hips (a belt
+    strap or a haft stub the scan fused between them): they stretch once the hand moves."""
+    names = {g.index: g.name for g in body.vertex_groups}
+    bm = bmesh.new()
+    bm.from_mesh(body.data)
+    bm.verts.ensure_lookup_table()
+    tree = KDTree(len(bm.verts))
+    for v in bm.verts:
+        tree.insert(v.co, v.index)
+    tree.balance()
+    welded = bm.copy()
+    bmesh.ops.remove_doubles(welded, verts=welded.verts, dist=1e-5)
+    seen, doomed = set(), set()
+    for v in welded.verts:
+        if v.index in seen:
+            continue
+        stack, comp = [v], []
+        seen.add(v.index)
+        while stack:
+            x = stack.pop()
+            comp.append(x.co.copy())
+            for e in x.link_edges:
+                y = e.other_vert(x)
+                if y.index not in seen:
+                    seen.add(y.index)
+                    stack.append(y)
+        if len(comp) > max_verts:
+            continue
+        ids = {i for p in comp for (_, i, _) in tree.find_range(p, 1e-5)}
+        hand = far = total = 0.0
+        for i in ids:
+            for g in body.data.vertices[i].groups:
+                n = names[g.group]
+                total += g.weight
+                if n.startswith('Hand.'):
+                    hand += g.weight
+                elif n.split('.')[0] in ('UpperLeg', 'LowerLeg', 'Hips', 'Spine'):
+                    far += g.weight
+        if total and hand / total > share and far / total > share:
+            doomed |= ids
+    welded.free()
+    if doomed:
+        bmesh.ops.delete(bm, geom=[bm.verts[i] for i in doomed], context='VERTS')
+        bm.to_mesh(body.data)
+        body.data.update()
+    bm.free()
+    return len(doomed)
+
+
+def untangle_hands(body, threshold=0.05):
+    """A scanned hand that rested on a thigh or hip was skinned partly to it; once the hand
+    moves to a hilt those vertices stretch between the two. Give each such vertex wholly to
+    the side (the arm chain or the rest of the body) that holds most of its weight."""
+    names = {g.index: g.name for g in body.vertex_groups}
+    changed = 0
+    for side in 'RL':
+        chain = {f'Hand.{side}', f'LowerArm.{side}', f'UpperArm.{side}'}
+        hand = body.vertex_groups[f'Hand.{side}'].index
+        for v in body.data.vertices:
+            w = {g.group: g.weight for g in v.groups if g.weight > 0}
+            if w.get(hand, 0) <= threshold:
+                continue
+            arm_w = sum(x for i, x in w.items() if names[i] in chain)
+            far = {i: x for i, x in w.items() if names[i] not in chain}
+            if not far or max(far.values()) <= threshold:
+                continue
+            drop = list(far) if arm_w >= sum(far.values()) else [i for i in w if names[i] in chain]
+            keep = sum(x for i, x in w.items() if i not in drop)
+            for i in drop:
+                body.vertex_groups[i].remove([v.index])
+            for g in v.groups:
+                g.weight = g.weight / keep
+            changed += 1
+    return changed
+
+
+def bridge_gap(obj, min_gap=0.04):
+    """Close a missing stretch of a haft (where the scan fused it into the hands) with a plain
+    cylinder in the item's own mesh, coloured from the haft next to the gap."""
+    P = np.array([tuple(v.co) for v in obj.data.vertices])
+    c = P.mean(0)
+    _, V = np.linalg.eigh(np.cov((P - c).T))
+    a = V[:, 2]
+    t = (P - c) @ a
+    r = np.linalg.norm((P - c) - np.outer(t, a), axis=1)
+    thin = r < np.percentile(r, 40)
+    # refit the axis on the thin part (the haft), away from the head's mass
+    Q = P[thin]
+    c = Q.mean(0)
+    _, V = np.linalg.eigh(np.cov((Q - c).T))
+    a = V[:, 2]
+    t = (P - c) @ a
+    r = np.linalg.norm((P - c) - np.outer(t, a), axis=1)
+    ts = np.sort(t)
+    gaps = np.diff(ts)
+    i = int(np.argmax(gaps))
+    if gaps[i] < min_gap:
+        return None
+    lo, hi = ts[i], ts[i + 1]
+    near = (np.abs(t - lo) < 0.03) | (np.abs(t - hi) < 0.03)
+    radius = float(np.median(r[near & (r < 0.04)])) if np.any(near & (r < 0.04)) else 0.016
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    uv = bm.loops.layers.uv.active
+    bm.verts.ensure_lookup_table()
+    k = int(np.argmin(np.where(near, np.abs(r - radius), 9)))
+    texel = next(iter(bm.verts[k].link_loops))[uv].uv.copy()
+    z = Vector((0, 0, 1))
+    rot = z.rotation_difference(Vector(tuple(a))).to_matrix().to_4x4()
+    M = Matrix.Translation(Vector(tuple(c + a * (lo + hi) / 2))) @ rot
+    geom = bmesh.ops.create_cone(bm, cap_ends=False, segments=12, radius1=radius, radius2=radius,
+                                 depth=float(hi - lo) + 0.02, matrix=M)
+    for v in geom['verts']:
+        for f in v.link_faces:
+            f.smooth = True
+            for l in f.loops:
+                l[uv].uv = texel
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return {'gap': round(float(hi - lo), 3), 'radius': round(radius, 4)}
+
+
 def apply(arm, body, cfg, styles):
     """Apply one figure's spec in the current Blender scene; returns a per-clip report."""
     for name in cfg.get('remove', []):
         o = bpy.data.objects.get(name)
         if o:
             bpy.data.objects.remove(o)
+    strays = drop_strays(body)
+    untangled = untangle_hands(body)
+    bridged = bridge_gap(bpy.data.objects[cfg['weapon']['object']]) if cfg.get('bridge') else None
     # Bone edits first: leaving edit mode re-derives rest matrices and moves bone children.
     if 'shield' in cfg and cfg['shield'].get('socket', 'Shield.L') not in arm.data.bones:
         sh = cfg['shield']
@@ -634,7 +761,7 @@ def apply(arm, body, cfg, styles):
                    parent=sh.get('forearm', 'LowerArm.L'))
     unkey_sockets(arm, [s for s in SOCKETS if s in arm.data.bones])
     fig = Figure(arm, body, cfg)
-    report = {'reach': round(fig.reach, 4)}
+    report = {'reach': round(fig.reach, 4), 'stray_vertices_removed': strays, 'untangled_vertices': untangled, 'bridged': bridged}
     if 'shield' in cfg:
         apply_shield(fig, cfg['shield']['object'], cfg['shield'])
     w = cfg['weapon']

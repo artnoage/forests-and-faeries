@@ -803,7 +803,8 @@
     "head": "wide",
     "grip": "rest",
     "reach": 0.75
-   }
+   },
+   "bridge": true
   },
   "mara": {
    "sheet": "longsword (one hand), shield, chain mail",

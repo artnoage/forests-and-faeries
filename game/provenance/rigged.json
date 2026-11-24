@@ -99,8 +99,8 @@
   {
    "kind": "chruna",
    "file": "game/static/models/chruna.glb",
-   "sha256": "44c55c2a5113206d265f0b1bfc1bf4a2ea3ab58c1187fe78903abfcf6a06bdf3",
-   "bytes": 1416392,
+   "sha256": "42255971af5f4da7e07a2fc1eee83b7a64b8ff68e2bf9dd277fcc23abb731774",
+   "bytes": 1416896,
    "triangles": 18089,
    "bones": 23,
    "clips": [
@@ -144,9 +144,9 @@
     "script": "game/tools/figures/grips.py",
     "spec": "game/tools/figures/grips.json#figures.chruna",
     "from_sha256": "347b288c695ab9e31274aca11073d0d365d4c0268e9249645429944105a4535c",
-    "change": "halberd held in both hands in every clip, haft brought in front of the hips; second axe on the back removed (the sheet lists one halberd); the short right-arm chain of this rig limits how far the halberd can travel",
+    "change": "halberd held in both hands in every clip, haft brought in front of the hips; second axe on the back removed (the sheet lists one halberd); the short right-arm chain of this rig limits how far the halberd can travel; the 0.3-length stretch of haft that the scan had fused into her hands is rebuilt as a plain cylinder in the halberd mesh, coloured from the haft beside it",
     "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
-    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material; hand vertices also skinned to a thigh or hip given wholly to one side"
    }
   },
   {
@@ -191,8 +191,8 @@
   {
    "kind": "elion",
    "file": "game/static/models/elion.glb",
-   "sha256": "871a0d3877aed5eea4133885b8fc519654776f8fa5de1c6cfb7d901954539ba9",
-   "bytes": 1309080,
+   "sha256": "b872b04f787d661020e5db5171a19978849671c5028333a0dab29719c7ef74c7",
+   "bytes": 1308552,
    "triangles": 18133,
    "bones": 23,
    "clips": [
@@ -239,7 +239,7 @@
     "from_sha256": "b60f30dc284151ee18f7e53745bd33a4dcf9e1e1d7ad569f3cfde44ab79fda84",
     "change": "warhammer through the fist; shield moved from the back to the left forearm (the sheet lists a shield and AC 20), posed forward; the opening it left in the back is capped with a dark plate",
     "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
-    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material; hand vertices also skinned to a thigh or hip given wholly to one side"
    }
   },
   {
@@ -395,8 +395,8 @@
   {
    "kind": "guy",
    "file": "game/static/models/guy.glb",
-   "sha256": "4030feaf5e5d0c6a414274dc32a4836958ee406790620b9839a9cf7da5ce6177",
-   "bytes": 1296276,
+   "sha256": "d9c8624b83c08aa67beea589cdd479af1182e79371d217daf72808f4b61bd0a1",
+   "bytes": 1294748,
    "triangles": 18074,
    "bones": 21,
    "clips": [
@@ -440,15 +440,15 @@
     "script": "game/tools/figures/grips.py",
     "spec": "game/tools/figures/grips.json#figures.guy",
     "from_sha256": "9138b31a949ed020f70afbf9c454a0e058b91ec387a297d8c9f8035494995f8e",
-    "change": "greatsword held in both hands (right below the guard, left on the grip toward the pommel) in every clip; ready / hanging-guard / overhead-cut poses",
+    "change": "greatsword held in both hands (right below the guard, left on the grip toward the pommel) in every clip; ready / hanging-guard / overhead-cut poses; a 29-vertex belt strap skinned half to the right hand and half to the thigh is removed",
     "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
-    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material; hand vertices also skinned to a thigh or hip given wholly to one side"
    }
   },
   {
    "kind": "ilyra",
    "file": "game/static/models/ilyra.glb",
-   "sha256": "0515746273a77d045d4ad54546bb5aef38ce92159883520670354849feb72892",
+   "sha256": "e80cb47c5b147ffa49863a28d80abd4489022acb69bbca99f66698deb1a2b097",
    "bytes": 1202568,
    "triangles": 17641,
    "bones": 21,
@@ -496,13 +496,13 @@
     "from_sha256": "37695163ffe08347c12ca34cc425fd88d3f7a0e082ac79b96e07b651bd21c825",
     "change": "quarterstaff through the fist, carried upright as a walking staff in idle/walk/run, one-handed overhead strike in slash (the sheet gives it one hand slot)",
     "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
-    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material; hand vertices also skinned to a thigh or hip given wholly to one side"
    }
   },
   {
    "kind": "mara",
    "file": "game/static/models/mara.glb",
-   "sha256": "0eb52ac005669a678500e4881dd7d7370520980d3fe1e089a9931586615dbca9",
+   "sha256": "cb6aa0365609962d22adfe5a617d1d30c5a3794a41151fc2c7fc0962717310a0",
    "bytes": 1285480,
    "triangles": 17064,
    "bones": 22,
@@ -550,7 +550,7 @@
     "from_sha256": "d88651957ab413cb48ed699b0b13a1e38a23528540602c5da91bc32782e6966a",
     "change": "longsword through the fist; shield re-seated on the left forearm facing out and posed forward in idle, walk, run, guard and slash",
     "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
-    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material; hand vertices also skinned to a thigh or hip given wholly to one side"
    }
   },
   {

@@ -74,8 +74,8 @@
         "date": "2026-11-24",
         "script": "game/tools/figures/grips.py",
         "from_sha256": "d0dd7e6d0f8d821dbeec80665eb893b1c48c0eedebe6602fe8431d91265cd557",
-        "sha256": "4030feaf5e5d0c6a414274dc32a4836958ee406790620b9839a9cf7da5ce6177",
-        "glb_bytes": 1296276
+        "sha256": "d9c8624b83c08aa67beea589cdd479af1182e79371d217daf72808f4b61bd0a1",
+        "glb_bytes": 1294748
       }
     },
     {
@@ -153,8 +153,8 @@
         "date": "2026-11-24",
         "script": "game/tools/figures/grips.py",
         "from_sha256": "61f4b1a661b7e5ff22c51cc51a555d07e28ea2df68079de191a92ba8afd11a8f",
-        "sha256": "871a0d3877aed5eea4133885b8fc519654776f8fa5de1c6cfb7d901954539ba9",
-        "glb_bytes": 1309080
+        "sha256": "b872b04f787d661020e5db5171a19978849671c5028333a0dab29719c7ef74c7",
+        "glb_bytes": 1308552
       }
     },
     {
@@ -363,7 +363,7 @@
         "date": "2026-11-24",
         "script": "game/tools/figures/grips.py",
         "from_sha256": "4377ee6a4f730c0d44e47453d77b1794fb817896e4e4f213a960ab50ca5eaeaf",
-        "sha256": "0eb52ac005669a678500e4881dd7d7370520980d3fe1e089a9931586615dbca9",
+        "sha256": "cb6aa0365609962d22adfe5a617d1d30c5a3794a41151fc2c7fc0962717310a0",
         "glb_bytes": 1285480
       }
     },
@@ -449,7 +449,7 @@
         "date": "2026-11-24",
         "script": "game/tools/figures/grips.py",
         "from_sha256": "1fbf3a329c808198ce67014bd25513e1574160d7e2056b166fb558e0246a6aab",
-        "sha256": "0515746273a77d045d4ad54546bb5aef38ce92159883520670354849feb72892",
+        "sha256": "e80cb47c5b147ffa49863a28d80abd4489022acb69bbca99f66698deb1a2b097",
         "glb_bytes": 1202568
       }
     },
