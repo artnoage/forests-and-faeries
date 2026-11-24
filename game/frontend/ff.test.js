@@ -341,3 +341,21 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
     'reed_lock/l3_the_stone_sill_plus1_v3',
   ]);
 });
+
+test('camera: no top-down mode; the director, its zoom option and the HUD-free framing are wired', () => {
+  const html = read('static/index.html'), app = read('static/app.js'), scene = read('frontend/scene3d.js');
+  assert.doesNotMatch(html, /data-cam="overhead"|Top-down/, 'the top-down button is gone');
+  assert.doesNotMatch(app + scene, /'overhead'|'topdown'/, 'the top-down mode is gone');
+  assert.match(html, /id="action-zoom-toggle"/);
+  assert.match(html, /<kbd>Z<\/kbd> zoom on action/);
+  for (const name of ['directTurn', 'setAutoCamera', 'setActionZoom', 'getDirectorState', 'setSafeArea']) {
+    assert.match(scene, new RegExp(`function ${name}\\(`), name);
+    assert.match(scene, new RegExp(`\\b${name},`), `${name} is exported`);
+  }
+  assert.match(app, /viewer\.directTurn\?\.\(u\.id/, 'turn starts go to the director');
+  assert.match(app, /viewer\.setSafeArea\?\.\(sceneSafeArea\(\)\)/, 'the HUD-free area reaches the camera');
+  assert.match(app, /localStorage\.setItem\('ff-cam-zoom'/, 'the zoom option is remembered');
+  // The player's drag or wheel takes the camera; reduced motion never zooms in on action.
+  assert.match(scene, /function wheelInterrupt\(\) \{ takeCamera\(\); \}/);
+  assert.match(scene, /const zoom = actionZoom && !reducedMotion/);
+});

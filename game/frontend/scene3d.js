@@ -136,6 +136,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   let playback = null, inspectedId = null, upgradePending = false;
   let cameraViewDir = new THREE.Vector3(0.54, 0.92, 1.13).normalize();
   let hasFramedOnce = false, camTween = null, lastHoverKey = '';
+  let safeArea = null;
+  let autoCam = true, actionZoom = true, manualHold = false, track = null, presetName = 'tactical', lastDirected = null, lastEnded = null;
   const hoverGeoms = [];
 
   function geometry(key, make) {
@@ -1475,10 +1477,12 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     };
   }
 
-  function glideCameraTo(toPos, toTarget, durationMs = 500, orbitArc = null) {
+  function glideCameraTo(toPos, toTarget, durationMs = 500, orbitArc = null, opts = {}) {
     if (disposed || unavailable) return;
     if (reducedMotion || durationMs <= 0) {
       camTween = null;
+      const last = opts.next?.length ? opts.next[opts.next.length - 1] : null;   // reduced motion: cut to the end
+      if (last) { toPos = last.pos; toTarget = last.target; }
       controls.target.copy(toTarget);
       camera.position.copy(toPos);
       controls.update();
@@ -1486,13 +1490,15 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       return;
     }
     camTween = {
-      t0: performance.now(),
+      t0: performance.now() + (opts.delay || 0),
       dur: durationMs,
       fromPos: camera.position.clone(),
       toPos: toPos.clone(),
       fromTarget: controls.target.clone(),
       toTarget: toTarget.clone(),
       orbitArc, // optional { radius, yOffset, a0, a1 }
+      ease: opts.ease || 'out',
+      next: opts.next ? [...opts.next] : [],   // further legs: {pos, target, dur, hold}
     };
     requestRender();
   }
@@ -1502,26 +1508,16 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     const z0 = box ? box.z0 : -0.75, z1 = box ? box.z1 : height - 0.25;
     const target = new THREE.Vector3((x0 + x1) / 2, targetY, (z0 + z1) / 2);
     const direction = directionVec.clone().normalize();
-    const halfVertical = THREE.MathUtils.degToRad(camera.fov / 2);
-    const halfHorizontal = Math.atan(Math.tan(halfVertical) * Math.max(0.05, camera.aspect));
-    const upRef = Math.abs(direction.y) > 0.995 ? new THREE.Vector3(0, 0, -1) : camera.up;
-    const right = new THREE.Vector3().crossVectors(upRef, direction).normalize();
-    const up = new THREE.Vector3().crossVectors(direction, right).normalize();
-    const corner = new THREE.Vector3();
-    let distance = box ? 5.6 : 7.2;
-    function fitPoint(x, y, z) {
-      corner.set(x, y, z).sub(target);
-      distance = Math.max(distance, corner.dot(direction) + Math.max(
-        Math.abs(corner.dot(right)) / (0.88 * Math.tan(halfHorizontal)),
-        Math.abs(corner.dot(up)) / (0.88 * Math.tan(halfVertical)),
-      ));
-    }
-    for (const x of [x0, x1]) for (const z of [z0, z1]) for (const y of [-0.85, 1.45]) fitPoint(x, y, z);
+    // Every corner of the board (and every figure) inside the part of the screen the HUD
+    // leaves free, measured with the real projection (view offset included).
+    const pts = [];
+    for (const x of [x0, x1]) for (const z of [z0, z1]) for (const y of [-0.85, 1.45]) pts.push(new THREE.Vector3(x, y, z));
     if (!box) {
       for (const unit of state?.units || []) {
-        for (const offset of [-0.55, 0.55]) fitPoint(unit.x + offset, 1.62, unit.y);
+        for (const offset of [-0.55, 0.55]) pts.push(new THREE.Vector3(unit.x + offset, 1.62, unit.y));
       }
     }
+    const distance = fitDistance(direction, target, pts, box ? 5.6 : 7.2, 0.9);
     controls.maxDistance = Math.max(36, distance * 1.55);
     camera.far = Math.max(120, distance * 3.4);
     camera.updateProjectionMatrix();
@@ -1533,6 +1529,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
   function resetCamera(animate = true) {
     if (disposed || unavailable) return;
+    presetName = 'tactical'; track = null;
     cameraViewDir.set(0.54, 0.92, 1.13).normalize();
     const { pos, target } = computeBoardFit(cameraViewDir);
     if (animate && hasFramedOnce) {
@@ -1552,13 +1549,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     const curOffset = camera.position.clone().sub(controls.target);
     const curAz = Math.atan2(curOffset.x, curOffset.z) || Math.atan2(0.54, 1.13);
 
-    if (preset === 'overhead' || preset === 'topdown') {
-      // True top-down battlemap projection aligned north-up
-      const dir = new THREE.Vector3(0.001, 1.0, 0.045).normalize();
-      const { pos, target } = computeBoardFit(dir, null, 0.12);
-      glideCameraTo(pos, target, 520);
-      return;
-    }
+    presetName = preset === 'cinematic' ? 'heroic' : preset === 'action' ? 'skirmish' : preset;
+    track = null;
 
     if (preset === 'heroic' || preset === 'cinematic') {
       // Swoop right down to miniature shoulder height on the acting or inspected unit!
@@ -1664,6 +1656,216 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     glideCameraTo(pos, target, 460);
   }
 
+  // --- The camera director ------------------------------------------------------------------
+  // Follow mode (autoCam): at a turn's start the camera centres on the acting creature and
+  // then eases out to the whole terrain, with that creature as near the centre as the map
+  // allows. During an action it keeps the actors in view; with "zoom on action" it eases in
+  // on a mover (or on attacker and targets) and back out when the action ends, holding a
+  // moment longer on a critical hit or a creature that drops. Azimuth is never changed, so
+  // the board does not swing. If the player drags or zooms, the director backs off until
+  // the next turn. Reduced motion: cuts instead of glides, no zooming in.
+  function takeCamera() {
+    camTween = null; track = null;
+    if (state) manualHold = true;
+  }
+  function viewDir() {
+    const off = camera.position.clone().sub(controls.target);
+    const az = Math.atan2(off.x, off.z);
+    const horiz = Math.hypot(0.54, 1.13);
+    return new THREE.Vector3(Math.sin(az) * horiz, 0.92, Math.cos(az) * horiz).normalize();
+  }
+  // The screen rectangle the HUD leaves free, in normalised device coordinates, shrunk by `fill`.
+  function safeRectNdc(fill = 1) {
+    const W = Math.max(1, canvas.clientWidth), H = Math.max(1, canvas.clientHeight);
+    const r = safeArea || { top: 0, bottom: H, left: 0, right: W };
+    let x0 = 2 * r.left / W - 1, x1 = 2 * r.right / W - 1, y0 = 1 - 2 * r.bottom / H, y1 = 1 - 2 * r.top / H;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    x0 = cx + (x0 - cx) * fill; x1 = cx + (x1 - cx) * fill; y0 = cy + (y0 - cy) * fill; y1 = cy + (y1 - cy) * fill;
+    return { x0, x1, y0, y1 };
+  }
+  const fitCamera = new THREE.PerspectiveCamera();
+  const fitPoint = new THREE.Vector3();
+  function pointsInside(cam, points, rect) {
+    for (const p of points) {
+      fitPoint.copy(p).project(cam);
+      if (fitPoint.z >= 1 || fitPoint.x < rect.x0 || fitPoint.x > rect.x1 || fitPoint.y < rect.y0 || fitPoint.y > rect.y1) return false;
+    }
+    return true;
+  }
+  // The distance along `direction` from `target` at which every point is inside the safe
+  // area (shrunk by `fill`): a bisection with the camera's own projection.
+  function fitDistance(direction, target, points, min = 5.6, fill = 0.88) {
+    const rect = safeRectNdc(fill);
+    fitCamera.copy(camera);
+    const place = d => {
+      fitCamera.position.copy(target).addScaledVector(direction, d);
+      fitCamera.lookAt(target);
+      fitCamera.updateMatrixWorld(true);
+    };
+    let lo = min, hi = min;
+    for (let i = 0; i < 12; i++) { place(hi); if (pointsInside(fitCamera, points, rect)) break; lo = hi; hi *= 1.6; }
+    if (hi === min) return min;
+    for (let i = 0; i < 22; i++) {
+      const mid = (lo + hi) / 2;
+      place(mid);
+      if (pointsInside(fitCamera, points, rect)) hi = mid; else lo = mid;
+    }
+    return hi;
+  }
+  // The HUD's free area (CSS px of the canvas), from the app. The projection's centre moves
+  // to that area's centre (a view offset), so "centred" means centred where the player can see.
+  function setSafeArea(rect) {
+    if (disposed || unavailable) return;
+    const W = Math.max(1, canvas.clientWidth), H = Math.max(1, canvas.clientHeight);
+    const next = rect && rect.bottom - rect.top > 80 && rect.right - rect.left > 80
+      ? { top: Math.max(0, rect.top), bottom: Math.min(H, rect.bottom), left: Math.max(0, rect.left), right: Math.min(W, rect.right) } : null;
+    const same = (a, b) => (!a && !b) || (a && b && ['top', 'bottom', 'left', 'right'].every(k => Math.abs(a[k] - b[k]) < 24));
+    if (same(next, safeArea)) return;
+    safeArea = next;
+    applyViewOffset();
+  }
+  function applyViewOffset() {
+    const W = Math.max(1, canvas.clientWidth), H = Math.max(1, canvas.clientHeight);
+    if (!safeArea) { camera.clearViewOffset(); camera.updateProjectionMatrix(); requestRender(); return; }
+    // A larger virtual image with the same aspect, of which the canvas shows the window whose
+    // centre is offset so that the optical axis lands on the safe area's centre.
+    const sx = (safeArea.left + safeArea.right) / 2 - W / 2, sy = (safeArea.top + safeArea.bottom) / 2 - H / 2;
+    const k = 1 + 2 * Math.max(Math.abs(sx) / W, Math.abs(sy) / H);
+    camera.setViewOffset(k * W, k * H, (k - 1) * W / 2 - sx, (k - 1) * H / 2 - sy, W, H);
+    camera.updateProjectionMatrix();
+    requestRender();
+  }
+  function boardPoints() {
+    const pts = [];
+    for (const x of [-0.75, width - 0.25]) for (const z of [-0.75, height - 0.25]) for (const y of [-0.85, 1.45]) pts.push(new THREE.Vector3(x, y, z));
+    for (const unit of state?.units || []) if (unit.alive !== false) pts.push(new THREE.Vector3(unit.x, 1.62, unit.y));
+    return pts;
+  }
+  // The whole terrain in view, biased toward `focus` (a world position) as far as it can be
+  // without pulling back more than about a fifth.
+  function terrainShot(focus) {
+    const dir = viewDir();
+    const base = computeBoardFit(dir);
+    if (!focus) return base;
+    const pts = boardPoints();
+    const f = new THREE.Vector3(focus.x, 0.48, focus.z);
+    for (const a of [0.9, 0.7, 0.5, 0.3]) {
+      const target = base.target.clone().lerp(f, a);
+      const distance = fitDistance(dir, target, pts, 7.2);
+      if (distance <= base.distance * 1.2) return { target, distance, pos: target.clone().addScaledVector(dir, distance) };
+    }
+    return base;
+  }
+  function liveUnitPoint(id, y = 0.58) {
+    const e = units.get(id);
+    return e ? new THREE.Vector3(e.root.position.x, y, e.root.position.z) : null;
+  }
+  function inView(points, margin = 0.8) {
+    camera.updateMatrixWorld();
+    return pointsInside(camera, points, safeRectNdc(margin));
+  }
+  function directorActive() { return autoCam && !manualHold && !disposed && !unavailable && !!state; }
+
+  // Returns false when it could not frame the creature yet (the scene has not seen it).
+  function directTurn(unitId, { player = false } = {}) {
+    if (!autoCam || disposed || unavailable || !state) return false;
+    const focus = liveUnitPoint(unitId, 0.55);
+    if (!focus) return false;
+    manualHold = false; track = null;
+    if (presetName === 'heroic') { setCameraPreset('heroic', unitId); return true; }
+    const wide = terrainShot(focus);
+    if (player && !reducedMotion) {
+      const dir = viewDir();
+      const curDist = camera.position.distanceTo(controls.target);
+      const near = THREE.MathUtils.clamp(wide.distance * 0.72, 6.2, Math.max(6.2, curDist));
+      glideCameraTo(focus.clone().addScaledVector(dir, near), focus, 650, null,
+        { ease: 'inout', next: [{ pos: wide.pos, target: wide.target, dur: 1100, hold: 300 }] });
+    } else {
+      glideCameraTo(wide.pos, wide.target, 800, null, { ease: 'inout' });
+    }
+    lastDirected = { kind: 'turn', id: unitId, at: performance.now() };
+    return true;
+  }
+
+  function directAction(p) {
+    if (!directorActive()) return;
+    const a = p.action;
+    const mover = (a.moves || []).find(m => m.path?.length > 1)?.source_id;
+    const curOff = camera.position.clone().sub(controls.target);
+    if (mover) {
+      // Zoom: ease in and ride along. Otherwise only pan when the mover nears the edge.
+      // Zoom only on the acting creature's own move (not a shove or a reaction's step).
+      const zoom = actionZoom && !reducedMotion && presetName !== 'heroic' && mover === a.source_id;
+      camTween = null;
+      let dist = curOff.length();
+      if (zoom) {
+        // Close enough to feel the move, far enough that two squares around the mover stay
+        // in the free area (on a phone that is a small window).
+        const at = liveUnitPoint(mover);
+        const around = [];
+        if (at) for (const dx of [-2.2, 2.2]) for (const dz of [-2.2, 2.2]) for (const y of [0, 1.7]) around.push(new THREE.Vector3(at.x + dx, y, at.z + dz));
+        dist = Math.min(curOff.length(), at ? fitDistance(viewDir(), at, around, 6.2, 0.9) : 7.4);
+      }
+      track = { id: mover, zoom, dir: zoom ? viewDir() : curOff.clone().normalize(), dist, last: null };
+      lastDirected = { kind: 'move', id: mover, at: performance.now() };
+      return;
+    }
+    const targets = [...new Set((p.events || []).map(e => e.target_id).filter(id => id && id !== a.source_id))];
+    const pts = [a.source_id, ...targets].map(id => liveUnitPoint(id, 0.9)).filter(Boolean);
+    if (!pts.length || presetName === 'heroic') return;
+    if (actionZoom && !reducedMotion && targets.length) {
+      const box = new THREE.Box3().setFromPoints(pts).expandByScalar(1.3);
+      const target = box.getCenter(new THREE.Vector3()); target.y = 0.6;
+      const corners = [];
+      for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, 1.7, z));
+      const dir = viewDir();
+      const distance = fitDistance(dir, target, corners, 6.4, 0.8);   // attacker and targets, whatever it takes
+      glideCameraTo(target.clone().addScaledVector(dir, distance), target, 480, null, { ease: 'inout' });
+      p.zoomed = true;
+      lastDirected = { kind: 'attack', id: a.source_id, at: performance.now() };
+    } else if (!inView(pts)) {
+      const wide = terrainShot(pts[0]);
+      glideCameraTo(wide.pos, wide.target, 600, null, { ease: 'inout' });
+    }
+  }
+
+  function directActionEnd(p) {
+    const wasZoomed = Boolean((track && track.zoom) || p.zoomed);
+    const endId = track?.id || p.action.source_id;
+    track = null;
+    lastEnded = { at: Math.round(performance.now()), zoomed: wasZoomed, active: directorActive() };
+    if (!directorActive() || !wasZoomed) return;
+    const big = p.newlyDead.size > 0 || (p.events || []).some(e => e.crit);
+    const wide = terrainShot(liveUnitPoint(endId) || controls.target);
+    glideCameraTo(wide.pos, wide.target, 950, null, { ease: 'inout', delay: big ? 900 : 380 });
+  }
+
+  function trackStep(now) {
+    const e = units.get(track.id);
+    if (!e) { track = null; return false; }
+    const dt = track.last === null ? 0.016 : Math.min(1, (now - track.last) / 1000);   // slow frames catch up
+    track.last = now;
+    const k = 1 - Math.exp(-dt / 0.22);
+    const want = new THREE.Vector3(e.root.position.x, 0.58, e.root.position.z);
+    if (track.zoom) {
+      controls.target.lerp(want, k);
+      camera.position.lerp(want.clone().addScaledVector(track.dir, track.dist), k);
+      return true;
+    }
+    // Keep in view: pan (target and camera together) only while the mover is near an edge.
+    camera.updateMatrixWorld();
+    if (!pointsInside(camera, [want], safeRectNdc(0.62))) {
+      const shift = want.clone().sub(controls.target); shift.y = 0;
+      shift.multiplyScalar(k * 1.6);
+      controls.target.add(shift); camera.position.add(shift);
+    }
+    return true;
+  }
+
+  function setAutoCamera(on) { autoCam = Boolean(on); if (!autoCam) track = null; }
+  function setActionZoom(on) { actionZoom = Boolean(on); }
+  function getDirectorState() { return { autoCam, actionZoom, manualHold, preset: presetName, tracking: track?.id || null, tween: !!camTween, playing: !!playback, actor: playback?.action?.source_id || null, last: lastDirected, ended: lastEnded }; }
+
   function clearHoverPreview() {
     while (hoverGroup.children.length) hoverGroup.remove(hoverGroup.children[0]);
     while (hoverGeoms.length) hoverGeoms.pop().dispose();
@@ -1749,7 +1951,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     return { x: (projection.x + 1) * canvas.clientWidth / 2, y: (1 - projection.y) * canvas.clientHeight / 2, visible: projection.z > -1 && projection.z < 1 && Math.abs(projection.x) <= 1 && Math.abs(projection.y) <= 1 };
   }
   function projectCell(x, y) { return projectWorld(x, 0.055, y); }
-  function projectUnit(id) { const entry = units.get(id); return entry ? projectWorld(entry.data.x, 0.65, entry.data.y) : null; }
+  function projectUnit(id) { const entry = units.get(id); return entry ? projectWorld(entry.root.position.x, 0.65, entry.root.position.z) : null; }
 
   function resize() {
     if (disposed || unavailable) return;
@@ -1758,6 +1960,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     renderer.setSize(w, h, false);
     const aspect = w / h, previous = camera.aspect;
     camera.aspect = aspect; camera.updateProjectionMatrix();
+    if (safeArea) applyViewOffset();
     if (!hasFramedOnce && state) { hasFramedOnce = true; resetCamera(false); }
     else if (state && Math.abs(Math.log(aspect / previous)) > 0.25) resetCamera(false);  // refit on a big aspect change
     else requestRender();
@@ -1774,7 +1977,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   function requestRender() { if (!frame && !disposed && !unavailable && !document.hidden) frame = requestAnimationFrame(render); }
 
   function cancelPlayback() {
-    const previous = playback; playback = null;
+    const previous = playback; playback = null; track = null;
     for (const entry of units.values()) if (entry.data.alive) entry.rig.reset();
     combatEffects.clear(); finishMovement();
     previous?.resolve(false);
@@ -1807,6 +2010,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         start: null, impacted: false,
         duration: style ? actionDuration(style) : steps ? steps * stepMs : 220,
       };
+      directAction(playback);
       requestRender();
     });
   }
@@ -1895,6 +2099,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         else unit.rig.death?.(9999);
       }
       playback = null;
+      directActionEnd(p);
       p.resolve(true);
       if (upgradePending) upgradeLoadedCast();
       return false;
@@ -1906,9 +2111,15 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     frame = 0;
     if (disposed || unavailable) return;
     let animate = false;
-    if (camTween) {
+    if (camTween && now < camTween.t0) {
+      // A delayed leg: keep the start pose current (the player or a track may have moved it).
+      camTween.fromPos.copy(camera.position); camTween.fromTarget.copy(controls.target);
+      animate = true;
+    } else if (camTween) {
       const rawP = THREE.MathUtils.clamp((now - camTween.t0) / Math.max(1, camTween.dur), 0, 1);
-      const ease = 1 - Math.pow(1 - rawP, 3);
+      const ease = camTween.ease === 'inout'
+        ? (rawP < 0.5 ? 4 * rawP ** 3 : 1 - (-2 * rawP + 2) ** 3 / 2)
+        : 1 - Math.pow(1 - rawP, 3);
       controls.target.lerpVectors(camTween.fromTarget, camTween.toTarget, ease);
       if (camTween.orbitArc) {
         const ang = camTween.orbitArc.a0 + (camTween.orbitArc.a1 - camTween.orbitArc.a0) * ease;
@@ -1920,8 +2131,16 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       } else {
         camera.position.lerpVectors(camTween.fromPos, camTween.toPos, ease);
       }
-      if (rawP >= 1) camTween = null;
-      else animate = true;
+      if (rawP >= 1) {
+        const leg = camTween.next.shift();
+        if (leg) {
+          const rest = camTween.next;
+          glideCameraTo(leg.pos, leg.target, leg.dur, null, { ease: 'inout', delay: leg.hold || 0, next: rest });
+          animate = true;
+        } else camTween = null;
+      } else animate = true;
+    } else if (track) {
+      animate = trackStep(now) || animate;
     }
     controls.update();
     animate = tickPlayback(now) || animate;
@@ -2013,14 +2232,14 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
   function pointerDown(event) {
     pointers.add(event.pointerId);
-    if (pointers.size !== 1) { pointer = null; camTween = null; return; }
+    if (pointers.size !== 1) { pointer = null; takeCamera(); return; }
     pointer = event.isPrimary && event.button === 0 ? { id: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now(), dragged: false } : null;
-    if (event.button !== 0) camTween = null;
+    if (event.button !== 0) takeCamera();
   }
   function pointerMove(event) {
     if (pointer?.id === event.pointerId && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) {
       pointer.dragged = true;
-      camTween = null;
+      takeCamera();
     }
     if (pointers.size || !onHover || !state || disposed || unavailable) return;
     const rect = canvas.getBoundingClientRect();
@@ -2053,7 +2272,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   function pointerLeave() {
     if (lastHoverKey !== 'none') { lastHoverKey = 'none'; onHover?.(null); }
   }
-  function wheelInterrupt() { camTween = null; }
+  function wheelInterrupt() { takeCamera(); }
   function pointerUp(event) {
     pointers.delete(event.pointerId);
     const start = pointer; pointer = null;
@@ -2159,6 +2378,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   resize(); resetCamera(false);
   return {
     update, playAction, cancelPlayback, resetCamera, setCameraPreset, orbitBy, focusUnit,
+    directTurn, setAutoCamera, setActionZoom, getDirectorState, setSafeArea,
     setTacticalPreview, clearHoverPreview, setBiome, getActiveTheme: () => activeThemeId,
     setIdleLoop, setLabelMode,
     resize, dispose, getCameraState, getAssetState, getEffectState: combatEffects.getState,

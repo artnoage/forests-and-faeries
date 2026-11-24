@@ -283,6 +283,7 @@
   let finishedSignal = null;
 
   let activeCamPreset = 'tactical', followCamEnabled = true;
+  var actionZoom = true;   // var: the viewer may be built before the settings code below runs
   let leftDrawerOpen = window.innerWidth > 900, rightDrawerOpen = false, minimapVisible = false;
   let shortcutsEnabled = true;
   try { shortcutsEnabled = localStorage.getItem(SHORTCUT_KEY) !== 'off'; } catch { /* private window */ }
@@ -687,8 +688,10 @@
             { recoverable: Boolean(info?.lost) || recovering() }),
         });
         if (!viewer || typeof viewer.update !== 'function') throw new Error('Renderer unavailable');
+        viewer.setAutoCamera?.(followCamEnabled);
+        viewer.setActionZoom?.(actionZoom);
         if (sceneUnavailable) { disposeViewer(); return null; }
-        resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { try { viewer?.resize?.(); } catch { sceneFailed('3D rendering interrupted'); } }) : null;
+        resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { try { viewer?.resize?.(); viewer?.setSafeArea?.(sceneSafeArea()); } catch { sceneFailed('3D rendering interrupted'); } }) : null;
         resizeObserver?.observe($('scene-viewport'));
       } catch {
         if (sceneUnavailable) disposeViewer();
@@ -1256,6 +1259,9 @@
   }
 
   function render() {
+    try { return renderAll(); } finally { cameraCues(); }
+  }
+  function renderAll() {
     renderStartScreen();
     renderControls();
     if (!state) return;
@@ -1386,9 +1392,6 @@
       const u = activeUnit();
       if (u) {
         focusCell = { x: u.x, y: u.y };
-        if (followCamEnabled && data.phase !== 'setup' && viewer && !sceneUnavailable && prevTurn && prevTurn !== data.turn_id) {
-          viewer.focusUnit(u.id, activeCamPreset === 'heroic');
-        }
       }
     } else if (actions().some(a => a.ray_number > 1)) {
       selectedGroup = groupKey(actions()[0]);
@@ -1412,6 +1415,37 @@
       log: data.log.filter(e => e.id <= pose.log_id),
     };
     render();
+  }
+
+  // The camera director (scene3d.js), once per turn: centre on the creature whose turn it is,
+  // then show the whole terrain. Also for the first turn after deployment, and for the turn
+  // that is running when the start screen closes (the establishing shot).
+  var directedTurn = '', framedViewer = null;   // var: render() may run before this line during start-up
+  function cameraCues() {
+    if (!state || startScreenOpen || !viewer || sceneUnavailable || ['setup', 'finished'].includes(state.phase)) return;
+    const dock = $('combat-dock');
+    const dockShown = !!dock && !dock.hidden && dock.offsetParent !== null;
+    // The free area before the first replay (once the action deck is on screen).
+    if (framedViewer !== viewer && dockShown) { framedViewer = viewer; viewer.setSafeArea?.(sceneSafeArea()); }
+    if (playing) return;
+    const u = activeUnit();
+    const key = `${state.encounter_id}:${state.turn_id}:${state.round}`;
+    if (!u || key === directedTurn) return;
+    if (!followCamEnabled) { directedTurn = key; return; }
+    if (dockShown) viewer.setSafeArea?.(sceneSafeArea());
+    if (viewer.directTurn?.(u.id, { player: u.team === 'heroes' }) !== false) directedTurn = key;
+  }
+
+  // The part of the 3D view the HUD leaves uncovered (below the top bar, above the action
+  // deck, right of the open left drawer on wide screens), for the camera's framing.
+  function sceneSafeArea() {
+    const vp = $('scene-viewport').getBoundingClientRect();
+    const hud = document.querySelector('.hud-top')?.getBoundingClientRect();
+    const dock = $('combat-dock');
+    const dockTop = dock && !dock.hidden && dock.offsetParent !== null ? dock.getBoundingClientRect().top : vp.bottom;
+    const drawer = $('left-drawer')?.getBoundingClientRect();
+    const left = drawer && drawer.width > 40 && vp.width >= 1000 ? drawer.right + 8 : vp.left;
+    return { top: (hud ? hud.bottom + 6 : vp.top) - vp.top, bottom: dockTop - 6 - vp.top, left: left - vp.left, right: vp.width };
   }
 
   const rosterById = data => new Map([...(state?.units || []), ...(data?.units || [])].map(u => [u.id, u]));
@@ -1458,7 +1492,8 @@
         for (const rec of fresh) {
           applyPoseOverlay(data, rec.before);
           renderDiceDraws(rec.draws || [], `Round ${(Number(rec.before?.round) || 0) + 1} · ${recordLabel(rec)}`, true);
-          if (followCamEnabled && rec.source_id && viewer && !sceneUnavailable) viewer.focusUnit(rec.source_id, activeCamPreset === 'heroic');
+          // Overview and Action framing are handled by the scene's director during playback.
+          if (followCamEnabled && activeCamPreset === 'heroic' && rec.source_id && viewer && !sceneUnavailable) viewer.focusUnit(rec.source_id, true);
           window.FFSound?.recordStart(rec);
           let sounded = false;
           const soundImpact = () => { if (!sounded) { sounded = true; window.FFSound?.recordImpact(rec, rosterById(data)); } };
@@ -1980,6 +2015,7 @@
     startScreenOpen = false;
     viewer?.setBiome?.(themeFor());   // back to the running game's theme
     renderStartScreen();
+    cameraCues();
     schedule();
   }
 
@@ -2131,8 +2167,23 @@
     followCamEnabled = !followCamEnabled;
     e.currentTarget.classList.toggle('is-on', followCamEnabled);
     e.currentTarget.setAttribute('aria-pressed', String(followCamEnabled));
-    if (followCamEnabled && activeUnit()) viewer?.focusUnit?.(activeUnit().id, activeCamPreset === 'heroic');
+    viewer?.setAutoCamera?.(followCamEnabled);
+    if (followCamEnabled && activeUnit()) viewer?.directTurn?.(activeUnit().id, { player: false });
   });
+  // Zoom on action (camera director): ease in on movers and attacks, back out after. Remembered.
+  try { actionZoom = window.localStorage.getItem('ff-cam-zoom') !== 'off'; } catch { /* storage blocked */ }
+  function syncActionZoom() {
+    const b = $('action-zoom-toggle');
+    b.classList.toggle('is-on', actionZoom);
+    b.setAttribute('aria-pressed', String(actionZoom));
+    viewer?.setActionZoom?.(actionZoom);
+  }
+  $('action-zoom-toggle').addEventListener('click', () => {
+    actionZoom = !actionZoom;
+    try { window.localStorage.setItem('ff-cam-zoom', actionZoom ? 'on' : 'off'); } catch { /* storage blocked */ }
+    syncActionZoom();
+  });
+  syncActionZoom();
   $('zoom-inspected-btn').addEventListener('click', () => {
     const id = inspectedId || activeUnit()?.id;
     if (id) applyCameraPreset('heroic', id);
@@ -2422,7 +2473,7 @@
     const bindings = {
       q: () => viewer?.orbitBy?.(-Math.PI / 2, 380), e: () => viewer?.orbitBy?.(Math.PI / 2, 380),
       v: () => applyCameraPreset('tactical'), c: () => applyCameraPreset('heroic'),
-      x: () => applyCameraPreset('skirmish'), t: () => applyCameraPreset('overhead'),
+      x: () => applyCameraPreset('skirmish'), z: () => $('action-zoom-toggle').click(),
       r: () => $('reset-view-button').click(), f: () => $('follow-cam-toggle').click(), m: () => $('minimap-toggle').click(),
     };
     if (bindings[key]) { e.preventDefault(); bindings[key](); }
@@ -2441,6 +2492,8 @@
   window.__ff = {
     getState: () => state,
     getViewer: () => viewer,
+    getActions: () => actions(),
+    activateCell: (x, y) => activateCell(x, y),
     isSceneUnavailable: () => sceneUnavailable,
     isStartScreenOpen: () => startScreenOpen,
     getStartStep: () => startStep,

@@ -342,13 +342,13 @@
           <button class="cam-btn is-on" data-cam="tactical" aria-pressed="true" title="Overview (V)">🗺 Overview</button>
           <button class="cam-btn" data-cam="heroic" aria-pressed="false" title="Close-up behind the acting figure (C)">⚔ Close-up</button>
           <button class="cam-btn" data-cam="skirmish" aria-pressed="false" title="Tight framing of the fight (X)">⚡ Action</button>
-          <button class="cam-btn" data-cam="overhead" aria-pressed="false" title="Top-down (T)">🦅 Top-down</button>
         </div>
         <div class="cam-orbits" role="group" aria-label="Orbit">
           <button class="cam-btn" id="orbit-left" title="Orbit 90° left (Q)" aria-label="Orbit left">⟲ 90°</button>
           <button class="cam-btn" id="orbit-right" title="Orbit 90° right (E)" aria-label="Orbit right">⟳ 90°</button>
           <button class="cam-btn" id="reset-view-button" title="Reset the camera (R)" aria-label="Reset the camera">↺</button>
           <button class="cam-btn is-on" id="follow-cam-toggle" aria-pressed="true" title="Follow the acting figure (F)">🎯 Follow</button>
+          <button class="cam-btn is-on" id="action-zoom-toggle" aria-pressed="true" title="Zoom on action: ease in on a moving figure or an attack, back out after (Z)">🎬 Zoom</button>
         </div>
         <div class="world-toggles">
           <select id="biome-select" class="hud-select" aria-label="Board theme"></select>
@@ -533,7 +533,7 @@
       <span><kbd>1</kbd>–<kbd>9</kbd> action cards</span>
       <span><kbd>Esc</kbd> clear the selection</span>
       <span><kbd>Q</kbd> / <kbd>E</kbd> orbit 90°</span>
-      <span><kbd>V</kbd> overview · <kbd>C</kbd> close-up · <kbd>X</kbd> action · <kbd>T</kbd> top-down</span>
+      <span><kbd>V</kbd> overview · <kbd>C</kbd> close-up · <kbd>X</kbd> action · <kbd>Z</kbd> zoom on action</span>
       <span><kbd>R</kbd> reset camera · <kbd>F</kbd> follow · <kbd>M</kbd> 2D map</span>
     </div>
     <p class="help-footer">Forests and Faeries is an independent fan project. Its rules come from <a class="text-link" href="https://github.com/jedld/natural_20.py">Natural20</a>, the open-source 5e engine by Joseph Dayo (MIT licence): the game runs a Rust port of it, checked against the original. If you enjoy the game, please <a class="text-link" href="https://github.com/jedld/natural_20.py">⭐ star Natural20</a> and <a class="text-link" href="https://github.com/artnoage/forests-and-faeries">⭐ star Forests and Faeries</a> on GitHub. Ideas and requests are very welcome: <a class="text-link" href="https://github.com/artnoage/forests-and-faeries/issues">open an issue</a>. The rules content comes from the System Reference Documents 5.1 and 5.2.1 (CC BY 4.0). It is not affiliated with, sponsored by or endorsed by Wizards of the Coast or the Natural20 authors. <a class="text-link" href="./licenses.html">Credits and licences →</a></p>
