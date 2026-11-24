@@ -6,8 +6,9 @@
 
 Copies index.html plus ``game.assets.PUBLIC_FILES`` and the public story files
 (``game.assets.story_files()``: ``game/story/<id>/...`` with an allowlisted suffix,
-served at ``story/<id>/...``; docs/STORY_MODE.md), nothing else, and refuses to
-build when:
+served at ``story/<id>/...``; docs/STORY_MODE.md) and the game sound
+(``game.assets.audio_files()``: ``game/static/audio/...``, docs/SOUND.md), nothing
+else, and refuses to build when:
 
 * a required file is missing, or ``models/`` holds anything outside ``MODEL_FILES``;
 * a figure matches a retired third-party placeholder digest or material name;
@@ -32,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
-from game.assets import MODEL_FILES, PUBLIC_FILES, STATIC, STORY_ROOT, story_files  # noqa: E402
+from game.assets import MODEL_FILES, PUBLIC_FILES, STATIC, STORY_ROOT, audio_files, story_files  # noqa: E402
 from game.tools import asset_versions  # noqa: E402
 
 # Assembled from fragments so `scripts/check_exclusions.py` stays clean on git grep.
@@ -134,11 +135,11 @@ PLACEHOLDER_HASHES = frozenset({
 TEXT_SUFFIXES = ('.html', '.js', '.css', '.txt', '.json', '.mjs', '.vtt')
 INLINE_HTML = re.compile(r'\sstyle\s*=|<script(?![^>]*\ssrc=)[^>]*>\s*\S|\son[a-z]+\s*=\s*["\']', re.I)
 INLINE_JS = re.compile(r'\bstyle\s*=\s*\\?["\'`]|setAttribute\(\s*["\']style["\']', re.I)
-ASSET_REF = re.compile(r'\./(style\.css|scene3d\.js|story\.js|app\.js)\?v=[A-Za-z0-9]+')
+ASSET_REF = re.compile(r'\./(style\.css|scene3d\.js|story\.js|sound\.js|app\.js)\?v=[A-Za-z0-9]+')
 
 
 def release_files():
-    return ['index.html', *PUBLIC_FILES, *story_files()]
+    return ['index.html', *PUBLIC_FILES, *story_files(), *audio_files()]
 
 
 def source(name, static=STATIC, story_root=None):
@@ -196,8 +197,10 @@ def check(static=STATIC, story_root=None):
             problems.append(f'{name} mentions third-party placeholder pack')
         if name.endswith('.html') and INLINE_HTML.search(text):
             problems.append(f'{name} has an inline style, script or event handler')
-        if (name == 'app.js' or name.startswith('story/') and name.endswith(('.js', '.mjs'))) and INLINE_JS.search(text):
+        if (name in ('app.js', 'sound.js') or name.startswith('story/') and name.endswith(('.js', '.mjs'))) and INLINE_JS.search(text):
             problems.append(f'{name} builds inline style attributes')
+    if 'audio/sound.json' not in release_files():
+        problems.append('missing audio/sound.json (game sound manifest)')
     if asset_versions.stale(static):
         problems.append('game/frontend/asset-versions.js is stale: run python -m game.tools.asset_versions --write')
     bundle = (static / 'scene3d.js').read_text(encoding='utf-8') if (static / 'scene3d.js').is_file() else ''

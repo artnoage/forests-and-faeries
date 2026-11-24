@@ -53,6 +53,8 @@ from game.assets import (
     STORY_TYPES,
     TEXTURE_FILES,
     story_path,
+    audio_path,
+    AUDIO_TYPES,
 )
 
 COOKIE = 'ff_game'
@@ -200,6 +202,14 @@ def create_app():
         if path is None:
             return jsonify(error='Not found.'), 404
         return send_from_directory(path.parent, path.name, mimetype=STORY_TYPES[path.suffix], conditional=True)
+
+    @app.get('/audio/<path:name>')
+    def audio_file(name):
+        # Game sound (docs/SOUND.md): mp3 files and the manifest under static/audio/, one rule.
+        path = audio_path(name)
+        if path is None:
+            return jsonify(error='Not found.'), 404
+        return send_from_directory(path.parent, path.name, mimetype=AUDIO_TYPES[path.suffix], conditional=True)
 
     def wire(game, payload):
         return game.wire(payload)

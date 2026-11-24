@@ -15,7 +15,7 @@ PROP_FILES = ('props/sarcophagus.glb', 'props/brazier.glb')
 TEXTURE_FILES = tuple(f'textures/mausoleum/{name}.webp' for name in (
     'floor_albedo', 'floor_normal', 'floor_orm', 'floor_slab_albedo', 'floor_slab_normal', 'floor_slab_orm',
     'wall_albedo', 'wall_normal', 'wall_orm', 'window_albedo'))
-PAGE_FILES = ('app.js', 'style.css', 'scene3d.js', 'story.js', 'licenses.html', 'third-party-licenses.txt')
+PAGE_FILES = ('app.js', 'style.css', 'scene3d.js', 'story.js', 'sound.js', 'licenses.html', 'third-party-licenses.txt')
 # Every static file the public release may contain besides index.html (served at /).
 PUBLIC_FILES = PAGE_FILES + MODEL_FILES + PROP_FILES + TEXTURE_FILES
 
@@ -62,3 +62,34 @@ def story_files():
         if path.is_file() and story_path(rel) is not None:
             out.append('story/' + rel)
     return tuple(out)
+
+
+# Game sound (game/static/audio/, docs/SOUND.md): the composed music, the synthesized effects
+# and the heroes' lines, served at /audio/... under one rule like the stories: a plain path
+# of at most three parts whose file is an .mp3, or the manifest sound.json.
+AUDIO_ROOT = STATIC / 'audio'
+AUDIO_TYPES = {'.mp3': 'audio/mpeg', '.json': 'application/json'}
+AUDIO_PART = re.compile(r'^[a-z0-9][a-z0-9_-]{0,63}$')
+AUDIO_FILE = re.compile(r'^[a-z0-9][a-z0-9_-]{0,63}\.(mp3|json)$')
+
+
+def audio_path(name):
+    """The file behind a public audio path (no ``audio/`` prefix), or None."""
+    parts = str(name).split('/')
+    if not 1 <= len(parts) <= 3 or not AUDIO_FILE.match(parts[-1]) or not all(AUDIO_PART.match(p) for p in parts[:-1]):
+        return None
+    if parts[-1].endswith('.json') and parts != ['sound.json']:
+        return None
+    base = AUDIO_ROOT.resolve()
+    path = AUDIO_ROOT.joinpath(*parts).resolve()
+    if base not in path.parents or not path.is_file():
+        return None
+    return path
+
+
+def audio_files():
+    """Every public audio file, as release paths ``audio/<rel>``, sorted."""
+    if not AUDIO_ROOT.is_dir():
+        return ()
+    return tuple('audio/' + p.relative_to(AUDIO_ROOT).as_posix() for p in sorted(AUDIO_ROOT.rglob('*'))
+                 if p.is_file() and audio_path(p.relative_to(AUDIO_ROOT).as_posix()) is not None)

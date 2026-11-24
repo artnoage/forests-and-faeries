@@ -1,0 +1,492 @@
+{
+ "version": 1,
+ "pieces": {
+  "calm": {
+   "bpm": 76,
+   "start": "intro",
+   "sections": {
+    "intro": {
+     "file": "music/calm-intro.mp3",
+     "length": 12.631579,
+     "next": {
+      "a": 1
+     }
+    },
+    "a": {
+     "file": "music/calm-a.mp3",
+     "length": 25.263158,
+     "next": {
+      "a2": 1,
+      "b": 1
+     }
+    },
+    "a2": {
+     "file": "music/calm-a2.mp3",
+     "length": 25.263158,
+     "next": {
+      "b": 3,
+      "c": 2
+     }
+    },
+    "b": {
+     "file": "music/calm-b.mp3",
+     "length": 25.263158,
+     "next": {
+      "a": 1,
+      "c": 1
+     }
+    },
+    "c": {
+     "file": "music/calm-c.mp3",
+     "length": 25.263158,
+     "next": {
+      "a": 3,
+      "a2": 2
+     }
+    }
+   }
+  },
+  "battle": {
+   "bpm": 112,
+   "start": "intro",
+   "sections": {
+    "intro": {
+     "file": "music/battle-intro.mp3",
+     "length": 4.285714,
+     "next": {
+      "a": 1
+     }
+    },
+    "a": {
+     "file": "music/battle-a.mp3",
+     "length": 17.142857,
+     "next": {
+      "a2": 3,
+      "b": 2
+     }
+    },
+    "a2": {
+     "file": "music/battle-a2.mp3",
+     "length": 17.142857,
+     "next": {
+      "b": 1,
+      "d": 1
+     }
+    },
+    "b": {
+     "file": "music/battle-b.mp3",
+     "length": 17.142857,
+     "next": {
+      "a": 2,
+      "c": 1,
+      "d": 1
+     }
+    },
+    "c": {
+     "file": "music/battle-c.mp3",
+     "length": 17.142857,
+     "next": {
+      "a": 3,
+      "a2": 2
+     }
+    },
+    "d": {
+     "file": "music/battle-d.mp3",
+     "length": 17.142857,
+     "next": {
+      "b": 1,
+      "c": 1
+     }
+    }
+   }
+  }
+ },
+ "stings": {
+  "victory": {
+   "file": "music/victory.mp3",
+   "length": 7.5
+  },
+  "defeat": {
+   "file": "music/defeat.mp3",
+   "length": 9.0
+  }
+ },
+ "sfx": {
+  "dice": "sfx/dice.mp3",
+  "hit": "sfx/hit.mp3",
+  "miss": "sfx/miss.mp3",
+  "crit": "sfx/crit.mp3",
+  "cast": "sfx/cast.mp3",
+  "heal": "sfx/heal.mp3",
+  "fall": "sfx/fall.mp3",
+  "turn": "sfx/turn.mp3"
+ },
+ "voices": {
+  "guy": {
+   "name": "Guy",
+   "lines": {
+    "turn": [
+     {
+      "text": "My turn. Stay behind me.",
+      "file": "voices/guy/turn-1.mp3"
+     },
+     {
+      "text": "Right. Let's see who's first.",
+      "file": "voices/guy/turn-2.mp3"
+     },
+     {
+      "text": "Steel's ready.",
+      "file": "voices/guy/turn-3.mp3"
+     },
+     {
+      "text": "Hold the line, I'll take the front.",
+      "file": "voices/guy/turn-4.mp3"
+     },
+     {
+      "text": "One step at a time.",
+      "file": "voices/guy/turn-5.mp3"
+     },
+     {
+      "text": "Heads down. I've got this.",
+      "file": "voices/guy/turn-6.mp3"
+     }
+    ],
+    "crit": [
+     {
+      "text": "Clean hit!",
+      "file": "voices/guy/crit-1.mp3"
+     },
+     {
+      "text": "That one counted.",
+      "file": "voices/guy/crit-2.mp3"
+     }
+    ],
+    "kill": [
+     {
+      "text": "One down.",
+      "file": "voices/guy/kill-1.mp3"
+     },
+     {
+      "text": "Next!",
+      "file": "voices/guy/kill-2.mp3"
+     }
+    ],
+    "hurt": [
+     {
+      "text": "Just a scratch. Mostly.",
+      "file": "voices/guy/hurt-1.mp3"
+     },
+     {
+      "text": "I'm still standing.",
+      "file": "voices/guy/hurt-2.mp3"
+     }
+    ]
+   }
+  },
+  "elion": {
+   "name": "Elion",
+   "lines": {
+    "turn": [
+     {
+      "text": "Light, be with us.",
+      "file": "voices/elion/turn-1.mp3"
+     },
+     {
+      "text": "Steady. Breathe. Now.",
+      "file": "voices/elion/turn-2.mp3"
+     },
+     {
+      "text": "No one falls while I'm here.",
+      "file": "voices/elion/turn-3.mp3"
+     },
+     {
+      "text": "Let me see to this.",
+      "file": "voices/elion/turn-4.mp3"
+     },
+     {
+      "text": "Patience, then strength.",
+      "file": "voices/elion/turn-5.mp3"
+     },
+     {
+      "text": "Morning comes for everyone.",
+      "file": "voices/elion/turn-6.mp3"
+     }
+    ],
+    "crit": [
+     {
+      "text": "The light is generous today.",
+      "file": "voices/elion/crit-1.mp3"
+     },
+     {
+      "text": "Mercy can strike hard.",
+      "file": "voices/elion/crit-2.mp3"
+     }
+    ],
+    "kill": [
+     {
+      "text": "Rest now.",
+      "file": "voices/elion/kill-1.mp3"
+     },
+     {
+      "text": "Go back to sleep.",
+      "file": "voices/elion/kill-2.mp3"
+     }
+    ],
+    "hurt": [
+     {
+      "text": "I can bear it. Keep going.",
+      "file": "voices/elion/hurt-1.mp3"
+     },
+     {
+      "text": "Still here. Still healing.",
+      "file": "voices/elion/hurt-2.mp3"
+     }
+    ]
+   }
+  },
+  "curogana": {
+   "name": "Curogana",
+   "lines": {
+    "turn": [
+     {
+      "text": "My turn. Try not to blink.",
+      "file": "voices/curogana/turn-1.mp3"
+     },
+     {
+      "text": "The blood runs warm today.",
+      "file": "voices/curogana/turn-2.mp3"
+     },
+     {
+      "text": "Stand clear of the fire.",
+      "file": "voices/curogana/turn-3.mp3"
+     },
+     {
+      "text": "Let me show you something bright.",
+      "file": "voices/curogana/turn-4.mp3"
+     },
+     {
+      "text": "Dragons don't wait.",
+      "file": "voices/curogana/turn-5.mp3"
+     },
+     {
+      "text": "Oh, this will be fun.",
+      "file": "voices/curogana/turn-6.mp3"
+     }
+    ],
+    "crit": [
+     {
+      "text": "Did you see that?",
+      "file": "voices/curogana/crit-1.mp3"
+     },
+     {
+      "text": "Burn bright!",
+      "file": "voices/curogana/crit-2.mp3"
+     }
+    ],
+    "kill": [
+     {
+      "text": "Ash. Next.",
+      "file": "voices/curogana/kill-1.mp3"
+     },
+     {
+      "text": "That's what fire does.",
+      "file": "voices/curogana/kill-2.mp3"
+     }
+    ],
+    "hurt": [
+     {
+      "text": "That was a mistake.",
+      "file": "voices/curogana/hurt-1.mp3"
+     },
+     {
+      "text": "You'll pay for that scale.",
+      "file": "voices/curogana/hurt-2.mp3"
+     }
+    ]
+   }
+  },
+  "chruna": {
+   "name": "Chruna",
+   "lines": {
+    "turn": [
+     {
+      "text": "Chruna's turn.",
+      "file": "voices/chruna/turn-1.mp3"
+     },
+     {
+      "text": "Out of my way.",
+      "file": "voices/chruna/turn-2.mp3"
+     },
+     {
+      "text": "Good. A fight.",
+      "file": "voices/chruna/turn-3.mp3"
+     },
+     {
+      "text": "I go first.",
+      "file": "voices/chruna/turn-4.mp3"
+     },
+     {
+      "text": "Come on, then!",
+      "file": "voices/chruna/turn-5.mp3"
+     },
+     {
+      "text": "Talk later. Hit now.",
+      "file": "voices/chruna/turn-6.mp3"
+     }
+    ],
+    "crit": [
+     {
+      "text": "Ha! Felt that?",
+      "file": "voices/chruna/crit-1.mp3"
+     },
+     {
+      "text": "Again!",
+      "file": "voices/chruna/crit-2.mp3"
+     }
+    ],
+    "kill": [
+     {
+      "text": "Down you go.",
+      "file": "voices/chruna/kill-1.mp3"
+     },
+     {
+      "text": "Who's next?",
+      "file": "voices/chruna/kill-2.mp3"
+     }
+    ],
+    "hurt": [
+     {
+      "text": "Pain is good. Wakes me up.",
+      "file": "voices/chruna/hurt-1.mp3"
+     },
+     {
+      "text": "Not enough. Not nearly.",
+      "file": "voices/chruna/hurt-2.mp3"
+     }
+    ]
+   }
+  },
+  "mara": {
+   "name": "Mara",
+   "lines": {
+    "turn": [
+     {
+      "text": "Shield up. Moving.",
+      "file": "voices/mara/turn-1.mp3"
+     },
+     {
+      "text": "On me.",
+      "file": "voices/mara/turn-2.mp3"
+     },
+     {
+      "text": "Eyes front.",
+      "file": "voices/mara/turn-3.mp3"
+     },
+     {
+      "text": "Watch the flank.",
+      "file": "voices/mara/turn-4.mp3"
+     },
+     {
+      "text": "By the drill. Forward.",
+      "file": "voices/mara/turn-5.mp3"
+     },
+     {
+      "text": "I've seen worse. Go.",
+      "file": "voices/mara/turn-6.mp3"
+     }
+    ],
+    "crit": [
+     {
+      "text": "Through the gap.",
+      "file": "voices/mara/crit-1.mp3"
+     },
+     {
+      "text": "Textbook.",
+      "file": "voices/mara/crit-2.mp3"
+     }
+    ],
+    "kill": [
+     {
+      "text": "Target down.",
+      "file": "voices/mara/kill-1.mp3"
+     },
+     {
+      "text": "Clear. Next.",
+      "file": "voices/mara/kill-2.mp3"
+     }
+    ],
+    "hurt": [
+     {
+      "text": "Hit. Still in it.",
+      "file": "voices/mara/hurt-1.mp3"
+     },
+     {
+      "text": "I'll patch it later.",
+      "file": "voices/mara/hurt-2.mp3"
+     }
+    ]
+   }
+  },
+  "ilyra": {
+   "name": "Ilyra",
+   "lines": {
+    "turn": [
+     {
+      "text": "Let me think. Yes.",
+      "file": "voices/ilyra/turn-1.mp3"
+     },
+     {
+      "text": "Noted. Now, a spell.",
+      "file": "voices/ilyra/turn-2.mp3"
+     },
+     {
+      "text": "Interesting. Stand back.",
+      "file": "voices/ilyra/turn-3.mp3"
+     },
+     {
+      "text": "I'll write this down later.",
+      "file": "voices/ilyra/turn-4.mp3"
+     },
+     {
+      "text": "Page three, I believe.",
+      "file": "voices/ilyra/turn-5.mp3"
+     },
+     {
+      "text": "Quietly, now.",
+      "file": "voices/ilyra/turn-6.mp3"
+     }
+    ],
+    "crit": [
+     {
+      "text": "Precisely as calculated.",
+      "file": "voices/ilyra/crit-1.mp3"
+     },
+     {
+      "text": "Remarkable.",
+      "file": "voices/ilyra/crit-2.mp3"
+     }
+    ],
+    "kill": [
+     {
+      "text": "That settles it.",
+      "file": "voices/ilyra/kill-1.mp3"
+     },
+     {
+      "text": "That goes in the journal.",
+      "file": "voices/ilyra/kill-2.mp3"
+     }
+    ],
+    "hurt": [
+     {
+      "text": "Ow. That's going in the journal too.",
+      "file": "voices/ilyra/hurt-1.mp3"
+     },
+     {
+      "text": "Not my best idea.",
+      "file": "voices/ilyra/hurt-2.mp3"
+     }
+    ]
+   }
+  }
+ }
+}

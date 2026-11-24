@@ -735,7 +735,7 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 
 .bottom-deck {
   pointer-events: auto;
-  width: min(1120px, 100%);
+  width: min(1240px, 100%);
   background: var(--glass-hi);
   border: 1px solid var(--border-bronze);
   border-radius: 13px;
@@ -845,22 +845,23 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 
 /* Center Direct-Cast Ability Card Hotbar */
 .hotbar-center { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.hotbar-top-strip { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.cat-tabs { display: inline-flex; gap: 4px; overflow-x: auto; }
+.hotbar-top-strip { display: flex; justify-content: space-between; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
+.cat-tabs { display: inline-flex; gap: 4px; overflow-x: auto; flex: 0 1 auto; max-width: 100%; }
 .cat-tab {
   appearance: none; border: 1px solid transparent; background: rgba(255, 255, 255, 0.04);
   color: var(--text-muted); padding: 2px 8px; border-radius: 6px; font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer;
 }
 .cat-tab.is-on { border-color: var(--border-bronze); background: rgba(217, 174, 102, 0.15); color: var(--gold-bright); }
-.hotbar-hint { font-size: 11px; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hotbar-hint { flex: 1 1 220px; min-width: 0; font-size: 11.5px; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 
+.hotbar-strip { position: relative; min-width: 0; }
 .hotbar-cards {
   display: flex;
   align-items: stretch;
-  gap: 6px;
+  gap: 7px;
   overflow-x: auto;
-  padding: 2px 1px 4px;
-  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+  padding: 4px 2px 6px;
 }
 
 .ability-card {
@@ -870,10 +871,10 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 76px;
-  max-width: 94px;
-  height: 66px;
-  padding: 6px 6px 5px;
+  min-width: 88px;
+  max-width: 112px;
+  height: 78px;
+  padding: 7px 7px 6px;
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
   background: linear-gradient(180deg, rgba(31, 35, 44, 0.94), rgba(16, 19, 25, 0.98));
@@ -898,12 +899,12 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .ability-card.kind-attack .action-icon { color: #f09579; }
 .ability-card.kind-move .action-icon { color: var(--hero); }
 .ability-card:disabled { opacity: 0.34; cursor: not-allowed; }
-.action-icon { width: 21px; height: 21px; color: var(--gold); margin-bottom: 3px; }
+.action-icon { width: 24px; height: 24px; color: var(--gold); margin-bottom: 4px; }
 .ability-name {
-  font-size: 10.5px; font-weight: 700; line-height: 1.12; text-align: center;
+  font-size: 11.5px; font-weight: 700; line-height: 1.12; text-align: center;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.ability-cost { font-size: 8.5px; color: var(--text-muted); margin-top: 1px; }
+.ability-cost { font-size: 9.5px; color: var(--text-muted); margin-top: 2px; }
 .ability-hotkey {
   position: absolute; top: 3px; left: 5px;
   font-size: 9px; font-weight: 800; color: var(--text-muted);
@@ -1358,7 +1359,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 /* Move destination chips. */
 .target-chip.move-chip { border-color: rgba(94, 199, 178, 0.55); background: rgba(94, 199, 178, 0.12); }
 .target-chip.move-chip.friendly-fire { border-color: var(--enemy); background: rgba(222, 111, 89, 0.22); color: #ffd4cb; }
-.target-options { max-height: min(124px, 18vh); overflow-y: auto; }
+.target-options { max-height: clamp(84px, 19vh, 168px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
 
 /* How to play. */
 #help-dialog { max-width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow-y: auto; }
@@ -1434,7 +1435,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 @media (max-width: 560px) {
   .brand span { font-size: 11px; }
   .round-crest span { display: none; }
-  .ability-card { min-width: 64px; }
+  .ability-card { min-width: 72px; height: 70px; }
   .level-row { grid-template-columns: 1fr; }
   .start-footer { flex-direction: column; align-items: stretch; }
   .start-ctas { justify-content: stretch; }
@@ -1561,4 +1562,85 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 @media (prefers-reduced-motion: reduce) {
   .scene-media { animation: none !important; }
   .story-marker.is-moving { transition: none; }
+}
+
+/* Scroll areas in the command deck show their scrollbar whenever there is more to see
+ * (overlay scrollbars that only appear while scrolling hid the card strip's overflow). */
+.hotbar-cards, .target-options, .action-options, .cat-tabs, .bottom-deck {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(226, 184, 110, 0.85) rgba(255, 255, 255, 0.07);
+}
+@supports selector(::-webkit-scrollbar) {
+  .hotbar-cards, .target-options, .action-options, .cat-tabs, .bottom-deck { scrollbar-width: auto; scrollbar-color: auto; }
+  .hotbar-cards::-webkit-scrollbar, .target-options::-webkit-scrollbar, .action-options::-webkit-scrollbar,
+  .cat-tabs::-webkit-scrollbar, .bottom-deck::-webkit-scrollbar { width: 9px; height: 9px; }
+  .hotbar-cards::-webkit-scrollbar-track, .target-options::-webkit-scrollbar-track, .action-options::-webkit-scrollbar-track,
+  .cat-tabs::-webkit-scrollbar-track, .bottom-deck::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.07); border-radius: 99px; }
+  .hotbar-cards::-webkit-scrollbar-thumb, .target-options::-webkit-scrollbar-thumb, .action-options::-webkit-scrollbar-thumb,
+  .cat-tabs::-webkit-scrollbar-thumb, .bottom-deck::-webkit-scrollbar-thumb {
+    background: rgba(226, 184, 110, 0.85); border-radius: 99px; border: 2px solid rgba(12, 14, 19, 0.9);
+  }
+  .cat-tabs::-webkit-scrollbar { height: 5px; }
+}
+.action-options { max-height: clamp(64px, 16vh, 140px); overflow-y: auto; }
+.strip-arrow {
+  position: absolute; top: 4px; bottom: 6px; z-index: 2; width: 38px; padding: 0; border: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  font: 800 22px var(--font-ui); color: var(--gold-bright);
+}
+.strip-arrow small { font-size: 10px; font-weight: 800; color: var(--gold); }
+.strip-left { left: 0; border-radius: 10px 0 0 10px; background: linear-gradient(90deg, rgba(12, 14, 19, 0.97) 35%, rgba(12, 14, 19, 0)); }
+.strip-right { right: 0; border-radius: 0 10px 10px 0; background: linear-gradient(270deg, rgba(12, 14, 19, 0.97) 35%, rgba(12, 14, 19, 0)); }
+.strip-arrow:hover, .strip-arrow:focus-visible { color: #fff; outline: none; }
+
+/* SOUND: the HUD control (sound.js) and the hero-line caption */
+.brand-pod { position: relative; }
+.sound-btn { min-width: 30px; }
+.sound-pod {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 236px;
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-gold);
+  border-radius: 10px;
+  box-shadow: var(--shadow-hud);
+  backdrop-filter: blur(14px);
+}
+.sound-pod[hidden] { display: none; }
+.sound-row { display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--text-soft); }
+.sound-row input[type="range"] { width: 100%; accent-color: var(--gold); }
+.sound-row input:disabled { opacity: 0.45; }
+.sound-master { display: flex; gap: 8px; font-weight: 750; color: var(--gold-bright); }
+.sound-master input { accent-color: var(--gold); width: 16px; height: 16px; }
+.sound-note { margin: 2px 0 0; font-size: 10.5px; line-height: 1.35; color: var(--text-muted); }
+.voice-caption {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(190px, 31vh, 300px);
+  transform: translateX(-50%);
+  z-index: 26;
+  max-width: min(560px, 86vw);
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(14, 12, 10, 0.82);
+  border: 1px solid var(--border-gold);
+  color: #f3ead8;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  transition: opacity 0.4s;
+}
+.voice-caption b { color: var(--gold-bright); margin-right: 4px; }
+.voice-caption.is-fading { opacity: 0; }
+.voice-caption[hidden] { display: none; }
+@media (max-width: 720px) {
+  .voice-caption { font-size: 12.5px; bottom: 46vh; border-radius: 12px; }
+  .sound-pod { left: auto; right: 0; }
 }

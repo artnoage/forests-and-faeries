@@ -63,11 +63,25 @@
     };
   }
 
-  let soundOn = readStore(SOUND_KEY) !== 'off';
+  // One switch for all sound: the story's button and the HUD's (sound.js) stay in step.
+  let soundOn = readStore(SOUND_KEY) !== 'off' && (window.FFSound?.isOn?.() ?? true);
+  function announceSound() { document.dispatchEvent(new CustomEvent('ff:story-sound', { detail: { on: soundOn } })); }
   const sound = {
     enabled: () => soundOn,
-    set: on => { soundOn = Boolean(on); writeStore(SOUND_KEY, soundOn ? 'on' : 'off'); document.dispatchEvent(new CustomEvent('ff:story-sound', { detail: { on: soundOn } })); },
+    set: on => {
+      soundOn = Boolean(on);
+      writeStore(SOUND_KEY, soundOn ? 'on' : 'off');
+      if (window.FFSound && window.FFSound.isOn() !== soundOn) window.FFSound.setOn(soundOn);
+      announceSound();
+    },
   };
+  document.addEventListener('ff:sound', e => {
+    const on = Boolean(e.detail?.on);
+    if (on === soundOn) return;
+    soundOn = on;
+    writeStore(SOUND_KEY, soundOn ? 'on' : 'off');
+    announceSound();
+  });
 
   // --- Manifests -----------------------------------------------------------------------------
   const manifests = new Map();   // id -> Promise<manifest | null>

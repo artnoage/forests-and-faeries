@@ -1003,6 +1003,39 @@
       }).join('');
     }
     renderHotbarPopbar(groups);
+    keepSelectedCardInView();
+    updateStripCues();
+  }
+
+  // The card strip scrolls sideways when a hero has more actions than fit. Some browsers
+  // hide overlay scrollbars until the strip is scrolled, so the edges show arrows (with the
+  // number of cards still hidden on the right) whenever there is more to see.
+  function updateStripCues() {
+    const bar = $('action-bar');
+    const room = bar.scrollWidth - bar.clientWidth;
+    const left = room > 2 && bar.scrollLeft > 2;
+    const right = room > 2 && bar.scrollLeft < room - 2;
+    $('action-strip-left').hidden = !left;
+    $('action-strip-right').hidden = !right;
+    $('action-strip').classList.toggle('more-left', left);
+    $('action-strip').classList.toggle('more-right', right);
+    if (right) {
+      const edge = bar.getBoundingClientRect().right;
+      const hidden = [...bar.querySelectorAll('.ability-card')].filter(c => c.getBoundingClientRect().left >= edge - 24).length;
+      $('action-strip-more').textContent = hidden ? String(hidden) : '';
+    }
+  }
+  function keepSelectedCardInView() {
+    const bar = $('action-bar');
+    const card = bar.querySelector('.ability-card.selected');
+    if (!card) return;
+    const b = bar.getBoundingClientRect(), c = card.getBoundingClientRect();
+    if (c.left < b.left + 28) bar.scrollLeft -= (b.left + 28) - c.left;
+    else if (c.right > b.right - 28) bar.scrollLeft += c.right - (b.right - 28);
+  }
+  function scrollStrip(direction) {
+    const bar = $('action-bar');
+    bar.scrollBy({ left: direction * Math.max(120, bar.clientWidth * 0.8), behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
 
   function chipTargetText(a) {
@@ -1214,6 +1247,7 @@
       const signal = `${state.encounter_id}:${state.revision}`;
       if (finishedSignal !== signal) {
         finishedSignal = signal;
+        window.FFSound?.finish(outcome);
         document.dispatchEvent(new CustomEvent('ff:finished', { detail: {
           outcome, encounter: state.level?.encounter, preset: state.level?.id, story: inStory ? { ...storyRun } : null,
         } }));
@@ -1380,6 +1414,24 @@
     render();
   }
 
+  const rosterById = data => new Map([...(state?.units || []), ...(data?.units || [])].map(u => [u.id, u]));
+
+  // Sound (sound.js): the music follows the screen; a hero's turn gets a chime and, now and
+  // then, a line.
+  var soundTurnKey = '';   // var: render() may run before this line during start-up
+  function soundCues() {
+    const fx = window.FFSound;
+    if (!fx) return;
+    const phase = state?.phase;
+    fx.scene(startScreenOpen || !state ? 'menu' : phase === 'setup' ? 'setup' : phase === 'finished' ? 'finished' : 'battle');
+    if (!state || startScreenOpen || ['setup', 'finished'].includes(phase)) return;
+    const unit = activeUnit();
+    const key = `${state.encounter_id}:${state.round}:${unit?.id || ''}`;
+    if (key === soundTurnKey) return;
+    soundTurnKey = key;
+    if (unit?.team === 'heroes' && unit.alive !== false) fx.heroTurn(unit);
+  }
+
   async function presentState(data, reset = false, baseline = false) {
     const same = state?.encounter_id === data.encounter_id;
     if (!same && retiredEncounters.includes(data.encounter_id)) return;
@@ -1407,14 +1459,18 @@
           applyPoseOverlay(data, rec.before);
           renderDiceDraws(rec.draws || [], `Round ${(Number(rec.before?.round) || 0) + 1} · ${recordLabel(rec)}`, true);
           if (followCamEnabled && rec.source_id && viewer && !sceneUnavailable) viewer.focusUnit(rec.source_id, activeCamPreset === 'heroic');
+          window.FFSound?.recordStart(rec);
+          let sounded = false;
+          const soundImpact = () => { if (!sounded) { sounded = true; window.FFSound?.recordImpact(rec, rosterById(data)); } };
           const ok = await viewer.playAction(rec, {
-            impact: () => applyPoseOverlay(data, rec.after),
+            impact: () => { applyPoseOverlay(data, rec.after); soundImpact(); },
             step: (id, x, y) => {
               state = { ...state, units: state.units.map(u => u.id === id ? { ...u, x, y } : u) };
               renderBoard(true);
             },
           });
           if (!ok || document.hidden || sceneUnavailable) break;
+          soundImpact();
           applyPoseOverlay(data, rec.after);
         }
       } finally {
@@ -1755,6 +1811,7 @@
   }
 
   function renderStartScreen() {
+    soundCues();
     $('start-screen').hidden = !startScreenOpen;
     $('mode-step').hidden = startStep !== 'mode';
     $('back-mode-btn').hidden = startStep !== 'difficulty';
@@ -2174,6 +2231,16 @@
     const b = e.target.closest('[data-group]');
     if (b && !b.disabled) chooseGroup(b.dataset.group);
   });
+  $('action-bar').addEventListener('scroll', () => updateStripCues(), { passive: true });
+  $('action-bar').addEventListener('wheel', e => {
+    // A mouse wheel scrolls the card strip sideways when it overflows.
+    const bar = $('action-bar');
+    if (bar.scrollWidth <= bar.clientWidth + 2 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    bar.scrollLeft += e.deltaY;
+  }, { passive: false });
+  $('action-strip-left').addEventListener('click', () => scrollStrip(-1));
+  $('action-strip-right').addEventListener('click', () => scrollStrip(1));
   $('chooser-back').addEventListener('click', () => {
     if (!isRayContinuation()) selectedGroup = null;
     choices = []; armed = null; preview = null;
@@ -2361,7 +2428,7 @@
     if (bindings[key]) { e.preventDefault(); bindings[key](); }
   });
 
-  window.addEventListener('resize', () => { try { viewer?.resize?.(); } catch { sceneFailed('3D rendering interrupted'); } diceArena.redraw(); });
+  window.addEventListener('resize', () => { try { viewer?.resize?.(); } catch { sceneFailed('3D rendering interrupted'); } diceArena.redraw(); updateStripCues(); });
   window.addEventListener('pagehide', e => {
     paused = true; clearTimer(); viewer?.cancelPlayback?.();
     if (!e.persisted) { startupClosed = true; window.clearTimeout(recoveryTimer); disposeViewer(); window.EmberScene?.disposeAssets?.(); }

@@ -5,7 +5,7 @@ import struct
 
 import pytest
 
-from game.assets import PUBLIC_FILES, story_files
+from game.assets import PUBLIC_FILES, audio_files, story_files
 from game.release import make_ff_release as release
 from game.tools import asset_versions
 
@@ -17,14 +17,14 @@ def test_the_committed_page_passes_the_release_checks():
 def test_the_build_is_exactly_the_allowlist(tmp_path):
     dest = release.build(tmp_path / 'release')
     files = sorted(str(p.relative_to(dest)) for p in dest.rglob('*') if p.is_file())
-    expected = sorted({'index.html', 'RELEASE.json', *(n for n in PUBLIC_FILES if (release.STATIC / n).is_file()), *story_files()})
+    expected = sorted({'index.html', 'RELEASE.json', *(n for n in PUBLIC_FILES if (release.STATIC / n).is_file()), *story_files(), *audio_files()})
     assert files == expected
     licenses = (dest / 'licenses.html').read_text(encoding='utf-8')
     pack_word = 'quater' + 'nius'
     assert pack_word not in licenses.lower() and 'placeholder' not in licenses.lower()
     assert 'System Reference Document 5.2.1' in licenses and 'not affiliated' in licenses.lower()
     page = (dest / 'index.html').read_text(encoding='utf-8')
-    for asset in ('style.css', 'scene3d.js', 'app.js', 'story.js'):
+    for asset in ('style.css', 'scene3d.js', 'app.js', 'story.js', 'sound.js'):
         digest = release.sha256(dest / asset)[:12]
         assert f'./{asset}?v={digest}' in page, asset
     assert '?v=ff1' not in page and f'./style.css?v={release.sha256(dest / "style.css")[:12]}' in licenses
