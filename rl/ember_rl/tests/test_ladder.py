@@ -161,3 +161,70 @@ def test_stratified_order_spreads_every_prefix():
     assert sorted(order) == list(range(10))
     assert [specs[k]['stratum'] for k in order[:3]] == ['a', 'b', 'c']
     assert [specs[k]['stratum'] for k in order[:6]].count('a') == 2
+
+
+def test_player_caps_resident_models_and_matches_uncapped_outcomes(root, tmp_path):
+    """Player gates pair admission by max_models and releases closed pairs' models without changing outcomes."""
+    _, specs, catalog = ladder.load_specset(root, 'dev')
+    paths = {}
+    for i in range(3):
+        hp = tmp_path / f'h{i}.pt'
+        mp = tmp_path / f'm{i}.pt'
+        tiny_policy(hp, 'heroes', 10 + i)
+        tiny_policy(mp, 'monsters', 20 + i)
+        paths[f'h{i}'] = (str(hp), 'heroes')
+        paths[f'm{i}'] = (str(mp), 'monsters')
+
+    class TrackingModels(ladder.Models):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.peak = 0
+            self.evictions = 0
+
+        def get(self, eid):
+            out = super().get(eid)
+            self.peak = max(self.peak, len(self.cache))
+            return out
+
+        def release(self, keep):
+            before = len(self.cache)
+            super().release(keep)
+            self.evictions += max(0, before - len(self.cache))
+
+    matchups = [('h0', 'm0'), ('h1', 'm1'), ('h2', 'm2'), ('h0', 'native-monsters'), ('native-heroes', 'm1'), ('h2', 'm0')]
+    ks = [0, 1, 2, 3]
+    jobs = [dict(h=h, m=m, ks=list(ks), specs=specs, set='dev', mode='full') for h, m in matchups]
+
+    def run_with(max_models, subset=jobs):
+        env = FakeBatchEnv(64, scores=False, objective='health_score', max_rounds=30, standing_weight=.5,
+                           max_steps=4096, threads=1, catalog=catalog, feature_version=FEATURE_VERSION)
+        models = TrackingModels(None, 'cpu', env.feature_version, paths=paths)
+        results = {}
+        n_games, n_pairs = ladder.Player(env, models, 'cpu', threads=1, max_models=max_models).play(
+            subset, lambda p, k, o, s, r, mv: results.__setitem__((p['h'], p['m'], k), (o, round(s, 5), r)))
+        models.release([])
+        return n_games, n_pairs, results, models
+
+    g0, p0, res0, m0 = run_with(0)
+    assert g0 == len(jobs) * len(ks) and p0 == len(jobs)
+    assert m0.peak == 6
+
+    g2, p2, res2, m2 = run_with(2)
+    assert g2 == g0 and p2 == p0
+    assert m2.peak <= 2 and m2.evictions > 0
+    assert res2 == res0
+
+    # A single 2-model matchup still runs without deadlock when max_models=1, never overlapping two pairs.
+    two_pairs = jobs[:2]
+    g1, p1, res1, m1 = run_with(1, subset=two_pairs)
+    assert g1 == 2 * len(ks) and p1 == 2
+    assert m1.peak == 2 and m1.evictions >= 2
+    assert res1 == {k: res0[k] for k in res1}
+
+
+def test_round_cli_respects_max_models(root):
+    make_run(root, 'r1', 'base', [(1, 'heroes'), (2, 'monsters'), (3, 'heroes')])
+    make_run(root, 'r2', 'league', [(1, 'monsters'), (2, 'heroes')])
+    ladder.main(['round', '--root', str(root), *ROUND, '--max-models', '2'])
+    report = json.loads((root / 'ladder' / 'latest.json').read_text())
+    assert report['games_played'] > 0 and set(report['daily']) >= {'diag', 'search'} and report['daily']['search']

@@ -375,8 +375,14 @@ class Models:
         return self.cache[eid]
 
     def release(self, keep):
-        for eid in [e for e in self.cache if e not in {self.base(k) for k in keep}]:
+        keep_base = {self.base(k) for k in keep}
+        dropped = [e for e in self.cache if e not in keep_base]
+        for eid in dropped:
             del self.cache[eid]
+        if dropped and str(self.device).startswith('cuda'):
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
 
 class Player:
@@ -386,16 +392,29 @@ class Player:
     outcome and score, rounds, and per side the movement of its policy-controlled turns."""
 
     def __init__(self, env, models, device, *, search=None, noback=False, seed=0, threads=None, micro_batch=128,
-                 forward_rows=1 << 16):
+                 forward_rows=1 << 16, max_models=6):
         self.env, self.models, self.device = env, models, device
         self.noback = noback
         self.micro_batch = max(1, int(micro_batch))     # games per forward pass (the GPU is shared with an arm)
         self.forward_rows = int(forward_rows)            # and at most this many candidate rows (games x widest K)
+        self.max_models = max(0, int(max_models)) if max_models is not None else 0
         self.lookahead = None
         if search:
             from ember_rl.search import Lookahead, parse_search
             self.search_cfg = parse_search(search)
             self.lookahead = Lookahead(env, self.search_cfg, device, seed=seed, threads=threads)
+
+    def _pair_models(self, pair):
+        return {self.models.base(s) for s in (pair['h'], pair['m']) if not s.startswith('native-')}
+
+    def _active_models(self, state, queue):
+        active = set()
+        for s in state:
+            if s is not None:
+                active |= self._pair_models(s['pair'])
+        for pair, _ in queue:
+            active |= self._pair_models(pair)
+        return active
 
     def play(self, jobs, on_game, budget_s=None, started=None):
         """jobs: iterable of pairs dict(h, m, ks, specs, mode, controllers (spec -> mapping) or None,
@@ -412,8 +431,26 @@ class Player:
         state = [None] * env.n_slots
         free = list(range(env.n_slots))
         n_games = n_pairs = 0
-        open_pairs = Counter()
         hard_stop = None if budget_s is None else started + budget_s + max(120., budget_s / 4)
+
+        def reap():
+            nonlocal n_games
+            for g in range(env.n_slots):
+                s = state[g]
+                if s is None or not s['info']['done']:
+                    continue
+                self.close_turn(s)
+                pair = s['pair']
+                if pair.get('record'):
+                    spec = pair['specs'][s['k']]
+                    name = f'{spec["encounter"]}__{s["k"]}'
+                    env.record(g, str(Path(pair['record']) / 'tapes' / f'{name}.jsonl'))
+                outcome, score = outcome_of(s['info'])
+                on_game(pair, s['k'], outcome, score, s['info']['round'], s['mv'])
+                n_games += 1
+                state[g] = None
+                free.append(g)
+
         while pairs or queue or any(s is not None for s in state):
             if hard_stop is not None and time.time() > hard_stop:
                 abandoned = sum(s is not None for s in state)
@@ -421,15 +458,21 @@ class Player:
                     print(f'ladder: time budget exceeded; {abandoned} running games abandoned (replayed later)',
                           flush=True)
                 break
-            while not queue and pairs:
+            active = self._active_models(state, queue) if self.max_models else None
+            while len(queue) < len(free) and pairs:
                 if budget_s is not None and time.time() - started > budget_s:
                     pairs.clear()           # unfinished pairs are queued again by the next round
                     break
+                if self.max_models:
+                    nxt = self._pair_models(pairs[0])
+                    if active and len(active | nxt) > self.max_models:
+                        break
                 pair = pairs.popleft()
                 n_pairs += 1
                 for k in pair['ks']:
                     queue.append((pair, k))
-                open_pairs[id(pair)] += len(pair['ks'])
+                if self.max_models and pair['ks']:
+                    active |= nxt
             starting = []
             if budget_s is not None and time.time() - started > budget_s:
                 queue.clear()               # games not started yet are played by the next round
@@ -446,22 +489,11 @@ class Player:
                 info = env.reset(starting, [episode(state[g]['pair']['specs'][state[g]['k']]) for g in starting], ctrls)
                 for i, g in enumerate(starting):
                     state[g]['info'] = info_row(info, i)
-            for g in range(env.n_slots):
-                s = state[g]
-                if s is None or not s['info']['done']:
-                    continue
-                self.close_turn(s)
-                pair = s['pair']
-                if pair.get('record'):
-                    spec = pair['specs'][s['k']]
-                    name = f'{spec["encounter"]}__{s["k"]}'
-                    env.record(g, str(Path(pair['record']) / 'tapes' / f'{name}.jsonl'))
-                outcome, score = outcome_of(s['info'])
-                on_game(pair, s['k'], outcome, score, s['info']['round'], s['mv'])
-                n_games += 1
-                open_pairs[id(pair)] -= 1
-                state[g] = None
-                free.append(g)
+                reap()
+            if self.max_models and self.models.cache:
+                keep = self._active_models(state, queue)
+                if any(e not in keep for e in self.models.cache):
+                    self.models.release(keep)
             live = [g for g in range(env.n_slots) if state[g] is not None]
             if not live:
                 continue
@@ -513,13 +545,14 @@ class Player:
                 for j, i in enumerate(idx):
                     s = state[live[i]]
                     opp = s['pair']['m'] if team == 'heroes' else s['pair']['h']
-                    models = {team: self.models.get(side),
-                              OTHER[team]: None if opp.startswith('native-') else self.models.get(opp)}
+                    root_models = {team: self.models.get(side),
+                                   OTHER[team]: None if opp.startswith('native-') else self.models.get(opp)}
                     roots.append(Root(slot=live[i], team=team, logits=logits[j, :n_legal[j]], value=float(values[j]),
                                       round=s['info']['round'], actor=s['info']['actor'], potential=s['info']['potential'],
-                                      models=models, hidden=root_hidden(sub, j), kinds=kinds[j, :n_legal[j]]))
+                                      models=root_models, hidden=root_hidden(sub, j), kinds=kinds[j, :n_legal[j]]))
                 for j, res in enumerate(self.lookahead.search(env, roots)):
                     rows[idx[j]] = res.row
+                roots = root_models = None
             cost_map = obs['map'][:, 13].reshape(len(live), -1) if obs['map'].shape[1] > 13 else None
             walked = np.zeros(len(live))
             movers = [None] * len(live)
@@ -545,6 +578,7 @@ class Player:
                 if movers[i] is not None:
                     movers[i][1] += int(moved[i]) if moved is not None else walked[i]
                 state[g]['info'] = info_row(info, i)
+            reap()
         return n_games, n_pairs
 
     @staticmethod
@@ -832,7 +866,8 @@ def cmd_round(args):
         db.commit()
         rows_buffer.clear()
 
-    player = Player(env, models, device, threads=args.threads, micro_batch=args.micro_batch, forward_rows=args.forward_rows)
+    player = Player(env, models, device, threads=args.threads, micro_batch=args.micro_batch,
+                    forward_rows=args.forward_rows, max_models=args.max_models)
     budget = args.minutes * 60
     games, n_pairs = player.play(pairs, on_game, budget_s=budget, started=started)
     flush()
@@ -930,7 +965,8 @@ def daily_part(args, reg, db, round_id, models_device, newest, set_name, kind, b
         env = make_env(args, catalog, n_slots=args.search_slots if kind == 'search' else None)
         models = Models(reg, models_device, env.feature_version)
         player = Player(env, models, models_device, search=args.search if kind == 'search' else None,
-                        threads=args.threads, micro_batch=args.micro_batch, forward_rows=args.forward_rows)
+                        threads=args.threads, micro_batch=args.micro_batch, forward_rows=args.forward_rows,
+                        max_models=args.max_models)
         rows = []
 
         def on_game(pair, k, outcome, score, rounds, mv, rows=rows):
@@ -1293,10 +1329,12 @@ def cmd_sealed(args):
         h, m = (eid, NATIVE['monsters']) if team == 'heroes' else (NATIVE['heroes'], eid)
         pairs.append(dict(h=h, m=m, ks=list(range(len(specs))), specs=specs, set=args.set, mode='full'))
     rows = []
-    Player(env, models, device, threads=args.threads, micro_batch=args.micro_batch, forward_rows=args.forward_rows).play(
+    Player(env, models, device, threads=args.threads, micro_batch=args.micro_batch, forward_rows=args.forward_rows,
+           max_models=args.max_models).play(
         pairs, lambda p, k, o, s, r, mv: rows.append((p['set'], p['h'], p['m'], k, p['mode'], p['specs'][k]['encounter'],
                                                       p['specs'][k].get('stratum'), o, s, r, json.dumps(mv['heroes']),
                                                       json.dumps(mv['monsters']), args.milestone, time.time())))
+    models.release([])
     db.executemany('INSERT OR REPLACE INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', rows)
     db.commit()
     result = {}
@@ -1343,8 +1381,9 @@ def cmd_record(args):
                          monsters=getattr(args, 'monsters'), no_step_back=args.no_step_back))
     pair = dict(h=sides['heroes'], m=sides['monsters'], ks=list(range(len(chosen))), specs=chosen, set=args.set,
                 mode='record', record=str(out))
-    Player(env, models, device, noback=args.no_step_back, threads=args.threads, micro_batch=args.micro_batch, forward_rows=args.forward_rows).play(
-        [pair], on_game)
+    Player(env, models, device, noback=args.no_step_back, threads=args.threads, micro_batch=args.micro_batch,
+           forward_rows=args.forward_rows, max_models=args.max_models).play([pair], on_game)
+    models.release([])
     with open(out / 'games.jsonl', 'w') as stream:
         for r in sorted(rows, key=lambda r: r['k']):
             stream.write(json.dumps(r) + '\n')
@@ -1376,6 +1415,8 @@ def main(argv=None):
         a.add_argument('--micro-batch', type=int, default=128, help='games per forward pass')
         a.add_argument('--forward-rows', type=int, default=1 << 16,
                        help='candidate rows per forward pass at most (games x widest K; destination moves)')
+        a.add_argument('--max-models', type=int, default=6,
+                       help='maximum distinct policy models resident on device at once (0 = unlimited)')
         a.add_argument('--feature-version', default=FEATURE_VERSION,
                        help='observation version of the policies (BatchEnv(feature_version=...))')
         a.add_argument('--moves', choices=('step', 'dest'), default='step',
