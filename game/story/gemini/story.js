@@ -8,8 +8,8 @@
  *
  * Interactive Alderreach Valley world map + animated painterly cutscene player
  * with synchronized multi-speaker voice acting, bespoke orchestral score, and
- * portrait-driven dialogue captions. Strict CSP compliant (zero inline style
- * attributes, zero inline event handlers).
+ * portrait-driven dialogue captions (clips play once and hold their final frame).
+ * Strict CSP compliant (zero inline style attributes, zero inline event handlers).
  */
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -598,14 +598,14 @@ class GeminiStoryController {
       videoEl = el('video', 'gs-stage-video');
       videoEl.src = this.resolveUrl(scene.video);
       videoEl.muted = true;
-      videoEl.loop = true;
+      videoEl.loop = false;
       videoEl.playsInline = true;
       videoEl.autoplay = true;
       videoEl.preload = 'auto';
       videoEl.addEventListener('canplay', () => {
         videoEl.classList.add('is-ready');
-        videoEl.play().catch(() => {});
-      });
+        if (!videoEl.ended) videoEl.play().catch(() => {});
+      }, { once: true });
       stage.appendChild(videoEl);
       this.activeVideoEl = videoEl;
     }
@@ -734,16 +734,26 @@ class GeminiStoryController {
 
     const togglePause = () => {
       if (this.audio.voiceEl.ended) {
+        if (videoEl) {
+          videoEl.currentTime = 0;
+          videoEl.play().catch(() => {});
+        }
         startPlayback();
         return;
       }
       if (this.audio.voiceEl.paused) {
+        if (videoEl && !videoEl.ended) {
+          videoEl.play().catch(() => {});
+        }
         this.audio.voiceEl.play().then(() => {
           pauseBtn.textContent = 'Pause';
           this.audio.setMusicDucked(true);
           this.activeRaf = requestAnimationFrame(syncFromAudio);
         }).catch(() => {});
       } else {
+        if (videoEl && !videoEl.ended) {
+          videoEl.pause();
+        }
         this.audio.voiceEl.pause();
         pauseBtn.textContent = 'Resume';
         this.audio.setMusicDucked(false);
