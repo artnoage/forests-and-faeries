@@ -282,7 +282,7 @@
   let storyRun = null;
   let finishedSignal = null;
 
-  let activeCamPreset = 'tactical', followCamEnabled = true;
+  let activeCamPreset = 'tactical', followCamEnabled = false;   // the camera stays where the player puts it; Follow is opt-in (ff-cam-follow)
   var actionZoom = true;   // var: the viewer may be built before the settings code below runs
   let leftDrawerOpen = window.innerWidth > 900, rightDrawerOpen = false, minimapVisible = false;
   let shortcutsEnabled = true;
@@ -2163,8 +2163,12 @@
   $('orbit-left').addEventListener('click', () => viewer?.orbitBy?.(-Math.PI / 2, 380));
   $('orbit-right').addEventListener('click', () => viewer?.orbitBy?.(Math.PI / 2, 380));
   $('reset-view-button').addEventListener('click', () => { applyCameraPreset('tactical'); viewer?.resetCamera?.(true); });
+  try { followCamEnabled = window.localStorage.getItem('ff-cam-follow') === 'on'; } catch { /* storage blocked */ }
+  $('follow-cam-toggle').classList.toggle('is-on', followCamEnabled);
+  $('follow-cam-toggle').setAttribute('aria-pressed', String(followCamEnabled));
   $('follow-cam-toggle').addEventListener('click', e => {
     followCamEnabled = !followCamEnabled;
+    try { window.localStorage.setItem('ff-cam-follow', followCamEnabled ? 'on' : 'off'); } catch { /* storage blocked */ }
     e.currentTarget.classList.toggle('is-on', followCamEnabled);
     e.currentTarget.setAttribute('aria-pressed', String(followCamEnabled));
     viewer?.setAutoCamera?.(followCamEnabled);
