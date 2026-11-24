@@ -9,15 +9,14 @@ import { AnimationMixer, MeshStandardMaterial, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import validator from 'gltf-validator';
 
-// Each held object has a socket and the bone the socket must follow. A stored shield/weapon
-// may attach to the chest itself. Chruna's second hand must follow the same physical haft.
+// Each held object has a socket and the bone the socket must follow. Shields ride the left
+// forearm. Chruna's second hand must follow the same physical haft (game/tools/figures/grips.py).
 const gear = {
   guy: [['Sword', /^Weapon\.R$/, 'Hand.R', ['Hand.R']]],
   mara: [['Sword', /^Weapon\.R$/, 'Hand.R', ['Hand.R']], ['Shield', /^Shield\.L$/, 'LowerArm.L', ['LowerArm.L']]],
-  elion: [['Warhammer', /^Weapon\.R$/, 'Hand.R', ['Hand.R']], ['Shield', /^(Chest|BackShield|Shield\.Back)$/, 'Chest', []]],
+  elion: [['Warhammer', /^Weapon\.R$/, 'Hand.R', ['Hand.R']], ['Shield', /^Shield\.L$/, 'LowerArm.L', ['LowerArm.L']]],
   ilyra: [['Staff', /^Weapon\.R$/, 'Hand.R', ['Hand.R']]],
-  chruna: [['Halberd', /^Weapon\.[LR]$/, null, ['Hand.L', 'Hand.R']],
-           ['BackHalberd', /^(BackWeapon|Chest)$/, 'Chest', []]],
+  chruna: [['Halberd', /^Weapon\.[LR]$/, null, ['Hand.L', 'Hand.R']]],
   curogana: [],
   kobold_warrior: [['Dagger', /^Weapon\.R$/, 'Hand.R', ['Hand.R']]],
 };

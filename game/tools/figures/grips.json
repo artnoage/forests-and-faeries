@@ -1,0 +1,865 @@
+{
+ "about": "Weapon poses for game/tools/figures/grips.py. Body frame: origin between the shoulder joints, x = figure's right, y = forward, z = up, unit = arm reach. grip = main-hand palm point, dir = item +Y (toward the business end), off = off-hand place in item lengths from the main grip toward the head. 'at' is a clip fraction or an anchor found in the original clip: start, wind, strike, follow, end.",
+ "styles": {
+  "greatsword": {
+   "base": "ready",
+   "off_range": [
+    -0.1,
+    -0.05
+   ],
+   "follow": 0.5,
+   "poses": {
+    "ready": {
+     "grip": [
+      0.1,
+      0.55,
+      -0.7
+     ],
+     "dir": [
+      -0.12,
+      0.65,
+      0.75
+     ],
+     "off": -0.08
+    },
+    "carry": {
+     "grip": [
+      0.14,
+      0.45,
+      -0.75
+     ],
+     "dir": [
+      -0.05,
+      0.55,
+      0.83
+     ],
+     "off": -0.08
+    },
+    "guard": {
+     "grip": [
+      0.3,
+      0.5,
+      0.05
+     ],
+     "dir": [
+      -0.75,
+      0.35,
+      -0.55
+     ],
+     "off": -0.08
+    },
+    "windup": {
+     "grip": [
+      0.3,
+      0.15,
+      -0.05
+     ],
+     "dir": [
+      0.25,
+      -0.45,
+      0.86
+     ],
+     "off": -0.08
+    },
+    "strike": {
+     "grip": [
+      0.05,
+      0.75,
+      -0.5
+     ],
+     "dir": [
+      -0.1,
+      0.95,
+      -0.2
+     ],
+     "off": -0.08
+    },
+    "follow": {
+     "grip": [
+      -0.15,
+      0.5,
+      -0.8
+     ],
+     "dir": [
+      -0.55,
+      0.45,
+      -0.7
+     ],
+     "off": -0.08
+    }
+   },
+   "clips": {
+    "idle": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "walk": [
+     {
+      "at": 0,
+      "pose": "carry"
+     }
+    ],
+    "run": [
+     {
+      "at": 0,
+      "pose": "carry"
+     }
+    ],
+    "guard": [
+     {
+      "at": 0,
+      "pose": "ready"
+     },
+     {
+      "at": 0.35,
+      "pose": "guard"
+     },
+     {
+      "at": 1,
+      "pose": "guard"
+     }
+    ],
+    "slash": [
+     {
+      "at": "start",
+      "pose": "ready"
+     },
+     {
+      "at": "wind",
+      "pose": "windup"
+     },
+     {
+      "at": "strike",
+      "pose": "strike"
+     },
+     {
+      "at": "follow",
+      "pose": "follow"
+     },
+     {
+      "at": "end",
+      "pose": "ready"
+     }
+    ]
+   }
+  },
+  "polearm": {
+   "base": "ready",
+   "off_range": [
+    0.12,
+    0.42
+   ],
+   "follow": 0.5,
+   "poses": {
+    "ready": {
+     "grip": [
+      0.35,
+      0.45,
+      -0.85
+     ],
+     "dir": [
+      -0.5,
+      0.25,
+      0.83
+     ],
+     "off": 0.3
+    },
+    "guard": {
+     "grip": [
+      0.25,
+      0.3,
+      -0.75
+     ],
+     "dir": [
+      -0.15,
+      0.92,
+      0.35
+     ],
+     "off": 0.22
+    },
+    "windup": {
+     "grip": [
+      0.3,
+      0.15,
+      -0.35
+     ],
+     "dir": [
+      0.1,
+      -0.3,
+      0.95
+     ],
+     "off": 0.22
+    },
+    "strike": {
+     "grip": [
+      0.15,
+      0.35,
+      -0.8
+     ],
+     "dir": [
+      -0.05,
+      0.9,
+      -0.3
+     ],
+     "off": 0.22
+    },
+    "follow": {
+     "grip": [
+      0.05,
+      0.3,
+      -0.85
+     ],
+     "dir": [
+      -0.3,
+      0.6,
+      -0.75
+     ],
+     "off": 0.22
+    }
+   },
+   "clips": {
+    "idle": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "walk": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "run": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "guard": [
+     {
+      "at": 0,
+      "pose": "ready"
+     },
+     {
+      "at": 0.35,
+      "pose": "guard"
+     },
+     {
+      "at": 1,
+      "pose": "guard"
+     }
+    ],
+    "slash": [
+     {
+      "at": "start",
+      "pose": "ready"
+     },
+     {
+      "at": "wind",
+      "pose": "windup"
+     },
+     {
+      "at": "strike",
+      "pose": "strike"
+     },
+     {
+      "at": "follow",
+      "pose": "follow"
+     },
+     {
+      "at": "end",
+      "pose": "ready"
+     }
+    ]
+   }
+  },
+  "sword_1h": {
+   "base": "ready",
+   "follow": 0.7,
+   "poses": {
+    "ready": {
+     "grip": [
+      0.62,
+      0.3,
+      -0.85
+     ],
+     "dir": [
+      0.05,
+      0.75,
+      -0.65
+     ]
+    },
+    "carry": {
+     "grip": [
+      0.62,
+      0.2,
+      -0.88
+     ],
+     "dir": [
+      0.05,
+      0.6,
+      -0.8
+     ]
+    },
+    "guard": {
+     "grip": [
+      0.35,
+      0.55,
+      -0.5
+     ],
+     "dir": [
+      -0.15,
+      0.5,
+      0.85
+     ]
+    },
+    "windup": {
+     "grip": [
+      0.6,
+      0.0,
+      0.2
+     ],
+     "dir": [
+      0.15,
+      -0.5,
+      0.85
+     ]
+    },
+    "strike": {
+     "grip": [
+      0.3,
+      0.85,
+      -0.25
+     ],
+     "dir": [
+      -0.2,
+      0.95,
+      -0.2
+     ]
+    },
+    "follow": {
+     "grip": [
+      0.05,
+      0.5,
+      -0.65
+     ],
+     "dir": [
+      -0.55,
+      0.45,
+      -0.7
+     ]
+    }
+   },
+   "clips": {
+    "idle": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "walk": [
+     {
+      "at": 0,
+      "pose": "carry"
+     }
+    ],
+    "run": [
+     {
+      "at": 0,
+      "pose": "carry"
+     }
+    ],
+    "guard": [
+     {
+      "at": 0,
+      "pose": "ready"
+     },
+     {
+      "at": 0.35,
+      "pose": "guard"
+     },
+     {
+      "at": 1,
+      "pose": "guard"
+     }
+    ],
+    "slash": [
+     {
+      "at": "start",
+      "pose": "ready"
+     },
+     {
+      "at": "wind",
+      "pose": "windup"
+     },
+     {
+      "at": "strike",
+      "pose": "strike"
+     },
+     {
+      "at": "follow",
+      "pose": "follow"
+     },
+     {
+      "at": "end",
+      "pose": "ready"
+     }
+    ]
+   }
+  },
+  "staff_1h": {
+   "base": "ready",
+   "follow": 0.8,
+   "poses": {
+    "ready": {
+     "grip": [
+      0.62,
+      0.3,
+      -0.6
+     ],
+     "dir": [
+      0.05,
+      0.12,
+      0.99
+     ]
+    },
+    "guard": {
+     "grip": [
+      0.35,
+      0.55,
+      -0.45
+     ],
+     "dir": [
+      -0.5,
+      0.3,
+      0.81
+     ]
+    },
+    "windup": {
+     "grip": [
+      0.5,
+      0.1,
+      0.25
+     ],
+     "dir": [
+      0.1,
+      -0.35,
+      0.93
+     ]
+    },
+    "strike": {
+     "grip": [
+      0.25,
+      0.8,
+      -0.15
+     ],
+     "dir": [
+      -0.15,
+      0.75,
+      -0.65
+     ]
+    },
+    "follow": {
+     "grip": [
+      0.05,
+      0.5,
+      -0.65
+     ],
+     "dir": [
+      -0.4,
+      0.55,
+      -0.73
+     ]
+    }
+   },
+   "clips": {
+    "idle": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "walk": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "run": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "guard": [
+     {
+      "at": 0,
+      "pose": "ready"
+     },
+     {
+      "at": 0.35,
+      "pose": "guard"
+     },
+     {
+      "at": 1,
+      "pose": "guard"
+     }
+    ],
+    "slash": [
+     {
+      "at": "start",
+      "pose": "ready"
+     },
+     {
+      "at": "wind",
+      "pose": "windup"
+     },
+     {
+      "at": "strike",
+      "pose": "strike"
+     },
+     {
+      "at": "follow",
+      "pose": "follow"
+     },
+     {
+      "at": "end",
+      "pose": "ready"
+     }
+    ]
+   }
+  },
+  "shield": {
+   "base": "ready",
+   "about": "Shield arm: centre of the shield, normal out of its face, fore = elbow-to-wrist direction behind it.",
+   "poses": {
+    "ready": {
+     "centre": [
+      -0.45,
+      0.62,
+      -0.62
+     ],
+     "normal": [
+      -0.3,
+      0.95,
+      0.05
+     ],
+     "fore": [
+      0.75,
+      0.25,
+      -0.6
+     ]
+    },
+    "guard": {
+     "centre": [
+      -0.22,
+      0.7,
+      -0.32
+     ],
+     "normal": [
+      -0.1,
+      0.99,
+      0.05
+     ],
+     "fore": [
+      0.95,
+      0.15,
+      0.0
+     ]
+    },
+    "strike": {
+     "centre": [
+      -0.35,
+      0.65,
+      -0.45
+     ],
+     "normal": [
+      0.25,
+      0.97,
+      0.0
+     ],
+     "fore": [
+      0.9,
+      -0.1,
+      -0.3
+     ]
+    }
+   },
+   "clips": {
+    "idle": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "walk": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "run": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "guard": [
+     {
+      "at": 0,
+      "pose": "ready"
+     },
+     {
+      "at": 0.35,
+      "pose": "guard"
+     },
+     {
+      "at": 1,
+      "pose": "guard"
+     }
+    ],
+    "slash": [
+     {
+      "at": "start",
+      "pose": "ready"
+     },
+     {
+      "at": "strike",
+      "pose": "strike"
+     },
+     {
+      "at": "end",
+      "pose": "ready"
+     }
+    ]
+   }
+  },
+  "halberd_across": {
+   "base": "ready",
+   "off_range": [
+    -0.45,
+    -0.2
+   ],
+   "follow": 0.5,
+   "about": "Two-handed axe-style hold for a short-armed rig: right hand near the head, left toward the butt, haft in front of the hips.",
+   "poses": {
+    "ready": {
+     "grip": [
+      0.57,
+      0.55,
+      -0.32
+     ],
+     "dir": [
+      0.84,
+      -0.1,
+      0.53
+     ],
+     "off": -0.38
+    },
+    "guard": {
+     "grip": [
+      0.5,
+      0.6,
+      -0.1
+     ],
+     "dir": [
+      0.55,
+      0.2,
+      0.81
+     ],
+     "off": -0.35
+    },
+    "windup": {
+     "grip": [
+      0.6,
+      0.3,
+      0.15
+     ],
+     "dir": [
+      0.35,
+      -0.45,
+      0.82
+     ],
+     "off": -0.35
+    },
+    "strike": {
+     "grip": [
+      0.45,
+      0.75,
+      -0.35
+     ],
+     "dir": [
+      0.25,
+      0.9,
+      -0.35
+     ],
+     "off": -0.35
+    },
+    "follow": {
+     "grip": [
+      0.25,
+      0.6,
+      -0.55
+     ],
+     "dir": [
+      -0.1,
+      0.75,
+      -0.65
+     ],
+     "off": -0.35
+    }
+   },
+   "clips": {
+    "idle": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "walk": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "run": [
+     {
+      "at": 0,
+      "pose": "ready"
+     }
+    ],
+    "guard": [
+     {
+      "at": 0,
+      "pose": "ready"
+     },
+     {
+      "at": 0.35,
+      "pose": "guard"
+     },
+     {
+      "at": 1,
+      "pose": "guard"
+     }
+    ],
+    "slash": [
+     {
+      "at": "start",
+      "pose": "ready"
+     },
+     {
+      "at": "wind",
+      "pose": "windup"
+     },
+     {
+      "at": "strike",
+      "pose": "strike"
+     },
+     {
+      "at": "follow",
+      "pose": "follow"
+     },
+     {
+      "at": "end",
+      "pose": "ready"
+     }
+    ]
+   }
+  }
+ },
+ "figures": {
+  "guy": {
+   "sheet": "greatsword (two-handed), chain mail",
+   "weapon": {
+    "object": "Guy_Sword",
+    "style": "greatsword",
+    "head": "far",
+    "grip": 0.12
+   }
+  },
+  "chruna": {
+   "sheet": "halberd (two-handed, reach), scale mail; no second weapon",
+   "remove": [
+    "Chruna_BackHalberd"
+   ],
+   "thumb": {
+    "R": [
+     1,
+     0,
+     0.6
+    ],
+    "L": [
+     1,
+     0,
+     0.3
+    ]
+   },
+   "weapon": {
+    "object": "Chruna_Halberd",
+    "style": "halberd_across",
+    "head": "wide",
+    "grip": "rest",
+    "reach": 0.75
+   }
+  },
+  "mara": {
+   "sheet": "longsword (one hand), shield, chain mail",
+   "shield": {
+    "object": "Mara_Shield",
+    "socket": "Shield.L",
+    "face": [
+     -1,
+     0.35,
+     0
+    ],
+    "along": 0.5
+   },
+   "weapon": {
+    "object": "Mara_Sword",
+    "style": "sword_1h",
+    "head": "far",
+    "grip": 0.07
+   }
+  },
+  "ilyra": {
+   "sheet": "quarterstaff (one hand slot), dagger x2 (not modelled), no armour",
+   "thumb": {
+    "R": [
+     0,
+     0,
+     1
+    ]
+   },
+   "weapon": {
+    "object": "Ilyra_Staff",
+    "style": "staff_1h",
+    "head": "up",
+    "grip": "rest"
+   }
+  },
+  "elion": {
+   "sheet": "warhammer (one hand), shield, plate; the shield moves from the back to the arm, its cut-out on the back is capped",
+   "shield": {
+    "object": "Elion_BackShield",
+    "socket": "Shield.L",
+    "face": [
+     -1,
+     0.35,
+     0
+    ],
+    "along": 0.5,
+    "rename": "Elion_Shield"
+   },
+   "weapon": {
+    "object": "Elion_Warhammer",
+    "style": "sword_1h",
+    "head": "far",
+    "grip": 0.1
+   },
+   "cap_shade": 0.04
+  }
+ }
+}

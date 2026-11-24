@@ -11,7 +11,8 @@
   "chruna": "2026-11-18 (rigged from the raw Tripo mesh, mesh_source.tripo.raw_model_sha256)",
   "animated_armor": "2026-11-20 (SRD 5.2.1 Medium Construct, rigged from the raw Tripo mesh)",
   "kobold_warrior": "2026-11-20 (SRD 5.2.1 Small Dragon, rigid bone-parented Kobold_Dagger on Weapon.R + Tail.1/Tail.2)",
-  "six-hero polish (guy, mara, elion, ilyra, curogana, chruna)": "2026-11-20 (watertight --weld meshes from raw Tripo masters with 0 UV-seam cracks, rigid bone-parented weapons/shields/staves, two-handed Chruna halberd IK, zero-slide Leg-IK walk/run cycles, smooth clip crossfading in skinned-cast.js)"
+  "six-hero polish (guy, mara, elion, ilyra, curogana, chruna)": "2026-11-20 (watertight --weld meshes from raw Tripo masters with 0 UV-seam cracks, rigid bone-parented weapons/shields/staves, two-handed Chruna halberd IK, zero-slide Leg-IK walk/run cycles, smooth clip crossfading in skinned-cast.js)",
+  "weapon grips (guy, chruna, mara, ilyra, elion)": "2026-11-24 (game/tools/figures/grips.py: weapons through the fist, two-handed weapons in both hands, shields on the forearm, gear limited to the character sheet)"
  },
  "figures": [
   {
@@ -98,8 +99,8 @@
   {
    "kind": "chruna",
    "file": "game/static/models/chruna.glb",
-   "sha256": "347b288c695ab9e31274aca11073d0d365d4c0268e9249645429944105a4535c",
-   "bytes": 1430080,
+   "sha256": "44c55c2a5113206d265f0b1bfc1bf4a2ea3ab58c1187fe78903abfcf6a06bdf3",
+   "bytes": 1416392,
    "triangles": 18089,
    "bones": 23,
    "clips": [
@@ -114,7 +115,8 @@
     "walk"
    ],
    "materials": [
-    "chruna_Mat"
+    "chruna_Mat",
+    "chruna_Mat_2s"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -134,8 +136,17 @@
    "rigged_by": "Gemini, Blender 5.2, <repo-root>",
    "rig_manifest_sha256_match": true,
    "rigid_weapons": {
-    "Chruna_Halberd": "Weapon.R",
-    "Chruna_BackHalberd": "BackWeapon"
+    "Chruna_Halberd": "Weapon.R"
+   },
+   "regripped": {
+    "date": "2026-11-24",
+    "by": "Claude (Blender 5.2.3 headless, CPU)",
+    "script": "game/tools/figures/grips.py",
+    "spec": "game/tools/figures/grips.json#figures.chruna",
+    "from_sha256": "347b288c695ab9e31274aca11073d0d365d4c0268e9249645429944105a4535c",
+    "change": "halberd held in both hands in every clip, haft brought in front of the hips; second axe on the back removed (the sheet lists one halberd); the short right-arm chain of this rig limits how far the halberd can travel",
+    "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
    }
   },
   {
@@ -180,10 +191,10 @@
   {
    "kind": "elion",
    "file": "game/static/models/elion.glb",
-   "sha256": "b60f30dc284151ee18f7e53745bd33a4dcf9e1e1d7ad569f3cfde44ab79fda84",
-   "bytes": 1287476,
+   "sha256": "871a0d3877aed5eea4133885b8fc519654776f8fa5de1c6cfb7d901954539ba9",
+   "bytes": 1309080,
    "triangles": 18133,
-   "bones": 22,
+   "bones": 23,
    "clips": [
     "cast",
     "cast_area",
@@ -196,7 +207,8 @@
     "walk"
    ],
    "materials": [
-    "elion_Mat"
+    "elion_Mat",
+    "elion_Mat_2s"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -216,8 +228,18 @@
    "rigged_by": "Gemini, Blender 5.2, <repo-root>",
    "rig_manifest_sha256_match": true,
    "rigid_weapons": {
-    "Elion_Warhammer": "Weapon.R",
-    "Elion_BackShield": "BackShield"
+    "Elion_Shield": "Shield.L",
+    "Elion_Warhammer": "Weapon.R"
+   },
+   "regripped": {
+    "date": "2026-11-24",
+    "by": "Claude (Blender 5.2.3 headless, CPU)",
+    "script": "game/tools/figures/grips.py",
+    "spec": "game/tools/figures/grips.json#figures.elion",
+    "from_sha256": "b60f30dc284151ee18f7e53745bd33a4dcf9e1e1d7ad569f3cfde44ab79fda84",
+    "change": "warhammer through the fist; shield moved from the back to the left forearm (the sheet lists a shield and AC 20), posed forward; the opening it left in the back is capped with a dark plate",
+    "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
    }
   },
   {
@@ -373,8 +395,8 @@
   {
    "kind": "guy",
    "file": "game/static/models/guy.glb",
-   "sha256": "9138b31a949ed020f70afbf9c454a0e058b91ec387a297d8c9f8035494995f8e",
-   "bytes": 1280876,
+   "sha256": "4030feaf5e5d0c6a414274dc32a4836958ee406790620b9839a9cf7da5ce6177",
+   "bytes": 1296276,
    "triangles": 18074,
    "bones": 21,
    "clips": [
@@ -389,7 +411,8 @@
     "walk"
    ],
    "materials": [
-    "guy_Mat"
+    "guy_Mat",
+    "guy_Mat_2s"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -410,13 +433,23 @@
    "rig_manifest_sha256_match": true,
    "rigid_weapons": {
     "Guy_Sword": "Weapon.R"
+   },
+   "regripped": {
+    "date": "2026-11-24",
+    "by": "Claude (Blender 5.2.3 headless, CPU)",
+    "script": "game/tools/figures/grips.py",
+    "spec": "game/tools/figures/grips.json#figures.guy",
+    "from_sha256": "9138b31a949ed020f70afbf9c454a0e058b91ec387a297d8c9f8035494995f8e",
+    "change": "greatsword held in both hands (right below the guard, left on the grip toward the pommel) in every clip; ready / hanging-guard / overhead-cut poses",
+    "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
    }
   },
   {
    "kind": "ilyra",
    "file": "game/static/models/ilyra.glb",
-   "sha256": "37695163ffe08347c12ca34cc425fd88d3f7a0e082ac79b96e07b651bd21c825",
-   "bytes": 1195776,
+   "sha256": "0515746273a77d045d4ad54546bb5aef38ce92159883520670354849feb72892",
+   "bytes": 1202568,
    "triangles": 17641,
    "bones": 21,
    "clips": [
@@ -432,7 +465,8 @@
     "walk"
    ],
    "materials": [
-    "ilyra_Mat"
+    "ilyra_Mat",
+    "ilyra_Mat_2s"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -453,13 +487,23 @@
    "rig_manifest_sha256_match": true,
    "rigid_weapons": {
     "Ilyra_Staff": "Weapon.R"
+   },
+   "regripped": {
+    "date": "2026-11-24",
+    "by": "Claude (Blender 5.2.3 headless, CPU)",
+    "script": "game/tools/figures/grips.py",
+    "spec": "game/tools/figures/grips.json#figures.ilyra",
+    "from_sha256": "37695163ffe08347c12ca34cc425fd88d3f7a0e082ac79b96e07b651bd21c825",
+    "change": "quarterstaff through the fist, carried upright as a walking staff in idle/walk/run, one-handed overhead strike in slash (the sheet gives it one hand slot)",
+    "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
    }
   },
   {
    "kind": "mara",
    "file": "game/static/models/mara.glb",
-   "sha256": "d88651957ab413cb48ed699b0b13a1e38a23528540602c5da91bc32782e6966a",
-   "bytes": 1256368,
+   "sha256": "0eb52ac005669a678500e4881dd7d7370520980d3fe1e089a9931586615dbca9",
+   "bytes": 1285480,
    "triangles": 17064,
    "bones": 22,
    "clips": [
@@ -474,7 +518,8 @@
     "walk"
    ],
    "materials": [
-    "mara_Mat"
+    "mara_Mat",
+    "mara_Mat_2s"
    ],
    "mesh_source": {
     "group": "heroes",
@@ -494,8 +539,18 @@
    "rigged_by": "Gemini, Blender 5.2, <repo-root>",
    "rig_manifest_sha256_match": true,
    "rigid_weapons": {
-    "Mara_Sword": "Weapon.R",
-    "Mara_Shield": "Shield.L"
+    "Mara_Shield": "Shield.L",
+    "Mara_Sword": "Weapon.R"
+   },
+   "regripped": {
+    "date": "2026-11-24",
+    "by": "Claude (Blender 5.2.3 headless, CPU)",
+    "script": "game/tools/figures/grips.py",
+    "spec": "game/tools/figures/grips.json#figures.mara",
+    "from_sha256": "d88651957ab413cb48ed699b0b13a1e38a23528540602c5da91bc32782e6966a",
+    "change": "longsword through the fist; shield re-seated on the left forearm facing out and posed forward in idle, walk, run, guard and slash",
+    "kept": "mesh, skin weights, textures (original WebP bytes), every non-arm channel of every clip",
+    "rewritten": "UpperArm/LowerArm/Hand rotations of the arms that hold gear, in every clip; socket bones are no longer keyed; cut-out openings in the body mesh capped; gear uses a double-sided copy of the figure material"
    }
   },
   {

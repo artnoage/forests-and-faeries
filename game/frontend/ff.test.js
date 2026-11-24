@@ -186,9 +186,9 @@ test('every figure is rigged with the clips the scene plays', async () => {
     const rigidExpected = {
       guy: [['Guy_Sword', 'Weapon.R']],
       mara: [['Mara_Sword', 'Weapon.R'], ['Mara_Shield', 'Shield.L']],
-      elion: [['Elion_Warhammer', 'Weapon.R'], ['Elion_BackShield', 'BackShield']],
+      elion: [['Elion_Warhammer', 'Weapon.R'], ['Elion_Shield', 'Shield.L']],
       ilyra: [['Ilyra_Staff', 'Weapon.R']],
-      chruna: [['Chruna_Halberd', 'Weapon.R'], ['Chruna_BackHalberd', 'BackWeapon']],
+      chruna: [['Chruna_Halberd', 'Weapon.R']],
       kobold_warrior: [['Kobold_Dagger', 'Weapon.R']],
     };
     if (Object.hasOwn(rigidExpected, key)) {
@@ -199,6 +199,9 @@ test('every figure is rigged with the clips the scene plays', async () => {
         assert.ok(sock && obj && obj.mesh !== undefined && obj.skin === undefined, `${key}: ${objName} is a rigid non-skinned mesh`);
         assert.ok((sock.children || []).map(i => nodes[i]?.name).includes(objName), `${key}: ${objName} is parented under ${sockName}`);
       }
+      // Only the gear on the character sheet is modelled (one halberd for Chruna, Elion's shield on his arm).
+      const gear = nodes.filter(n => n.mesh !== undefined && n.skin === undefined).map(n => n.name).sort();
+      assert.deepEqual(gear, rigidExpected[key].map(([objName]) => objName).sort(), `${key}: no gear beyond the sheet`);
     }
   }
   assert.equal(versioned('not/listed.glb'), 'not/listed.glb');

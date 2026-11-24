@@ -69,7 +69,14 @@
         }
       ],
       "sha256": "d0dd7e6d0f8d821dbeec80665eb893b1c48c0eedebe6602fe8431d91265cd557",
-      "file": "game/static/models/guy.glb"
+      "file": "game/static/models/guy.glb",
+      "regripped": {
+        "date": "2026-11-24",
+        "script": "game/tools/figures/grips.py",
+        "from_sha256": "d0dd7e6d0f8d821dbeec80665eb893b1c48c0eedebe6602fe8431d91265cd557",
+        "sha256": "4030feaf5e5d0c6a414274dc32a4836958ee406790620b9839a9cf7da5ce6177",
+        "glb_bytes": 1296276
+      }
     },
     {
       "kind": "elion",
@@ -141,7 +148,14 @@
         }
       ],
       "sha256": "61f4b1a661b7e5ff22c51cc51a555d07e28ea2df68079de191a92ba8afd11a8f",
-      "file": "game/static/models/elion.glb"
+      "file": "game/static/models/elion.glb",
+      "regripped": {
+        "date": "2026-11-24",
+        "script": "game/tools/figures/grips.py",
+        "from_sha256": "61f4b1a661b7e5ff22c51cc51a555d07e28ea2df68079de191a92ba8afd11a8f",
+        "sha256": "871a0d3877aed5eea4133885b8fc519654776f8fa5de1c6cfb7d901954539ba9",
+        "glb_bytes": 1309080
+      }
     },
     {
       "kind": "curogana",
@@ -344,7 +358,14 @@
           "duration_sec": 1.167
         }
       ],
-      "file": "game/static/models/mara.glb"
+      "file": "game/static/models/mara.glb",
+      "regripped": {
+        "date": "2026-11-24",
+        "script": "game/tools/figures/grips.py",
+        "from_sha256": "4377ee6a4f730c0d44e47453d77b1794fb817896e4e4f213a960ab50ca5eaeaf",
+        "sha256": "0eb52ac005669a678500e4881dd7d7370520980d3fe1e089a9931586615dbca9",
+        "glb_bytes": 1285480
+      }
     },
     {
       "kind": "ilyra",
@@ -423,7 +444,14 @@
           "duration_sec": 1.167
         }
       ],
-      "file": "game/static/models/ilyra.glb"
+      "file": "game/static/models/ilyra.glb",
+      "regripped": {
+        "date": "2026-11-24",
+        "script": "game/tools/figures/grips.py",
+        "from_sha256": "1fbf3a329c808198ce67014bd25513e1574160d7e2056b166fb558e0246a6aab",
+        "sha256": "0515746273a77d045d4ad54546bb5aef38ce92159883520670354849feb72892",
+        "glb_bytes": 1202568
+      }
     },
     {
       "kind": "goblin",
