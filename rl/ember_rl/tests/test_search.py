@@ -328,7 +328,13 @@ def test_search_threads_search_the_same_games_as_one_thread(explore, pipeline):
     assert [w.n_slots for w in many.workers] == ([24, 23] if pipeline else [16, 16, 16])
     assert sum(r.searched for r in base) > 8                # enough forks to leave the single-thread shortcut
     for a, b in zip(base, split):
-        assert a.searched == b.searched and a.row == b.row and a.cands == b.cands
+        assert a.searched == b.searched and a.cands == b.cands
+        if a.row != b.row:
+            # The two schedules batch the leaves differently, so utilities agree to 1e-5, not to the bit.
+            # The choice is argmax Q: it may differ only between candidates tied within that tolerance.
+            assert a.searched
+            q = a.u.mean(axis=1)
+            assert abs(q[a.cands.index(a.row)] - q[a.cands.index(b.row)]) <= 2e-5
         if a.searched:
             np.testing.assert_allclose(a.u, b.u, rtol=0, atol=1e-5)
             np.testing.assert_allclose(a.target, b.target, rtol=0, atol=1e-5)
