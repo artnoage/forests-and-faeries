@@ -16,37 +16,37 @@ been stripped from all audio, video, and image files.
 | `media/portraits/chruna.webp` | Portrait (512x512 WebP) | `gemini-3-pro-image` | 42.5 KiB |
 | `media/portraits/mara.webp` | Portrait (512x512 WebP) | `gemini-3-pro-image` | 33.6 KiB |
 | `media/portraits/ilyra.webp` | Portrait (512x512 WebP) | `gemini-3-pro-image` | 48.5 KiB |
-| `media/music/map_theme.m4a` | Music (171.5s AAC 96k) | `lyria-3.5` | 2053.3 KiB |
-| `media/music/act1_mist.m4a` | Music (30.7s AAC 96k) | `lyria-3-clip-preview` | 368.6 KiB |
-| `media/music/act2_depths.m4a` | Music (30.8s AAC 96k) | `lyria-3-clip-preview` | 371.1 KiB |
-| `media/music/act3_reliquary.m4a` | Music (30.8s AAC 96k) | `lyria-3-clip-preview` | 369.3 KiB |
-| `media/music/epilogue_dawn.m4a` | Music (30.8s AAC 96k) | `lyria-3-clip-preview` | 368.7 KiB |
+| `media/music/map_theme.mp3` | Music (171.5s MP3 96k) | `lyria-3.5` | 2053.3 KiB |
+| `media/music/act1_mist.mp3` | Music (30.7s MP3 96k) | `lyria-3-clip-preview` | 368.6 KiB |
+| `media/music/act2_depths.mp3` | Music (30.8s MP3 96k) | `lyria-3-clip-preview` | 371.1 KiB |
+| `media/music/act3_reliquary.mp3` | Music (30.8s MP3 96k) | `lyria-3-clip-preview` | 369.3 KiB |
+| `media/music/epilogue_dawn.mp3` | Music (30.8s MP3 96k) | `lyria-3-clip-preview` | 368.7 KiB |
 | `media/scenes/scene_01_prologue.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 120.2 KiB |
-| `media/voice/scene_01_prologue.m4a` | Voice dialogue (42.4s AAC 64k) | `gemini-3.8-flash-tts` | 357.9 KiB |
+| `media/voice/scene_01_prologue.mp3` | Voice dialogue (42.4s MP3 64k) | `gemini-3.8-flash-tts` | 357.9 KiB |
 | `media/video/scene_01_prologue.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1039.2 KiB |
 | `media/scenes/scene_02_kiln.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 116.3 KiB |
-| `media/voice/scene_02_kiln.m4a` | Voice dialogue (23.9s AAC 64k) | `gemini-3.8-flash-tts` | 197.5 KiB |
+| `media/voice/scene_02_kiln.mp3` | Voice dialogue (23.9s MP3 64k) | `gemini-3.8-flash-tts` | 197.5 KiB |
 | `media/video/scene_02_kiln.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1073.0 KiB |
 | `media/scenes/scene_03_bell_court.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 159.0 KiB |
-| `media/voice/scene_03_bell_court.m4a` | Voice dialogue (29.0s AAC 64k) | `gemini-3.8-flash-tts` | 244.0 KiB |
+| `media/voice/scene_03_bell_court.mp3` | Voice dialogue (29.0s MP3 64k) | `gemini-3.8-flash-tts` | 244.0 KiB |
 | `media/video/scene_03_bell_court.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1421.7 KiB |
 | `media/scenes/scene_04_lantern_mine.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 152.9 KiB |
-| `media/voice/scene_04_lantern_mine.m4a` | Voice dialogue (29.5s AAC 64k) | `gemini-3.8-flash-tts` | 246.5 KiB |
+| `media/voice/scene_04_lantern_mine.mp3` | Voice dialogue (29.5s MP3 64k) | `gemini-3.8-flash-tts` | 246.5 KiB |
 | `media/video/scene_04_lantern_mine.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1583.1 KiB |
 | `media/scenes/scene_05_vault.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 153.6 KiB |
-| `media/voice/scene_05_vault.m4a` | Voice dialogue (29.7s AAC 64k) | `gemini-3.8-flash-tts` | 251.8 KiB |
+| `media/voice/scene_05_vault.mp3` | Voice dialogue (29.7s MP3 64k) | `gemini-3.8-flash-tts` | 251.8 KiB |
 | `media/video/scene_05_vault.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1262.9 KiB |
 | `media/scenes/scene_06_charter.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 168.7 KiB |
-| `media/voice/scene_06_charter.m4a` | Voice dialogue (32.5s AAC 64k) | `gemini-3.8-flash-tts` | 274.2 KiB |
+| `media/voice/scene_06_charter.mp3` | Voice dialogue (32.5s MP3 64k) | `gemini-3.8-flash-tts` | 274.2 KiB |
 | `media/video/scene_06_charter.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1398.6 KiB |
 | `media/scenes/scene_07_deep_shift.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 173.6 KiB |
-| `media/voice/scene_07_deep_shift.m4a` | Voice dialogue (29.5s AAC 64k) | `gemini-3.8-flash-tts` | 248.6 KiB |
+| `media/voice/scene_07_deep_shift.mp3` | Voice dialogue (29.5s MP3 64k) | `gemini-3.8-flash-tts` | 248.6 KiB |
 | `media/video/scene_07_deep_shift.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1621.2 KiB |
 | `media/scenes/scene_08_reliquary.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 165.6 KiB |
-| `media/voice/scene_08_reliquary.m4a` | Voice dialogue (38.8s AAC 64k) | `gemini-3.8-flash-tts` | 319.2 KiB |
+| `media/voice/scene_08_reliquary.mp3` | Voice dialogue (38.8s MP3 64k) | `gemini-3.8-flash-tts` | 319.2 KiB |
 | `media/video/scene_08_reliquary.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 2203.0 KiB |
 | `media/scenes/scene_09_epilogue.webp` | Scene still (1280x720 WebP) | `gemini-3-pro-image` | 147.1 KiB |
-| `media/voice/scene_09_epilogue.m4a` | Voice dialogue (35.4s AAC 64k) | `gemini-3.8-flash-tts` | 295.8 KiB |
+| `media/voice/scene_09_epilogue.mp3` | Voice dialogue (35.4s MP3 64k) | `gemini-3.8-flash-tts` | 295.8 KiB |
 | `media/video/scene_09_epilogue.mp4` | Animated cutscene (6.0s 720p H.264) | `gemini-omni-1.2-flash` | 1490.0 KiB |
 
 ## Generation Prompts and Scripts
@@ -79,23 +79,23 @@ Painterly illustrated fantasy concept art in rich traditional gouache and warm o
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Chest-up character portrait against a moody painted slate-indigo twilight backdrop with soft arcane cyan and warm candle rim light. Subject: Ilyra, a slender young human woman wizard scholar in her early 20s with fair skin, an alert thoughtful face, dark brown eyes, and straight black hair gathered into a low bun with a few loose strands framing her face. She wears a deep blue-teal wool scholar's robe with pale cream trim and its hood lowered onto her shoulders, holding the top of a plain wooden quarterstaff glowing with a subtle wisp of pale-blue arcane light.
 
-### `media/music/map_theme.m4a` (`lyria-3.5`, Music (171.5s AAC 96k))
+### `media/music/map_theme.mp3` (`lyria-3.5`, Music (171.5s MP3 96k))
 
 Atmospheric acoustic and chamber-orchestral medieval fantasy overture, solo cello and warm Celtic harp over gentle distant bronze bell harmonics, misty twilight valley mood, mysterious yet hopeful, steady 78 BPM, seamless instrumental score, no vocals, no lyrics
 
-### `media/music/act1_mist.m4a` (`lyria-3-clip-preview`, Music (30.7s AAC 96k))
+### `media/music/act1_mist.mp3` (`lyria-3-clip-preview`, Music (30.7s MP3 96k))
 
 Moody fantasy chamber underscore for misty river canal and lantern-lit stone village, soft bowed strings, plucked lute, subtle low brass drone and distant muted bronze chime, tense nocturnal atmosphere, 74 BPM, purely instrumental, no vocals
 
-### `media/music/act2_depths.m4a` (`lyria-3-clip-preview`, Music (30.8s AAC 96k))
+### `media/music/act2_depths.mp3` (`lyria-3-clip-preview`, Music (30.8s MP3 96k))
 
 Dark subterranean fantasy adventure score for torchlit mines and forged iron vaults, rhythmic pizzicato strings, deep resonant frame drum, ominous low cello ostinato and subtle metallic chimes, driving tension, 96 BPM, purely instrumental, no vocals
 
-### `media/music/act3_reliquary.m4a` (`lyria-3-clip-preview`, Music (30.8s AAC 96k))
+### `media/music/act3_reliquary.mp3` (`lyria-3-clip-preview`, Music (30.8s MP3 96k))
 
 Epic dramatic dark-fantasy orchestral climax theme, urgent low brass and soaring strings, pounding war drums and resonant church-bell tolling accents, heroic last stand in an ancient crypt, 114 BPM, purely instrumental, no vocals
 
-### `media/music/epilogue_dawn.m4a` (`lyria-3-clip-preview`, Music (30.8s AAC 96k))
+### `media/music/epilogue_dawn.mp3` (`lyria-3-clip-preview`, Music (30.8s MP3 96k))
 
 Luminous uplifting fantasy sunrise epilogue theme, warm solo violin and golden French horn melody over shimmering harp arpeggios and a single clear resonant bronze bell tolling at dawn, peaceful triumph, 82 BPM, purely instrumental, no vocals
 
@@ -103,7 +103,7 @@ Luminous uplifting fantasy sunrise epilogue theme, warm solo violin and golden F
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: Elion (silver-haired cleric in steel plate and white gold-sunburst tabard), Guy (chestnut-haired bearded fighter in dark-blue tabard holding a two-handed greatsword), and Chruna (fierce dark-haired woman in steel cuirass, red bracers, torn blue cape holding twin halberds) stand on a damp stone river-canal lock wall at twilight dusk. In the misty distance atop a steep hill, a towering stone belfry with a massive silent bronze bell stands silhouetted against a fading purple-gold sunset. Unnatural pale silver-teal river fog crawls uphill from the water lock as a loose wooden barge drifts against the stone sluice and gaunt shadowed undead silhouettes emerge from the reeds on the far bank.
 
-### `media/voice/scene_01_prologue.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (42.4s AAC 64k))
+### `media/voice/scene_01_prologue.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (42.4s MP3 64k))
 
 Narrator (Charon): For three hundred winters, the great bronze Vesper Bell rang at dusk across Alderreach — sealing the river locks, the kilns, the mines, and the old Reliquary beneath the hills. Tonight, the sun sank in dead silence.; Elion (Orus): Not a single chime, Guy. And look at the canal — the fog is climbing uphill against the wind.; Guy (Puck): The mooring rope just snapped on the far bank. Something is crossing the sluice gates.; Chruna (Gacrux): Good. Whatever crawled out of the mud gets sharp iron instead of prayer.
 
@@ -115,7 +115,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: Elion (silver-haired cleric in steel plate and white gold-sunburst tabard holding a warhammer) kneels beside a cracked stone river sluice inspecting a pried-off brass rune ward plate while Guy (bearded fighter in dark-blue tabard with greatsword drawn) looks ahead toward twin dark red-brick dome kilns and tall soot chimneys glowing faintly with dying orange embers in the night mist, where hunched goblin raiders dart between brick stacks.
 
-### `media/voice/scene_02_kiln.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (23.9s AAC 64k))
+### `media/voice/scene_02_kiln.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (23.9s MP3 64k))
 
 Elion (Orus): The lock ward did not crack from age. See these gouges? Someone pried the brass plate loose with an iron bar.; Chruna (Gacrux): Then the bell wasn't an accident either. I'll sprint up the ridge road to Bell Court — you two follow the smoke from Split Kiln.; Guy (Puck): The furnaces are half dead, and those aren't kiln-hands hiding behind the brick stacks. Stay close, Elion.
 
@@ -127,7 +127,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: inside the rain-slick stone courtyard of Bell Court under a stormy indigo sky, Curogana (copper-braided high-elf woman with crimson cheek scales in high-collared crimson sorcerer coat, amber fire sparks glowing on her fingers) points upward toward a monumental hanging bronze bell in the stone arcade whose severed iron chain dangles empty without its silver clapper. Elion (silver-haired cleric in white sunburst tabard) inspects pale white chalk footprints on the wet flagstones while Chruna (torn blue cape, twin halberds) turns fiercely toward flickering goblin torches at the arched side gate.
 
-### `media/voice/scene_03_bell_court.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (29.0s AAC 64k))
+### `media/voice/scene_03_bell_court.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (29.0s MP3 64k))
 
 Narrator (Charon): High above the mist-choked valley, beneath the vaulted arches of Bell Court, Curogana waited by an empty iron chain.; Curogana (Kore): The bronze is intact, Elion — someone cut the silver clapper clean out of its throat. And whoever hauled it away tracked white mine-chalk across every step.; Chruna (Gacrux): Save the tracking. The goblin rear-guard is still looting the side gate — let's ask them where they ran.
 
@@ -139,7 +139,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: at the heavy timber-framed entrance of a mountain ore mine hung with swaying amber oil lanterns, Mara (scarred-eyebrow soldier woman in chain mail and teal-green tabard with longsword and teal round shield) holds the line beside Curogana (crimson sorcerer coat, glowing amber eyes) and Chruna (plate cuirass, torn blue cape, twin halberds). Emerging from the dark glittering mine gallery ahead are two towering empty suits of animated plate armor marching on their own in eerie pale-blue resonance light.
 
-### `media/voice/scene_04_lantern_mine.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (29.5s AAC 64k))
+### `media/voice/scene_04_lantern_mine.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (29.5s MP3 64k))
 
 Mara (Erinome): You're from Bell Court? Keep behind the lamp posts. The miners fled an hour ago — not from goblins, from the gallery itself.; Curogana (Kore): Feel that hum in the stone? Those aren't soldiers in that plate armor. Something deep under the seam is wearing empty iron like a gauntlet.; Chruna (Gacrux): Empty iron rings louder when you split it. Mara — take the right flank.
 
@@ -151,7 +151,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: high on a torchlit cliffside stone terrace outside a massive iron-bound mountain vault door, Ilyra (young dark-haired woman scholar in deep blue-teal cream-trimmed robe holding a wooden quarterstaff and glowing spellbook) traces hasty white chalk warning runes scratched onto the heavy stone lintel. Beside her, Mara (teal-green tabard, longsword and round shield raised) watches the heavy forged gate ajar as goblin raiders peer through the iron bars from inside the amber-lit treasury.
 
-### `media/voice/scene_05_vault.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (29.7s AAC 64k))
+### `media/voice/scene_05_vault.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (29.7s MP3 64k))
 
 Narrator (Charon): While the others cleared the upper ore gallery, Mara and the young scholar Ilyra climbed the cliff trail to the Forged Vault — where the goblin warband had bolted the iron doors from within.; Ilyra (Leda): Mara, look at these panic marks on the lintel. The goblins didn't hoard the bell-clapper for treasure — they were terrified of what woke beneath the mine!; Mara (Erinome): Scared thieves still shoot straight. Stay behind my shield, Ilyra, and let's see what's left inside.
 
@@ -163,7 +163,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: inside a warm lantern-lit stone vault chamber, Ilyra (deep blue-teal scholar's robe, black hair in low bun) spreads open an ancient illuminated vellum charter on a heavy stone table showing an inked architectural diagram of a bronze bell clapper and an underground crypt seal (purely visual diagram, zero readable text). Elion (silver-haired cleric in white sunburst tabard) leans over in solemn alarm while Curogana (copper-braided elf in crimson coat, ember-sparks flaring on her hands) gazes intensely toward a dark arched window overlooking the misty river sluice.
 
-### `media/voice/scene_06_charter.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (32.5s AAC 64k))
+### `media/voice/scene_06_charter.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (32.5s MP3 64k))
 
 Ilyra (Leda): The clapper is gone — the goblins dumped it down the upper sluice to buy their lives! And this founder's charter explains why: the bell's silver was forged from the Reliquary seal itself. Carry it back to the tomb, and the old ward unravels.; Curogana (Kore): So the dead didn't wake by accident. They whispered to greedy hands and called their own key home.; Elion (Orus): Then we cut off their trail at the upper weir before the current drags the silver all the way under the mountain.
 
@@ -175,7 +175,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: deep inside a cavernous underground loadstone mine gallery glittering with dark metallic ore veins and eerie cyan-amber luminescence, Elion (white sunburst tabard, warhammer raised), Mara (teal tabard, shield braced), and Ilyra (deep blue-teal robe, quarterstaff blazing with pale-blue arcane light) face five looming suits of animated steel plate armor and a drifting ghostly specter blocking a cracked ancient obsidian archway pulsing with pale sickly green-gold mist.
 
-### `media/voice/scene_07_deep_shift.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (29.5s AAC 64k))
+### `media/voice/scene_07_deep_shift.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (29.5s MP3 64k))
 
 Narrator (Charon): Deep beneath Lantern Mine, where the ancient loadstone hums like a struck chord, five silent suits of iron stood sentinel before the cracked breach to the Reliquary.; Mara (Erinome): The Reliquary arch lies right behind that steel wall, Elion. If we smash this vanguard, Guy and the others get a clean path straight to the altar.; Ilyra (Leda): My wards are ready. Let's break the iron and open the road.
 
@@ -187,7 +187,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Matching the exact character designs from the reference portraits: inside a vast vaulted subterranean Reliquary Crypt illuminated by cold green-gold braziers, four heroes advance shoulder to shoulder — Guy (dark-blue tabard, two-handed greatsword leveled), Elion (white gold-sunburst tabard, glowing warhammer), Curogana (crimson coat, bright draconic fire blazing in both palms), and Chruna (torn blue cape, twin halberds raised). Across the stone flagstones before an ancient marble altar holding the stolen silver bell-clapper wrapped in ghostly threads stand two towering linen-wrapped mummies and a grim armored wight lord.
 
-### `media/voice/scene_08_reliquary.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (38.8s AAC 64k))
+### `media/voice/scene_08_reliquary.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (38.8s MP3 64k))
 
 Narrator (Charon): Through the shattered breach lies the Reliquary Crypt, sealed since the founding of Alderreach. Upon the cold altar rests the stolen silver clapper — and beside it rise the ancient lords of ash.; Guy (Puck): Four of us, shoulder to shoulder. One last room before sunrise.; Curogana (Kore): Ancient wrappings burn fast. Let's remind them what living fire feels like.; Elion (Orus): Hold nothing back. Dawn is waiting on that bell!
 
@@ -199,7 +199,7 @@ Generate a 6-second painterly animated cinematic shot starting seamlessly from t
 
 Painterly illustrated fantasy concept art in rich traditional gouache and warm oil brushwork with crisp ink line accents, atmospheric volumetric lighting, tactile weathered stone and cloth, cohesive jewel-tone palette of slate twilight, lantern amber, verdigris bronze, and deep indigo. Original generic fantasy design, zero text, zero letters, zero numbers, zero watermarks, zero borders or frames. Cinematic 16:9 widescreen fantasy keyframe illustration. Warm glorious golden sunrise flooding over the arched stone belfry terrace of Bell Court high above a peaceful green-and-gold river valley. In the upper-left belfry arch, the restored silvered clapper strikes the monumental weathered bronze Vesper Bell, sending shimmering concentric rings of golden morning light out across the clearing valley mist below. Standing together along the sunlit stone parapet on the right, looking out over the valley in quiet triumph, are all six heroes in strict match to their reference portraits from left to right: 1) Elion (silver-haired older man in steel plate and white tabard with golden sunburst), 2) Guy (young man with tousled chestnut-brown hair and short brown beard in chain mail and plain dark-blue tabard with grey trim, NO sunburst emblem, greatsword on back), 3) Mara (tanned woman with dark-brown braid in chain mail and teal-green tabard), 4) Ilyra (young woman with straight jet-black hair in a low bun — NOT blonde — in deep blue-teal cream-trimmed hooded scholar robe holding a wooden quarterstaff), 5) Curogana (slender high-elf woman with pointed ears and bright copper-red hair in a long braid — NOT dark hair — in crimson gold-trimmed high-collar coat), 6) Chruna (fierce dark-haired woman in steel cuirass, red bracers, torn dark-blue cape, halberd resting on shoulder).
 
-### `media/voice/scene_09_epilogue.m4a` (`gemini-3.8-flash-tts`, Voice dialogue (35.4s AAC 64k))
+### `media/voice/scene_09_epilogue.mp3` (`gemini-3.8-flash-tts`, Voice dialogue (35.4s MP3 64k))
 
 Narrator (Charon): When the last ash settled in the Reliquary, the six climbed the belfry stairs together with the silver clapper bound in cloth. Elion swung the chain home — and across Reed Lock, Split Kiln, and Lantern Mine, one clear golden note rang out into the morning sun.; Mara (Erinome): Three hundred years, and still not a crack in the bronze.; Elion (Orus): And if the valley ever falls quiet again... Alderreach knows who will answer.
 

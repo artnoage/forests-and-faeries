@@ -49,24 +49,24 @@
   },
   "music": {
     "map_theme": {
-      "src": "media/music/map_theme.m4a",
-      "duration": 171.5
+      "src": "media/music/map_theme.mp3",
+      "duration": 171.47
     },
     "act1_mist": {
-      "src": "media/music/act1_mist.m4a",
-      "duration": 30.7
+      "src": "media/music/act1_mist.mp3",
+      "duration": 30.67
     },
     "act2_depths": {
-      "src": "media/music/act2_depths.m4a",
-      "duration": 30.8
+      "src": "media/music/act2_depths.mp3",
+      "duration": 30.77
     },
     "act3_reliquary": {
-      "src": "media/music/act3_reliquary.m4a",
-      "duration": 30.8
+      "src": "media/music/act3_reliquary.mp3",
+      "duration": 30.77
     },
     "epilogue_dawn": {
-      "src": "media/music/epilogue_dawn.m4a",
-      "duration": 30.8
+      "src": "media/music/epilogue_dawn.mp3",
+      "duration": 30.77
     }
   },
   "chapters": [
@@ -97,8 +97,8 @@
         "title": "The Bell That Did Not Toll",
         "still": "media/scenes/scene_01_prologue.webp",
         "video": "media/video/scene_01_prologue.mp4",
-        "audio": "media/voice/scene_01_prologue.m4a",
-        "audio_duration": 42.4,
+        "audio": "media/voice/scene_01_prologue.mp3",
+        "audio_duration": 42.38,
         "cues": [
           {
             "speaker": "Narrator",
@@ -157,8 +157,8 @@
         "title": "Pried Brass",
         "still": "media/scenes/scene_02_kiln.webp",
         "video": "media/video/scene_02_kiln.mp4",
-        "audio": "media/voice/scene_02_kiln.m4a",
-        "audio_duration": 23.9,
+        "audio": "media/voice/scene_02_kiln.mp3",
+        "audio_duration": 23.89,
         "cues": [
           {
             "speaker": "Elion",
@@ -211,8 +211,8 @@
         "title": "The Empty Throat",
         "still": "media/scenes/scene_03_bell_court.webp",
         "video": "media/video/scene_03_bell_court.mp4",
-        "audio": "media/voice/scene_03_bell_court.m4a",
-        "audio_duration": 29.0,
+        "audio": "media/voice/scene_03_bell_court.mp3",
+        "audio_duration": 28.93,
         "cues": [
           {
             "speaker": "Narrator",
@@ -265,8 +265,8 @@
         "title": "Walking Iron",
         "still": "media/scenes/scene_04_lantern_mine.webp",
         "video": "media/video/scene_04_lantern_mine.mp4",
-        "audio": "media/voice/scene_04_lantern_mine.m4a",
-        "audio_duration": 29.5,
+        "audio": "media/voice/scene_04_lantern_mine.mp3",
+        "audio_duration": 29.41,
         "cues": [
           {
             "speaker": "Mara",
@@ -318,8 +318,8 @@
         "title": "Barricaded Thieves",
         "still": "media/scenes/scene_05_vault.webp",
         "video": "media/video/scene_05_vault.mp4",
-        "audio": "media/voice/scene_05_vault.m4a",
-        "audio_duration": 29.7,
+        "audio": "media/voice/scene_05_vault.mp3",
+        "audio_duration": 29.69,
         "cues": [
           {
             "speaker": "Narrator",
@@ -372,8 +372,8 @@
         "title": "The Key Called Home",
         "still": "media/scenes/scene_06_charter.webp",
         "video": "media/video/scene_06_charter.mp4",
-        "audio": "media/voice/scene_06_charter.m4a",
-        "audio_duration": 32.5,
+        "audio": "media/voice/scene_06_charter.mp3",
+        "audio_duration": 32.41,
         "cues": [
           {
             "speaker": "Ilyra",
@@ -426,8 +426,8 @@
         "title": "The Iron Breach",
         "still": "media/scenes/scene_07_deep_shift.webp",
         "video": "media/video/scene_07_deep_shift.mp4",
-        "audio": "media/voice/scene_07_deep_shift.m4a",
-        "audio_duration": 29.5,
+        "audio": "media/voice/scene_07_deep_shift.mp3",
+        "audio_duration": 29.45,
         "cues": [
           {
             "speaker": "Narrator",
@@ -481,8 +481,8 @@
         "title": "Kings of Ash",
         "still": "media/scenes/scene_08_reliquary.webp",
         "video": "media/video/scene_08_reliquary.mp4",
-        "audio": "media/voice/scene_08_reliquary.m4a",
-        "audio_duration": 38.8,
+        "audio": "media/voice/scene_08_reliquary.mp3",
+        "audio_duration": 38.78,
         "cues": [
           {
             "speaker": "Narrator",
@@ -521,8 +521,8 @@
     "title": "The Dawn Toll",
     "still": "media/scenes/scene_09_epilogue.webp",
     "video": "media/video/scene_09_epilogue.mp4",
-    "audio": "media/voice/scene_09_epilogue.m4a",
-    "audio_duration": 35.4,
+    "audio": "media/voice/scene_09_epilogue.mp3",
+    "audio_duration": 35.33,
     "cues": [
       {
         "speaker": "Narrator",
