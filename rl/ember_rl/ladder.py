@@ -791,9 +791,8 @@ def cmd_round(args):
     # --pair-specs specs of the stratified order; pairs go by opponent rank (every entrant's native pair first,
     # then its first snapshot opponent, ...), newest entrant first within a rank.
     db = open_db(reg.dir / 'games.sqlite')
-    ranked = []
+    nominations = []
     order = sorted(state['entered'], key=lambda e: -reg.entities[e]['created'])
-    pair_ks = stratified_order(specs)[:max(1, args.pair_specs)]
     for eid in order:
         if reg.entities[eid]['status'] != 'ok':
             continue
@@ -801,12 +800,19 @@ def cmd_round(args):
         for rank, opp in enumerate(state['entered'][eid]['opponents']):
             if reg.entities.get(opp, {}).get('status', 'ok') != 'ok':
                 continue
-            h, m = (eid, opp) if team == 'heroes' else (opp, eid)
-            done = played_ks(db, args.set, h, m)
-            missing = [k for k in pair_ks if k not in done]
-            if missing:
-                ranked.append((rank, dict(h=h, m=m, ks=missing, specs=specs, set=args.set, mode='full')))
-    pairs = [pair for _, pair in sorted(ranked, key=lambda x: x[0])][:args.max_pairs]
+            matchup = (eid, opp) if team == 'heroes' else (opp, eid)
+            nominations.append((rank, matchup))
+    # Both entrants can nominate the same matchup. Keep its highest-priority nomination.
+    nominations.sort(key=lambda item: item[0])
+    matchups = dict.fromkeys(matchup for _, matchup in nominations)
+    pair_ks = stratified_order(specs)[:max(1, args.pair_specs)]
+    pairs = []
+    for h, m in matchups:
+        done = played_ks(db, args.set, h, m)
+        missing = [k for k in pair_ks if k not in done]
+        if missing:
+            pairs.append(dict(h=h, m=m, ks=missing, specs=specs, set=args.set, mode='full'))
+    pairs = pairs[:args.max_pairs]
     env = make_env(args, catalog)
     import torch
     device = torch.device(args.device)

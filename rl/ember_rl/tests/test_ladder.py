@@ -131,6 +131,20 @@ def test_record_writes_tapes_with_the_no_step_back_rule(root, tmp_path):
     assert all(g['no_step_back'] for g in games)
 
 
+def test_round_counts_distinct_matchups_before_the_pair_limit(root):
+    make_run(root, 'r1', 'base', [(2, 'heroes'), (3, 'monsters')])
+    make_run(root, 'r2', 'league', [(1, 'heroes')])
+    # Three native matchups and two hero-monster matchups. Both heroes and the
+    # monster nominate each other, so duplicate jobs would crowd out the fifth pair.
+    args = ['round', '--root', str(root), *ROUND, '--anchor-hours', '100', '--max-pairs', '5', '--daily', 'no']
+    for n_specs in (1, 2):
+        ladder.main([*args, '--pair-specs', str(n_specs)])
+        report = json.loads((root / 'ladder' / 'latest.json').read_text())
+        assert report['pairs_queued'] == report['pairs_started'] == 5
+        assert report['games_played'] == 5  # one new seed per matchup in each round
+        assert report['fit']['games'] == 5 * n_specs
+
+
 def test_round_with_destination_moves_and_row_chunks(root):
     """--moves dest (as the l3-open policies train) with forward passes split into small row chunks."""
     make_run(root, 'r1', 'base', [(1, 'heroes'), (2, 'monsters')])
