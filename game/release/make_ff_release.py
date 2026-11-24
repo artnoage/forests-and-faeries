@@ -214,7 +214,19 @@ def check(static=STATIC, story_root=None):
     return problems
 
 
+def release_version(static=STATIC):
+    """One short hash over every non-HTML release file: story.js and sound.js append it to
+    story and audio addresses, so replacing a file changes its address."""
+    digest = hashlib.sha256()
+    for name in sorted(release_files()):
+        origin = source(name, static)
+        if origin.is_file() and not name.endswith('.html'):
+            digest.update(f'{name}:{sha256(origin)}\n'.encode())
+    return digest.hexdigest()[:12]
+
+
 def stamp_versions(html, static=STATIC):
+    html = html.replace('data-release="dev"', f'data-release="{release_version(static)}"')
     return ASSET_REF.sub(lambda m: f'./{m.group(1)}?v={sha256(static / m.group(1))[:12]}', html)
 
 

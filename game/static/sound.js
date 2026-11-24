@@ -10,7 +10,11 @@
   'use strict';
 
   const base = new URL('./', window.location.href);
-  const audioURL = rel => new URL(`audio/${rel}`, base).href;
+  // The release stamps <html data-release>; a changed file then gets a new address, so a
+  // browser (or a CDN's browser cache lifetime) cannot keep showing the old one.
+  const release = document.documentElement.dataset.release;
+  const versioned = url => (release && release !== 'dev' ? `${url}?v=${release}` : url);
+  const audioURL = rel => versioned(new URL(`audio/${rel}`, base).href);
   const $ = id => document.getElementById(id);
   const KEY = 'ff-sound';
   const DEFAULTS = { on: true, music: 0.45, sfx: 0.8, voice: 0.9 };

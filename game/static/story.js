@@ -19,7 +19,11 @@
   const CHAPTERS = 8;
   const SOUND_KEY = 'ff-story-sound';
   const base = new URL('./', window.location.href);
-  const storyURL = (id, rel = '') => new URL(`story/${id}/${rel}`, base).href;
+  // The release stamps <html data-release>; a changed file then gets a new address, so a
+  // browser (or a CDN's browser cache lifetime) cannot keep showing the old one.
+  const release = document.documentElement.dataset.release;
+  const versioned = url => (release && release !== 'dev' ? `${url}?v=${release}` : url);
+  const storyURL = (id, rel = '') => versioned(new URL(`story/${id}/${rel}`, base).href);
   const $ = id => document.getElementById(id);
   const escape = v => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
