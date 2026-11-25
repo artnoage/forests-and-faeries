@@ -33,7 +33,10 @@ A round (`round`, every 6 h by the l3open-ladder timer):
      With --native-pair the native AI also plays itself (native heroes against native monsters) on every
      spec of the set: no policy has a parameter in those games, so they measure the encounter offsets, the
      zero that every rating is relative to, instead of leaving it to be inferred from games against policies;
-     the report's `native_pair` block has its result next to the catalog's recorded baseline.
+     the report's `native_pair` block has its result next to the catalog's recorded baseline, and each
+     headline entry gains `vs_native_pair`: the policy's win rate against the native AI minus the native AI's
+     own on the same specs, paired, with its interval (no model; on fx4's games the fitted monster ratings
+     of about +0.1 logits stood next to a paired gain of 6 to 8 points).
   5. fits the model on all dev games and writes the ratings (headline: each run's newest snapshot,
      greedy and with search), the payoff matrix with residuals, results by stratum (party size x map
      family) against native with `excess`, movement, the plateau test (the mean rating of a run's
@@ -1180,6 +1183,8 @@ def analyse(args, reg, state, db, specs):
     for (run, team), eid in sorted(newest.items()):
         r = ratings[team].get(eid)
         headline[run][team] = dict(entity=eid, greedy=r, search=ratings[team].get(f'{eid}+search'))
+        if pair is not None:        # the model-free number: against the native AI's own result on the same specs
+            headline[run][team]['vs_native_pair'] = vs_native_pair(db, args.set, eid, team)
     out['headline'] = dict(headline)
     # best-league: highest lower bound per run and team (enough games)
     best = defaultdict(dict)
@@ -1250,6 +1255,29 @@ def native_pair(db, set_name, specs, result):
                 catalog_hero_baseline=round(float(np.mean(based)), 4) if based else None,
                 fitted_hero_win=round(float(np.mean(fitted)), 4) if fitted else None,
                 note='native = 0 on both sides by definition; these games estimate the encounter offsets directly')
+
+
+def vs_native_pair(db, set_name, eid, team):
+    """A policy against the native AI next to the native AI against itself, on the same specs (--native-pair):
+    the paired difference in the team's native-win rate (policy minus native AI of its team) with its standard
+    error and 95% interval. No model: where the fitted rating says how one number per policy explains every
+    cell, this says how much better than the native AI the policy plays against the native AI. None when the
+    policy and the native pair share no spec."""
+    col, other = ('h', 'm') if team == 'heroes' else ('m', 'h')
+    rows = db.execute(
+        f"SELECT g.outcome, n.outcome FROM games g JOIN games n ON n.set_name = g.set_name AND n.mode = g.mode "
+        f"AND n.k = g.k AND n.h = ? AND n.m = ? WHERE g.set_name = ? AND g.mode = 'full' AND g.{col} = ? AND g.{other} = ?",
+        (NATIVE['heroes'], NATIVE['monsters'], set_name, eid, NATIVE[OTHER[team]])).fetchall()
+    if not rows:
+        return None
+    d = np.array([team_win(mine, team) - team_win(native, team) for mine, native in rows], float)
+    n = len(d)
+    se = float(d.std(ddof=1) / math.sqrt(n)) if n > 1 else None
+    return dict(n=n, win=round(float(np.mean([team_win(mine, team) for mine, _ in rows])), 4),
+                native_win=round(float(np.mean([team_win(native, team) for _, native in rows])), 4),
+                diff=round(float(d.mean()), 4), se=None if se is None else round(se, 4),
+                lo=None if se is None else round(float(d.mean()) - Z95 * se, 4),
+                hi=None if se is None else round(float(d.mean()) + Z95 * se, 4))
 
 
 def plateau(reg, ratings, now=None):
@@ -1348,6 +1376,9 @@ def summary_text(report):
                 text += f' {g["rating"]:+.3f} [{g["lo"]:+.3f}, {g["hi"]:+.3f}] ({100 * g["vs_native_50"]:.1f}% vs native)'
             if s:
                 text += f'  search {s["rating"]:+.3f} [{s["lo"]:+.3f}, {s["hi"]:+.3f}]'
+            v = h.get('vs_native_pair')
+            if v and v['se'] is not None:   # points of win rate over the native AI of its team, same specs
+                text += f'  vs native pair {100 * v["diff"]:+.1f} [{100 * v["lo"]:+.1f}, {100 * v["hi"]:+.1f}] pts (n {v["n"]})'
             lines.append(text)
     lines.append('best-league (highest lower bound):')
     for run, teams in sorted(report['best_league'].items()):

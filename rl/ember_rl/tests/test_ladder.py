@@ -249,7 +249,16 @@ def test_native_pair_measures_the_zero_and_native_cells_get_their_own_spec_count
     cells = report['payoff']['cells']
     assert cells['native-heroes|native-monsters']['n'] == 6
     assert cells['r1/phase-1-heroes|native-monsters']['n'] == 6 and cells['r1/phase-1-heroes|r1/phase-2-monsters']['n'] == 2
-    assert 'native against native' in (root / 'ladder' / f'{report["stamp"]}.txt').read_text()
+    text = (root / 'ladder' / f'{report["stamp"]}.txt').read_text()
+    assert 'native against native' in text and 'vs native pair' in text
+    # Each headline policy against the native AI, next to the native AI itself on the same six specs.
+    assert all('vs_native_pair' not in h for teams in plain['headline'].values() for h in teams.values())
+    for team in ladder.TEAMS:
+        paired = report['headline']['r1'][team]['vs_native_pair']
+        assert paired['n'] == 6 and paired['diff'] == pytest.approx(paired['win'] - paired['native_win'], abs=1e-3)
+        assert paired['lo'] <= paired['diff'] <= paired['hi']
+    native_monsters = report['headline']['r1']['monsters']['vs_native_pair']['native_win']
+    assert native_monsters == pytest.approx(pair['monster_win'], abs=1e-3)
     # Native stays the zero of both scales, and the pair is not replayed.
     assert report['ratings']['heroes']['native-heroes']['rating'] == 0
     time.sleep(1.1)                                         # round ids are stamps to the second
