@@ -207,3 +207,14 @@ Narrator (Charon): When the last ash settled in the Reliquary, the six climbed t
 ### `media/video/scene_09_epilogue.mp4` (`gemini-omni-1.2-flash`, Animated cutscene (6.0s 720p H.264))
 
 Generate a 6-second painterly animated cinematic shot starting seamlessly from this exact illustrated frame, preserving the traditional gouache brushstroke art style and exact hero costumes. Sweeping luminous sunrise motion on the high belfry terrace of Bell Court as the restored silver clapper swings and strikes the monumental bronze Vesper Bell, sending radiant golden sunbeams and shimmering waves of morning light across the clearing green mountain valley while the six heroes' cloaks lift gently in the dawn breeze. Single rich resonant bronze bell chime fading into peaceful morning birdsong and breeze only — NO spoken dialogue, NO text.
+
+
+---
+
+## 2026-11-25 3D Multi-Shot Film Replacement (Scenes 1–9)
+
+All nine cutscene videos (`media/video/scene_01_prologue.mp4` through `scene_09_epilogue.mp4`) and their matching loading poster stills (`media/scenes/scene_01_prologue.webp` through `scene_09_epilogue.webp`) were replaced with original full-length, multi-shot 3D films rendered locally in headless Blender 5.2.3 LTS (Cycles OptiX GPU, 1280×720, 24 fps, H.264 High 2-pass ~785 kbps, video-only synced to the existing voice and music tracks):
+
+- **Assets:** Original game `.glb` heroes (`guy`, `elion`, `chruna`, `mara`, `ilyra`, `curogana` with baked weapon grips from `game/tools/figures/grips.py`), monsters (`ghast`, `ghoul`, `skeleton`, `goblin`, `goblin_boss`, `kobold_warrior`, `animated_armor`, `specter`, `mummy`, `wight`, `zombie`), and props (`brazier.glb`, `sarcophagus.glb`), plus procedural sets, materials, and original story props (Vesper Bell, silver clapper, pried brass ward-plate, Founder's Charter, Loadstone crystal). Zero third-party assets or downloads; Blender telemetry off.
+- **Animation:** Scene 1 uses the winning `scene_01_neon_3d_v2` render (43.0 s, 9 shots); Scenes 2–9 use distance-driven foot-baked walks/runs (planted-foot drift 0.01–0.34 cm median for heroes) with cue-synced cuts and upright/readable weapon poses.
+- **Audio & Spend:** Reused all existing voiceover (`media/voice/*.mp3`) and orchestral score (`media/music/*.mp3`) tracks; `0.00 EUR` additional paid API spend.

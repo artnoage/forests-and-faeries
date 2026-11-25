@@ -711,6 +711,13 @@ class GeminiStoryController {
       }
       renderCue(activeIdx);
 
+      if (videoEl && videoEl.readyState >= 2 && !videoEl.ended && Number.isFinite(videoEl.duration)) {
+        const targetT = Math.min(t, Math.max(0, videoEl.duration - 0.05));
+        if (Math.abs(videoEl.currentTime - targetT) > 0.45) {
+          videoEl.currentTime = targetT;
+        }
+      }
+
       if (!this.audio.voiceEl.paused && !this.audio.voiceEl.ended) {
         this.activeRaf = requestAnimationFrame(syncFromAudio);
       }
@@ -764,6 +771,12 @@ class GeminiStoryController {
       const next = currentCueIdx + 1;
       if (next < cues.length) {
         this.audio.voiceEl.currentTime = cues[next].start;
+        if (videoEl && videoEl.readyState >= 1) {
+          videoEl.currentTime = Math.min(cues[next].start, Math.max(0, (videoEl.duration || cues[next].start) - 0.05));
+          if (videoEl.paused && !this.audio.voiceEl.paused) {
+            videoEl.play().catch(() => {});
+          }
+        }
         renderCue(next);
         if (this.audio.voiceEl.paused && !this.audio.voiceEl.ended) {
           this.audio.voiceEl.play().catch(() => {});
