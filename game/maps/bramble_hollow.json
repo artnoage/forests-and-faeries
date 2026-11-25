@@ -1,0 +1,25 @@
+{
+ "version": 1,
+ "map": {
+  "name": "bramble_hollow",
+  "display_name": "Bramble Hollow",
+  "rows": [
+   "HHHHHHHHHHHHHHHH",
+   "Hdd..........ddH",
+   "Hdd.T......T.ddH",
+   "H..............H",
+   "H....HH..HH....H",
+   "H..T........T..H",
+   "H..T........T..H",
+   "H....HH..HH....H",
+   "H..............H",
+   "Hdd.T......T.ddH",
+   "Hdd..........ddH",
+   "HHHHHHHHHHHHHHHH"
+  ]
+ },
+ "scene": {
+  "wall_height": 0.95,
+  "props": []
+ }
+}

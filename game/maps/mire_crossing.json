@@ -1,0 +1,24 @@
+{
+ "version": 1,
+ "map": {
+  "name": "mire_crossing",
+  "display_name": "Mire Crossing",
+  "rows": [
+   "HHHHHHHHHHHHHHHH",
+   "Hdddd......ddddH",
+   "H..T........T..H",
+   "H..............H",
+   "H.HH...HH...HH.H",
+   "H......HH......H",
+   "H.HH...HH...HH.H",
+   "H..............H",
+   "H..T........T..H",
+   "Hdddd......ddddH",
+   "HHHHHHHHHHHHHHHH"
+  ]
+ },
+ "scene": {
+  "wall_height": 0.95,
+  "props": []
+ }
+}
