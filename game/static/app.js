@@ -1427,6 +1427,13 @@
     const info = key && canAct() ? infoForGroup(key) : null;
     box.hidden = !info;
     box.innerHTML = info ? abilityInfoHtml(info) : '';
+    // It sits in the free corner on the right, just above the action bar.
+    const deck = info && $('command-area')?.getBoundingClientRect();
+    if (deck && deck.height) {
+      const bottom = Math.max(10, Math.round(window.innerHeight - deck.top + 8));
+      box.style.bottom = `${bottom}px`;
+      box.style.maxHeight = `${Math.max(140, Math.min(460, window.innerHeight - bottom - 190))}px`;
+    }
   }
 
   // The card strip scrolls sideways when a hero has more actions than fit. Some browsers
