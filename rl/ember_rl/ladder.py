@@ -12,7 +12,9 @@ test: z spread well above 1 means one number per policy no longer explains the p
 Data, under <root>/ladder/ (root = the experiment's RUN_ROOT on the training host):
     specsets/<set>.jsonl, .json, .catalog.jsonl   frozen paired specs (`specs`); never rebuilt
     entities.json   every policy the ladder knows: native, and archived phase policies of the runs
-                    (<run>/archive/phase-<n>-<team>.pt, from archive/index.json)
+                    (<run>/archive/phase-<n>-<team>.pt, from archive/index.json); with --snapshot-runs also
+                    the hourly copies <run>/snapshots/latest-<team>-<stamp>.pt of a run that has no archive
+                    (the simultaneous schedule archives nothing: without the flag it never enters)
     panel.json      the versioned anchor panel: snapshots chosen at fixed run ages (copied to policies/)
     games.sqlite    every game played (set, hero, monster, spec index, mode, outcome, movement)
     <stamp>.json, <stamp>.txt, latest.json        the result of each round
@@ -28,6 +30,10 @@ A round (`round`, every 6 h by the l3open-ladder timer):
      run and team against native on the diag set, with test-time search on the first --search-specs
      dev specs (the headroom), and on the probe set of unseen creature kinds, monsters both with the
      network playing every monster and with the unseen kinds handed to the native AI;
+     With --native-pair the native AI also plays itself (native heroes against native monsters) on every
+     spec of the set: no policy has a parameter in those games, so they measure the encounter offsets, the
+     zero that every rating is relative to, instead of leaving it to be inferred from games against policies;
+     the report's `native_pair` block has its result next to the catalog's recorded baseline.
   5. fits the model on all dev games and writes the ratings (headline: each run's newest snapshot,
      greedy and with search), the payoff matrix with residuals, results by stratum (party size x map
      family) against native with `excess`, movement, the plateau test (the mean rating of a run's
@@ -230,8 +236,9 @@ def episode(spec) -> EpisodeSpec:
 # --------------------------------------------------------------------------- entities and panel
 
 class Registry:
-    def __init__(self, root, include_smoke=False):
+    def __init__(self, root, include_smoke=False, snapshots=False):
         self.root = Path(root)
+        self.snapshots = snapshots
         self.dir = self.root / 'ladder'
         self.dir.mkdir(parents=True, exist_ok=True)
         (self.dir / 'policies').mkdir(exist_ok=True)
@@ -275,10 +282,36 @@ class Registry:
                         elapsed=float(created.get('elapsed') or 0.), selection=entry.get('selection'),
                         status='ok' if path.exists() else 'dropped', registered=utc())
                     new.append(eid)
+            if self.snapshots and not (run / 'archive' / 'index.json').exists():
+                new += self.discover_snapshots(run, info)
             for e in self.entities.values():
                 if e.get('run') == run.name and e['kind'] == 'archive' and e['status'] == 'ok' and \
                         not Path(e['path']).exists():
                     e['status'] = 'dropped'
+        return new
+
+    def discover_snapshots(self, run, info):
+        """--snapshot-runs: a run without an archive (the simultaneous schedule selects no phase policies)
+        enters with the ops' hourly copies of its learners, <run>/snapshots/latest-<team>-<stamp>.pt. They are
+        registered like archive entries ('<run>/snap-<stamp>-<team>', source 'snapshot', no phase): created =
+        the file's time (the copy keeps the checkpoint's), elapsed = created minus the run's start (RUN.json),
+        which counts stops as training time. Retention thins the copies; a vanished one is marked dropped and
+        anchors are copied to ladder/policies/ as for archive entries."""
+        new = []
+        started = float(info.get('created') or 0.)
+        for team in TEAMS:
+            for path in sorted((run / 'snapshots').glob(f'latest-{team}-*.pt')):
+                tag = path.stem[len(f'latest-{team}-'):]
+                eid = f'{run.name}/snap-{tag}-{team}'
+                if eid in self.entities:
+                    continue
+                created = path.stat().st_mtime
+                self.entities[eid] = dict(
+                    id=eid, team=team, kind='archive', source='snapshot', run=run.name, run_dir=str(run),
+                    arm=info.get('arm'), phase=None, path=str(path), created=float(created),
+                    elapsed=max(0., created - started) if started else 0., selection=None, status='ok',
+                    registered=utc())
+                new.append(eid)
         return new
 
     def run_age(self, run_dir):
@@ -796,7 +829,7 @@ def cmd_round(args):
         raise SystemExit('another ladder round is running')
     cfg = (read_json(root / 'ops.json', {}) or {}).get('ladder', {})
     anchor_hours = args.anchor_hours or cfg.get('anchor_hours') or [12, 24, 48, 96, 168, 336, 720, 1440]
-    reg = Registry(root, include_smoke=args.include_smoke)
+    reg = Registry(root, include_smoke=args.include_smoke, snapshots=getattr(args, 'snapshot_runs', False))
     new = reg.discover()
     state = read_json(reg.dir / 'state.json', {}) or {}
     state.setdefault('entered', {})
@@ -840,10 +873,20 @@ def cmd_round(args):
     nominations.sort(key=lambda item: item[0])
     matchups = dict.fromkeys(matchup for _, matchup in nominations)
     pair_ks = stratified_order(specs)[:max(1, args.pair_specs)]
+    # --native-specs: a policy's games against the native AI (the headline cells) may use more specs than
+    # the policy-against-policy pairs; they are the cheapest games, half of them without a network.
+    native_specs = getattr(args, 'native_specs', None)
+    native_ks = pair_ks if native_specs is None else stratified_order(specs)[:max(1, native_specs)]
     pairs = []
+    if getattr(args, 'native_pair', False):         # native against native on every spec: the measured zero
+        done = played_ks(db, args.set, NATIVE['heroes'], NATIVE['monsters'])
+        missing = [k for k in range(len(specs)) if k not in done]
+        if missing:
+            pairs.append(dict(h=NATIVE['heroes'], m=NATIVE['monsters'], ks=missing, specs=specs, set=args.set, mode='full'))
     for h, m in matchups:
         done = played_ks(db, args.set, h, m)
-        missing = [k for k in pair_ks if k not in done]
+        ks = native_ks if h == NATIVE['heroes'] or m == NATIVE['monsters'] else pair_ks
+        missing = [k for k in ks if k not in done]
         if missing:
             pairs.append(dict(h=h, m=m, ks=missing, specs=specs, set=args.set, mode='full'))
     pairs = pairs[:args.max_pairs]
@@ -1042,7 +1085,9 @@ def share_bin(spec, kinds):
     if not total:
         return '?'
     share = sum(v for c, v in roster.items() if c in kinds) / total
-    return 'none' if share == 0 else 'all' if share == 1 else 'under-half' if share < .5 else 'half-or-more'
+    # 'only', not 'all': strata_table keeps its total under 'all', and a bin of that name was added into it
+    # (the probe's "all" row counted the all-probe-kind rosters twice: 638 games on 512 specs).
+    return 'none' if share == 0 else 'only' if share == 1 else 'under-half' if share < .5 else 'half-or-more'
 
 
 def trains_on(run_dir, kinds):
@@ -1126,6 +1171,9 @@ def analyse(args, reg, state, db, specs):
                            'on an encounter where native beats native half the time')
     out['ratings'] = ratings
     out['residuals'] = residuals(cells, result)
+    pair = native_pair(db, args.set, specs, result)
+    if pair is not None:
+        out['native_pair'] = pair
     # headline: each run's newest snapshot per team, greedy and with search
     newest = newest_rated(reg, state)
     headline = defaultdict(dict)
@@ -1180,6 +1228,28 @@ def analyse(args, reg, state, db, specs):
     out['movement'] = moves
     out['plateau'] = plateau(reg, ratings)
     return out
+
+
+def native_pair(db, set_name, specs, result):
+    """Native heroes against native monsters on the set (--native-pair): games, hero and monster native-win
+    rates, the catalog's recorded hero baseline on the same specs, and the fit's mean prediction for these
+    games, sigmoid(beta_e): the zero of the rating scale as measured. None when the pair has not played."""
+    rows = db.execute("SELECT k, encounter, outcome FROM games WHERE set_name=? AND mode='full' AND h=? AND m=?",
+                      (set_name, NATIVE['heroes'], NATIVE['monsters'])).fetchall()
+    if not rows:
+        return None
+    n = len(rows)
+    counts = Counter(outcome for _, _, outcome in rows)
+    based = [specs[k].get('b_heroes') for k, _, _ in rows if k < len(specs)]
+    based = [b for b in based if b is not None]
+    fitted = [float(sigmoid(result['beta'][e])) for _, e, _ in rows if e in result['beta']]
+    hero = counts['win'] / n
+    return dict(n=n, hero_win=round(hero, 4), monster_win=round(counts['loss'] / n, 4),
+                other=round(1 - (counts['win'] + counts['loss']) / n, 4),
+                hero_win_se=round(math.sqrt(max(hero * (1 - hero), 0.) / n), 4),
+                catalog_hero_baseline=round(float(np.mean(based)), 4) if based else None,
+                fitted_hero_win=round(float(np.mean(fitted)), 4) if fitted else None,
+                note='native = 0 on both sides by definition; these games estimate the encounter offsets directly')
 
 
 def plateau(reg, ratings, now=None):
@@ -1246,6 +1316,8 @@ def label(eid):
     head = run.split('-')[0]
     run = head if len(head) >= 2 and head[0] == 'a' and head[1:].isdigit() else run
     short = f'{run}:p{parts[1]}' if len(parts) >= 2 and parts[0] == 'phase' else base
+    if len(parts) >= 2 and parts[0] == 'snap' and len(parts[1]) >= 11:      # snap-20261125T010203Z -> s1125T01
+        short = f'{run}:s{parts[1][4:8]}T{parts[1][9:11]}'
     return short + ('+s' if search else '')
 
 
@@ -1261,6 +1333,12 @@ def summary_text(report):
     lines.append(f'fit: {fitd["games"]} games, {fitd["cells"]} cells, {fitd["encounters"]} encounters, '
                  f'beta sd {fitd["beta_sd"]}; residual z rms {report["residuals"]["z_rms"]} over '
                  f'{report["residuals"]["cells_n50"]} cells (1 = noise)')
+    pair = report.get('native_pair')
+    if pair:
+        lines.append(f'native against native: heroes win {100 * pair["hero_win"]:.1f}% ± {100 * Z95 * pair["hero_win_se"]:.1f}, '
+                     f'monsters {100 * pair["monster_win"]:.1f}% of {pair["n"]} games (catalog baseline '
+                     + ('n/a' if pair['catalog_hero_baseline'] is None else f'{100 * pair["catalog_hero_baseline"]:.1f}%')
+                     + '): the measured zero of the ratings')
     lines.append('headline (newest snapshot per run; rating in logits, native = 0; [95% interval]):')
     for run, teams in sorted(report['headline'].items()):
         for team, h in sorted(teams.items()):
@@ -1308,7 +1386,7 @@ def cmd_sealed(args):
     manifest, specs, catalog = load_specset(root, args.set)
     if not manifest.get('sealed'):
         raise SystemExit(f'{args.set} is not a sealed set')
-    reg = Registry(root, include_smoke=args.include_smoke)
+    reg = Registry(root, include_smoke=args.include_smoke, snapshots=getattr(args, 'snapshot_runs', False))
     reg.discover()
     state = read_json(reg.dir / 'state.json', {}) or {}
     picks = args.entities or sorted(set(newest_rated(reg, state).values()) | {
@@ -1419,6 +1497,9 @@ def main(argv=None):
                        help='maximum distinct policy models resident on device at once (0 = unlimited)')
         a.add_argument('--feature-version', default=FEATURE_VERSION,
                        help='observation version of the policies (BatchEnv(feature_version=...))')
+        a.add_argument('--snapshot-runs', action='store_true',
+                       help='also enter runs that have no archive (the simultaneous schedule) with the hourly copies '
+                            'of their learners in <run>/snapshots/ (Registry.discover_snapshots)')
         a.add_argument('--moves', choices=('step', 'dest'), default='step',
                        help='the move interface the policies were trained with (BatchEnv(moves=...))')
 
@@ -1439,6 +1520,11 @@ def main(argv=None):
     a.add_argument('--max-pairs', type=int, default=400)
     a.add_argument('--pair-specs', type=int, default=512,
                    help='specs per pair: the first N of the stratified order (all by default)')
+    a.add_argument('--native-specs', type=int, default=None,
+                   help='specs of a pair against the native AI, the headline cells (default: --pair-specs)')
+    a.add_argument('--native-pair', action='store_true',
+                   help='also play native heroes against native monsters on every spec of the set, once: the '
+                        'measured zero of the ratings (report block native_pair)')
     a.add_argument('--min-games', type=int, default=2048, help='best-league candidates need this many dev games')
     a.add_argument('--matrix-size', type=int, default=14)
     a.add_argument('--anchor-hours', type=float, nargs='*')

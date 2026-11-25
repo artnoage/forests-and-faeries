@@ -482,6 +482,25 @@ class Trainer:
         """--phase-budget-<team> if set, else --phase-budget (0 = no budget)."""
         return self.per_team('phase_budget', team)
 
+    def paired_gate(self, diff, team):
+        """--gate-rule paired: the candidate against the phase's baseline on the same development games.
+        d_i = (candidate won game i) - (baseline won game i), native eliminations as in the absolute gate;
+        it passes when (mean d - margin) / (sd(d) / sqrt(n)) >= --gate-z, a one-sided paired z-test of
+        "better than the baseline by more than the margin". `diff` is `paired_diff`'s row."""
+        margin, z = self.per_team('gate_margin', team), self.args.gate_z
+        out = dict(rule='paired', margin=margin, z=z, passed=False)
+        if not diff or diff['n'] < 2 or diff['wins_se'] is None:
+            return dict(out, note='no paired games')
+        se = diff['wins_se'] / diff['n']
+        excess = diff['win_rate'] - margin
+        if se > 0:
+            statistic = excess / se
+            passed = statistic >= z
+        else:               # every game gave the same difference: its sign against the margin decides
+            statistic, passed = None, excess > 0
+        return dict(out, n=diff['n'], win_rate_diff=diff['win_rate'], se=round(se, 5),
+                    statistic=None if statistic is None else round(statistic, 3), passed=bool(passed))
+
     @staticmethod
     def paired_diff(results, items, baseline):
         """Candidate minus baseline on the same development specs (by dev_index): native wins (count and
@@ -540,8 +559,12 @@ class Trainer:
             passed = budget = False
         else:
             g['last'] = dict(wins=wins, n=p['n'], phase_decisions=p['phase_decisions'])
-            passed = (p['phase_decisions'] >= self.per_team('min_phase_decisions', g['team'])
-                      and wins > args.gate_threshold * p['n'])
+            enough = p['phase_decisions'] >= self.per_team('min_phase_decisions', g['team'])
+            if getattr(args, 'gate_rule', 'absolute') == 'paired':
+                row['gate_test'] = self.paired_gate(row.get('paired_diff'), g['team'])
+                passed = enough and row['gate_test']['passed']
+            else:
+                passed = enough and wins > args.gate_threshold * p['n']
             limit = self.phase_budget(g['team'])
             budget = bool(limit) and p['phase_decisions'] >= limit
         row.update(gate=passed, best=g['best']['label'])
@@ -981,7 +1004,8 @@ class Trainer:
                       'family_weights', 'band_weights', 'balanced_range', 'wide_range', 'fixed_bands',
                       'min_cell_episodes', 'fixed_cell_weights', 'allow_uncovered', 'dev_specs', 'eval_specs')
     RESUME_SEARCH = ('search', 'search_mode', 'search_prob', 'search_step_prob', 'search_coef',
-                     'search_start_decisions', 'search_start_ev', 'search_opponent', 'eval_substeps')
+                     'search_start_decisions', 'search_start_ev', 'search_opponent', 'eval_substeps',
+                     'search_trained_prob', 'search_trained_prob_final', 'search_trained_prob_decisions')
     RESUME_QUIET = ('resume', 'output', 'max_updates', 'hours', 'deadline', 'until_stopped', 'log_seconds',
                     'checkpoint_minutes', 'workers', 'env_threads')
     RESUME_FIXED = ('backend', 'arch', 'feature_version', 'd_model', 'heads', 'encoder_layers', 'decoder_layers',
@@ -1110,6 +1134,18 @@ def parser():
     p.add_argument('--first-team', choices=TEAMS, default='heroes', help='gated: team that trains first')
     p.add_argument('--gate-threshold', type=float, default=.8,
                    help='gated: switch when native elimination wins > this fraction of development games')
+    p.add_argument('--gate-rule', choices=('absolute', 'paired'), default='absolute',
+                   help='gated: absolute = the --gate-threshold rule; paired = a candidate passes when it beats '
+                        'the phase\'s baseline (the team\'s selected policy, same development specs and seeds) by '
+                        'more than --gate-margin with a one-sided paired z-test at --gate-z (Trainer.paired_gate)')
+    p.add_argument('--gate-margin', type=float, default=0.,
+                   help='gated, --gate-rule paired: the win-rate margin over the baseline that the test is against')
+    for team in TEAMS:
+        p.add_argument(f'--gate-margin-{team}', type=float, default=None,
+                       help=f'gated: --gate-margin of the {team}\' phases (default: --gate-margin)')
+    p.add_argument('--gate-z', type=float, default=1.645,
+                   help='gated, --gate-rule paired: the z value the paired statistic must reach (1.645: a candidate '
+                        'that is exactly margin better than the baseline passes 5%% of the time)')
     p.add_argument('--dev-every', type=int, default=65536, help='gated: learner decisions between development evaluations')
     p.add_argument('--dev-episodes', type=int, default=32, help='gated: games per development evaluation (longrun: 12)')
     p.add_argument('--min-phase-decisions', type=int, default=65536, help='gated: no gate switch before this')
@@ -1264,11 +1300,23 @@ def add_ember_arguments(p):
                    help='learner balance: games of weight of the logistic fit (roster, party, family) in a row\'s p')
     g.add_argument('--balance-fit-games', type=int, default=4096, help='learner balance: recent games in the fit')
     g.add_argument('--balance-refresh', type=int, default=64, help='learner balance: games between refits / new weights')
+    g.add_argument('--balance-target', type=float, default=None,
+                   help='learner balance: steer the learner\'s expected result in its training games to this value '
+                        '(.5 = even fights): the row weights are tilted by exp(t (p - goal)), goal = the hero '
+                        'result that gives the learner this value, with t solved (within --balance-tilt-max) so '
+                        'that the expected hero result of a training draw is the goal. Party, map family and band '
+                        'shares are unchanged: only the rows within a drawn cell are reweighted (default: off)')
+    g.add_argument('--balance-tilt-max', type=float, default=6.,
+                   help='--balance-target: the largest |t|; rows at p - goal = +-.5 then differ by exp(t) at most')
     g.add_argument('--dev-split', default='dev')
     g.add_argument('--dev-specs', default='', help='JSONL of fixed development specs (default: --dev-episodes from --dev-split)')
     g.add_argument('--specs-only', action='store_true',
                    help='write dev-specs.jsonl, eval-specs.jsonl and specs-coverage.json to --output and stop '
                         '(shared lists for several arms)')
+    g.add_argument('--strict-specs', action='store_true',
+                   help='refuse to start (instead of warning) when a --dev-specs / --eval-specs file holds fewer '
+                        'games than the episode counts ask for, or a list has no game on a map family that '
+                        'training draws; with --specs-only it checks the lists it loads or writes')
     g.add_argument('--eval-split', default='dev')
     g.add_argument('--eval-specs', default='', help='JSONL of fixed evaluation specs (default: from --eval-split)')
     g.add_argument('--vocab', default='', help='content/vocab.json: checks every id fits the 256-slot tables')
@@ -1330,9 +1378,22 @@ def add_ember_arguments(p):
                         'roots of every step')
     g.add_argument('--search-coef', type=float, default=1.,
                    help='weight of the cross-entropy between the search target and the policy')
-    g.add_argument('--search-opponent', choices=('game', 'native'), default='game',
-                   help='game: forks keep the game\'s controllers (a frozen opponent net plays in the rollouts); '
-                        'native: forks hand the other team to the native AI (fewer network rows per search)')
+    g.add_argument('--search-opponent', choices=('game', 'native', 'mixed'), default='game',
+                   help='game: forks keep the game\'s controllers (the opponent of that game plays in the rollouts: '
+                        'the phase\'s frozen policy, the league opponent drawn for the game, or the other learner in '
+                        'simultaneous games); native: forks hand the other team to the native AI (fewer network '
+                        'rows per search); mixed: each search draws one of the two, the game\'s opponent with '
+                        'probability --search-trained-prob')
+    g.add_argument('--search-trained-prob', type=float, default=.5,
+                   help='--search-opponent mixed: probability that a search plays its forks against the game\'s '
+                        'opponent (else the native AI); the start value of the schedule')
+    g.add_argument('--search-trained-prob-final', type=float, default=None,
+                   help='--search-opponent mixed: the probability after --search-trained-prob-decisions (default: '
+                        'constant). 1 fades the native AI out of the search')
+    g.add_argument('--search-trained-prob-decisions', type=int, default=0,
+                   help='--search-opponent mixed: learner decisions of the searching team, counted from the moment '
+                        'its search turns on, over which the probability moves linearly from the start value to '
+                        'the final one (0: the final value at once)')
     g.add_argument('--search-threads', type=int, default=1,
                    help='worker threads of one training search: its forks are split by root over this many scratch '
                         'envs, whose engine calls overlap; network calls take turns. Speed only (default 1)')
@@ -1378,6 +1439,14 @@ def prepare_args(args):
             value = getattr(args, f'{name}_{team}')
             if getattr(args, name) < 0 or (value is not None and value < 0):
                 raise SystemExit(f'--{name.replace("_", "-")} and its per-team forms must be >= 0')
+    if args.gate_z < 0 or not -1 <= args.gate_margin <= 1 or any(
+            getattr(args, f'gate_margin_{t}') is not None and not -1 <= getattr(args, f'gate_margin_{t}') <= 1
+            for t in TEAMS):
+        raise SystemExit('--gate-z must be >= 0 and --gate-margin (and its per-team forms) in [-1, 1]')
+    if args.balance_target is not None and (not 0 < args.balance_target < 1 or not args.learner_balance):
+        raise SystemExit('--balance-target must be in (0, 1) and needs --learner-balance')
+    if args.balance_tilt_max < 0:
+        raise SystemExit('--balance-tilt-max must be >= 0')
     if args.search and (args.backend != 'ember' or args.mode != 'ppo'):
         raise SystemExit('--search needs --backend ember --mode ppo')
     if args.pipeline_search and (not args.search or args.search_threads != 1):
@@ -1386,6 +1455,11 @@ def prepare_args(args):
         raise SystemExit('--search-prob and --search-step-prob must be in [0, 1] and --search-coef >= 0')
     if args.search_start_decisions < 0 or args.eval_substeps < 0:
         raise SystemExit('--search-start-decisions and --eval-substeps must be >= 0')
+    final = args.search_trained_prob_final
+    if not 0 <= args.search_trained_prob <= 1 or (final is not None and not 0 <= final <= 1) \
+            or args.search_trained_prob_decisions < 0:
+        raise SystemExit('--search-trained-prob and --search-trained-prob-final must be in [0, 1] and '
+                         '--search-trained-prob-decisions >= 0')
     if not 0 <= args.balance_floor <= 1 or args.balance_window < 1 or args.balance_prior < 0 \
             or args.balance_fit_games < 1 or args.balance_refresh < 1:
         raise SystemExit('learner balance: --balance-floor in [0, 1], window, fit games and refresh >= 1, prior >= 0')

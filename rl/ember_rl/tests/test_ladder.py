@@ -228,3 +228,89 @@ def test_round_cli_respects_max_models(root):
     ladder.main(['round', '--root', str(root), *ROUND, '--max-models', '2'])
     report = json.loads((root / 'ladder' / 'latest.json').read_text())
     assert report['games_played'] > 0 and set(report['daily']) >= {'diag', 'search'} and report['daily']['search']
+
+
+# --------------------------------------------------------------------------- recipe-20261125: zero, snapshots, probe
+
+def test_native_pair_measures_the_zero_and_native_cells_get_their_own_spec_count(root):
+    """--native-pair: native heroes against native monsters on every spec, once; --native-specs: a policy's
+    games against the native AI use that many specs while policy-against-policy pairs keep --pair-specs."""
+    make_run(root, 'r1', 'base', [(1, 'heroes'), (2, 'monsters')])
+    args = ['round', '--root', str(root), *ROUND, '--anchor-hours', '100', '--daily', 'no', '--pair-specs', '2']
+    ladder.main(args)
+    plain = json.loads((root / 'ladder' / 'latest.json').read_text())
+    assert 'native_pair' not in plain and plain['games_played'] == 3 * 2      # two native cells and h-m, 2 specs
+    ladder.main([*args, '--native-pair', '--native-specs', '6'])
+    report = json.loads((root / 'ladder' / 'latest.json').read_text())
+    pair = report['native_pair']
+    assert pair['n'] == 6 and pair['hero_win'] + pair['monster_win'] + pair['other'] == pytest.approx(1., abs=1e-3)
+    assert pair['catalog_hero_baseline'] is not None and 0 <= pair['fitted_hero_win'] <= 1
+    assert report['games_played'] == 6 + 2 * (6 - 2)        # the native pair, and four more specs per native cell
+    cells = report['payoff']['cells']
+    assert cells['native-heroes|native-monsters']['n'] == 6
+    assert cells['r1/phase-1-heroes|native-monsters']['n'] == 6 and cells['r1/phase-1-heroes|r1/phase-2-monsters']['n'] == 2
+    assert 'native against native' in (root / 'ladder' / f'{report["stamp"]}.txt').read_text()
+    # Native stays the zero of both scales, and the pair is not replayed.
+    assert report['ratings']['heroes']['native-heroes']['rating'] == 0
+    time.sleep(1.1)                                         # round ids are stamps to the second
+    ladder.main([*args, '--native-pair', '--native-specs', '6'])
+    assert json.loads((root / 'ladder' / 'latest.json').read_text())['games_played'] == 0
+
+
+def make_snapshot_run(root, name, stamps):
+    """A run of the simultaneous schedule: no archive/, hourly copies of both learners in snapshots/."""
+    run = root / name
+    (run / 'snapshots').mkdir(parents=True, exist_ok=True)
+    (run / 'RUN.json').write_text(json.dumps(dict(mode='test', arm='simul', name=name, created=time.time() - 7200)))
+    for i, tag in enumerate(stamps):
+        for team in ladder.TEAMS:
+            tiny_policy(run / 'snapshots' / f'latest-{team}-{tag}.pt', team, seed=50 + i)
+    return run
+
+
+def test_snapshot_runs_enter_the_ladder_only_when_asked(root):
+    make_run(root, 'r1', 'base', [(1, 'heroes'), (2, 'monsters')])
+    run = make_snapshot_run(root, 's1', ['20261125T010000Z', '20261125T020000Z'])
+    args = ['round', '--root', str(root), *ROUND, '--anchor-hours', '100', '--daily', 'no']
+    ladder.main(args)
+    report = json.loads((root / 'ladder' / 'latest.json').read_text())
+    assert not any(e.startswith('s1/') for e in report['entrants']) and 's1' not in report['headline']
+    time.sleep(1.1)
+    ladder.main([*args, '--snapshot-runs'])
+    report = json.loads((root / 'ladder' / 'latest.json').read_text())
+    newest = {'s1/snap-20261125T020000Z-heroes', 's1/snap-20261125T020000Z-monsters'}
+    assert newest <= set(report['entrants']) and not any('T010000Z' in e for e in report['entrants'])
+    assert report['headline']['s1']['heroes']['entity'] == 's1/snap-20261125T020000Z-heroes'
+    assert report['headline']['s1']['heroes']['greedy']['games'] > 0
+    entities = json.loads((root / 'ladder' / 'entities.json').read_text())
+    entry = entities['s1/snap-20261125T010000Z-monsters']
+    assert entry['kind'] == 'archive' and entry['source'] == 'snapshot' and entry['phase'] is None and entry['elapsed'] > 0
+    assert ladder.label('s1/snap-20261125T020000Z-heroes') == 's1:s1125T02'
+    # The other run's entrants meet the snapshot run's newest policies, and a run with an archive is not doubled.
+    state = json.loads((root / 'ladder' / 'state.json').read_text())
+    assert 'r1/phase-2-monsters' in state['entered']['s1/snap-20261125T020000Z-heroes']['opponents']
+    assert not any('snap-' in e for e in entities if e.startswith('r1/'))
+    # A copy that retention removed is marked dropped; a newer copy enters the next round.
+    (run / 'snapshots' / 'latest-heroes-20261125T010000Z.pt').unlink()
+    make_snapshot_run(root, 's1', ['20261125T030000Z'])
+    time.sleep(1.1)
+    ladder.main([*args, '--snapshot-runs'])
+    report = json.loads((root / 'ladder' / 'latest.json').read_text())
+    assert {'s1/snap-20261125T030000Z-heroes', 's1/snap-20261125T030000Z-monsters'} <= set(report['entrants'])
+    entities = json.loads((root / 'ladder' / 'entities.json').read_text())
+    assert entities['s1/snap-20261125T010000Z-heroes']['status'] == 'dropped'
+
+
+def test_probe_share_bins_do_not_add_into_the_total():
+    """The probe table bins specs by the share of probe kinds in the roster; a roster made only of them used
+    to be named 'all', the key of the table's total, so those games were counted twice there."""
+    kinds = {'goblin_minion', 'goblin_boss'}
+    specs = [dict(kinds={'goblin_minion': 2}), dict(kinds={'goblin_minion': 1, 'zombie': 3}),
+             dict(kinds={'zombie': 1}), dict(kinds={'goblin_boss': 1, 'zombie': 1}), dict(kinds={})]
+    assert [ladder.share_bin(s, kinds) for s in specs] == ['only', 'under-half', 'none', 'half-or-more', '?']
+    for spec in specs:
+        spec['_share'] = ladder.share_bin(spec, kinds)
+    rows_ = [(k, 'native-monsters', 'win' if k % 2 else 'loss', 1. if k % 2 else -1., None, '[]', '[]') for k in range(5)]
+    table = ladder.strata_table(rows_, specs, 'heroes', '_share')
+    assert table['all']['n'] == 5 and table['only']['n'] == 1
+    assert sum(v['n'] for k, v in table.items() if k != 'all') == 5

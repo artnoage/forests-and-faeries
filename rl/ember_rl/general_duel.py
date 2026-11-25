@@ -170,7 +170,27 @@ def fixed_specs(args, specs: SpecSource):
         print(f'WARNING: --{name}-specs holds {row["games"]} games but {row["asked"]} episodes were asked for: '
               + ('each development round plays only those games' if name == 'dev' else
                  'evaluation matchups repeat those games'), flush=True)
-    gaps = {name: r['uncovered'] for name, r in reports.items() if r['uncovered']}
+    # Map families that training draws but a list has no game on (a list written with too few episodes holds
+    # the heaviest cells only: 32 specs were all on generated maps). The development list matters to the gated
+    # schedule and to --specs-only, which writes the lists other runs load.
+    drawn = {specs.meta[e]['family'] for e, p in specs.train_prob.items() if p > 0}
+    lists = dict(eval=evaluation)
+    if getattr(args, 'schedule', None) == 'gated' or getattr(args, 'specs_only', False):
+        lists['dev'] = dev
+    missing = {}
+    for name, listed in lists.items():
+        have = {specs.meta[s.encounter]['family'] for s in listed if s.encounter in specs.meta}
+        if drawn - have:
+            missing[name] = sorted(drawn - have)
+            print(f'WARNING: the {name} list has no game on map families {missing[name]} that training draws '
+                  f'(it covers {sorted(have)})', flush=True)
+    if missing:
+        reports['missing_families'] = missing
+    if (short or missing) and getattr(args, 'strict_specs', False):
+        raise SystemExit(f'--strict-specs: the fixed spec lists are not what this run asks for: short lists {short}, '
+                         f'map families without games {missing}. Write the lists again with the run\'s episode '
+                         'counts and sampling flags (--specs-only), or drop --strict-specs')
+    gaps = {name: r['uncovered'] for name, r in reports.items() if isinstance(r, dict) and r.get('uncovered')}
     if short:
         reports['short_spec_files'] = short
     if gaps and not getattr(args, 'allow_uncovered', False):
@@ -283,6 +303,7 @@ class GeneralTrainer(Trainer):
         self.train_slots = args.slots
         # --search-start-decisions / --search-start-ev: a team searches only after its PPO-only warm-up.
         self.search_on = {team: False for team in TEAMS}
+        self.search_since = {}              # team -> its learner decisions when its search turned on
         self.last_ev = {}
         self._searched = False
         self.search_counts = Counter()      # learner decisions in training games, eval substeps
@@ -296,7 +317,9 @@ class GeneralTrainer(Trainer):
         self.balance = LearnerBalance(self.specs, floor=getattr(args, 'balance_floor', .25),
                                       window=getattr(args, 'balance_window', 32), prior=getattr(args, 'balance_prior', 8.),
                                       fit_games=getattr(args, 'balance_fit_games', 4096),
-                                      refresh=getattr(args, 'balance_refresh', 64))
+                                      refresh=getattr(args, 'balance_refresh', 64),
+                                      target=getattr(args, 'balance_target', None),
+                                      tilt_max=getattr(args, 'balance_tilt_max', 6.))
         self.balance_stats = Counter()
         super().__init__(args)
         if self.search_config is not None:
@@ -426,7 +449,8 @@ class GeneralTrainer(Trainer):
 
     def extra_state(self):
         state = dict(backend='ember', value_warmup=copy.deepcopy(self.warmup), best_single=copy.deepcopy(self.best_single),
-                     last_ev=dict(self.last_ev), search_on=dict(self.search_on), balance=self.balance.state())
+                     last_ev=dict(self.last_ev), search_on=dict(self.search_on), search_since=dict(self.search_since),
+                     balance=self.balance.state())
         if self.lookahead is not None:
             state['search'] = dict(config=self.search_config.to_text(), rng=self.lookahead.rng.bit_generator.state,
                                    stats=dict(self.lookahead.stats))
@@ -439,6 +463,7 @@ class GeneralTrainer(Trainer):
             self.best_single = copy.deepcopy(payload['best_single'])
         self.last_ev.update(payload.get('last_ev') or {})
         self.search_on.update(payload.get('search_on') or {})
+        self.search_since.update(payload.get('search_since') or {})
         self.balance.load_state(payload.get('balance'))
         if payload.get('search') and self.search_config is not None:
             self._search_resume = copy.deepcopy(payload['search'])
@@ -462,6 +487,7 @@ class GeneralTrainer(Trainer):
                    eval_substep_decisions=cdelta.get('eval_substep_decisions', 0))
         if train:     # the share of learner decisions in training games that the search decided
             row['searched_fraction'] = round(delta.get('searched', 0) / train, 4)
+        row['opponent'] = self.search_opponent_progress(cdelta)
         if delta.get('searched'):
             row['changed_fraction'] = round(delta.get('changed', 0) / delta['searched'], 4)
             row['rows_per_search'] = round((delta.get('forward_rows', 0) + delta.get('value_rows', 0)) / delta['searched'], 1)
@@ -477,6 +503,40 @@ class GeneralTrainer(Trainer):
             row['mean_depth'] = round(delta['depth'] / delta['leaves'], 2)
         out['search'] = row
         return out
+
+    def search_opponent_progress(self, counts):
+        """Who played the other team in the forks of the searches since the last progress row: per searching
+        team the searched roots against the game's opponent net (`trained`), against the native AI by the
+        --search-opponent rule (`native`), and in games whose opponent is the native AI anyway
+        (`native_game`: league-native and native-opponent games; `game` for single-creature roots); the
+        realised `trained_fraction`, and with mixed the current probability p per team."""
+        mode = self.args.search_opponent
+        out = dict(mode=mode)
+        if mode == 'mixed':
+            out['p'] = {team: round(self.search_trained_prob(team), 4) for team in TEAMS if self.search_on[team]}
+        total = trained = 0
+        for team in TEAMS:
+            kinds = {k: counts.get(f'opp_{k}_{team}', 0) for k in ('trained', 'native', 'native_game', 'game')}
+            if any(kinds.values()):
+                out[team] = {k: v for k, v in kinds.items() if v}
+                total += sum(kinds.values())
+                trained += kinds['trained']
+        if total:
+            out['trained_fraction'] = round(trained / total, 4)
+        return out
+
+    def search_trained_prob(self, team):
+        """--search-opponent mixed: the probability that a search of `team` plays its forks against the
+        game's opponent: --search-trained-prob, moving linearly to --search-trained-prob-final over
+        --search-trained-prob-decisions learner decisions of the team since its search turned on."""
+        args = self.args
+        start, final = args.search_trained_prob, args.search_trained_prob_final
+        if final is None:
+            return start
+        span = args.search_trained_prob_decisions
+        since = self.search_since.get(team, args.search_start_decisions)
+        progress = 1. if span <= 0 else min(1., max(0., (self.decisions[team] - since) / span))
+        return start + progress * (final - start)
 
     def balance_progress(self):
         """Training games since the last row: the share of learner decisions in horizon games and on rows
@@ -766,23 +826,42 @@ class GeneralTrainer(Trainer):
         logits, values = logits.float().cpu().numpy(), values.float().cpu().numpy()
         la.stats['root_model_seconds'] += time.time() - started
         legal = part['cand_mask'].sum(1)
-        roots = []
+        roots, opponents = [], []
+        mode = self.args.search_opponent
+        # mixed: one draw per search (root). A root's candidates are compared on shared dice seeds, so all of
+        # its forks face the same opponent and its Q values stay a paired comparison against one player.
+        p_trained = self.search_trained_prob(team) if mode == 'mixed' else None
         for p, j in enumerate(pick):
             g = live[index[j]]
             info = self.infos[g]
+            state = self.slot_state[g]
+            # The game's own controllers: the phase's frozen policy or the league opponent drawn for this game
+            # (gated), the other learner or a pool snapshot (simultaneous), or the native AI.
             models = {t: None if c[0] == 'native' else self.policies.model_for(c)
-                      for t, c in self.slot_state[g]['controllers'].items()}
+                      for t, c in state['controllers'].items()}
             controllers = None
-            if self.args.search_opponent == 'native' and not self.slot_state[g].get('units'):
+            if state.get('units'):                              # single-creature games keep their controllers
+                kind = 'game'
+            elif state['controllers'][OTHER[team]][0] == 'native':
+                kind = 'native_game'                            # the game's opponent is the native AI already
+            elif mode == 'native' or (mode == 'mixed' and la.rng.random() >= p_trained):
+                kind = 'native'
+            else:
+                kind = 'trained'
+            if kind == 'native' or (mode == 'native' and kind == 'native_game'):
                 # Forks hand the other team to the native AI (Fable, l3-open idea 7 / M8): its decisions no
                 # longer surface in the rollouts, about a third of the network rows.
                 controllers = {team: 'external', OTHER[team]: 'native'}
                 models[OTHER[team]] = None
+            opponents.append(kind)
             roots.append(Root(slot=g, team=team, logits=logits[p, :legal[p]], value=float(values[p]),
                               round=info['round'], actor=info['actor'], potential=info['potential'], models=models,
                               controllers=controllers, kinds=part['cand_ids'][p, :legal[p], 0]))
         results = la.search(self.env, roots, explore=True)
         self._searched = True
+        for kind, result in zip(opponents, results):
+            if result.searched:
+                self.search_counts[f'opp_{kind}_{team}'] += 1
         return {j: r for j, r in zip(pick, results) if r.searched}
 
     def search_active(self, team):
@@ -799,6 +878,7 @@ class GeneralTrainer(Trainer):
             if ev is None or not ev >= args.search_start_ev:
                 return False
         self.search_on[team] = True
+        self.search_since[team] = self.decisions[team]
         self.log_row(dict(type='search_on', team=team, decisions=dict(self.decisions), updates=dict(self.updates),
                           explained_variance=self.last_ev.get(team), elapsed=round(self.elapsed(), 1)), 'SEARCH_ON')
         return True
@@ -881,7 +961,7 @@ class GeneralTrainer(Trainer):
             p = slot_state['balance'][1]
             if p < .2 or p > .8:
                 b['outside_20_80_decisions'] += decided
-            b['weight_sum'] += self.balance.weight_of(p)
+            b['weight_sum'] += self.balance.weight_of(p, slot_state['balance'][0])
         roster = self.specs.meta.get(encounter, {}).get('roster', '?')
         for team, controller in slot_state['controllers'].items():
             if controller[0] != 'learner':
