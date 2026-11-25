@@ -401,7 +401,10 @@ export function createCastAsset(gltf, key) {
         motion.rotation.set(0, 0, 0);
         const dur = actions.death.getClip().duration || 1.0;
         const t = Math.min(dur - 1e-3, Math.max(0, deathAgeMs / 1000));
-        sampleClip('death', t, { clockMs: deathAgeMs });
+        // The settled pose (the clip played out) is set at once. A crossfade here would start
+        // at the fixed clock 9999 and never advance, leaving the figure in its previous clip:
+        // a hero hit while already down stood up in its idle pose.
+        sampleClip('death', t, { clockMs: deathAgeMs, instant: deathAgeMs >= dur * 1000 });
         return true;
       }
 

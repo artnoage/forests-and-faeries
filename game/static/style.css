@@ -495,6 +495,8 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
   background: linear-gradient(180deg, rgba(222, 111, 89, 0.28), rgba(24, 16, 18, 0.95));
 }
 .init-medallion.fallen { opacity: 0.34; filter: grayscale(0.8); }
+.init-medallion.fallen.vital-dying { opacity: 1; filter: none; box-shadow: 0 0 0 2px #ff5a4a, 0 0 12px rgba(255, 90, 74, 0.55); }
+.init-medallion.fallen.vital-stable { opacity: 0.8; filter: grayscale(0.3); box-shadow: 0 0 0 2px #5fd6c4; }
 
 .turn-pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px;
@@ -614,6 +616,9 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .log-entry.status { border-left-color: #d9ae66; background: rgba(217, 174, 102, 0.08); }
 .log-entry.end { border-left-color: var(--gold); background: rgba(217, 174, 102, 0.14); font-weight: 700; color: var(--gold-bright); }
 .log-round { font-size: 9.5px; font-weight: 800; color: var(--gold); min-width: 20px; }
+.log-entry.log-death { flex-wrap: wrap; border-left-color: #ff5a4a; background: rgba(255, 90, 74, 0.1); }
+.log-entry.log-ward { border-left-color: #d8ccff; background: rgba(216, 204, 255, 0.1); }
+.log-extra { flex-basis: 100%; padding-left: 26px; font-weight: 700; color: #ff9d8f; }
 .latest-button {
   position: absolute; right: 12px; bottom: 10px;
   background: var(--gold); color: #111; border: none; border-radius: 99px;
@@ -651,6 +656,18 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
 .roster-unit.monster.active { border-color: var(--enemy); background: rgba(222, 111, 89, 0.12); }
 .roster-unit.inspected { outline: 1.5px solid var(--gold); }
 .roster-unit.fallen { opacity: 0.4; filter: grayscale(0.6); }
+/* A hero at 0 HP: Dying (death-save pips), Stable or Dead (SRD 5.2.1 Death Saving Throws). */
+.roster-unit.fallen.vital-dying { opacity: 1; filter: none; border-color: #ff5a4a; box-shadow: inset 0 0 0 1px rgba(255, 90, 74, 0.6), 0 0 12px rgba(255, 90, 74, 0.25); }
+.roster-unit.fallen.vital-stable { opacity: 0.85; filter: grayscale(0.2); border-color: #5fd6c4; }
+.vital { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.vital-dying { color: #ff8576; }
+.vital-stable { color: #6fe0cd; }
+.vital-dead { color: #a7a29a; }
+.pips { display: inline-flex; gap: 2px; }
+.pip { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-block; box-sizing: border-box; }
+.pip.save { color: #62d99a; }
+.pip.fail { color: #ff5a4a; }
+.pip.on { background: currentColor; }
 .roster-unit .portrait { width: 32px; height: 36px; }
 .roster-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .roster-name { font-weight: 750; font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 4px; }
@@ -1370,6 +1387,8 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 .legend-dot.active { border-color: #ffdb86; }
 .legend-dot.down { border-color: #ff5a4a; }
 .legend-dot.dead { border-color: #16181a; background: #3a3d40; }
+.legend-dot.stable { border-color: #5fd6c4; }
+.legend-dot.sanctuary { border-color: #ffffff; background: rgba(230, 220, 255, 0.35); }
 .legend-dot.paralyzed { border-color: #ffe27a; }
 .legend-dot.poisoned { border-color: #8fd36a; }
 .legend-dot.frightened { border-color: #a8c8ff; }

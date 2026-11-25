@@ -141,6 +141,26 @@ test('a static figure is not treated as rigged; a figure with clips is', () => {
   assert.equal(rigged.rig.death(500), true);
 });
 
+test('a figure that dies after another clip lies down; a revived one stands', () => {
+  // Each clip holds Body at its own height: idle 0, hit 0.2, death -1 (lying).
+  const scene = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 0.5), new THREE.MeshStandardMaterial());
+  body.name = 'Body'; scene.add(body);
+  const clip = (name, y) => new THREE.AnimationClip(name, 1, [new THREE.NumberKeyframeTrack('Body.position[y]', [0, 1], [y, y])]);
+  const inst = createCastAsset({ scene, animations: [clip('idle', 0), clip('hit', 0.2), clip('death', -1)] }, 'goblin')
+    .createInstance({ id: 'goblin_warrior-1', content: 'goblin_warrior', team: 'monsters' });
+  const y = () => { let v = null; inst.model.traverse(o => { if (o.name === 'Body') v = o.position.y; }); return v; };
+  inst.rig.idle(120000);
+  assert.equal(y(), 0);
+  inst.rig.hit(500);   // a hit settles back into idle
+  inst.rig.death(9999);
+  assert.ok(Math.abs(y() + 1) < 1e-6, `lying after death(9999), got ${y()}`);
+  inst.rig.death(9999);
+  assert.ok(Math.abs(y() + 1) < 1e-6, 'still lying on the next update');
+  inst.rig.reset();
+  assert.equal(y(), 0, 'reset stands the figure up');
+});
+
 test('the goblin minion is a smaller, paler goblin than the warrior', () => {
   assert.deepEqual(castVariant({ content: 'goblin_minion' }), { scale: 0.9, tint: '#e6edcf' });
   assert.equal(castVariant({ content: 'goblin_warrior' }), null);
@@ -361,4 +381,81 @@ test('camera: no top-down mode; the director, its zoom option and the HUD-free f
   // The player's drag or wheel takes the camera; reduced motion never zooms in on action.
   assert.match(scene, /function wheelInterrupt\(\) \{ takeCamera\(\); \}/);
   assert.match(scene, /const zoom = actionZoom && !reducedMotion/);
+});
+
+// Pull named top-level helpers out of app.js (they use nothing from the page).
+const appHelpers = (...names) => {
+  const app = read('static/app.js');
+  const parts = names.map(n => {
+    const fn = app.match(new RegExp(`\\n  function ${n}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`));
+    const konst = app.match(new RegExp(`\\n  const ${n} = [^\\n]*;`));
+    assert.ok(fn || konst, `${n} present in app.js`);
+    return (fn || konst)[0];
+  });
+  return Function(`"use strict"; ${parts.join('\n')}; return { ${names.join(', ')} };`)();
+};
+
+test('downed heroes: the death-save tally is read from the engine log (SRD 5.2.1)', () => {
+  const { deathSaveTally, deathSaveNote } = appHelpers('deathSaveTally', 'deathSaveNote');
+  const log = [
+    { id: 1, text: 'Guy falls unconscious.' },
+    { id: 2, text: 'Wight 2 makes the Wisdom save against Sanctuary on Guy (13 vs DC 13). The attack proceeds.' },
+    { id: 3, text: 'Guy takes damage while unconscious: 1 death-save failure.' },
+    { id: 4, text: 'Guy: death save d20(14) = 14.' },
+    { id: 5, text: 'Guy Junior: death fail d20(3) = 3.' },
+    { id: 6, text: 'Guy takes a critical hit: 2 death-save failures.' },
+  ];
+  const a = deathSaveTally(log.slice(0, 4), ['Guy', 'Guy Junior']);
+  assert.deepEqual(a.tally.Guy, { saves: 1, fails: 1 });
+  assert.deepEqual(a.notes[3], { name: 'Guy', kind: 'hit', saves: 0, fails: 1 });
+  assert.equal(deathSaveNote(a.notes[4]), 'Death saves: 1 success, 1 failure (of 3).');
+  const b = deathSaveTally(log, ['Guy', 'Guy Junior']);
+  assert.deepEqual(b.tally['Guy Junior'], { saves: 0, fails: 1 }, 'the longest name wins');
+  assert.equal(deathSaveNote(b.notes[6]), 'Three failures: dead.');
+  assert.deepEqual(b.tally.Guy, { saves: 0, fails: 0 }, 'reset after the third failure');
+  // A natural 1 is two failures; three successes and healing reset the tally; so does Stable.
+  const c = deathSaveTally([
+    { id: 1, text: 'Mara falls unconscious.' },
+    { id: 2, text: 'Mara: death fail d20(1) = 1 (2 failures).' },
+    { id: 3, text: 'Mara regains 6 HP from Healing Word (2d4(3, 1) + 3 = 7).' },
+    { id: 4, text: 'Mara falls unconscious.' },
+    { id: 5, text: 'Mara: death save d20(12) = 12.' },
+    { id: 6, text: 'Elion casts Spare the Dying.' },
+    { id: 7, text: 'Mara takes damage while unconscious: 1 death-save failure.' },
+  ], ['Mara'], [[6, 'Mara']]);
+  assert.deepEqual(c.notes[2], { name: 'Mara', kind: 'fail', saves: 0, fails: 2 });
+  assert.deepEqual(c.notes[5], { name: 'Mara', kind: 'save', saves: 1, fails: 0 });
+  assert.deepEqual(c.tally.Mara, { saves: 0, fails: 1 }, 'Spare the Dying cleared the earlier success');
+  const d = deathSaveTally([{ id: 1, text: 'Ilyra: death save d20(20) = 20.' }], ['Ilyra']);
+  assert.match(deathSaveNote(d.notes[1]), /natural 20/);
+});
+
+test('Sanctuary: its end is read from the action records, with the reason', () => {
+  const { wardEndNotes } = appHelpers('wardEndNotes');
+  const unit = (id, marks = [], extra = {}) => ({ id, marks, conditions: [], ...extra });
+  const rec = (id, kind, source_id, before, after) => ({ id, kind, source_id, before: { log_id: 10 * id, units: before }, after: { log_id: 10 * id + 3, units: after } });
+  const names = { elion: 'Elion', guy: 'Guy', 'wight-1': 'Wight 1' };
+  const notes = wardEndNotes([
+    rec(1, 'attack', 'elion', [unit('elion', ['sanctuary'])], [unit('elion')]),
+    rec(2, 'spell', 'guy', [unit('guy', ['sanctuary'])], [unit('guy')]),
+    rec(3, 'attack', 'wight-1', [unit('guy', ['sanctuary'])], [unit('guy', ['sanctuary'])]),
+    rec(4, 'end_turn', 'wight-1', [unit('elion', ['sanctuary'])], [unit('elion')]),
+  ], id => names[id]);
+  assert.deepEqual(notes.map(n => n.text), [
+    'Sanctuary on Elion ends: Elion made an attack roll.',
+    'Sanctuary on Guy ends: Guy cast a spell.',
+    'Sanctuary on Elion ends.',
+  ]);
+  assert.equal(notes[0].after, 13);
+  const app = read('static/app.js');
+  assert.match(app, /const WARD_SAVE = /, 'the engine Sanctuary save line is recognised');
+  assert.match(app, /recordCues\(rec, data\.log, data\.units\)/, 'replayed records carry the ward and death-save cues');
+});
+
+test('a figure that died stands up again in the next fight (retry, Practice restart, healing)', () => {
+  const scene = read('frontend/scene3d.js');
+  assert.match(scene, /entry\.lying = true;/);
+  assert.match(scene, /if \(entry\.lying\) \{ entry\.rig\.reset\?\.\(\); entry\.lying = false; \}/);
+  assert.match(scene, /stableRing/, 'Stable has its own ring');
+  assert.match(scene, /'DYING'/, 'the label of a dying hero says so, with its death-save pips');
 });

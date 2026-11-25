@@ -915,7 +915,7 @@ export function createCombatEffects({ scene, units, requestRender, reducedMotion
     const direction = target.clone().sub(source);
     if (direction.lengthSq() < 0.001) direction.copy(FORWARD);
     direction.normalize();
-    const color = event.outcome === 'miss' ? '#d3dbe0' : (TYPED.has(event.style) && DAMAGE_COLORS[event.damage_type]) || COLORS[event.style];
+    const color = event.tone || (event.outcome === 'miss' ? '#d3dbe0' : (TYPED.has(event.style) && DAMAGE_COLORS[event.damage_type]) || COLORS[event.style]);
     const impact = new THREE.Group(); impact.name = 'impact'; group.add(impact);
     impact.position.copy(target);
     const healing = event.outcome === 'heal';
@@ -1080,16 +1080,18 @@ export function createCombatEffects({ scene, units, requestRender, reducedMotion
     const rider = event.outcome === 'hit' && Number(event.rider) > 0
       ? `+${event.rider} ${String((event.rider_types || [])[0] || '').toUpperCase()}`.trim() : '';
     const cursed = event.style === 'rotting_fist' && event.outcome === 'hit';
-    const subline = isCrit
+    // A text cue from the page (a Sanctuary save, a death-save failure) may carry its own second line.
+    const subline = event.subline ? String(event.subline) : isCrit
       ? (drained ? 'CRITICAL! · MAX HP' : cursed ? 'CRITICAL! · CURSED' : 'CRITICAL!')
       : drained ? 'MAX HP' : rider ? (cursed ? `${rider} · CURSED` : rider) : cursed ? 'CURSED' : '';
     if (subline) ctx.font = '800 62px system-ui, sans-serif';
     const fillTone = isCrit ? '#ffd95e' : color;
-    ctx.strokeText(text, 192, subline ? 50 : 67); ctx.fillStyle = fillTone; ctx.fillText(text, 192, subline ? 50 : 67);
+    // maxWidth squeezes a long word (OPPORTUNITY, RESISTS WARD) into the label instead of clipping it.
+    ctx.strokeText(text, 192, subline ? 50 : 67, 368); ctx.fillStyle = fillTone; ctx.fillText(text, 192, subline ? 50 : 67, 368);
     if (subline) {
       ctx.font = '800 29px system-ui, sans-serif'; ctx.lineWidth = 8;
       ctx.fillStyle = isCrit ? '#fff2a6' : fillTone;
-      ctx.strokeText(subline, 192, 102); ctx.fillText(subline, 192, 102);
+      ctx.strokeText(subline, 192, 102, 368); ctx.fillText(subline, 192, 102, 368);
     }
     const texture = own(new THREE.CanvasTexture(textCanvas)); texture.colorSpace = THREE.SRGBColorSpace;
     const textMaterial = own(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));

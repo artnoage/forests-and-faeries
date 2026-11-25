@@ -519,7 +519,158 @@
 
   function lifeText(unit) {
     if (unit.alive !== false) return null;
+    const v = vitalOf(unit);
+    if (v?.state === 'dying') return `Dying · death saves ${v.saves} of 3, failures ${v.fails} of 3`;
+    if (v?.state === 'stable') return 'Stable (unconscious at 0 HP)';
     return unit.dead || (unit.conditions || []).includes('dead') ? 'Dead' : 'Unconscious';
+  }
+
+  // --- Dying, Stable, Dead (SRD 5.2.1 Death Saving Throws) ---------------------------------
+  // A hero at 0 HP is Unconscious and Dying: at the start of each of its turns it makes a Death
+  // Saving Throw (10 or higher succeeds, a 1 counts as two failures, a 20 restores 1 HP). Three
+  // successes make it Stable, three failures kill it, and damage taken at 0 HP is a failure
+  // (two on a Critical Hit). The engine sends `alive`, `dead` and the `stable` condition, and
+  // logs every death save and every failure a hit causes; the running tally is read from those
+  // lines. `resets` are [log id, name] pairs where a hero became Stable (Spare the Dying).
+  function deathSaveTally(log, names, resets = []) {
+    const order = [...new Set(names.map(String))].sort((a, b) => b.length - a.length);
+    const tally = {}, notes = {};
+    const resetAt = new Map();
+    for (const [id, name] of resets) resetAt.set(id, [...(resetAt.get(id) || []), name]);
+    const zero = n => { tally[n] = { saves: 0, fails: 0 }; };
+    order.forEach(zero);
+    for (const e of log || []) {
+      const text = String(e?.text || '');
+      const name = order.find(n => text.startsWith(`${n}:`) || text.startsWith(`${n} `));
+      if (name) {
+        const t = tally[name];
+        let kind = null;
+        if (text.startsWith(`${name} falls unconscious`) || text.startsWith(`${name} regains `) || text.startsWith(`${name} falls dead`)) zero(name);
+        else if (text.startsWith(`${name}: death save `)) { t.saves += 1; kind = /d20\(20\)/.test(text) ? 'twenty' : 'save'; }
+        else if (text.startsWith(`${name}: death fail `)) { t.fails += /\(2 failures\)/.test(text) ? 2 : 1; kind = 'fail'; }
+        else if (text.startsWith(`${name} takes damage while unconscious`)) { t.fails += 1; kind = 'hit'; }
+        else if (text.startsWith(`${name} takes a critical hit: 2 death-save failures`)) { t.fails += 2; kind = 'hit'; }
+        if (kind) {
+          notes[e.id] = { name, kind, saves: Math.min(3, t.saves), fails: Math.min(3, t.fails) };
+          if (kind === 'twenty' || t.saves >= 3 || t.fails >= 3) zero(name);
+        }
+      }
+      for (const n of resetAt.get(e?.id) || []) zero(n);
+    }
+    return { tally, notes };
+  }
+
+  function deathSaveNote(note) {
+    if (!note) return '';
+    if (note.kind === 'twenty') return 'A natural 20: back on their feet with 1 HP.';
+    if (note.fails >= 3) return 'Three failures: dead.';
+    if (note.saves >= 3) return 'Three successes: Stable.';
+    return `Death saves: ${note.saves} ${note.saves === 1 ? 'success' : 'successes'}, ${note.fails} ${note.fails === 1 ? 'failure' : 'failures'} (of 3).`;
+  }
+
+  // Sanctuary (SRD 5.2.1) ends when the warded creature makes an attack roll, casts a spell or
+  // deals damage. The engine does not log the ending, but every action record carries the
+  // before and after marks, so the end is read from them (and the reason from the action).
+  function wardEndNotes(timeline, nameOfId) {
+    const out = [];
+    for (const rec of timeline || []) {
+      if (!rec?.before?.units || !rec?.after?.units) continue;
+      const before = new Map(rec.before.units.map(u => [u.id, u]));
+      for (const u of rec.after.units) {
+        const b = before.get(u.id);
+        if (!b || !(b.marks || []).includes('sanctuary') || (u.marks || []).includes('sanctuary') || u.dead) continue;
+        const name = nameOfId(u.id);
+        const kind = String(rec.kind || '');
+        const why = rec.source_id !== u.id ? ''
+          : kind === 'spell' ? `${name} cast a spell`
+            : /attack|cleave/.test(kind) ? `${name} made an attack roll`
+              : `${name} dealt damage`;
+        out.push({ id: `ward-end-${rec.id}-${u.id}`, after: Number(rec.after.log_id) || 0, unit: u.id, why: why ? why.slice(name.length + 1) : '',
+          text: why ? `Sanctuary on ${name} ends: ${why}.` : `Sanctuary on ${name} ends.` });
+      }
+    }
+    return out;
+  }
+
+  // The engine's Sanctuary save line: "<attacker> makes|fails the Wisdom save against
+  // Sanctuary on <warded> (<total> vs DC <dc>). The attack proceeds|is lost."
+  const WARD_SAVE = /^(.+) (makes|fails) the Wisdom save against Sanctuary on (.+) \((-?\d+) vs DC (\d+)\)\./;
+
+  // Board cues for one action record: who resisted the ward or was turned away, whose ward
+  // ended, and which hit cost a dying hero a death save. Shown like the OPPORTUNITY tag.
+  function recordCues(rec, log, units) {
+    const lo = Number(rec?.before?.log_id) || 0, hi = Number(rec?.after?.log_id) || 0;
+    const byName = new Map((units || []).map(u => [String(u.name), u]));
+    const at = id => (rec.after?.units || []).find(u => u.id === id) || (units || []).find(u => u.id === id);
+    const cue = (unit, text, subline, tone, n) => {
+      const p = at(unit.id);
+      if (!p) return null;
+      return { id: 950000 + (Number(rec.id) || 0) * 20 + n, type: 'attack', style: 'touch', variant: 'cue', outcome: 'miss', amount: 0,
+        text, subline, tone, source_id: unit.id, target_id: unit.id, source: { x: p.x, y: p.y }, target: { x: p.x, y: p.y } };
+    };
+    const out = [];
+    const { notes } = deathSaveTally((log || []).filter(e => e.id <= hi), (units || []).filter(u => u.team === 'heroes').map(u => u.name));
+    for (const e of log || []) {
+      if (e.id <= lo || e.id > hi) continue;
+      const m = WARD_SAVE.exec(String(e.text || ''));
+      if (m && byName.has(m[1])) {
+        out.push(cue(byName.get(m[1]), m[2] === 'makes' ? 'RESISTS WARD' : 'WARD HOLDS', `WIS ${m[4]} vs DC ${m[5]}`, m[2] === 'makes' ? '#ffb46a' : '#e6dcff', out.length));
+      }
+      const note = notes[e.id];
+      if (note?.kind === 'hit' && byName.has(note.name)) {
+        out.push(cue(byName.get(note.name), note.fails >= 3 ? 'DEAD' : 'DEATH SAVE FAILED', note.fails >= 3 ? 'THREE FAILURES' : `${note.fails} OF 3 FAILURES`, '#ff6a58', out.length));
+      }
+    }
+    for (const w of wardEndNotes([rec], id => (units || []).find(u => u.id === id)?.name || id)) {
+      const u = (units || []).find(x => x.id === w.unit);
+      if (u) out.push(cue(u, 'SANCTUARY ENDS', w.why ? w.why.toUpperCase() : '', '#e6dcff', out.length));
+    }
+    return out.filter(Boolean);
+  }
+
+  // Per-encounter memory of what the timeline told us (it keeps only its last 64 records).
+  // var, like directedTurn below: render() may run before these lines during start-up.
+  var derived = { encounter: null, wardEnds: new Map(), stable: new Map() };
+  function noteTimeline(data) {
+    if (!data) return;
+    if (derived.encounter !== data.encounter_id) {
+      derived.encounter = data.encounter_id; derived.wardEnds.clear(); derived.stable.clear();
+    }
+    const nameOfId = id => (data.units || []).find(u => u.id === id)?.name || id;
+    for (const w of wardEndNotes(data.timeline, nameOfId)) derived.wardEnds.set(w.id, w);
+    for (const rec of data.timeline || []) {
+      const before = new Map((rec.before?.units || []).map(u => [u.id, u]));
+      for (const u of rec.after?.units || []) {
+        const b = before.get(u.id);
+        if (b && !(b.conditions || []).includes('stable') && (u.conditions || []).includes('stable')) {
+          derived.stable.set(`${rec.id}:${u.id}`, [Number(rec.after.log_id) || 0, nameOfId(u.id)]);
+        }
+      }
+    }
+  }
+
+  var vitalsCache = { state: null, value: null };
+  function vitals() {
+    if (vitalsCache.state === state) return vitalsCache.value;
+    const heroes = (state?.units || []).filter(u => u.team === 'heroes');
+    const value = deathSaveTally(state?.log, heroes.map(u => u.name), [...derived.stable.values()]);
+    vitalsCache = { state, value };
+    return value;
+  }
+  function vitalOf(unit) {
+    if (!unit || unit.team !== 'heroes' || unit.alive !== false) return null;
+    const conds = unit.conditions || [];
+    if (unit.dead || conds.includes('dead')) return { state: 'dead' };
+    if (conds.includes('stable')) return { state: 'stable' };
+    const t = vitals().tally[unit.name] || { saves: 0, fails: 0 };
+    return { state: 'dying', saves: Math.min(2, t.saves), fails: Math.min(2, t.fails) };
+  }
+  function vitalHtml(unit) {
+    const v = vitalOf(unit);
+    if (!v) return '';
+    if (v.state !== 'dying') return `<span class="vital vital-${v.state}">${v.state === 'stable' ? 'Stable' : 'Dead'}</span>`;
+    const pips = (n, cls) => [0, 1, 2].map(i => `<i class="pip ${cls}${i < n ? ' on' : ''}"></i>`).join('');
+    return `<span class="vital vital-dying">Dying <span class="pips" title="Death saves: ${v.saves} successes">${pips(v.saves, 'save')}</span><span class="pips" title="Death saves: ${v.fails} failures">${pips(v.fails, 'fail')}</span></span>`;
   }
 
   // --- 3D hover and the floating tooltip -----------------------------------------
@@ -705,7 +856,8 @@
     const v = ensureViewer();
     if (!v || sceneUnavailable || !state) return;
     try {
-      v.update(state, {
+      const shown = { ...state, units: (state.units || []).map(u => { const vital = vitalOf(u); return vital ? { ...u, vital } : u; }) };
+      v.update(shown, {
         selectedActions: currentActions(),
         previewCells: previewCells(),
         previewFriendlyFire: Boolean((preview || armed)?.allies?.length),
@@ -867,7 +1019,7 @@
     }
     $('initiative-list').innerHTML = state.units.map(u => {
       const act = u.id === activeUnit()?.id, life = lifeText(u);
-      return `<button class="init-medallion ${u.team === 'monsters' ? 'monster' : ''} ${act ? 'active' : ''} ${!u.alive ? 'fallen' : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${escape(u.id)}" ${act ? 'aria-current="true"' : ''} aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${life ? ', ' + life : ''}${act ? ', acting now' : ''}`)}" title="${escape(u.name)} (${escape(u.hp)}/${escape(u.max_hp)} HP)">${portrait(u)}${hpBar(u, 'init-hp-mini')}<span class="init-badge">${escape(u.initiative_roll ?? '·')}</span></button>`;
+      return `<button class="init-medallion ${u.team === 'monsters' ? 'monster' : ''} ${act ? 'active' : ''} ${!u.alive ? 'fallen' : ''} ${vitalOf(u) ? 'vital-' + vitalOf(u).state : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${escape(u.id)}" ${act ? 'aria-current="true"' : ''} aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${life ? ', ' + life : ''}${act ? ', acting now' : ''}`)}" title="${escape(u.name)} (${escape(u.hp)}/${escape(u.max_hp)} HP)">${portrait(u)}${hpBar(u, 'init-hp-mini')}<span class="init-badge">${escape(u.initiative_roll ?? '·')}</span></button>`;
     }).join('');
   }
 
@@ -909,7 +1061,7 @@
     const clsText = nativeClass(u, u.team !== 'heroes');
     const meta = !placed && state.phase === 'setup' ? `${clsText} · not placed`
       : lifeText(u) || (conds.length ? conds.join(' · ') : clsText);
-    return `<button class="roster-unit ${extra} ${u.alive === false ? 'fallen' : ''} ${u.id === activeUnit()?.id ? 'active' : ''} ${u.id === inspectedId ? 'inspected' : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${placed ? escape(u.id) : ''}">${portrait(u)}<span class="roster-info"><span class="roster-name"><span class="roster-title"><span class="roster-title-name">${escape(u.name)}</span>${heroLevelBadge(u)}</span><span>${u.ac ? `<b class="roster-ac-pill">AC ${escape(u.ac)}</b> ` : ''}${escape(hp)}/${escape(maxHp)}</span></span><span class="roster-meta">${escape(meta)}</span>${hpBar({ ...u, hp, max_hp: maxHp })}</span></button>`;
+    return `<button class="roster-unit ${extra} ${u.alive === false ? 'fallen' : ''} ${vitalOf(u) ? 'vital-' + vitalOf(u).state : ''} ${u.id === activeUnit()?.id ? 'active' : ''} ${u.id === inspectedId ? 'inspected' : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${placed ? escape(u.id) : ''}">${portrait(u)}<span class="roster-info"><span class="roster-name"><span class="roster-title"><span class="roster-title-name">${escape(u.name)}</span>${heroLevelBadge(u)}</span><span>${u.ac ? `<b class="roster-ac-pill">AC ${escape(u.ac)}</b> ` : ''}${escape(hp)}/${escape(maxHp)}</span></span><span class="roster-meta">${vitalHtml(u) || escape(meta)}</span>${hpBar({ ...u, hp, max_hp: maxHp })}</span></button>`;
   }
 
   function renderRoster() {
@@ -1174,25 +1326,51 @@
               : `${group.label}: click a highlighted creature or a choice above.`;
   }
 
+  // The engine's log, with what the page reads from it set apart: Sanctuary saves and its end,
+  // and the running death-save tally after each death save or failure from a hit.
+  function displayLog() {
+    const logs = Array.isArray(state?.log) ? state.log : [];
+    if (!logs.length) return logs;
+    const first = logs[0].id, last = logs[logs.length - 1].id;
+    const { notes } = vitals();
+    const ends = [...derived.wardEnds.values()].filter(w => w.after >= first && w.after <= last);
+    const out = [];
+    for (const entry of logs) {
+      const text = String(entry.text || '');
+      const note = notes[entry.id];
+      const ward = WARD_SAVE.test(text);
+      out.push(note ? { ...entry, extra: deathSaveNote(note), mark: 'death' } : ward ? { ...entry, mark: 'ward' } : entry);
+      for (const w of ends) if (w.after === entry.id) out.push({ id: w.id, round: entry.round, text: w.text, tone: 'status', mark: 'ward' });
+    }
+    return out;
+  }
+
   function renderLog() {
     const el = $('combat-log');
-    const logs = Array.isArray(state?.log) ? state.log : [];
+    const logs = displayLog();
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-    const prefix = lastLogIds.length <= logs.length && lastLogIds.every((id, idx) => id === logs[idx]?.id);
+    const key = e => `${e.id}|${e.extra || ''}`;
+    const prefix = lastLogIds.length <= logs.length && lastLogIds.every((id, idx) => id === key(logs[idx] || {}));
     if (!prefix || !lastLogIds.length) { el.replaceChildren(); lastLogIds = []; }
     const fresh = logs.slice(lastLogIds.length);
     for (const entry of fresh) {
       const row = document.createElement('div');
-      row.className = `log-entry ${['info', 'hit', 'miss', 'spell', 'turn', 'status', 'end'].includes(entry.tone) ? entry.tone : 'info'}`;
+      row.className = `log-entry ${['info', 'hit', 'miss', 'spell', 'turn', 'status', 'end'].includes(entry.tone) ? entry.tone : 'info'}${entry.mark ? ' log-' + entry.mark : ''}`;
       const r = document.createElement('span');
       r.className = 'log-round';
       r.textContent = `R${(Number(entry.round) || 0) + 1}`;
       const t = document.createElement('span');
       t.textContent = entry.text;
       row.append(r, t);
+      if (entry.extra) {
+        const x = document.createElement('span');
+        x.className = 'log-extra';
+        x.textContent = entry.extra;
+        row.append(x);
+      }
       el.append(row);
     }
-    lastLogIds = logs.map(e => e.id);
+    lastLogIds = logs.map(key);
     if (!logs.length) el.innerHTML = '<p class="log-empty">No events yet.</p>';
     if (nearBottom || !prefix) { el.scrollTop = el.scrollHeight; $('latest-button').hidden = true; }
     else if (fresh.length) $('latest-button').hidden = false;
@@ -1481,6 +1659,7 @@
       if (retiredEncounters.length > 8) retiredEncounters.shift();
     }
     lastActionId = newest;
+    noteTimeline(data);
     if (data.initiative_draws?.length && state?.phase === 'setup' && data.phase !== 'setup') {
       renderDiceDraws(data.initiative_draws, 'Initiative', true);
     }
@@ -1497,7 +1676,8 @@
           window.FFSound?.recordStart(rec);
           let sounded = false;
           const soundImpact = () => { if (!sounded) { sounded = true; window.FFSound?.recordImpact(rec, rosterById(data)); } };
-          const ok = await viewer.playAction(rec, {
+          const cues = recordCues(rec, data.log, data.units);
+          const ok = await viewer.playAction(cues.length ? { ...rec, effects: [...(rec.effects || []), ...cues] } : rec, {
             impact: () => { applyPoseOverlay(data, rec.after); soundImpact(); },
             step: (id, x, y) => {
               state = { ...state, units: state.units.map(u => u.id === id ? { ...u, x, y } : u) };

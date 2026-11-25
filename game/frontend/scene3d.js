@@ -983,6 +983,32 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       const raw = String(unit.name || unit.id), displayName = raw.length > 24 ? `${raw.slice(0, 23)}…` : raw;
       ctx.fillText(displayName, 16, 33, w - 84);
 
+      const vital = unit.team === 'heroes' && unit.alive === false ? unit.vital : null;
+      if (vital) {
+        // A hero at 0 HP: Dying with its death-save tally (successes green, failures red),
+        // Stable, or Dead, in place of the hit points and their bar.
+        const tone = vital.state === 'dying' ? '#ff6a58' : vital.state === 'stable' ? '#6fe0cd' : '#a7a29a';
+        ctx.fillStyle = tone;
+        ctx.font = '800 19px system-ui, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(vital.state === 'dying' ? 'DYING' : vital.state === 'stable' ? 'STABLE' : 'DEAD', w - 15, 33);
+        if (vital.state === 'dying') {
+          const pip = (x, on, color) => {
+            ctx.beginPath(); ctx.arc(x, 48, 5.5, 0, Math.PI * 2);
+            if (on) { ctx.fillStyle = color; ctx.fill(); }
+            ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+          };
+          for (let i = 0; i < 3; i++) pip(24 + i * 17, i < (vital.saves || 0), '#62d99a');
+          for (let i = 0; i < 3; i++) pip(w - 58 + i * 17, i < (vital.fails || 0), '#ff5a4a');
+          ctx.fillStyle = '#d9d0c0'; ctx.font = '600 13px system-ui, sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('death saves', w / 2, 53);
+        } else {
+          ctx.fillStyle = '#25353a';
+          ctx.beginPath(); ctx.roundRect(15, 44, w - 30, 8, 4); ctx.fill();
+        }
+        return;
+      }
+
       ctx.fillStyle = '#b9d2cd';
       ctx.font = '600 19px system-ui, sans-serif';
       ctx.textAlign = 'right';
@@ -1035,7 +1061,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         sp.visible = false;
         continue;
       }
-      sp.visible = labelMode !== 'minimal' || Boolean(entry.data.active || entry.data.id === inspectedId);
+      sp.visible = labelMode !== 'minimal' || Boolean(entry.data.active || entry.data.id === inspectedId || entry.data.vital?.state === 'dying');
       if (!sp.visible) continue;
       const baseY = entry.data.alive ? entry.labelY : 0.66;
       projection.set(entry.root.position.x, baseY, entry.root.position.z).project(camera);
@@ -1094,8 +1120,11 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     },
     sanctuary: (root, unit) => {
       const g = new THREE.Group(); g.name = 'mark-sanctuary'; root.add(g);
-      mesh(g, sphere, glow('#f4f0ff', 0.14), 0, 0.5 * (unit.model?.scale || 1), 0, 0.62, 0.8, 0.62);
-      mesh(g, geometry('mark-ring', () => new THREE.TorusGeometry(0.46, 0.028, 6, 36)), glow('#ffffff', 0.7), 0, 0.12, 0).rotation.x = -Math.PI / 2;
+      mesh(g, sphere, glow('#f4f0ff', 0.2), 0, 0.5 * (unit.model?.scale || 1), 0, 0.62, 0.8, 0.62);
+      mesh(g, geometry('mark-ring', () => new THREE.TorusGeometry(0.46, 0.028, 6, 36)), glow('#ffffff', 0.8), 0, 0.12, 0).rotation.x = -Math.PI / 2;
+      // A pale ward sigil over the head: readable from any angle, unlike the faint dome.
+      mesh(g, geometry('mark-ward-sigil', () => new THREE.TorusGeometry(0.12, 0.022, 6, 24)), glow('#e6dcff', 0.95), 0, 1.22 * (unit.model?.scale || 1) + 0.42, 0);
+      mesh(g, geometry('mark-star', () => new THREE.OctahedronGeometry(1)), glow('#ffffff', 0.95), 0, 1.22 * (unit.model?.scale || 1) + 0.42, 0, 0.05, 0.05, 0.05);
       return g;
     },
     protection: root => {
@@ -1221,9 +1250,11 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     downRing.visible = false;
     const deadRing = ring(root, geometry('dead-ring', () => new THREE.RingGeometry(0.3, 0.47, 40)), material('#16181a', 0, 1), 0.031);
     deadRing.visible = false;
+    const stableRing = ring(root, geometry('down-ring', () => new THREE.RingGeometry(0.4, 0.47, 40)), glow('#5fd6c4', 0.85), 0.03);
+    stableRing.visible = false;
 
     const entry = {
-      root, body, rig, name: nameSprite, labelY: lY, active, target, inspect, picker, downRing, deadRing,
+      root, body, rig, name: nameSprite, labelY: lY, active, target, inspect, picker, downRing, deadRing, stableRing,
       markGroups, ownMaterials, castKey: castInst ? castKey : null,
       data: { ...unit },
       start: new THREE.Vector3(unit.x, 0.04, unit.y),
@@ -1259,9 +1290,10 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   function applyUnitState(entry, data) {
     entry.active.visible = Boolean(data.active && data.alive);
     entry.inspect.visible = data.id === inspectedId;
+    // A hero at 0 HP keeps a Sanctuary ward (attackers still have to save), so its dome stays.
     const markNames = data.alive
       ? [...new Set([...(data.marks || []), ...((data.conditions || []).filter(c => MARKS[c]))])]
-      : [];
+      : data.dead ? [] : (data.marks || []).filter(m => m === 'sanctuary');
     for (const name of markNames) if (!entry.markGroups[name] && MARKS[name]) entry.markGroups[name] = MARKS[name](entry.root, data);
     for (const [name, group] of Object.entries(entry.markGroups)) group.visible = markNames.includes(name);
     if (entry.markGroups.strength_drain) {
@@ -1279,20 +1311,27 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         entry.body.rotation.z = -Math.PI / 2;
         entry.body.position.y = 0.23;
       }
+      entry.lying = true;
       // Monster corpses dissolve after death playback; fallen heroes remain collapsed on the field:
-      // a dying (unconscious) hero has a red ring, a dead one a dark ash ring.
+      // a dying hero has a red ring, a stable one a teal ring, a dead one a dark ash ring.
       entry.body.visible = data.team === 'heroes';
       const dead = data.dead === true || (data.conditions || []).includes('dead');
-      entry.downRing.visible = data.team === 'heroes' && !dead;
+      const stable = !dead && (data.conditions || []).includes('stable');
+      entry.downRing.visible = data.team === 'heroes' && !dead && !stable;
+      entry.stableRing.visible = data.team === 'heroes' && stable;
       entry.deadRing.visible = data.team === 'heroes' && dead;
       entry.picker.visible = data.team === 'heroes';
       entry.picker.scale.y = 0.22;
       entry.picker.position.y = 0.14;
     } else {
+      // Standing again (a new fight after a loss, a retry, or healing at 0 HP): the rig still
+      // holds the last frame of its death clip until something poses it, so stand it up now.
+      if (entry.lying) { entry.rig.reset?.(); entry.lying = false; }
       entry.body.rotation.z = 0;
       entry.body.position.y = 0;
       entry.body.visible = true;
       entry.downRing.visible = false;
+      entry.stableRing.visible = false;
       entry.deadRing.visible = false;
       entry.picker.visible = true;
       entry.picker.scale.y = 1;
@@ -1354,8 +1393,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         if (entry.moveEnd) entry.root.position.copy(entry.start);
         else entry.root.position.copy(entry.end);
       }
-      const prevCondKey = JSON.stringify([entry.data.conditions, entry.data.marks]);
-      const nextCondKey = JSON.stringify([data.conditions, data.marks]);
+      const prevCondKey = JSON.stringify([entry.data.conditions, entry.data.marks, entry.data.vital || null, entry.data.alive]);
+      const nextCondKey = JSON.stringify([data.conditions, data.marks, data.vital || null, data.alive]);
       if (data.hp !== entry.data.hp || data.max_hp !== entry.data.max_hp || data.name !== entry.data.name || data.active !== entry.data.active || prevCondKey !== nextCondKey) {
         removeLabel(entry.name);
         entry.name = label(data, entry.labelY);
@@ -1375,6 +1414,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       entry.body.position.x = ox;
       entry.body.position.z = oz;
       entry.downRing.position.set(ox, 0.03, oz);
+      entry.stableRing.position.set(ox, 0.03, oz);
       entry.deadRing.position.set(ox, 0.031, oz);
       entry.picker.position.x = ox;
       entry.picker.position.z = oz;
@@ -2075,6 +2115,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
           if (p.newlyDead.has(effect.target_id)) {
             target.body.visible = true;
             target.rig.death?.(age - impAt);
+          } else if (target.lying) {
+            // A hit on a hero already at 0 HP (a death-save failure): it stays down.
+            target.rig.death?.(9999);
           } else {
             target.rig.hit?.(age - impAt);
           }
