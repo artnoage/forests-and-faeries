@@ -13,7 +13,7 @@ MODEL_KEYS = ('guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna', 'skeleton',
               'violet_fungus', 'giant_wasp', 'satyr', 'steam_mephit', 'blink_dog', 'sprite', 'dryad',
               'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp')
 MODEL_FILES = tuple(f'models/{key}.glb' for key in MODEL_KEYS)
-PROP_FILES = ('props/sarcophagus.glb', 'props/brazier.glb')
+PROP_FILES = ('props/sarcophagus.glb', 'props/brazier.glb', 'props/oak_tree.glb')
 TEXTURE_FILES = tuple(f'textures/mausoleum/{name}.webp' for name in (
     'floor_albedo', 'floor_normal', 'floor_orm', 'floor_slab_albedo', 'floor_slab_normal', 'floor_slab_orm',
     'wall_albedo', 'wall_normal', 'wall_orm', 'window_albedo'))

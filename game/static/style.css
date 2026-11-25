@@ -1330,7 +1330,9 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 /* The 2D map: hidden while 3D works (unless shown as an inset), the whole stage otherwise. */
 #battlefield { display: none; }
 #battlefield .cell-wall { fill: #202d33; }
+#battlefield .cell-tree { fill: #25402a; }
 #battlefield .cell-floor { fill: #405056; }
+#battlefield .cell-dim { fill: #2b3842; }
 #battlefield .tile { cursor: pointer; }
 #battlefield .tile-face { fill: transparent; stroke: #d0c6a0; stroke-opacity: 0.14; stroke-width: 0.02; }
 #battlefield .tile.is-legal .tile-face { fill: rgba(94, 199, 178, 0.32); }

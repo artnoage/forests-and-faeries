@@ -237,6 +237,7 @@
     { id: 'sanctum', label: 'Obsidian Sanctum', desc: 'Hex basalt and runes' },
     { id: 'crucible', label: 'Infernal Crucible', desc: 'Volcanic rock and magma' },
     { id: 'forged_hall', label: 'Dwarven Forged Hall', desc: 'Granite and iron' },
+    { id: 'woodland', label: 'Whispering Woodland', desc: 'Mossy earth, roots and oaks' },
     { id: 'mausoleum', label: 'Gothic Mausoleum', desc: 'Carved stone, violet light' },
     { id: 'mausoleum_crypt', label: 'Violet Ossuary', desc: 'Old stone, violet light' },
     { id: 'mausoleum_caves', label: 'Violet Caverns', desc: 'Rock and violet crystal' },
@@ -764,7 +765,7 @@
           areaColor = matchingAct.allies?.length ? '#ff4a38' : '#ff7a3d';
         }
       }
-    } else if (state.phase === 'setup' && setupFigure && state.map.tiles[y]?.[x] !== '#') {
+    } else if (state.phase === 'setup' && setupFigure && !['#', 'T'].includes(state.map.tiles[y]?.[x])) {
       hoverColor = '#eec373';
     }
     viewer?.setTacticalPreview?.({ hoverCell: { x, y, color: hoverColor }, pathCells, pathColor, pathDotColor, arcFrom, arcTo, arcColor, areaCells, areaColor });
@@ -924,7 +925,10 @@
       const lv = levelByKey(selectedStart.encounter, selectedStart.preset);
       if (lv?.preset.theme) return lv.preset.theme;
     }
-    return state?.theme || state?.level?.theme || null;
+    const sceneTheme = state?.map?.scene?.theme || null;
+    const encTheme = state?.theme || state?.level?.theme || null;
+    if (sceneTheme && (!encTheme || encTheme === 'caverns')) return sceneTheme;
+    return encTheme || sceneTheme || null;
   }
 
   // --- Dice tray: only the server's draws ------------------------------------------------
@@ -981,8 +985,10 @@
     const setup = state.phase === 'setup';
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
-        const wall = map.tiles[y]?.[x] === '#';
-        base.push(`<rect class="${wall ? 'cell-wall' : 'cell-floor'}" x="${x}" y="${y}" width="1" height="1"/>`);
+        const ch = map.tiles[y]?.[x] || '.';
+        const wall = ch === '#' || ch === 'T';
+        const cls = ch === 'T' ? 'cell-wall cell-tree' : wall ? 'cell-wall' : (ch === 'd' || ch === 'D') ? 'cell-floor cell-dim' : 'cell-floor';
+        base.push(`<rect class="${cls}" x="${x}" y="${y}" width="1" height="1"/>`);
         if (wall) continue;
         let isLeg = legal.some(a => isTargeted(a, x, y));
         if (setup && setupFigure && !state.setup.placements.some(p => p.id !== setupFigure && p.x === x && p.y === y)) isLeg = true;
@@ -2072,7 +2078,7 @@
     if (!state || busy) return;
     if (state.phase === 'setup') {
       if (setupFigure) {
-        if (state.map.tiles[y]?.[x] === '#' || state.setup.placements.some(p => p.id !== setupFigure && p.x === x && p.y === y)) return;
+        if (['#', 'T'].includes(state.map.tiles[y]?.[x]) || state.setup.placements.some(p => p.id !== setupFigure && p.x === x && p.y === y)) return;
         configure([...state.setup.placements.filter(p => p.id !== setupFigure), { id: setupFigure, x, y }]);
       } else {
         const u = unitId ? state.units.find(i => i.id === unitId) : state.units.find(i => i.x === x && i.y === y);

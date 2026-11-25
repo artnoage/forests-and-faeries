@@ -33,6 +33,7 @@ export const ASSET_VERSIONS = Object.freeze({
   'models/will_o_wisp.glb': '27f3a9e31f49',
   'models/zombie.glb': 'f658062129d1',
   'props/brazier.glb': 'd1119e0d4198',
+  'props/oak_tree.glb': 'f973ba6c323a',
   'props/sarcophagus.glb': '983314fb98b3',
   'textures/mausoleum/floor_albedo.webp': '1c6bceb4ea9f',
   'textures/mausoleum/floor_normal.webp': '95326e9be847',

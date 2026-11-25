@@ -17,6 +17,7 @@ export const THEME_CATALOG = Object.freeze([
   { id: 'sanctum',     label: 'Obsidian Sanctum',     preset: 'two_wights',     moteColor: '#b98cff' },
   { id: 'crucible',    label: 'Infernal Crucible',    preset: 'whole_crypt',    moteColor: '#ff8538' },
   { id: 'forged_hall', label: 'Dwarven Forged Hall',  preset: 'vault',          moteColor: '#f2be6b' },
+  { id: 'woodland',    label: 'Whispering Woodland',  preset: null,             moteColor: '#e2f2a0' },
   { id: 'mausoleum',       label: 'Gothic Mausoleum',  preset: null, moteColor: '#c48fff' },
   { id: 'mausoleum_crypt', label: 'Violet Ossuary',    preset: null, moteColor: '#c9a6ff' },
   { id: 'mausoleum_caves', label: 'Violet Caverns',    preset: null, moteColor: '#b98cff' },
@@ -107,6 +108,16 @@ export const THEMES = {
     torchColor: '#ff963b', crystalColor: null, moteColor: '#f0c475',
     floorRoughness: 0.80, floorMetalness: 0.08, bumpScale: 0.046,
   },
+  woodland: {
+    id: 'woodland',
+    bg: '#08100c', fog: '#0a130e',
+    slab: '#151b14', rim: '#6b573b', frame: '#232a1e',
+    wallCap: '#4c5e3c', wallJoint: '#21281d', pillarBody: '#555b52', pillarTrim: '#6b5539',
+    hemiSky: '#d4e6d6', hemiGround: '#343c2b', keyColor: '#ffe7ba', fillColor: '#66a89c',
+    torchColor: '#ffd478', crystalColor: null, moteColor: '#e2f2a0',
+    flame: Object.freeze({ ember: '#f5a638', outer: '#ffd875', core: '#fff7d1' }),
+    floorRoughness: 0.90, floorMetalness: 0.02, bumpScale: 0.046,
+  },
 };
 
 // The mausoleum themes: Gothic Reliquary architecture (ossuary and cavern
@@ -146,7 +157,14 @@ export function resolveTheme(map, explicitKey) {
     if (THEMES[mapped]) return THEMES[mapped];
   }
   if (map?.theme && THEMES[map.theme]) return THEMES[map.theme];  // the encounter's own theme
+  if (map?.scene?.theme && THEMES[map.scene.theme]) return THEMES[map.scene.theme];
+  if (Array.isArray(map?.tiles) && map.tiles.some(r => typeof r === 'string' && r.includes('T'))) {
+    return THEMES.woodland;
+  }
   const hint = String(map?.family || map?.name || '').toLowerCase();
+  if (hint.includes('glade') || hint.includes('hollow') || hint.includes('mire') || hint.includes('forest') || hint.includes('wood')) {
+    return THEMES.woodland;
+  }
   if (hint.includes('cave')) return THEMES.caverns;
   if (hint.includes('pillar') || hint.includes('hall')) return THEMES.reliquary;
   if (hint.includes('room')) return THEMES.ossuary;
@@ -339,6 +357,67 @@ export function buildThemeFloorMaterial(theme, renderer, textures, cache) {
       drawCracks(ctx, S, 6, 'rgba(255, 102, 28, 0.78)', 3.2);
       drawCracks(ctx, S, 6, 'rgba(255, 206, 112, 0.55)', 1.3);
       ctx.strokeStyle = '#170f0d'; ctx.lineWidth = 10; ctx.strokeRect(4, 4, S - 8, S - 8);
+    } else if (look === 'woodland') {
+      // Rich dark-fantasy forest floor: warm packed loam, layered woodland moss & grass turf,
+      // fine gnarled roots, scattered dry leaves & subtle recessed tactical square edge.
+      ctx.fillStyle = '#483d2e';
+      ctx.fillRect(0, 0, S, S);
+      // Warm mottled earth variation
+      for (let e = 0; e < 26; e++) {
+        const ex = h2(e, 3, 101) * S, ey = h2(e, 7, 103) * S, er = 38 + h2(e, 11, 107) * 86;
+        const eg = ctx.createRadialGradient(ex, ey, 4, ex, ey, er);
+        eg.addColorStop(0, e % 2 === 0 ? 'rgba(92, 76, 52, 0.34)' : 'rgba(38, 31, 22, 0.36)');
+        eg.addColorStop(1, 'rgba(60, 50, 36, 0)');
+        ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.fill();
+      }
+      // Layered velvety moss & grass turf pads (kept earthy/muted so green fey & teal highlights pop!)
+      for (let m = 0; m < 44; m++) {
+        const mx = h2(m, 4, 109) * S, my = h2(m, 9, 113) * S, mr = 26 + h2(m, 2, 127) * 68;
+        const mg = ctx.createRadialGradient(mx, my, 4, mx, my, mr);
+        const mossPalette = m % 3 === 0
+          ? ['rgba(62, 88, 44, 0.62)', 'rgba(50, 74, 36, 0)']
+          : m % 3 === 1
+            ? ['rgba(78, 98, 50, 0.50)', 'rgba(62, 82, 42, 0)']
+            : ['rgba(46, 68, 38, 0.56)', 'rgba(38, 58, 32, 0)'];
+        mg.addColorStop(0, mossPalette[0]);
+        mg.addColorStop(1, mossPalette[1]);
+        ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
+      }
+      // Fine winding woodland surface roots
+      ctx.lineCap = 'round';
+      for (let r = 0; r < 9; r++) {
+        let rx = h2(r, 1, 131) * S, ry = h2(r, 2, 137) * S;
+        const thick = 2.0 + h2(r, 5, 139) * 3.0;
+        ctx.strokeStyle = r % 2 === 0 ? 'rgba(38, 28, 19, 0.72)' : 'rgba(66, 50, 34, 0.55)';
+        ctx.lineWidth = thick;
+        ctx.beginPath(); ctx.moveTo(rx, ry);
+        for (let seg = 0; seg < 4; seg++) {
+          rx += (h2(r * 5 + seg, 6, 149) - 0.5) * 110;
+          ry += (h2(r * 5 + seg, 8, 151) - 0.5) * 110;
+          ctx.lineTo(rx, ry);
+        }
+        ctx.stroke();
+      }
+      // Tiny hand-painted grass tufts & scattered autumn/russet leaves + pebbles
+      for (let g = 0; g < 180; g++) {
+        const gx = h2(g, 3, 157) * S, gy = h2(g, 7, 163) * S;
+        const len = 5 + h2(g, 11, 167) * 9;
+        const ang = (h2(g, 13, 173) - 0.5) * 1.4 - Math.PI / 2;
+        ctx.strokeStyle = g % 3 === 0 ? 'rgba(104, 128, 66, 0.45)' : 'rgba(54, 78, 40, 0.50)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(ang) * len, gy + Math.sin(ang) * len); ctx.stroke();
+      }
+      for (let lf = 0; lf < 42; lf++) {
+        const lx = h2(lf, 2, 179) * S, ly = h2(lf, 5, 181) * S;
+        const lr = 2.5 + h2(lf, 9, 191) * 3.5;
+        ctx.fillStyle = lf % 3 === 0 ? 'rgba(130, 96, 54, 0.55)' : lf % 3 === 1 ? 'rgba(106, 84, 48, 0.52)' : 'rgba(110, 108, 96, 0.42)';
+        ctx.beginPath(); ctx.ellipse(lx, ly, lr * 1.35, lr * 0.72, h2(lf, 12, 193) * Math.PI, 0, Math.PI * 2); ctx.fill();
+      }
+      addFineStoneGrain(ctx, S, 0.14, 0.06, 2000);
+      // Soft organic tactical grid border so square boundaries stay legible without dungeon masonry
+      ctx.strokeStyle = 'rgba(20, 25, 17, 0.56)';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(3, 3, S - 6, S - 6);
     } else {
       // forged_hall: Dressed granite herringbone / coursed blocks + iron corner bosses
       ctx.fillStyle = '#4e5452';
@@ -382,9 +461,23 @@ export function buildThemeFloorMaterial(theme, renderer, textures, cache) {
       ctx.moveTo(0, S / 2); ctx.lineTo(S, S / 2);
       ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S / 2);
       ctx.stroke();
+    } else if (look === 'woodland') {
+      ctx.fillStyle = '#a8a8a8';
+      ctx.fillRect(0, 0, S, S);
+      // Soft turf & soil height undulations
+      for (let m = 0; m < 36; m++) {
+        const mx = h2(m, 4, 109) * S, my = h2(m, 9, 113) * S, mr = 24 + h2(m, 2, 127) * 58;
+        const mg = ctx.createRadialGradient(mx, my, 4, mx, my, mr);
+        mg.addColorStop(0, m % 2 === 0 ? 'rgba(235,235,235,0.42)' : 'rgba(65,65,65,0.34)');
+        mg.addColorStop(1, 'rgba(168,168,168,0)');
+        ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = '#383838';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(4, 4, S - 8, S - 8);
     }
     addFineStoneGrain(ctx, S, 0.22, 0.18, 2600);
-    drawCracks(ctx, S, 6, '#141414', 3.0);
+    if (look !== 'woodland') drawCracks(ctx, S, 6, '#141414', 3.0);
   });
 
   // Roughness map (dark = wet/polished specular glint, bright = matte rough dust/moss)
@@ -438,7 +531,34 @@ export function buildThemeWallMaterial(theme, renderer, textures, cache) {
   const S = 512;
 
   const drawWallPattern = (ctx, isBump) => {
-    if (look === 'caverns') {
+    if (look === 'woodland') {
+      // Natural weathered dark-granite woodland boulder rock (no brick courses)
+      ctx.fillStyle = isBump ? '#a0a0a0' : '#40453e';
+      ctx.fillRect(0, 0, S, S);
+      // Irregular chiseled granite mineral facets & dark fractures
+      for (let f = 0; f < 26; f++) {
+        const fx = h2(f, 3, 211) * S, fy = h2(f, 7, 223) * S, fr = 28 + h2(f, 11, 227) * 68;
+        const fg = ctx.createRadialGradient(fx, fy, 4, fx, fy, fr);
+        const hi = f % 2 === 0;
+        fg.addColorStop(0, isBump
+          ? (hi ? 'rgba(235,235,235,0.40)' : 'rgba(42,42,42,0.42)')
+          : (hi ? 'rgba(104,108,98,0.28)' : 'rgba(24,28,24,0.46)'));
+        fg.addColorStop(1, 'rgba(64,68,62,0)');
+        ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI * 2); ctx.fill();
+      }
+      drawCracks(ctx, S, 10, isBump ? '#1a1a1a' : 'rgba(18, 22, 18, 0.78)', isBump ? 5 : 3.4);
+      if (!isBump) {
+        // Deep velvety woodland moss along top & base crevices (rich dark moss, never pale mint)
+        const topMoss = ctx.createLinearGradient(0, 0, 0, S * 0.36);
+        topMoss.addColorStop(0, 'rgba(42, 68, 30, 0.72)');
+        topMoss.addColorStop(1, 'rgba(42, 68, 30, 0)');
+        ctx.fillStyle = topMoss; ctx.fillRect(0, 0, S, S * 0.36);
+        const baseMoss = ctx.createLinearGradient(0, S, 0, S * 0.62);
+        baseMoss.addColorStop(0, 'rgba(30, 50, 22, 0.82)');
+        baseMoss.addColorStop(1, 'rgba(30, 50, 22, 0)');
+        ctx.fillStyle = baseMoss; ctx.fillRect(0, S * 0.62, S, S * 0.38);
+      }
+    } else if (look === 'caverns') {
       // Jagged stratified cavern rock wall (no brick courses!)
       ctx.fillStyle = isBump ? '#9e9e9e' : '#32414a';
       ctx.fillRect(0, 0, S, S);

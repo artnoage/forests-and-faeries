@@ -355,5 +355,23 @@
         "subject": "Will-o'-Wisp (SRD 5.2.1 Tiny Undead, CR 2): procedural glowing ethereal marsh-lantern orb with tapered rising spectral flame crest, three tilted orbiting spectral halo ribbons with glowing motes, and four swirling trailing tendrils. Built directly in Blender with 0 Tripo credits."
       }
     }
+  ],
+  "props": [
+    {
+      "kind": "oak_tree",
+      "file": "game/static/props/oak_tree.glb",
+      "sha256": "f973ba6c323af94ef15af1998114b0a1eb6e564f6ddc697348657ff915818d4d",
+      "bytes": 271556,
+      "triangles": 6222,
+      "height": 2.156,
+      "placement": "base at y=0, root mound within r<=0.444 for 1x1 T cell",
+      "textures": "procedural oak bark and isotropic oak-leaf canopy, 512 px WebP, plus canopy AO vertex color",
+      "procedural_blender": {
+        "version": "Blender 5.2.3 LTS",
+        "credits": 0.0,
+        "cost_eur": 0.0,
+        "subject": "Woodland oak tree prop for T cells on the forest maps: mossy root mound with six buttress roots, slender gnarled trunk keeping nearby miniatures visible, five forked boughs, and sixteen sculpted matte foliage clusters."
+      }
+    }
   ]
 }

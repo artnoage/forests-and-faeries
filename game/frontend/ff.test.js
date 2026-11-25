@@ -56,7 +56,28 @@ test('every catalogue theme exists, and the mausoleum themes light violet', () =
     assert.ok(THEMES[id].flame && /^#[89a-c]/i.test(THEMES[id].torchColor), id);
     assert.equal(resolveTheme({ theme: id }, null).id, id);
   }
+  assert.ok(THEMES.woodland && ids.has('woodland'), 'woodland theme exists in catalog');
+  assert.equal(resolveTheme({ scene: { theme: 'woodland' } }, null).id, 'woodland', 'scene.theme resolves to woodland');
+  assert.equal(resolveTheme({ tiles: ['#####', '#.T.#', '#####'] }, null).id, 'woodland', 'T tree cells default to woodland');
+  assert.equal(resolveTheme({ scene: { theme: 'woodland' }, tiles: ['#####', '#.T.#', '#####'] }, 'caverns').id, 'caverns', 'explicit override beats woodland');
   assert.equal(resolveTheme({ theme: 'ossuary' }, 'mausoleum').id, 'mausoleum', 'an explicit choice wins');
+});
+
+test('forest maps use woodland theme and oak_tree.glb prop is valid and versioned', async () => {
+  const { createHash } = await import('node:crypto');
+  for (const mapId of ['whispering_glade', 'bramble_hollow', 'mire_crossing']) {
+    const doc = json(`maps/${mapId}.json`);
+    assert.equal(doc.scene?.theme, 'woodland', `${mapId} sets scene.theme = woodland`);
+  }
+  const bytes = readFileSync(path.join(ff, 'static/props/oak_tree.glb'));
+  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const gltf = validateGLB(ab);
+  assert.ok(gltf.meshes?.length >= 2, 'oak_tree.glb has trunk and canopy meshes');
+  const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+  assert.equal(versioned('props/oak_tree.glb'), `props/oak_tree.glb?v=${digest}`, 'oak_tree.glb carries content hash');
+  assert.ok(read('assets.py').includes("'props/oak_tree.glb'"), 'oak_tree.glb is in PROP_FILES');
+  assert.ok(read('catalogue.py').includes("'woodland'"), 'woodland is in catalogue THEMES');
+  assert.ok(read('static/app.js').includes("id: 'woodland'"), 'woodland is in THEME_SWATCHES');
 });
 
 test('the mausoleum texture paths are the ones the server allows', () => {

@@ -146,6 +146,23 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   }
   const box = geometry('box', () => new THREE.BoxGeometry(1, 1, 1));
   const sphere = geometry('sphere', () => new THREE.IcosahedronGeometry(1, 2));
+  const rock = geometry('rock', () => {
+    // Craggy chiseled granite boulder geometry (deterministic seam-free displacement)
+    const g = new THREE.DodecahedronGeometry(1, 1);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const n = Math.sin(x * 3.7 + y * 2.3) * Math.cos(z * 4.1 - x * 1.9);
+      const n2 = Math.cos(y * 5.3 - z * 3.1 + x * 2.7);
+      const s = 0.88 + 0.16 * n + 0.08 * n2;
+      x *= s; z *= s;
+      // Flatten underside slightly so boulders sit firmly planted in the earth
+      y = y < 0 ? y * s * 0.72 : y * s * (0.94 + 0.08 * n2);
+      pos.setXYZ(i, x, y, z);
+    }
+    g.computeVertexNormals();
+    return g;
+  });
   const cone = geometry('cone', () => new THREE.ConeGeometry(1, 1, 12));
   const cylinder = geometry('cylinder', () => new THREE.CylinderGeometry(1, 1, 1, 16));
   const robe = geometry('robe', () => new THREE.CylinderGeometry(0.56, 1, 1, 12));
@@ -361,7 +378,264 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     }
   }
 
-  function blocked(map, x, y) { return map.tiles?.[y]?.[x] === '#'; }
+  function isWall(map, x, y) { return map.tiles?.[y]?.[x] === '#'; }
+  function isTree(map, x, y) { return map.tiles?.[y]?.[x] === 'T'; }
+  function blocked(map, x, y) { return isWall(map, x, y) || isTree(map, x, y); }
+
+  function addWoodlandLantern(x, y, baseY, theme, addLight) {
+    const g = new THREE.Group();
+    g.position.set(x, baseY, y);
+    board.add(g);
+    const fc = flameColorsForTheme(theme);
+    const mossStone = material('#384036', 0.04, 0.92);
+    const woodPost = timber('#4c3623');
+    mesh(g, rock, mossStone, 0, 0.05, 0, 0.14, 0.08, 0.13);
+    mesh(g, cylinder, woodPost, 0, 0.17, 0, 0.028, 0.24, 0.028);
+    const bulb = mesh(g, sphere, glow(fc.outer, 0.90), 0, 0.30, 0, 0.072, 0.082, 0.072);
+    bulb.castShadow = false;
+    mesh(g, sphere, glow(fc.core, 0.95), 0, 0.30, 0, 0.036, 0.044, 0.036).castShadow = false;
+    mesh(g, cone, material('#324426', 0.02, 0.90), 0, 0.39, 0, 0.115, 0.07, 0.115);
+    let light = null;
+    if (addLight) {
+      light = new THREE.PointLight('#ffbf5e', 1.65, 6.2, 1.9);
+      light.position.set(0, 0.62, 0);
+      g.add(light);
+    }
+    torchFlames.push({ flame: bulb, light, baseY: 0.30, baseScaleY: 0.082, baseIntensity: 1.65, phase: x * 2.1 + y * 3.7 });
+  }
+
+  function addTree(x, y) {
+    const g = new THREE.Group();
+    g.position.set(x, 0.03, y);
+    const seed = x * 19 + y * 37;
+    g.rotation.y = (seed % 12) * (Math.PI / 6);
+    const sc = 0.94 + ((x * 13 + y * 29) % 5) * 0.032;
+    g.scale.setScalar(sc);
+    board.add(g);
+
+    const shadow = ring(g, planeGeometry, contactMaterial, 0.004);
+    shadow.scale.set(1.06, 1.06, 1);
+    shadow.userData.keep = true;
+
+    // Immediate procedural tabletop oak fallback while props/oak_tree.glb streams in
+    const bark = timber('#5a432d');
+    const moss = material('#425e32', 0.0, 0.92);
+    const leafDark = material('#2e4c26', 0.0, 0.90);
+    const leafMid = material('#436631', 0.0, 0.88);
+    const leafHi = material('#5c7e3b', 0.0, 0.88);
+    mesh(g, cylinder, moss, 0, 0.04, 0, 0.38, 0.08, 0.38);
+    mesh(g, cylinder, bark, 0, 0.62, 0, 0.15, 1.18, 0.15);
+    for (let i = 0; i < 4; i++) {
+      const a = i * (Math.PI / 2) + 0.3;
+      beam(g, bark, [0, 0.96, 0], [Math.cos(a) * 0.32, 1.44, Math.sin(a) * 0.32], 0.055);
+      mesh(g, sphere, i % 2 ? leafMid : leafDark, Math.cos(a) * 0.28, 1.52, Math.sin(a) * 0.28, 0.27, 0.20, 0.27);
+    }
+    mesh(g, sphere, leafMid, 0, 1.68, 0, 0.36, 0.27, 0.36);
+    mesh(g, sphere, leafHi, 0.05, 1.88, -0.04, 0.26, 0.19, 0.26);
+
+    placePropModel(g, { width: 1, depth: 1 }, 'oak_tree');
+  }
+
+  function woodlandRockMaterial(wallMat) {
+    const key = 'woodland-crag-rock';
+    if (!materials.has(key)) {
+      const m = wallMat.clone();
+      m.flatShading = true;
+      m.roughness = 0.92;
+      m.metalness = 0.04;
+      m.needsUpdate = true;
+      materials.set(key, m);
+    }
+    return materials.get(key);
+  }
+
+  function addWoodlandBoulderCluster(x, y, cragMat, seed) {
+    const g = new THREE.Group();
+    g.position.set(x, 0.035, y);
+    board.add(g);
+    const shadow = ring(g, planeGeometry, contactMaterial, 0.003);
+    shadow.scale.set(1.04, 1.04, 1);
+    const mossDark = material('#2a4221', 0.0, 0.94);
+    const mossMid = material('#375229', 0.0, 0.92);
+    const bark = timber('#4f3a26');
+    const yaw = (seed % 8) * (Math.PI / 4);
+    const hMain = 0.44 + (seed % 4) * 0.045;
+    const main = mesh(g, rock, cragMat, 0.02, hMain * 0.62, -0.02, 0.43, hMain, 0.37);
+    main.rotation.set(0.18, yaw, -0.10);
+    const sub1 = mesh(g, rock, cragMat, -0.25, 0.19, 0.21, 0.25, 0.24, 0.22);
+    sub1.rotation.set(-0.22, yaw + 1.1, 0.20);
+    const sub2 = mesh(g, rock, cragMat, 0.25, 0.15, 0.19, 0.22, 0.18, 0.21);
+    sub2.rotation.set(0.18, yaw + 2.3, -0.24);
+    // Low organic moss tuft nestled into upper rock shoulder (subtle, dark woodland olive)
+    const cap = mesh(g, rock, mossMid, 0.01, hMain * 1.06, -0.02, 0.28, 0.085, 0.24);
+    cap.rotation.y = yaw + 0.4;
+    mesh(g, rock, mossDark, -0.23, 0.32, 0.19, 0.15, 0.06, 0.14);
+    const root1 = mesh(g, cylinder, bark, -0.14, 0.07, -0.27, 0.042, 0.38, 0.042);
+    root1.rotation.set(1.22, 0.3, 0.55);
+    batchProp(g);
+    return hMain * 1.18;
+  }
+
+  function addWoodlandFallenTrunk(x1, y1, x2, y2, cragMat, seed) {
+    const horizontal = y1 === y2;
+    const cx = (x1 + x2) / 2, cz = (y1 + y2) / 2;
+    const g = new THREE.Group();
+    g.position.set(cx, 0.035, cz);
+    const skew = ((seed % 5) - 2) * 0.045;
+    g.rotation.y = (horizontal ? 0 : Math.PI / 2) + skew;
+    board.add(g);
+
+    const bark = timber('#5d4530');
+    const darkBark = timber('#3d2c1e');
+    const heartwood = material('#73583b', 0.0, 0.92);
+    const mossDark = material('#2a4221', 0.0, 0.94);
+    const mossMid = material('#39542b', 0.0, 0.92);
+    const fungus = material('#c4b48a', 0.0, 0.88);
+
+    const sh = ring(g, planeGeometry, contactMaterial, 0.003);
+    sh.scale.set(2.05, 0.96, 1);
+
+    // Main gnarled horizontal fallen trunk (length ~1.84, comfortably inside 2x1 footprint)
+    const trunk = mesh(g, cylinder, bark, 0, 0.27, 0, 0.27, 1.82, 0.25);
+    trunk.rotation.z = Math.PI / 2;
+    const rootEnd = mesh(g, cylinder, darkBark, -0.78, 0.29, 0.01, 0.33, 0.32, 0.31);
+    rootEnd.rotation.z = Math.PI / 2;
+    const cutFace = mesh(g, cylinder, heartwood, 0.90, 0.27, 0, 0.21, 0.03, 0.19);
+    cutFace.rotation.z = Math.PI / 2;
+    for (const [rz, ry, dy] of [[-0.22, 0.4, 0.18], [0.22, -0.35, 0.16], [0.02, 0.08, 0.44]]) {
+      const rt = mesh(g, cylinder, darkBark, -0.88, dy, rz, 0.055, 0.30, 0.055);
+      rt.rotation.set(rz * 1.6, ry, 1.15);
+    }
+    const b1 = mesh(g, cylinder, darkBark, 0.22, 0.44, 0.15, 0.062, 0.29, 0.062);
+    b1.rotation.set(0.55, 0.2, -0.42);
+    const b2 = mesh(g, cylinder, darkBark, -0.26, 0.40, -0.17, 0.052, 0.24, 0.052);
+    b2.rotation.set(-0.62, -0.15, 0.35);
+    // Low velvety dark forest moss hugging the damp bark crown
+    mesh(g, rock, mossMid, -0.18, 0.49, 0.02, 0.38, 0.07, 0.20);
+    mesh(g, rock, mossDark, 0.38, 0.47, -0.02, 0.34, 0.065, 0.19);
+    mesh(g, rock, mossDark, -0.66, 0.51, 0.04, 0.24, 0.07, 0.20);
+    const rock1 = mesh(g, rock, cragMat, 0.48, 0.15, 0.27, 0.20, 0.16, 0.18);
+    rock1.rotation.set(0.2, 0.8, 0.1);
+    for (const [mx, my, mz, mr] of [[-0.05, 0.30, 0.25, 0.07], [0.06, 0.25, 0.26, 0.055], [0.56, 0.32, -0.24, 0.065]]) {
+      mesh(g, cylinder, fungus, mx, my, mz, mr, 0.022, mr * 0.85);
+    }
+    batchProp(g);
+    return 0.56;
+  }
+
+  function addWoodlandBoulderPair(x1, y1, x2, y2, cragMat, seed) {
+    const horizontal = y1 === y2;
+    const cx = (x1 + x2) / 2, cz = (y1 + y2) / 2;
+    const g = new THREE.Group();
+    g.position.set(cx, 0.035, cz);
+    if (!horizontal) g.rotation.y = Math.PI / 2;
+    board.add(g);
+
+    const mossDark = material('#2a4221', 0.0, 0.94);
+    const mossMid = material('#375229', 0.0, 0.92);
+    const sh = ring(g, planeGeometry, contactMaterial, 0.003);
+    sh.scale.set(2.02, 0.98, 1);
+
+    const r1 = mesh(g, rock, cragMat, -0.36, 0.33, -0.03, 0.50, 0.45, 0.39);
+    r1.rotation.set(0.18, seed * 0.7, -0.14);
+    const r2 = mesh(g, rock, cragMat, 0.38, 0.27, 0.04, 0.46, 0.37, 0.36);
+    r2.rotation.set(-0.16, seed * 1.3 + 0.8, 0.20);
+    const r3 = mesh(g, rock, cragMat, 0.02, 0.21, 0.16, 0.31, 0.25, 0.24);
+    r3.rotation.set(0.24, seed * 0.5 + 1.5, 0.10);
+    mesh(g, rock, mossMid, -0.34, 0.61, -0.02, 0.32, 0.09, 0.25);
+    mesh(g, rock, mossDark, 0.36, 0.51, 0.04, 0.29, 0.08, 0.23);
+    mesh(g, rock, mossDark, 0.02, 0.36, 0.14, 0.20, 0.065, 0.17);
+    batchProp(g);
+    return 0.64;
+  }
+
+  function buildWoodlandObstacles(map, theme, wallMat, replacements, chasm, interiorWalls) {
+    const cragMat = woodlandRockMaterial(wallMat);
+    const rimCurbs = [], rimRocks = [], rimMoss = [], rimRoots = [];
+    const consumed = new Set();
+    const isInteriorWall = (x, y) => {
+      if (x <= 0 || y <= 0 || x >= width - 1 || y >= height - 1) return false;
+      const k = `${x},${y}`;
+      return isWall(map, x, y) && !replacements.has(k) && !chasm.has(k) && !consumed.has(k);
+    };
+
+    // 1. Continuous organic craggy mossy woodland bank along the outer perimeter
+    // Overlapping varied-width angular granite boulders + moss cushions + weathered roots
+    // (never identical round beads marching cell-by-cell!)
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const rim = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+      const k = `${x},${y}`;
+      if (!rim || !isWall(map, x, y) || replacements.has(k) || chasm.has(k)) continue;
+      const s = x * 17 + y * 31 + ((x * y) % 7);
+      const alongX = (y === 0 || y === height - 1) && x > 0 && x < width - 1;
+      rimCurbs.push([x, 0.11, y, 1.0, 0.20, 1.0, 0]);
+      // Primary elongated craggy stone overlapping slightly into neighbor cells
+      const mainH = 0.16 + (s % 5) * 0.032;
+      const mainLen = 0.54 + (s % 4) * 0.08;
+      const mainWid = 0.42 + ((s >> 1) % 3) * 0.05;
+      const ox = (((s % 5) - 2) * 0.055), oz = ((((s >> 2) % 5) - 2) * 0.055);
+      rimRocks.push([
+        x + ox, 0.20 + mainH * 0.46, y + oz,
+        alongX ? mainLen : mainWid, mainH, alongX ? mainWid : mainLen,
+        (s % 11) * 0.55,
+      ]);
+      // Second smaller angular companion rock tucked at varied offsets to break repetition
+      if ((s % 3) !== 0) {
+        const subH = 0.11 + ((s + 2) % 4) * 0.025;
+        const side = (s % 2 === 0 ? 1 : -1) * 0.34;
+        rimRocks.push([
+          x + (alongX ? side : -ox), 0.19 + subH * 0.44, y + (alongX ? -oz : side),
+          0.32 + (s % 3) * 0.04, subH, 0.30 + ((s + 1) % 3) * 0.04,
+          (s % 7) * 0.9 + 0.4,
+        ]);
+      }
+      // Subtle low dark forest moss drapes on ~55% of rim stones
+      if ((s % 5) < 3) {
+        rimMoss.push([
+          x + ox * 0.6, 0.21 + mainH * 0.88, y + oz * 0.6,
+          (alongX ? mainLen : mainWid) * 0.64, 0.055, (alongX ? mainWid : mainLen) * 0.64,
+          (s % 9) * 0.7,
+        ]);
+      }
+      // Occasional weathered bark root/stump accent along the forest bank
+      if ((s % 7) === 2) {
+        rimRoots.push([x - ox, 0.24, y - oz, 0.20, 0.16, 0.20, (s % 5) * 0.6]);
+      }
+    }
+    instanced(box, material('#20291b', 0.02, 0.94), rimCurbs);
+    instanced(rock, cragMat, rimRocks);
+    instanced(rock, material('#314b25', 0.0, 0.94), rimMoss);
+    instanced(cylinder, timber('#4b3724'), rimRoots);
+
+    // 2. Interior 'HH' pairs -> alternating moss-draped fallen logs & mossy crag boulder pairs
+    let pairCount = 0;
+    for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
+      if (!isInteriorWall(x, y)) continue;
+      let nx = null, ny = null;
+      if (isInteriorWall(x + 1, y)) { nx = x + 1; ny = y; }
+      else if (isInteriorWall(x, y + 1)) { nx = x; ny = y + 1; }
+      if (nx !== null) {
+        consumed.add(`${x},${y}`);
+        consumed.add(`${nx},${ny}`);
+        const seed = x * 13 + y * 29 + pairCount;
+        // Alternate fallen tree trunks and mossy boulder outcrops so every map gets rich variety
+        const useTrunk = (pairCount % 2 === 0);
+        pairCount++;
+        const topH = useTrunk
+          ? addWoodlandFallenTrunk(x, y, nx, ny, cragMat, seed)
+          : addWoodlandBoulderPair(x, y, nx, ny, cragMat, seed);
+        interiorWalls.push({ x: (x + nx) / 2, y: (y + ny) / 2, h: topH });
+      }
+    }
+
+    // 3. Isolated interior 'H' cells -> moss-capped woodland boulder clusters
+    for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
+      if (!isInteriorWall(x, y)) continue;
+      consumed.add(`${x},${y}`);
+      const topH = addWoodlandBoulderCluster(x, y, cragMat, x * 23 + y * 41);
+      interiorWalls.push({ x, y, h: topH });
+    }
+  }
 
   function flameColorsForTheme(theme) {
     if (theme.flame) return theme.flame;
@@ -437,7 +711,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   // Props drawn over wall cells (presentation only; the rules see plain walls).
   const PROP_KINDS = new Set(['pillar', 'brazier', 'table', 'bench', 'shelf', 'barrel', 'crate', 'rug',
     'sarcophagus', 'altar', 'stained_glass', 'bell', 'lantern_post', 'ore_vein', 'water_lock', 'kiln']);
-  const PROP_MODELS = { sarcophagus: 'props/sarcophagus.glb', brazier: 'props/brazier.glb' };
+  const PROP_MODELS = { sarcophagus: 'props/sarcophagus.glb', brazier: 'props/brazier.glb', oak_tree: 'props/oak_tree.glb' };
 
   function instanced(geom, mat, transforms, castShadow = true) {
     if (!transforms.length) return null;
@@ -804,9 +1078,14 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
     const chasm = new Set((map.scene?.chasm || []).map(([x, y]) => `${x},${y}`));
     const tint = new THREE.Color();
-    const floorCells = [], altCells = [];
+    const floorCells = [], altCells = [], dimCells = [], darkCells = [];
+    const dimSet = new Set();
+    const isWoodland = (theme.base || theme.id) === 'woodland';
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       if (chasm.has(`${x},${y}`)) continue;
+      const ch = map.tiles?.[y]?.[x] || '.';
+      if (ch === 'd') { dimCells.push([x, y]); dimSet.add(`${x},${y}`); }
+      else if (ch === 'D') { darkCells.push([x, y]); dimSet.add(`${x},${y}`); }
       const alt = theme.textures?.floorAlt && ((x * 7 + y * 13) % 8 === 3) && !blocked(map, x, y);
       (alt ? altCells : floorCells).push([x, y]);
     }
@@ -819,11 +1098,63 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         scratch.rotation.set(0, mat === floorMat ? ((x * 7 + y * 3) % 4) * Math.PI / 2 : 0, 0);
         scratch.updateMatrix(); floor.setMatrixAt(index, scratch.matrix);
         const l = 0.90 + ((x * 13 + y * 7) % 5) * 0.042;
-        tint.setRGB(l, l, l * ((theme.base || theme.id) === 'caverns' ? 1.04 : 0.99));
+        const ch = map.tiles?.[y]?.[x] || '.';
+        if (ch === 'd') {
+          tint.setRGB(l * 0.44, l * 0.52, l * 0.68);
+        } else if (ch === 'D') {
+          tint.setRGB(l * 0.26, l * 0.30, l * 0.44);
+        } else if (isWoodland) {
+          tint.setRGB(l * 1.04, l * 1.04, l * 0.95);
+        } else {
+          tint.setRGB(l, l, l * ((theme.base || theme.id) === 'caverns' ? 1.04 : 0.99));
+        }
         floor.setColorAt(index, tint);
       });
       floor.receiveShadow = true;
       board.add(floor);
+    }
+    // Readable dim-light ('d') and dark ('D') canopy-shade overlays & twilight boundary edges
+    // Placed at y = 0.032..0.035, cleanly below unit plinths (0.04+) and move highlights (0.058).
+    if (dimCells.length) {
+      const dimShadeMat = new THREE.MeshBasicMaterial({ color: '#0c1c30', transparent: true, opacity: 0.28, depthWrite: false });
+      const dimInst = new THREE.InstancedMesh(planeGeometry, dimShadeMat, dimCells.length);
+      dimCells.forEach(([x, y], i) => {
+        scratch.position.set(x, 0.032, y); scratch.scale.set(0.985, 0.985, 1); scratch.rotation.set(-Math.PI / 2, 0, 0);
+        scratch.updateMatrix(); dimInst.setMatrixAt(i, scratch.matrix);
+      });
+      dimInst.castShadow = false; dimInst.receiveShadow = false; board.add(dimInst);
+    }
+    if (darkCells.length) {
+      const darkShadeMat = new THREE.MeshBasicMaterial({ color: '#050b18', transparent: true, opacity: 0.48, depthWrite: false });
+      const darkInst = new THREE.InstancedMesh(planeGeometry, darkShadeMat, darkCells.length);
+      darkCells.forEach(([x, y], i) => {
+        scratch.position.set(x, 0.032, y); scratch.scale.set(0.985, 0.985, 1); scratch.rotation.set(-Math.PI / 2, 0, 0);
+        scratch.updateMatrix(); darkInst.setMatrixAt(i, scratch.matrix);
+      });
+      darkInst.castShadow = false; darkInst.receiveShadow = false; board.add(darkInst);
+    }
+    if (dimSet.size) {
+      const edges = [];
+      for (const key of dimSet) {
+        const [x, y] = key.split(',').map(Number);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const nch = map.tiles?.[ny]?.[nx] || '.';
+          if (nch === '.') {
+            edges.push([x + dx * 0.465, 0.035, y + dy * 0.465, dx !== 0 ? 0.068 : 0.96, 1, dy !== 0 ? 0.068 : 0.96]);
+          }
+        }
+      }
+      if (edges.length) {
+        const edgeMat = glow('#85b6db', 0.58);
+        const edgeInst = new THREE.InstancedMesh(planeGeometry, edgeMat, edges.length);
+        edges.forEach(([ex, ey, ez, sx, _, sz], i) => {
+          scratch.position.set(ex, ey, ez); scratch.scale.set(sx, sz, 1); scratch.rotation.set(-Math.PI / 2, 0, 0);
+          scratch.updateMatrix(); edgeInst.setMatrixAt(i, scratch.matrix);
+        });
+        edgeInst.castShadow = false; edgeInst.receiveShadow = false; board.add(edgeInst);
+      }
     }
     if (chasm.size) {
       // The chasm: a dark pit with a faint violet glow at its rim.
@@ -840,30 +1171,41 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       for (let dy = 0; dy < (prop.depth || 1); dy++) for (let dx = 0; dx < (prop.width || 1); dx++) replacements.add(`${prop.x + dx},${prop.y + dy}`);
     }
 
+    // Real 3D oak trees on every 'T' cell (works on any theme, shines on woodland!)
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      if (isTree(map, x, y) && !replacements.has(`${x},${y}`) && !chasm.has(`${x},${y}`)) {
+        addTree(x, y);
+      }
+    }
+
     const wallHeight = Math.max(0.25, Math.min(1.6, Number(map.scene?.wall_height) || 1.1));
     const interiorWalls = [], wallBodies = [], wallCaps = [], wallJoints = [];
     const crystals = [];
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      if (!blocked(map, x, y) || replacements.has(`${x},${y}`) || chasm.has(`${x},${y}`)) continue;
-      const rim = x === 0 || y === 0 || x === width - 1 || y === height - 1;
-      const jitter = ['caverns', 'catacombs'].includes(theme.base || theme.id) && !rim ? (((x * 17 + y * 31) % 5) - 2) * 0.045 : 0;
-      const h = (rim ? Math.min(wallHeight, 0.42) : Math.min(wallHeight, 0.86)) + jitter;
-      wallBodies.push([x, h / 2 + 0.04, y, 0.978, h, 0.978]);
-      wallCaps.push([x, h + 0.075, y, 1.018, 0.095, 1.018]);
-      if (!rim) {
-        wallJoints.push([x, 0.07, y, 1.022, 0.07, 1.022]);
-        const adjFloor = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !blocked(map, x + dx, y + dy));
-        if (adjFloor) interiorWalls.push({ x, y, h });
+    if (isWoodland) {
+      buildWoodlandObstacles(map, theme, wallMat, replacements, chasm, interiorWalls);
+    } else {
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        if (!isWall(map, x, y) || replacements.has(`${x},${y}`) || chasm.has(`${x},${y}`)) continue;
+        const rim = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+        const jitter = ['caverns', 'catacombs'].includes(theme.base || theme.id) && !rim ? (((x * 17 + y * 31) % 5) - 2) * 0.045 : 0;
+        const h = (rim ? Math.min(wallHeight, 0.42) : Math.min(wallHeight, 0.86)) + jitter;
+        wallBodies.push([x, h / 2 + 0.04, y, 0.978, h, 0.978]);
+        wallCaps.push([x, h + 0.075, y, 1.018, 0.095, 1.018]);
+        if (!rim) {
+          wallJoints.push([x, 0.07, y, 1.022, 0.07, 1.022]);
+          const adjFloor = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !blocked(map, x + dx, y + dy));
+          if (adjFloor) interiorWalls.push({ x, y, h });
+        }
+        if (theme.crystalColor && rim && ((x * 11 + y * 23) % 11 === 0)) crystals.push([x + 0.15, h + 0.21, y - 0.1]);
       }
-      if (theme.crystalColor && rim && ((x * 11 + y * 23) % 11 === 0)) crystals.push([x + 0.15, h + 0.21, y - 0.1]);
-    }
-    // One instanced mesh per wall part: large hand-made rooms stay a handful of draw calls.
-    instanced(box, wallMat, wallBodies);
-    instanced(box, wallCapMat, wallCaps);
-    instanced(box, material(theme.wallJoint, 0.14, 0.86), wallJoints);
-    for (const [x, y, z] of crystals) {
-      const cr = mesh(board, cone, glow(theme.crystalColor, 0.88), x, y, z, 0.075, 0.26, 0.075);
-      cr.rotation.z = 0.22; cr.castShadow = false;
+      // One instanced mesh per wall part: large hand-made rooms stay a handful of draw calls.
+      instanced(box, wallMat, wallBodies);
+      instanced(box, wallCapMat, wallCaps);
+      instanced(box, material(theme.wallJoint, 0.14, 0.86), wallJoints);
+      for (const [x, y, z] of crystals) {
+        const cr = mesh(board, cone, glow(theme.crystalColor, 0.88), x, y, z, 0.075, 0.26, 0.075);
+        cr.rotation.z = 0.22; cr.castShadow = false;
+      }
     }
 
     const fc = flameColorsForTheme(theme);
@@ -936,7 +1278,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         const c = candidates[(i * 7 + 3) % candidates.length];
         if (chosen.every(o => Math.hypot(c.x - o.x, c.y - o.y) >= minSep)) {
           chosen.push(c);
-          addDungeonSconce(c.x, c.y, c.h, theme, lights++ < 3);
+          if (isWoodland) addWoodlandLantern(c.x, c.y, c.h, theme, lights++ < 3);
+          else addDungeonSconce(c.x, c.y, c.h, theme, lights++ < 3);
         }
       }
     }
