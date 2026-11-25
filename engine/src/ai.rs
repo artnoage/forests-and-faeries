@@ -127,6 +127,22 @@ impl Fight {
                 k.weapon = self.units[src].t.attacks[*atk].name;
                 k.ids = vec![self.units[*target].id.clone()];
             }
+            Act::FirstAid { target }
+            | Act::EscapeGrapple { target }
+            | Act::BreakFree { target }
+            | Act::DropGrapple { target } => {
+                k.ids = vec![self.units[*target].id.clone()];
+            }
+            Act::NpcAreaAbility { idx, target } => {
+                k.weapon = self.units[src].t.area_abilities[*idx].name;
+                if let Some(p) = target {
+                    k.point = vec![p.0, p.1];
+                }
+            }
+            Act::NpcTeleport { idx, dest } => {
+                k.weapon = self.units[src].t.teleports[*idx].name;
+                k.point = vec![dest.0, dest.1];
+            }
             _ => {}
         }
         k
@@ -179,7 +195,7 @@ impl Fight {
             return;
         }
         for (ai, def) in unit.t.attacks.iter().enumerate() {
-            if opportunity && (def.ranged || def.save_attack.is_some()) {
+            if opportunity && (def.ranged || def.save_attack.is_some() || def.bonus_action) {
                 continue;
             }
             if !opportunity && !self.can_attack(u, ai) {
@@ -198,9 +214,8 @@ impl Fight {
                 if self.dist(u, t) * 5 > def.range_max {
                     continue;
                 }
-                // `attack_target_issue`: `save_immune` (saved against this
-                // creature's action, `immune_on_success`)
-                if def.save_immune && self.units[t].save_immune_to.contains(&(u, def.name)) {
+                // `attack_target_issue`: charmed, save_immune, target_if
+                if !self.attack_target_allowed(u, t, def) {
                     continue;
                 }
                 out.push(Act::Attack { atk: ai, target: t, reaction: opportunity });
@@ -352,6 +367,74 @@ impl Fight {
             self.feature_candidates(u, &mut acts);
             self.barbarian_candidates(u, &mut acts);
         }
+        // v16 general combat remedies (FirstAid [PC only], EscapeGrapple, BreakFree)
+        if self.rule_version >= 16 {
+            if self.units[u].action > 0 {
+                if self.units[u].t.pc {
+                    for t in 0..self.units.len() {
+                        if t != u
+                            && !self.units[t].dead()
+                            && self.units[t].unconscious()
+                            && !self.units[t].has(crate::engine::St::Stable)
+                            && self.dist(u, t) == 1
+                            && self.can_see(u, t)
+                        {
+                            acts.push(Act::FirstAid { target: t });
+                        }
+                    }
+                }
+                if self.units[u].is_grappled() {
+                    let grapplers: Vec<usize> = self.units[u].grappled_by.iter().map(|&(g, _)| g).collect();
+                    for g in grapplers {
+                        acts.push(Act::EscapeGrapple { target: g });
+                    }
+                }
+                if self.units[u].conscious() && !self.active_effects(u, crate::effects::EffKey::EscapableRestraint).is_empty() {
+                    acts.push(Act::BreakFree { target: u });
+                }
+            }
+        }
+        // NPC specials: area abilities, teleports, Luring Song, Vanish.
+        if !self.units[u].t.pc {
+            let n_area = self.units[u].t.area_abilities.len();
+            for idx in 0..n_area {
+                let def = &self.units[u].t.area_abilities[idx];
+                let ready = !self.units[u].recharge_spent.contains(&def.name);
+                let has_cost = if def.bonus_action { self.units[u].bonus > 0 } else { self.units[u].action > 0 };
+                if !ready || !has_cost {
+                    continue;
+                }
+                if def.shape == "cone" {
+                    let range_sq = (def.range / 5).max(1);
+                    if let Some(p) = self.cone_target(u, range_sq, true) {
+                        acts.push(Act::NpcAreaAbility { idx, target: Some(p) });
+                    }
+                } else {
+                    acts.push(Act::NpcAreaAbility { idx, target: None });
+                }
+            }
+            let n_tp = self.units[u].t.teleports.len();
+            for idx in 0..n_tp {
+                let def = &self.units[u].t.teleports[idx];
+                let ready = !self.units[u].recharge_spent.contains(&def.name);
+                let has_cost = if def.bonus_action { self.units[u].bonus > 0 } else { self.units[u].action > 0 };
+                if !ready || !has_cost {
+                    continue;
+                }
+                for dest in self.npc_teleport_destinations(u, idx) {
+                    acts.push(Act::NpcTeleport { idx, dest });
+                }
+            }
+            if self.units[u].t.luring_song.is_some() && self.units[u].action > 0 {
+                acts.push(Act::LuringSong);
+            }
+            if let Some(ref v) = self.units[u].t.vanish {
+                let has_slot = if v.bonus_action { self.units[u].bonus > 0 } else { self.units[u].action > 0 };
+                if !self.units[u].invisible() && has_slot {
+                    acts.push(Act::NpcVanish);
+                }
+            }
+        }
         let unit = &self.units[u];
         if observed.enemies.is_empty() && unit.available_movement() == 0 && unit.action > 0 {
             acts.push(Act::Dodge);
@@ -415,23 +498,54 @@ impl Fight {
             total
         };
         let mut value = hit_chance * avg;
+        if def.drop_to_zero_hp_lte.is_some_and(|lte| !self.units[tgt].dead() && self.units[tgt].hp <= lte) {
+            value = hit_chance * ((self.units[tgt].hp.max(0) as f64 + 8.0).max(15.0));
+        }
         for oh in &def.on_hit {
-            if let crate::content::OnHit::SaveCondition { ability, dc, not_undead, not_elf, .. } = oh {
-                let t = &self.units[tgt];
-                let applies = !(*not_undead && t.t.undead) && !(*not_elf && t.t.elf);
-                let rider = if !applies || t.t.immune_paralyzed || t.has(crate::engine::St::Paralyzed) {
-                    0.0
-                } else {
-                    save_fail_chance(*dc, t.save_mod(*ability), false) * 8.0
-                };
-                value += hit_chance * rider;
-            }
-            if let crate::content::OnHit::Frighten = oh {
-                value += hit_chance * self.fear_rider_value(src, tgt);
+            match oh {
+                crate::content::OnHit::SaveCondition { ability, dc, not_undead, not_elf, .. } => {
+                    let t = &self.units[tgt];
+                    let applies = !(*not_undead && t.t.undead) && !(*not_elf && t.t.elf);
+                    let rider = if !applies || t.t.immune_paralyzed || t.has(crate::engine::St::Paralyzed) {
+                        0.0
+                    } else {
+                        save_fail_chance(*dc, t.save_mod(*ability), false) * 8.0
+                    };
+                    value += hit_chance * rider;
+                }
+                crate::content::OnHit::Frighten => {
+                    value += hit_chance * self.fear_rider_value(src, tgt);
+                }
+                crate::content::OnHit::ConsumeLife { .. } => {
+                    let missing = (self.max_hp_of(src) - self.units[src].hp).max(0) as f64;
+                    value += hit_chance * (15.0 + missing.min(10.5));
+                }
+                crate::content::OnHit::Grapple { max_size_rank, .. } => {
+                    let t = &self.units[tgt];
+                    if max_size_rank.map_or(true, |m| t.t.size_rank <= m)
+                        && !t.grappled_by.iter().any(|&(g, _)| g == src)
+                        && !t.t.immune_grappled
+                    {
+                        value += hit_chance * 2.5;
+                    }
+                }
+                crate::content::OnHit::Push { max_size_rank, .. } => {
+                    if max_size_rank.map_or(true, |m| self.units[tgt].t.size_rank <= m) {
+                        value += hit_chance * 0.5;
+                    }
+                }
+                crate::content::OnHit::Charm { ai_value, .. } => {
+                    let t = &self.units[tgt];
+                    if !t.t.immune_charmed && !self.is_charmed_by(tgt, src) && !t.has(crate::engine::St::Charmed) {
+                        value += hit_chance * *ai_value;
+                    }
+                }
+                _ => {}
             }
         }
-        // ai_value: an attack on a downed creature is worth a tenth.
-        if self.units[tgt].unconscious() {
+        // ai_value: an attack on a downed creature is worth a tenth, unless it specifically targets 0-HP living foes.
+        let targets_downed = def.target_if.contains(&crate::content::TargetCond::ZeroHpLiving);
+        if self.units[tgt].unconscious() && !targets_downed {
             value *= 0.1;
         }
         value
@@ -469,7 +583,7 @@ impl Fight {
         }
         need = need.max(15);
         let gt = self.gt();
-        let feared = unit.frightened_by.iter().any(|&(f, until)| gt < until && !self.units[f].dead() && self.can_see(u, f));
+        let feared = unit.frightened_by.iter().any(|&(f, until, _)| gt < until && !self.units[f].dead() && self.can_see(u, f));
         let mode = crate::trace::RollMode::from_flags(false, unit.poisoned() || feared);
         let modifier = unit.t.nimble_escape.or(unit.t.shadow_stealth).unwrap_or(0);
         let chance = prob_at_least(20, plus_string_modifier(modifier), need, mode);
@@ -519,6 +633,9 @@ impl Fight {
         let hit_chance =
             confidence * prob_at_least(20, plus_string_modifier(to_hit), 14, crate::trace::RollMode::Disadvantage);
         let mut avg = expected(damage.count, damage.sides, damage.modifier);
+        if let Some(n) = self.frenzy_dice(src, def) {
+            avg += 3.5 * n as f64;
+        }
         for (d, _) in &def.additional {
             avg += expected(d.count, d.sides, d.modifier);
         }
@@ -650,7 +767,8 @@ impl Fight {
                 }
                 if cache.pursuit.is_empty() || cache.occupied != occupied || cache.landings != landings || cache.reach != reach {
                     let goals: Vec<_> = (0..self.grid.cells()).filter(|&i| !landings.get(i)).map(|i| self.grid.pos_of(i))
-                        .filter(|&p| self.placeable(u, p) && targets.iter().any(|&t| self.within_reach(p, t, reach) && self.clear_effect(p, t))).collect();
+                        .filter(|&p| self.placeable(u, p) && targets.iter().any(|&t| self.within_reach(p, t, reach)
+                            && if self.rule_version >= 16 { self.clear_sight(p, t) } else { self.clear_effect(p, t) })).collect();
                     cache.pursuit = self.pursuit_distances(u, &goals, &occupied);
                     cache.occupied = occupied;
                     cache.landings = landings;
@@ -777,6 +895,138 @@ impl Fight {
                 Act::ExtendRage => crate::barbarian::EXTEND_RAGE_AI_VALUE,
                 Act::RecklessAttack => self.reckless_value(u),
                 Act::Cleave { atk, target } => self.ai_attack_value_ex(u, *atk, *target, true),
+                Act::FirstAid { target } => {
+                    if !self.allies(u, *target) {
+                        -2.0
+                    } else if self.units[*target].unconscious() && !self.units[*target].has(crate::engine::St::Stable) {
+                        5.0
+                    } else {
+                        -0.5
+                    }
+                }
+                Act::EscapeGrapple { target } => {
+                    if !self.units[u].is_grappled() {
+                        -1.0
+                    } else {
+                        let m = self.units[u].athletics_mod().max(self.units[u].acrobatics_mod());
+                        let dc = self.units[u]
+                            .grappled_by
+                            .iter()
+                            .find(|&&(g, _)| g == *target)
+                            .and_then(|&(_, d)| d)
+                            .unwrap_or(12);
+                        let p = ((21 - (dc - m)) as f64 / 20.0).clamp(0.05, 0.95);
+                        if !self.enemy_in_melee_range(u) { 4.5 * p } else { 1.5 * p }
+                    }
+                }
+                Act::BreakFree { target } => {
+                    if let Some(obj) = self.active_effects(*target, crate::effects::EffKey::EscapableRestraint).into_iter().next() {
+                        let dc = match self.objs[obj as usize].kind {
+                            crate::effects::ObjKind::EntangleRestraint { dc, .. } => dc,
+                            _ => 12,
+                        };
+                        let ath = self.units[u].athletics_mod();
+                        2.0 * ((21 - (dc - ath)) as f64 / 20.0).clamp(0.05, 0.95)
+                    } else {
+                        0.0
+                    }
+                }
+                Act::DropGrapple { .. } => 0.0,
+                Act::NpcAreaAbility { idx, target } => {
+                    let def = &self.units[u].t.area_abilities[*idx];
+                    let origin = self.units[u].pos;
+                    let squares = match def.shape {
+                        "radius" | "self" | "emanation" => self.squares_in_radius(origin, def.range, true),
+                        _ => match target {
+                            Some(dir) => self.squares_in_cone(origin, *dir, (def.range / 5).max(1), true),
+                            None => Vec::new(),
+                        },
+                    };
+                    let avg = expected_die(def.damage.count, def.damage.sides, def.damage.modifier);
+                    let mut total = 0.0;
+                    for c in self.creatures_in_squares(&squares, Some(u)) {
+                        let mut w = if self.allies(u, c) { -1.0 } else { 1.0 };
+                        if w > 0.0 && !self.units[c].conscious() {
+                            w = 0.25;
+                        }
+                        total += w * avg * 0.75;
+                    }
+                    total
+                }
+                Act::NpcTeleport { idx, dest } => {
+                    let def = &self.units[u].t.teleports[*idx];
+                    let origin = self.units[u].pos;
+                    let enemies: Vec<usize> = self
+                        .opponents_of(u)
+                        .into_iter()
+                        .filter(|&e| self.units[e].conscious())
+                        .collect();
+                    if enemies.is_empty() {
+                        -1.0
+                    } else {
+                        let cur_min = enemies
+                            .iter()
+                            .map(|&e| self.square_distance(origin, self.units[e].pos) * 5)
+                            .min()
+                            .unwrap();
+                        let new_min = enemies
+                            .iter()
+                            .map(|&e| self.square_distance(*dest, self.units[e].pos) * 5)
+                            .min()
+                            .unwrap();
+                        let hp_frac = self.units[u].hp as f64 / self.max_hp_of(u).max(1) as f64;
+                        if def.tree_stride {
+                            if cur_min <= 10 && (15..=60).contains(&new_min) {
+                                3.0 + (new_min - cur_min) as f64 / 20.0
+                            } else {
+                                -1.0
+                            }
+                        } else {
+                            let has_action = self.units[u].action > 0;
+                            if hp_frac <= 0.4 && cur_min <= 5 && !has_action && new_min >= 20 {
+                                2.5 + new_min as f64 / 40.0
+                            } else if has_action && cur_min > 5 && new_min <= 5 {
+                                let weakest = enemies
+                                    .iter()
+                                    .filter(|&&e| self.square_distance(*dest, self.units[e].pos) * 5 <= 5)
+                                    .map(|&e| self.units[e].hp)
+                                    .min()
+                                    .unwrap_or(100);
+                                4.0 + ((40.0 - weakest as f64) / 40.0).max(0.0)
+                            } else {
+                                -1.0
+                            }
+                        }
+                    }
+                }
+                Act::LuringSong => {
+                    let already_singing = self.units[u]
+                        .concentration
+                        .is_some_and(|c| matches!(self.objs[c as usize].kind, crate::effects::ObjKind::LuringSong { .. }));
+                    if already_singing {
+                        -1.0
+                    } else {
+                        let dc = self.units[u].t.luring_song.map_or(11, |c| c.dc);
+                        let mut score = 0.0;
+                        for t in self.luring_song_targets(u) {
+                            if !self.opposing(u, t) || self.units[t].t.immune_charmed {
+                                continue;
+                            }
+                            let adv = self.units[t].t.fey_ancestry;
+                            score += 9.0 * self.save_fail_chance_adv(t, crate::content::Ability::Wis, dc, adv);
+                        }
+                        if score > 0.0 { score } else { -1.0 }
+                    }
+                }
+                Act::NpcVanish => {
+                    if self.units[u].invisible() {
+                        -1.0
+                    } else if self.units[u].action <= 0 {
+                        4.5
+                    } else {
+                        1.5
+                    }
+                }
                 Act::Spell(c) => self.spell_ai_value(u, c),
                 other => self.feature_ai_value(u, other),
             };
@@ -949,13 +1199,21 @@ impl Fight {
     /// `GenericController.move_for` (via `UndeadController`).
     pub fn move_for(&mut self, u: usize) -> Option<Act> {
         if self.units[u].incapacitated() {
-            // a turned creature flees (`turn_undead.flee_step`)
-            let step = self.flee_step(u).map(Act::Move);
+            // a turned or lured creature takes its forced step
+            let step = self.flee_step(u).or_else(|| self.lure_step(u)).map(Act::Move);
             if self.trace.on() {
                 self.pending = Some((String::from("turn"), vec![], vec![]));
             }
             self.emit_decision(u, &[], step.as_ref());
             return step;
+        }
+        if let Some(target) = self.grapple_release_target(u) {
+            let act = Act::DropGrapple { target };
+            if self.trace.on() {
+                self.pending = Some((String::from("turn"), vec![], vec![]));
+            }
+            self.emit_decision(u, &[], Some(&act));
+            return Some(act);
         }
         let cands = self.available_moves(u);
         if cands.iter().any(|a| matches!(a, Act::Stand)) {

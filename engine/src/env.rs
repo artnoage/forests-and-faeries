@@ -114,6 +114,10 @@ impl From<[Controller; 2]> for Control {
 pub enum Forced {
     /// A turned creature's flee step (rows: the step, End Turn).
     Flee,
+    /// A lured creature's forced approach step toward a Harpy (rows: the step, End Turn).
+    Lure,
+    /// Releasing a dead/unconscious/non-hostile grappled creature (rows: drop_grapple, End Turn).
+    DropGrapple,
     /// End Turn is the only row.
     EndTurn,
 }
@@ -122,6 +126,8 @@ impl Forced {
     pub fn name(self) -> &'static str {
         match self {
             Forced::Flee => "flee",
+            Forced::Lure => "lure",
+            Forced::DropGrapple => "drop_grapple",
             Forced::EndTurn => "end_turn",
         }
     }
@@ -231,14 +237,28 @@ impl Fight {
             tape: on.then(Default::default),
         };
         if self.units[u].incapacitated() {
-            // A turned creature: its flee step (forced), else nothing to do.
-            return match self.flee_step(u) {
-                Some(path) => Decision {
+            // A turned or lured creature: its forced step, else nothing to do.
+            if let Some(path) = self.flee_step(u) {
+                return Decision {
                     native_choice: Some(0),
                     forced: Some(Forced::Flee),
                     ..blank(vec![Act::Move(path), Act::EndTurn])
-                },
-                None => Decision { native_choice: Some(0), forced: Some(Forced::EndTurn), ..blank(vec![Act::EndTurn]) },
+                };
+            }
+            if let Some(path) = self.lure_step(u) {
+                return Decision {
+                    native_choice: Some(0),
+                    forced: Some(Forced::Lure),
+                    ..blank(vec![Act::Move(path), Act::EndTurn])
+                };
+            }
+            return Decision { native_choice: Some(0), forced: Some(Forced::EndTurn), ..blank(vec![Act::EndTurn]) };
+        }
+        if let Some(target) = self.grapple_release_target(u) {
+            return Decision {
+                native_choice: Some(0),
+                forced: Some(Forced::DropGrapple),
+                ..blank(vec![Act::DropGrapple { target }, Act::EndTurn])
             };
         }
         // Escape plans, grapple releases and must-flee fear come before the
@@ -351,6 +371,8 @@ pub struct Counts {
     pub decisions: u64,
     pub differ: u64,
     pub forced_flee: u64,
+    pub forced_lure: u64,
+    pub forced_drop_grapple: u64,
     pub forced_end_turn: u64,
     /// Offered Stand-first decisions.
     pub stand: u64,
@@ -608,6 +630,24 @@ impl Env {
             for t in u.source_fear.iter_mut() {
                 t.0 = m(t.0);
             }
+            for c in u.charmed_by.iter_mut() {
+                c.source = m(c.source);
+            }
+            for g in u.grappled_by.iter_mut() {
+                g.0 = m(g.0);
+            }
+            for g in u.grappling.iter_mut() {
+                *g = m(*g);
+            }
+            if let Some((h, _, _)) = u.lured_by.as_mut() {
+                *h = m(*h);
+            }
+            for l in u.luring_song_immune.iter_mut() {
+                l.0 = m(l.0);
+            }
+            for v in u.vile_immune.iter_mut() {
+                v.0 = m(v.0);
+            }
             for t in u.save_immune_to.iter_mut() {
                 t.0 = m(t.0);
             }
@@ -643,8 +683,17 @@ impl Env {
                 ObjKind::Aid { target, .. }
                 | ObjKind::Command { target, .. }
                 | ObjKind::Sanctuary { target, .. }
-                | ObjKind::Breath { target, .. } => *target = m(*target),
-                ObjKind::Spell | ObjKind::Force { .. } | ObjKind::Blur => {}
+                | ObjKind::Breath { target, .. }
+                | ObjKind::EntangleRestraint { target, .. }
+                | ObjKind::RaySickness { target, .. }
+                | ObjKind::SpeedPenalty { target, .. } => *target = m(*target),
+                ObjKind::Spell
+                | ObjKind::Force { .. }
+                | ObjKind::Blur
+                | ObjKind::Invisibility
+                | ObjKind::Vanish
+                | ObjKind::LuringSong { .. }
+                | ObjKind::Entangle { .. } => {}
             }
         }
         f.move_cache = Default::default();
@@ -662,7 +711,11 @@ impl Env {
                     Act::Attack { target, .. }
                     | Act::DivineSpark { target, .. }
                     | Act::Cleave { target, .. }
-                    | Act::SpiritualWeaponAttack { target } => *target = m(*target),
+                    | Act::SpiritualWeaponAttack { target }
+                    | Act::FirstAid { target }
+                    | Act::EscapeGrapple { target }
+                    | Act::BreakFree { target }
+                    | Act::DropGrapple { target } => *target = m(*target),
                     Act::Spell(c) => {
                         for t in c.targets.iter_mut() {
                             *t = m(*t);
@@ -714,8 +767,10 @@ impl Env {
             for (k, v) in [
                 ("decisions", c.decisions),
                 ("differ", c.differ),
+                ("forced_drop_grapple", c.forced_drop_grapple),
                 ("forced_end_turn", c.forced_end_turn),
                 ("forced_flee", c.forced_flee),
+                ("forced_lure", c.forced_lure),
                 ("stand", c.stand),
             ] {
                 if v > 0 {
@@ -797,6 +852,8 @@ impl Env {
         }
         match d.forced {
             Some(Forced::Flee) => self.counts.forced_flee += 1,
+            Some(Forced::Lure) => self.counts.forced_lure += 1,
+            Some(Forced::DropGrapple) => self.counts.forced_drop_grapple += 1,
             Some(Forced::EndTurn) => self.counts.forced_end_turn += 1,
             None => {
                 self.counts.decisions += 1;

@@ -62,24 +62,31 @@ use crate::trace::RollMode;
 pub const FEATURE_VERSION: &str = "ember-gen-v2";
 /// The previous schema, still available ([`Version::V1`]).
 pub const FEATURE_VERSION_V1: &str = "ember-gen-v1";
+/// Fey-campaign schema with new conditions/traits/tree channel and V4 encoder fixes.
+pub const FEATURE_VERSION_V4: &str = "ember-gen-v4";
 /// Creature cap (token slots).
 pub const N: usize = 24;
 /// Target slots per candidate.
 pub const T: usize = 8;
 /// Floats per creature token, per global vector, per candidate row
-/// (`ember-gen-v2`).
+/// (`ember-gen-v2` / `ember-gen-v3`).
 pub const F_C: usize = 183;
 pub const F_G: usize = 34;
 pub const F_A: usize = 122;
+/// `ember-gen-v4` widths (strictly extending V2/V3 prefixes).
+pub const F_C_V4: usize = 200;
+pub const F_G_V4: usize = 34;
+pub const F_A_V4: usize = 128;
 /// The `ember-gen-v1` widths: the prefixes of the v2 rows.
 pub const F_C_V1: usize = 160;
 pub const F_G_V1: usize = 32;
 pub const F_A_V1: usize = 112;
-/// Pairwise relation channels (`creature_rel[i, j, r]`, `ember-gen-v2`).
+/// Pairwise relation channels (`creature_rel[i, j, r]`, `ember-gen-v2`+).
 pub const R: usize = 5;
-/// Map channels (`ember-gen-v2`; v1: the first 16) and canvas side.
+/// Map channels (`ember-gen-v2`/`v3`; v1: first 16; v4: 18 with tree channel) and canvas side.
 pub const MAP_C: usize = 17;
 pub const MAP_C_V1: usize = 16;
+pub const MAP_C_V4: usize = 18;
 pub const S: usize = 32;
 pub const CELLS: usize = S * S;
 
@@ -91,6 +98,17 @@ pub const DIMS: [(&str, usize); 8] = [
     ("global", F_G),
     ("cand", F_A),
     ("map_channels", MAP_C),
+    ("canvas", S),
+    ("relations", R),
+];
+/// `dims` of `ember-gen-v4`.
+pub const DIMS_V4: [(&str, usize); 8] = [
+    ("N", N),
+    ("T", T),
+    ("creature", F_C_V4),
+    ("global", F_G_V4),
+    ("cand", F_A_V4),
+    ("map_channels", MAP_C_V4),
     ("canvas", S),
     ("relations", R),
 ];
@@ -106,25 +124,28 @@ pub enum Version {
     #[default]
     V2,
     V3,
+    V4,
 }
 
 impl Version {
-    pub const ALL: [Version; 3] = [Version::V1, Version::V2, Version::V3];
+    pub const ALL: [Version; 4] = [Version::V1, Version::V2, Version::V3, Version::V4];
 
     pub fn name(self) -> &'static str {
         match self {
             Version::V1 => FEATURE_VERSION_V1,
             Version::V2 => FEATURE_VERSION,
             Version::V3 => "ember-gen-v3",
+            Version::V4 => FEATURE_VERSION_V4,
         }
     }
 
-    /// `ember-gen-v1` / `v1` / `1`, `ember-gen-v2` / `v2` / `2`.
+    /// `ember-gen-v1` / `v1` / `1`, ..., `ember-gen-v4` / `v4` / `4`.
     pub fn parse(s: &str) -> Result<Version, String> {
         match s {
             "ember-gen-v1" | "v1" | "1" => Ok(Version::V1),
             "ember-gen-v2" | "v2" | "2" => Ok(Version::V2),
             "ember-gen-v3" | "v3" | "3" => Ok(Version::V3),
+            "ember-gen-v4" | "v4" | "4" => Ok(Version::V4),
             other => Err(format!("unknown feature version {other:?}")),
         }
     }
@@ -134,6 +155,7 @@ impl Version {
         match self {
             Version::V1 => F_C_V1,
             Version::V2 | Version::V3 => F_C,
+            Version::V4 => F_C_V4,
         }
     }
 
@@ -142,6 +164,7 @@ impl Version {
         match self {
             Version::V1 => F_G_V1,
             Version::V2 | Version::V3 => F_G,
+            Version::V4 => F_G_V4,
         }
     }
 
@@ -150,6 +173,7 @@ impl Version {
         match self {
             Version::V1 => F_A_V1,
             Version::V2 | Version::V3 => F_A,
+            Version::V4 => F_A_V4,
         }
     }
 
@@ -158,6 +182,7 @@ impl Version {
         match self {
             Version::V1 => MAP_C_V1,
             Version::V2 | Version::V3 => MAP_C,
+            Version::V4 => MAP_C_V4,
         }
     }
 
@@ -165,7 +190,7 @@ impl Version {
     pub fn relations(self) -> usize {
         match self {
             Version::V1 => 0,
-            Version::V2 | Version::V3 => R,
+            Version::V2 | Version::V3 | Version::V4 => R,
         }
     }
 
@@ -174,10 +199,11 @@ impl Version {
         match self {
             Version::V1 => &DIMS_V1,
             Version::V2 | Version::V3 => &DIMS,
+            Version::V4 => &DIMS_V4,
         }
     }
 
-    /// The feature names of this version (v1: the prefixes, no relations).
+    /// The feature names of this version (v1/v2/v3: prefixes of v4).
     pub fn names(self) -> FeatureNames {
         match self {
             Version::V1 => FeatureNames {
@@ -188,12 +214,19 @@ impl Version {
                 relations: &[],
             },
             Version::V2 | Version::V3 => feature_names(),
+            Version::V4 => FeatureNames {
+                creature: &CREATURE_FEATURES,
+                global: &GLOBAL_FEATURES,
+                cand: &CAND_FEATURES,
+                map: &MAP_CHANNELS,
+                relations: &RELATIONS,
+            },
         }
     }
 }
 
 /// The `action_kinds` vocabulary names, in `Act` order of [`act_kind_index`].
-pub const ACTION_KINDS: [&str; 26] = [
+pub const ACTION_KINDS: [&str; 33] = [
     "move",
     "attack",
     "dash",
@@ -222,6 +255,14 @@ pub const ACTION_KINDS: [&str; 26] = [
     "spiritual_weapon_move",
     "create_spell_slot",
     "convert_spell_slot",
+    // Fey campaign (vocabulary ids 26-32)
+    "first_aid",
+    "escape_grapple",
+    "break_free",
+    "npc_area_ability",
+    "npc_teleport",
+    "luring_song",
+    "npc_vanish",
 ];
 
 // ----------------------------------------------------------------------------
@@ -229,8 +270,8 @@ pub const ACTION_KINDS: [&str; 26] = [
 // encoder resolves positions by name at compile time (`ci!`, `gi!`, `ai!`).
 // ----------------------------------------------------------------------------
 
-/// Creature token (GENERAL_ENV.md §5.2), 160 floats.
-pub const CREATURE_FEATURES: [&str; F_C] = [
+/// Creature token (GENERAL_ENV.md §5.2), 160 (v1) / 183 (v2/v3) / 200 (v4) floats.
+pub const CREATURE_FEATURES: [&str; F_C_V4] = [
     // relation (5)
     "is_actor", "ally", "enemy", "side_heroes", "is_pc",
     // position (10)
@@ -289,6 +330,10 @@ pub const CREATURE_FEATURES: [&str; F_C] = [
     // traits and senses (6)
     "passive_perception_div20", "stealth_total_div20", "pfeg_protected", "nimble_escape", "redirect_reaction",
     "turn_undead",
+    // ---- ember-gen-v4 (183-199): fey campaign conditions, traits, recharges & skills ----
+    "size_tiny", "charmed", "grappled", "grappling", "restrained", "invisible", "lured",
+    "magic_resistance", "flyby", "blurred_form", "abduct", "death_burst", "fey_ancestry",
+    "recharge_ready_frac", "med_mod_div10", "ath_mod_div10", "acr_mod_div10",
 ];
 
 /// Global vector (§5.4), 32 floats.
@@ -305,8 +350,8 @@ pub const GLOBAL_FEATURES: [&str; F_G] = [
     "party_level_min_div5", "party_level_max_div5",
 ];
 
-/// Candidate row (§5.5), 112 floats.
-pub const CAND_FEATURES: [&str; F_A] = [
+/// Candidate row (§5.5), 112 (v1) / 122 (v2/v3) / 128 (v4) floats.
+pub const CAND_FEATURES: [&str; F_A_V4] = [
     // kind and cost (12)
     "uses_action", "uses_bonus_action", "uses_reaction", "move_squares_div12", "no_cost", "is_end_turn",
     "is_opportunity_attack", "forced", "slot_level_div9", "free_cast", "sorcery_points_div5", "channel_divinity",
@@ -344,14 +389,18 @@ pub const CAND_FEATURES: [&str; F_A] = [
     // the move re-enters a square the actor already stood on this turn (map
     // channel 16); one-square steps the row walks (1 for a one-square move)
     "dest_visited", "path_steps_div12",
+    // ---- ember-gen-v4 (122-127): fey riders, square AoE, teleport ----
+    "rider_push", "rider_grapple", "rider_charm", "rider_consume_life", "area_square", "is_teleport",
 ];
 
 /// Map channels (§5.3), uint8.
-pub const MAP_CHANNELS: [&str; MAP_C] = [
+pub const MAP_CHANNELS: [&str; MAP_C_V4] = [
     "inside", "wall", "difficult", "cover", "light", "actor", "ally", "enemy", "downed_ally", "downed_enemy",
     "corpse", "enemy_threat", "enemy_exposure", "path_cost", "reachable", "actor_los",
     // ember-gen-v2: the squares the actor stood on this turn (start square, every step, its square)
     "actor_trail",
+    // ember-gen-v4: Large+ tree squares (`'T'`, Dryad Tree Stride)
+    "tree",
 ];
 
 /// Relation channels of `creature_rel[i, j, r]` (`ember-gen-v2`, uint8 0/1;
@@ -385,10 +434,10 @@ pub struct FeatureNames {
 /// another.
 pub fn feature_names() -> FeatureNames {
     FeatureNames {
-        creature: &CREATURE_FEATURES,
-        global: &GLOBAL_FEATURES,
-        cand: &CAND_FEATURES,
-        map: &MAP_CHANNELS,
+        creature: &CREATURE_FEATURES[..F_C],
+        global: &GLOBAL_FEATURES[..F_G],
+        cand: &CAND_FEATURES[..F_A],
+        map: &MAP_CHANNELS[..MAP_C],
         relations: &RELATIONS,
     }
 }
@@ -440,6 +489,7 @@ macro_rules! ai {
 /// Map channel numbers.
 mod ch {
     pub const INSIDE: usize = 0;
+    pub const DIFFICULT: usize = 2;
     pub const ACTOR: usize = 5;
     pub const ALLY: usize = 6;
     pub const ENEMY: usize = 7;
@@ -453,6 +503,8 @@ mod ch {
     pub const LOS: usize = 15;
     /// `ember-gen-v2`.
     pub const TRAIL: usize = 16;
+    /// `ember-gen-v4`.
+    pub const TREE: usize = 17;
 }
 
 /// The feature list as Markdown (`docs/FEATURES.md`).
@@ -486,11 +538,12 @@ pub fn features_markdown() -> String {
             s.push_str(&format!("| {i} | `{n}` |\n"));
         }
     };
-    table(&mut s, "Creature token `creatures`", &CREATURE_FEATURES);
-    table(&mut s, "Global `global`", &GLOBAL_FEATURES);
-    table(&mut s, "Candidate row `cands`", &CAND_FEATURES);
-    table(&mut s, "Map channels `map` (uint8)", &MAP_CHANNELS);
-    table(&mut s, "Relation channels `creature_rel[i, j, r]` (uint8)", &RELATIONS);
+    let names = feature_names();
+    table(&mut s, "Creature token `creatures`", names.creature);
+    table(&mut s, "Global `global`", names.global);
+    table(&mut s, "Candidate row `cands`", names.cand);
+    table(&mut s, "Map channels `map` (uint8)", names.map);
+    table(&mut s, "Relation channels `creature_rel[i, j, r]` (uint8)", names.relations);
     s
 }
 
@@ -590,6 +643,13 @@ pub fn act_kind_index(a: &Act) -> usize {
         Act::SpiritualWeaponMove { .. } => 23,
         Act::CreateSpellSlot { .. } => 24,
         Act::ConvertSpellSlot { .. } => 25,
+        Act::FirstAid { .. } => 26,
+        Act::EscapeGrapple { .. } | Act::DropGrapple { .. } => 27,
+        Act::BreakFree { .. } => 28,
+        Act::NpcAreaAbility { .. } => 29,
+        Act::NpcTeleport { .. } => 30,
+        Act::LuringSong => 31,
+        Act::NpcVanish => 32,
     }
 }
 
@@ -1015,9 +1075,9 @@ fn encode_rows(
         let moves = rows.is_some_and(|d| d.legal.iter().any(|a| matches!(a, Act::Move(_))));
         // destination rows: the enemy distances everywhere, not only around the actor
         let far = rows.is_some_and(|d| d.legal.iter().any(|a| matches!(a, Act::Move(p) if p.len() > 2)));
-        prepare(f, view, actor, moves, far, masked, &mut sc);
+        prepare(f, view, actor, moves, far, masked, out.version, &mut sc);
         if v2 {
-            relation_masks(f, &mut sc);
+            relation_masks(f, out.version, &mut sc);
         }
         let cx = Ctx { f, ids, view, actor, ox, oy, sc: &sc, masked, v2, version: out.version };
         encode_map(&cx, out.map);
@@ -1100,7 +1160,8 @@ fn encode_rows(
 
 /// The per-call maps: initiative positions, DPR estimates, threat and
 /// exposure counts, the actor's BFS and (with move rows) the enemy BFS.
-fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, masked: u32, sc: &mut Scratch) {
+#[allow(clippy::too_many_arguments)]
+fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, masked: u32, version: Version, sc: &mut Scratch) {
     let g = &f.grid;
     let cells = g.cells();
     sc.order_pos.clear();
@@ -1110,7 +1171,7 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
     }
     sc.dpr.clear();
     for u in 0..f.units.len() {
-        let d = dpr_vs_ac14(f, u);
+        let d = if version == Version::V4 { dpr_vs_ac14_v4(f, u) } else { dpr_vs_ac14(f, u) };
         sc.dpr.push(d);
     }
     sc.threat[..cells].fill(0);
@@ -1153,14 +1214,21 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
     let (w, h) = (g.w as usize, g.h as usize);
     let floor = g.floor_rows();
     if let Some(a) = actor {
-        let mut free = [0u64; 34];
-        free[1..=h].copy_from_slice(floor);
+        let mut walkable = [0u64; 34];
+        walkable[1..=h].copy_from_slice(floor);
+        let mut free = walkable;
         for (i, u) in f.units.iter().enumerate() {
             if i != a && masked & (1 << i) == 0 && (f.rule_version() < 8 || !u.dead()) {
                 free[u.pos.1 as usize + 1] &= !(1u64 << u.pos.0);
             }
         }
-        let rule = if f.units[a].t.pc { Rule::NoCornerCut } else { Rule::AnyDiagonal };
+        let rule = if version == Version::V4 {
+            Rule::ClearWallCorner
+        } else if f.units[a].t.pc {
+            Rule::NoCornerCut
+        } else {
+            Rule::AnyDiagonal
+        };
         let p = f.units[a].pos;
         if f.incorporeal(a) {
             use std::cmp::Reverse;
@@ -1189,9 +1257,9 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
         } else if f.units[a].frightened_by.is_empty() && f.units[a].source_fear.is_empty() {
             let mut start = [0u64; 34];
             start[p.1 as usize + 1] = 1u64 << p.0;
-            bfs_rows(w, h, &free, &start, rule, None, &mut sc.steps);
+            bfs_rows(w, h, &free, &walkable, &start, rule, None, &mut sc.steps);
         } else {
-            bfs_feared(f, a, w, h, &free, rule, &mut sc.steps);
+            bfs_feared(f, a, w, h, &free, &walkable, rule, &mut sc.steps);
         }
     }
     // steps to the nearest conscious enemy (walls only, the A* neighbour
@@ -1207,7 +1275,7 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
             }
         }
         let stop = if far { None } else { actor.map(|a| f.units[a].pos) };
-        bfs_rows(w, h, &free, &start, Rule::AStar, stop, &mut sc.enemy_steps);
+        bfs_rows(w, h, &free, &free, &start, Rule::AStar, stop, &mut sc.enemy_steps);
     }
 }
 
@@ -1216,9 +1284,13 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
 /// (`Fight::step_toward_fear`, N20-042), so the path cost and reachable
 /// channels and the creatures' path costs follow the rule. A plain queue BFS
 /// (rare states); otherwise the same neighbours as `bfs_rows` with `rule`.
-fn bfs_feared(f: &Fight, a: usize, w: usize, h: usize, free: &[u64; 34], rule: Rule, steps: &mut [u16]) {
+#[allow(clippy::too_many_arguments)]
+fn bfs_feared(f: &Fight, a: usize, w: usize, h: usize, free: &[u64; 34], walkable: &[u64; 34], rule: Rule, steps: &mut [u16]) {
     let is_free = |x: i32, y: i32| {
         x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && (free[y as usize + 1] >> x) & 1 == 1
+    };
+    let is_floor = |x: i32, y: i32| {
+        x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && (walkable[y as usize + 1] >> x) & 1 == 1
     };
     let start = f.units[a].pos;
     if !is_free(start.0, start.1) {
@@ -1243,6 +1315,7 @@ fn bfs_feared(f: &Fight, a: usize, w: usize, h: usize, free: &[u64; 34], rule: R
                     let ok = match rule {
                         Rule::AnyDiagonal => true,
                         Rule::NoCornerCut => is_free(p.0 + dx, p.1) && is_free(p.0, p.1 + dy),
+                        Rule::ClearWallCorner => is_floor(p.0 + dx, p.1) && is_floor(p.0, p.1 + dy),
                         Rule::AStar => is_free(p.0 + dx, p.1) || is_free(p.0, p.1 + dy),
                     };
                     if !ok {
@@ -1262,10 +1335,12 @@ fn bfs_feared(f: &Fight, a: usize, w: usize, h: usize, free: &[u64; 34], rule: R
 /// Which diagonal steps a BFS allows.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Rule {
-    /// One-square moves of a monster: any diagonal onto a free square.
+    /// One-square moves of a monster (v1-v3): any diagonal onto a free square.
     AnyDiagonal,
-    /// A hero's: both orthogonal squares free (no corner cutting).
+    /// A hero's (v1-v3): both orthogonal squares free (no corner cutting).
     NoCornerCut,
+    /// `ember-gen-v4`: both orthogonal squares non-wall (`Fight::step_clears_corner`).
+    ClearWallCorner,
     /// natural20's A* neighbours: at least one orthogonal square free.
     AStar,
 }
@@ -1275,7 +1350,17 @@ enum Rule {
 /// reached in (0 for the start squares), `INF` otherwise. With `stop`, the
 /// search ends once that square and its eight neighbours that are free are
 /// labelled.
-fn bfs_rows(w: usize, h: usize, free: &[u64; 34], start: &[u64; 34], rule: Rule, stop: Option<Pos>, steps: &mut [u16]) {
+#[allow(clippy::too_many_arguments)]
+fn bfs_rows(
+    w: usize,
+    h: usize,
+    free: &[u64; 34],
+    walkable: &[u64; 34],
+    start: &[u64; 34],
+    rule: Rule,
+    stop: Option<Pos>,
+    steps: &mut [u16],
+) {
     let mask = if w >= 64 { u64::MAX } else { (1u64 << w) - 1 };
     let mut visited = [0u64; 34];
     let mut front = [0u64; 34];
@@ -1321,6 +1406,12 @@ fn bfs_rows(w: usize, h: usize, free: &[u64; 34], start: &[u64; 34], rule: Rule,
                         | ((down >> 1) & free[y + 1] & (free[y] >> 1))
                         | ((up << 1) & free[y - 1] & (free[y] << 1))
                         | ((up >> 1) & free[y - 1] & (free[y] >> 1))
+                }
+                Rule::ClearWallCorner => {
+                    ((down << 1) & walkable[y + 1] & (walkable[y] << 1))
+                        | ((down >> 1) & walkable[y + 1] & (walkable[y] >> 1))
+                        | ((up << 1) & walkable[y - 1] & (walkable[y] << 1))
+                        | ((up >> 1) & walkable[y - 1] & (walkable[y] >> 1))
                 }
                 Rule::AStar => {
                     ((down << 1) & (free[y + 1] | (free[y] << 1)))
@@ -1445,6 +1536,25 @@ fn encode_map(cx: &Ctx, map: &mut [u8]) {
             }
         }
     }
+    if cx.version == Version::V4 {
+        for &tpos in g.trees() {
+            if g.in_bounds(tpos.0, tpos.1) {
+                map[ch::TREE * CELLS + cx.canvas(tpos)] = 1;
+            }
+        }
+        for obj in &f.objs {
+            if obj.ended {
+                continue;
+            }
+            if let ObjKind::Entangle { ref squares, .. } = obj.kind {
+                for &sq in squares {
+                    if g.in_bounds(sq.0, sq.1) {
+                        map[ch::DIFFICULT * CELLS + cx.canvas(sq)] = 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Expected damage per round of a creature's best available attack against
@@ -1475,6 +1585,73 @@ fn attacks_per_action(f: &Fight, u: usize) -> i32 {
     f.units[u].t.multiattack.iter().map(|c| c.len() as i32).max().unwrap_or(1).max(1)
 }
 
+/// `ember-gen-v4`: damaging attacks per Attack action (excludes non-damaging
+/// multiattack slots such as Mummy's Dreadful Glare or Dryad's Charm Monster).
+fn attacks_per_action_v4(f: &Fight, u: usize) -> i32 {
+    let t = f.units[u].t;
+    t.multiattack
+        .iter()
+        .map(|combo| {
+            combo
+                .iter()
+                .filter(|&&name| t.attacks.iter().any(|a| a.name == name && !a.no_damage))
+                .count() as i32
+        })
+        .max()
+        .unwrap_or(1)
+        .max(1)
+}
+
+/// `ember-gen-v4`: expected damage per round vs AC 14 summing each slot of the
+/// best multiattack combo (so non-damaging slots contribute 0 instead of
+/// multiplying the damaging attack).
+fn dpr_vs_ac14_v4(f: &Fight, u: usize) -> f64 {
+    let unit = &f.units[u];
+    if unit.dead() {
+        return 0.0;
+    }
+    let atk_dpr = |k: usize, def: &crate::content::AttackDef| -> f64 {
+        if def.no_damage || !f.attack_available(u, k) {
+            return 0.0;
+        }
+        let (to_hit, dmg, _) = f.attack_numbers(u, k);
+        let mut mean = expected(dmg.count, dmg.sides, dmg.modifier);
+        for (d, _) in &def.additional {
+            mean += expected(d.count, d.sides, d.modifier);
+        }
+        let p = if def.save_attack.is_some() {
+            0.55
+        } else {
+            prob_at_least(20, plus_string_modifier(to_hit), 14, RollMode::Normal)
+        };
+        p * mean.max(0.0)
+    };
+    let mut best_single = 0.0f64;
+    for (k, def) in unit.t.attacks.iter().enumerate() {
+        if !def.bonus_action {
+            best_single = best_single.max(atk_dpr(k, def));
+        }
+    }
+    if unit.t.multiattack.is_empty() {
+        return best_single;
+    }
+    let mut best_combo = best_single;
+    for combo in &unit.t.multiattack {
+        let mut total = 0.0f64;
+        for &slot in combo {
+            let mut slot_best = 0.0f64;
+            for (k, def) in unit.t.attacks.iter().enumerate() {
+                if def.name == slot {
+                    slot_best = slot_best.max(atk_dpr(k, def));
+                }
+            }
+            total += slot_best;
+        }
+        best_combo = best_combo.max(total);
+    }
+    best_combo
+}
+
 fn encode_creatures(cx: &Ctx, out: &mut ObsSlot) {
     let f = cx.f;
     let fc = out.version.creature();
@@ -1488,6 +1665,9 @@ fn encode_creatures(cx: &Ctx, out: &mut ObsSlot) {
         creature_row(cx, i, row);
         if cx.v2 {
             creature_row_v2(cx, i, row);
+        }
+        if cx.version == Version::V4 {
+            creature_row_v4(cx, i, row);
         }
         let u = &f.units[i];
         out.creature_ids[i * 3] = cx.ids.kind[u.tid as usize];
@@ -1626,7 +1806,17 @@ fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("bonus_action")] = u.bonus as f32;
     row[ci!("reaction")] = b(u.has_reaction());
     row[ci!("movement_div60")] = u.available_movement() as f32 / 60.0;
-    let ma_left = if t.multiattack.is_empty() { 0 } else { u.ma_groups.iter().map(|(_, v)| v.len()).max().unwrap_or(0) };
+    let ma_left = if t.multiattack.is_empty() {
+        0
+    } else if cx.version == Version::V4 {
+        if u.ma_combos.is_empty() {
+            u.ma_groups.iter().map(|(_, v)| v.len()).max().unwrap_or(0)
+        } else {
+            u.ma_combos.iter().map(|c| c.len()).max().unwrap_or(0)
+        }
+    } else {
+        u.ma_groups.iter().map(|(_, v)| v.len()).max().unwrap_or(0)
+    };
     row[ci!("multiattack_left_div3")] = ma_left as f32 / 3.0;
     row[ci!("action_surge_active")] = b(u.action_surge_flag);
     row[ci!("slot_spell_cast")] = b(f.spent_slot_this_turn(i));
@@ -1662,7 +1852,8 @@ fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("ranged_to_hit_div10")] = ranged_hit.unwrap_or(0) as f32 / 10.0;
     row[ci!("reach_div10")] = t.melee_ft.unwrap_or(0) as f32 / 10.0;
     row[ci!("weapon_range_div120")] = range as f32 / 120.0;
-    row[ci!("attacks_per_action_div3")] = attacks_per_action(f, i) as f32 / 3.0;
+    row[ci!("attacks_per_action_div3")] =
+        if cx.version == Version::V4 { attacks_per_action_v4(f, i) } else { attacks_per_action(f, i) } as f32 / 3.0;
     row[ci!("dpr_vs_ac14_div20")] = (cx.sc.dpr[i] / 20.0) as f32;
     if let Some(c) = &t.caster {
         use SpellId::*;
@@ -1670,11 +1861,21 @@ fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
         row[ci!("spell_dc_div20")] = f.spell_dc(i) as f32 / 20.0;
         row[ci!("caster")] = 1.0;
         let has = |l: &[SpellId]| c.spells.iter().any(|s| l.contains(s));
-        row[ci!("has_area_spell")] = b(has(&[AcidSplash, Shatter, BurningHands, Thunderwave, DragonsBreath]));
+        let mut area = has(&[AcidSplash, Shatter, BurningHands, Thunderwave, DragonsBreath]);
+        if cx.version == Version::V4 {
+            area |= has(&[Entangle]) || !t.area_abilities.is_empty();
+        }
+        row[ci!("has_area_spell")] = b(area);
         row[ci!("has_heal")] = b(has(&[CureWounds, HealingWord, Aid]) || t.divine_spark || t.preserve_life);
         ranged_attack |=
             has(&[SacredFlame, GuidingBolt, SorcerousBurst, Firebolt, RayOfFrost, ChromaticOrb, MagicMissile, ScorchingRay]);
+        if cx.version == Version::V4 {
+            ranged_attack |= has(&[RayOfSickness]);
+        }
     } else {
+        if cx.version == Version::V4 && !t.area_abilities.is_empty() {
+            row[ci!("has_area_spell")] = 1.0;
+        }
         row[ci!("has_heal")] = b(t.divine_spark || t.preserve_life);
     }
     row[ci!("has_ranged_attack")] = b(ranged_attack);
@@ -1709,7 +1910,7 @@ mod rel {
 /// A character's level (the larger of its fighter and caster levels; 0 for
 /// monsters).
 fn pc_level(t: &crate::content::Template, version: Version) -> i32 {
-    if version == Version::V3 {
+    if matches!(version, Version::V3 | Version::V4) {
         return t.level;
     }
     t.fighter_level.max(t.caster.as_ref().map_or(0, |c| c.level))
@@ -1727,7 +1928,7 @@ fn pc_level(t: &crate::content::Template, version: Version) -> i32 {
 ///   Bolt's mark, Protection from Evil and Good, Ray of Frost's slow, Command,
 ///   Dragon's Breath, ...), Sap from `j`'s hit, `j`'s Stench poison, or
 ///   turning by `j`'s Turn Undead (`is_turned`'s rule).
-fn relation_masks(f: &Fight, sc: &mut Scratch) {
+fn relation_masks(f: &Fight, version: Version, sc: &mut Scratch) {
     let gt = f.gt();
     let mut alive = 0u32;
     for (j, u) in f.units.iter().enumerate() {
@@ -1741,7 +1942,7 @@ fn relation_masks(f: &Fight, sc: &mut Scratch) {
     for (i, u) in f.units.iter().enumerate() {
         let (mut fear, mut immune, mut effect) = (0u32, 0u32, 0u32);
         if !u.dead() {
-            for &(s, until) in &u.frightened_by {
+            for &(s, until, _) in &u.frightened_by {
                 if gt < until {
                     fear |= 1 << s;
                 }
@@ -1754,6 +1955,18 @@ fn relation_masks(f: &Fight, sc: &mut Scratch) {
             }
             for &s in &u.stench_immune {
                 immune |= 1 << s;
+            }
+            if version == Version::V4 {
+                for &(s, until) in &u.luring_song_immune {
+                    if gt < until {
+                        immune |= 1 << s;
+                    }
+                }
+                for &(s, until) in &u.vile_immune {
+                    if gt < until {
+                        immune |= 1 << s;
+                    }
+                }
             }
             for (_, list) in &u.effects {
                 for e in list {
@@ -1774,6 +1987,19 @@ fn relation_masks(f: &Fight, sc: &mut Scratch) {
             for &(s, until, _) in &u.turned_by {
                 if gt < until && !f.units[s].incapacitated() {
                     effect |= 1 << s;
+                }
+            }
+            if version == Version::V4 {
+                for c in &u.charmed_by {
+                    if c.until.is_none_or(|x| gt < x) {
+                        effect |= 1 << c.source;
+                    }
+                }
+                for &(g, _) in &u.grappled_by {
+                    effect |= 1 << g;
+                }
+                if let Some((h, _, _)) = u.lured_by {
+                    effect |= 1 << h;
                 }
             }
         }
@@ -1860,6 +2086,7 @@ fn creature_row_v2(cx: &Ctx, i: usize, row: &mut [f32]) {
                 OnHit::StrengthDrain => ci!("atk_strength_drain"),
                 OnHit::Curse => ci!("atk_curse"),
                 OnHit::Frighten => ci!("atk_frighten"),
+                OnHit::Push { .. } | OnHit::Grapple { .. } | OnHit::Charm { .. } | OnHit::ConsumeLife { .. } => continue,
             };
             row[slot] = 1.0;
         }
@@ -1883,6 +2110,58 @@ fn creature_row_v2(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("nimble_escape")] = b(t.nimble_escape.is_some());
     row[ci!("redirect_reaction")] = b(t.swap_retarget.is_some());
     row[ci!("turn_undead")] = b(t.turn_undead);
+}
+
+/// The `ember-gen-v4` part of a creature's token (indices 183-199).
+fn creature_row_v4(cx: &Ctx, i: usize, row: &mut [f32]) {
+    let f = cx.f;
+    let u = &f.units[i];
+    let t = u.t;
+    row[ci!("size_tiny")] = b(t.size == "tiny");
+    row[ci!("charmed")] = b(u.has(St::Charmed));
+    row[ci!("grappled")] = b(u.has(St::Grappled));
+    row[ci!("grappling")] = b(!u.grappling.is_empty());
+    row[ci!("restrained")] = b(f.is_restrained(i));
+    row[ci!("invisible")] = b(u.invisible());
+    row[ci!("lured")] = b(f.is_lured(i));
+    row[ci!("magic_resistance")] = b(t.magic_resistance);
+    row[ci!("flyby")] = b(t.flyby);
+    row[ci!("blurred_form")] = b(t.blurred_form);
+    row[ci!("abduct")] = b(t.abduct);
+    row[ci!("death_burst")] = b(t.death_burst.is_some());
+    row[ci!("fey_ancestry")] = b(t.fey_ancestry);
+    let mut total_recharge = 0u32;
+    let mut ready_recharge = 0u32;
+    for a in &t.attacks {
+        if a.recharge.is_some() {
+            total_recharge += 1;
+            if !u.recharge_spent.contains(&a.name) {
+                ready_recharge += 1;
+            }
+        }
+    }
+    for a in &t.area_abilities {
+        if a.recharge.is_some() {
+            total_recharge += 1;
+            if !u.recharge_spent.contains(&a.name) {
+                ready_recharge += 1;
+            }
+        }
+    }
+    for tp in &t.teleports {
+        if tp.recharge.is_some() {
+            total_recharge += 1;
+            if !u.recharge_spent.contains(&tp.name) {
+                ready_recharge += 1;
+            }
+        }
+    }
+    if total_recharge > 0 {
+        row[ci!("recharge_ready_frac")] = ready_recharge as f32 / total_recharge as f32;
+    }
+    row[ci!("med_mod_div10")] = u.medicine_mod() as f32 / 10.0;
+    row[ci!("ath_mod_div10")] = u.athletics_mod() as f32 / 10.0;
+    row[ci!("acr_mod_div10")] = u.acrobatics_mod() as f32 / 10.0;
 }
 
 /// The position group of a creature's token (absent when it is masked).
@@ -1989,7 +2268,7 @@ fn encode_global(cx: &Ctx, env: &Env, obj: &Objective, g: &mut [f32]) {
     if let Some(a) = cx.actor {
         let unit = &f.units[a];
         let gt = f.gt();
-        let feared = unit.frightened_by.iter().any(|&(s, until)| gt < until && !f.units[s].dead() && f.can_see(a, s))
+        let feared = unit.frightened_by.iter().any(|&(s, until, _)| gt < until && !f.units[s].dead() && f.can_see(a, s))
             || unit.source_fear.iter().any(|&(s, _)| !f.units[s].dead() && f.can_see(a, s));
         g[gi!("actor_fear_disadvantage")] = b(feared);
         g[gi!("actor_cursed")] = b(unit.cursed);
@@ -2184,6 +2463,8 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             if *reaction {
                 row[ai!("uses_reaction")] = 1.0;
                 row[ai!("is_opportunity_attack")] = 1.0;
+            } else if unit.t.attacks[*atk].bonus_action {
+                row[ai!("uses_bonus_action")] = 1.0;
             } else {
                 row[ai!("uses_action")] = 1.0;
             }
@@ -2191,7 +2472,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             attack_estimate(f, a, *atk, *target, false, &mut est);
             tg.add(*target);
             if cx.v2 {
-                attack_riders(f, a, *atk, Some((*target, est.p_sum)), row);
+                attack_riders(f, a, *atk, Some((*target, est.p_sum)), cx.version, row);
             }
         }
         Act::BlindAttack { atk, square, .. } => {
@@ -2210,7 +2491,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
                 attack_estimate(f, a, *atk, o, false, &mut est);
             }
             if cx.v2 {
-                attack_riders(f, a, *atk, occupant.map(|o| (o, est.p_sum)), row);
+                attack_riders(f, a, *atk, occupant.map(|o| (o, est.p_sum)), cx.version, row);
             }
         }
         Act::Dash => {
@@ -2273,8 +2554,142 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             attack_estimate(f, a, *atk, *target, true, &mut est);
             tg.add(*target);
             if cx.v2 {
-                attack_riders(f, a, *atk, Some((*target, est.p_sum)), row);
+                attack_riders(f, a, *atk, Some((*target, est.p_sum)), cx.version, row);
             }
+        }
+        Act::FirstAid { target } => {
+            row[ai!("uses_action")] = 1.0;
+            row[ai!("heals")] = 1.0;
+            tg.add(*target);
+            let p = prob_at_least(20, plus_string_modifier(unit.medicine_mod()), 10, RollMode::Normal);
+            est.p_sum = p;
+            est.p_n = 1.0;
+            est.ally(*target, 0.0);
+        }
+        Act::EscapeGrapple { target } => {
+            row[ai!("uses_action")] = 1.0;
+            row[ai!("targets_self")] = 1.0;
+            tg.add(*target);
+            let dc = unit.grappled_by.iter().find(|&&(g, _)| g == *target).and_then(|&(_, d)| d).unwrap_or(10);
+            row[ai!("save_dc_div20")] = dc as f32 / 20.0;
+            let best_mod = unit.athletics_mod().max(unit.acrobatics_mod());
+            est.p_sum = prob_at_least(20, plus_string_modifier(best_mod), dc, RollMode::Normal);
+            est.p_n = 1.0;
+        }
+        Act::BreakFree { target } => {
+            row[ai!("uses_action")] = 1.0;
+            row[ai!("targets_self")] = 1.0;
+            tg.add(*target);
+            let dc = f
+                .active_effects(*target, EffKey::EscapableRestraint)
+                .into_iter()
+                .find_map(|o| match f.objs[o as usize].kind {
+                    ObjKind::EntangleRestraint { dc, .. } => Some(dc),
+                    _ => None,
+                })
+                .unwrap_or(10);
+            row[ai!("save_dc_div20")] = dc as f32 / 20.0;
+            est.p_sum = prob_at_least(20, plus_string_modifier(unit.athletics_mod()), dc, RollMode::Normal);
+            est.p_n = 1.0;
+        }
+        Act::DropGrapple { target } => {
+            row[ai!("no_cost")] = 1.0;
+            row[ai!("forced")] = 1.0;
+            tg.add(*target);
+        }
+        Act::NpcAreaAbility { idx, target } => {
+            let def = &unit.t.area_abilities[*idx];
+            if def.bonus_action {
+                row[ai!("uses_bonus_action")] = 1.0;
+            } else {
+                row[ai!("uses_action")] = 1.0;
+            }
+            row[ai!("save_based")] = 1.0;
+            row[ai!("save_vs_str") + def.save.idx()] = 1.0;
+            row[ai!("save_dc_div20")] = def.dc as f32 / 20.0;
+            row[ai!("half_on_save")] = b(def.half_on_success);
+            if def.shape == "cone" {
+                row[ai!("area_cone")] = 1.0;
+            } else {
+                row[ai!("area_sphere")] = 1.0;
+            }
+            let (mean, max, _) = dice_stats(def.damage);
+            row[ai!("dmg_mean_div20")] = (mean / 20.0) as f32;
+            row[ai!("dmg_max_div40")] = (max / 40.0) as f32;
+            row[ai!("dmg_acid") + def.damage_type as usize] = 1.0;
+            if let Some(p) = *target {
+                cell = cx.canvas(p) as i16;
+            }
+            let squares = match def.shape {
+                "radius" | "self" | "emanation" => f.squares_in_radius(unit.pos, def.range, true),
+                _ => match *target {
+                    Some(dir) => f.squares_in_cone(unit.pos, dir, (def.range / 5).max(1), true),
+                    None => Vec::new(),
+                },
+            };
+            for c in f.creatures_in_squares(&squares, Some(a)) {
+                if cx.masked(c) {
+                    continue;
+                }
+                tg.add(c);
+                area_save(f, a, c, def.save, def.dc, mean, def.half_on_success, def.damage_type, false, &mut est);
+            }
+        }
+        Act::NpcTeleport { idx, dest } => {
+            let def = &unit.t.teleports[*idx];
+            if def.bonus_action {
+                row[ai!("uses_bonus_action")] = 1.0;
+            } else {
+                row[ai!("uses_action")] = 1.0;
+            }
+            row[ai!("targets_self")] = 1.0;
+            let rng = if def.tree_stride { def.tree_range } else { def.range };
+            row[ai!("range_div120")] = rng as f32 / 120.0;
+            if cx.version == Version::V4 {
+                row[ai!("is_teleport")] = 1.0;
+            }
+            cell = cx.canvas(*dest) as i16;
+            est.p_sum = 1.0;
+            est.p_n = 1.0;
+        }
+        Act::LuringSong => {
+            row[ai!("uses_action")] = 1.0;
+            row[ai!("concentration")] = 1.0;
+            row[ai!("ends_concentration")] = b(unit.concentration.is_some());
+            row[ai!("save_based")] = 1.0;
+            row[ai!("save_vs_wis")] = 1.0;
+            if cx.version == Version::V4 {
+                row[ai!("rider_charm")] = 1.0;
+            }
+            if let Some(cfg) = unit.t.luring_song {
+                row[ai!("save_dc_div20")] = cfg.dc as f32 / 20.0;
+                for t in f.luring_song_targets(a) {
+                    if cx.masked(t) {
+                        continue;
+                    }
+                    tg.add(t);
+                    let p = if f.units[t].t.immune_charmed {
+                        0.0
+                    } else {
+                        f.save_fail_probability_ex(t, Ability::Wis, cfg.dc, f.units[t].t.fey_ancestry, false)
+                    };
+                    est.hit(f, a, t, 1.0, p, 0.0);
+                }
+            }
+        }
+        Act::NpcVanish => {
+            if unit.t.vanish.as_ref().is_none_or(|v| v.bonus_action) {
+                row[ai!("uses_bonus_action")] = 1.0;
+            } else {
+                row[ai!("uses_action")] = 1.0;
+            }
+            row[ai!("targets_self")] = 1.0;
+            row[ai!("buff")] = 1.0;
+            row[ai!("concentration")] = 1.0;
+            row[ai!("ends_concentration")] = b(unit.concentration.is_some());
+            est.p_sum = 1.0;
+            est.p_n = 1.0;
+            est.ally(a, 0.0);
         }
         Act::Spell(c) => {
             spell_id = cx.ids.spell(c.spell);
@@ -2437,7 +2852,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
 /// curse or the fear takes hold: `p` unless the rider can't apply (the
 /// target is dead or already cursed; immune to Frightened or warded against
 /// the attacker by Protection from Evil and Good, as `apply_source_fear`).
-fn attack_riders(f: &Fight, a: usize, atk: usize, target: Option<(usize, f64)>, row: &mut [f32]) {
+fn attack_riders(f: &Fight, a: usize, atk: usize, target: Option<(usize, f64)>, version: Version, row: &mut [f32]) {
     let def = &f.units[a].t.attacks[atk];
     let curse = def.on_hit.iter().any(|o| matches!(o, OnHit::Curse));
     let fright = def.on_hit.iter().any(|o| matches!(o, OnHit::Frighten));
@@ -2446,6 +2861,12 @@ fn attack_riders(f: &Fight, a: usize, atk: usize, target: Option<(usize, f64)>, 
     row[ai!("kill_at_zero")] = b(def.kill_at_zero);
     row[ai!("no_damage")] = b(def.no_damage);
     row[ai!("immune_on_save")] = b(def.save_immune);
+    if version == Version::V4 {
+        row[ai!("rider_push")] = b(def.on_hit.iter().any(|o| matches!(o, OnHit::Push { .. })));
+        row[ai!("rider_grapple")] = b(def.on_hit.iter().any(|o| matches!(o, OnHit::Grapple { .. })));
+        row[ai!("rider_charm")] = b(def.on_hit.iter().any(|o| matches!(o, OnHit::Charm { .. })));
+        row[ai!("rider_consume_life")] = b(def.on_hit.iter().any(|o| matches!(o, OnHit::ConsumeLife { .. })));
+    }
     if let Some((t, p)) = target {
         let tu = &f.units[t];
         if curse && !tu.dead() && !tu.cursed {
@@ -2542,7 +2963,12 @@ fn weapon_descriptor(f: &Fight, a: usize, atk: usize, target: Option<usize>, cle
             OnHit::LifeDrain => row[ai!("rider_life_drain")] = 1.0,
             OnHit::StrengthDrain => row[ai!("rider_strength_drain")] = 1.0,
             // no v1 slot: the attack-name embedding tells them apart (Mummy status)
-            OnHit::Curse | OnHit::Frighten => {}
+            OnHit::Curse
+            | OnHit::Frighten
+            | OnHit::Push { .. }
+            | OnHit::Grapple { .. }
+            | OnHit::Charm { .. }
+            | OnHit::ConsumeLife { .. } => {}
         }
     }
     row[ai!("rider_sap")] = b(def.sap);
@@ -2656,10 +3082,12 @@ fn area_save(f: &Fight, a: usize, c: usize, ab: Ability, dc: i32, full: f64, hal
 fn duration_rounds(s: SpellId) -> f32 {
     use SpellId::*;
     match s {
-        Bless | Sanctuary | Blur | DragonsBreath | SpiritualWeapon => 10.0,
+        Bless | Sanctuary | Blur | DragonsBreath | SpiritualWeapon | Entangle => 10.0,
         ShieldOfFaith | ProtectionFromEvilAndGood => 100.0,
+        Invisibility => 600.0,
         Aid | MageArmor => 4800.0,
-        GuidingBolt | RayOfFrost | Command | Shield => 1.0,
+        CharmMonster => 14400.0,
+        GuidingBolt | RayOfFrost | RayOfSickness | Command | Shield => 1.0,
         _ => 0.0,
     }
 }
@@ -2725,12 +3153,13 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                 area_save(f, a, t, Ability::Dex, dc, dice_stats(d).0, false, Dmg::Radiant, heightened, est);
             }
         }
-        GuidingBolt | Firebolt | RayOfFrost | ChromaticOrb | SorcerousBurst | SpiritualWeapon => {
+        GuidingBolt | Firebolt | RayOfFrost | RayOfSickness | ChromaticOrb | SorcerousBurst | SpiritualWeapon => {
             row[ai!("spell_attack_roll")] = 1.0;
             let (wk, n, sides, flat, dt) = match s {
                 GuidingBolt => (ranged(120), 4 + (at - 1).max(0), 6, 0, Dmg::Radiant),
                 Firebolt => (ranged(120), 1, 10, 0, Dmg::Fire),
                 RayOfFrost => (ranged(60), 1, 8, 0, Dmg::Cold),
+                RayOfSickness => (ranged(60), 2 + (at - 1).max(0), 8, 0, Dmg::Poison),
                 ChromaticOrb => (ranged(90), 3 + (at - 1).max(0), 8, 0, c.dt.unwrap_or(Dmg::Acid)),
                 SorcerousBurst => (ranged(120), 1, 8, 0, c.dt.unwrap_or(Dmg::Acid)),
                 _ => (WeaponKind::melee(), 1 + (at - 2).max(0), 8, f.spell_mod(a), Dmg::Force),
@@ -2876,8 +3305,59 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                 est.ally(t, gain);
             }
         }
+        CharmMonster => {
+            save(row, Ability::Wis, false);
+            if cx.version == Version::V4 {
+                row[ai!("rider_charm")] = 1.0;
+            }
+            for &t in &c.targets {
+                tg.add(t);
+                let p = if f.units[t].t.immune_charmed {
+                    0.0
+                } else {
+                    let extra_adv = f.units[t].t.fey_ancestry || f.opposing(a, t);
+                    f.save_fail_probability_ex(t, Ability::Wis, dc, extra_adv, heightened)
+                };
+                est.hit(f, a, t, 1.0, p, 0.0);
+            }
+        }
+        Entangle => {
+            save(row, Ability::Str, false);
+            if cx.version == Version::V4 {
+                row[ai!("area_square")] = 1.0;
+            }
+            if let Some(p) = c.point {
+                let mut squares = Vec::with_capacity(16);
+                for dx in 0..4 {
+                    for dy in 0..4 {
+                        let q = (p.0 + dx, p.1 + dy);
+                        if f.grid.in_bounds(q.0, q.1) {
+                            squares.push(q);
+                        }
+                    }
+                }
+                let creatures = f.creatures_in_squares(&squares, Some(a));
+                let mut first_enemy = heightened;
+                for t in creatures {
+                    if cx.masked(t) {
+                        continue;
+                    }
+                    tg.add(t);
+                    let h = first_enemy && f.opposing(a, t);
+                    if h {
+                        first_enemy = false;
+                    }
+                    let fail = if f.units[t].t.immune_restrained {
+                        0.0
+                    } else {
+                        f.save_fail_probability_ex(t, Ability::Str, dc, false, h)
+                    };
+                    est.hit(f, a, t, 1.0, fail, 0.0);
+                }
+            }
+        }
         Bless | ShieldOfFaith | ProtectionFromEvilAndGood | Sanctuary | MageArmor | Blur | DragonsBreath
-        | LesserRestoration | SpareTheDying | Shield => {
+        | LesserRestoration | SpareTheDying | Shield | Invisibility => {
             row[ai!("buff")] = 1.0;
             est.p_sum = 1.0;
             est.p_n = 1.0;

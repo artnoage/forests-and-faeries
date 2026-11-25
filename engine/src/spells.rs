@@ -125,6 +125,10 @@ pub(crate) enum Item {
     Breath { t: usize, dt: Dmg, dice: i32 },
     Blur,
     MageArmor(usize),
+    Invisibility(usize),
+    RayOfSickness { t: usize },
+    CharmMonster { t: usize, charmed: bool },
+    Entangle { squares: Vec<Pos>, dc: i32, failed: Vec<usize> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,6 +170,10 @@ impl SpellId {
             Blur => "blur",
             Shield => "shield",
             MageArmor => "mage_armor",
+            Invisibility => "invisibility",
+            RayOfSickness => "ray_of_sickness",
+            CharmMonster => "charm_monster",
+            Entangle => "entangle",
         }
     }
 
@@ -180,6 +188,10 @@ impl SpellId {
             ChromaticOrb => "Chromatic Orb",
             ScorchingRay => "Scorching Ray",
             SorcerousBurst => "Sorcerous Burst",
+            RayOfSickness => "Ray of Sickness",
+            Invisibility => "Invisibility",
+            CharmMonster => "Charm Monster",
+            Entangle => "Entangle",
             _ => self.key(),
         }
     }
@@ -188,7 +200,8 @@ impl SpellId {
         use SpellId::*;
         match self {
             SacredFlame | SpareTheDying | SorcerousBurst | Firebolt | RayOfFrost | AcidSplash => 0,
-            SpiritualWeapon | Aid | LesserRestoration | Shatter | ScorchingRay | DragonsBreath | Blur => 2,
+            SpiritualWeapon | Aid | LesserRestoration | Shatter | ScorchingRay | DragonsBreath | Blur | Invisibility => 2,
+            CharmMonster => 4,
             _ => 1,
         }
     }
@@ -200,7 +213,7 @@ impl SpellId {
 
     pub fn concentration(self) -> bool {
         use SpellId::*;
-        matches!(self, SpiritualWeapon | Bless | ShieldOfFaith | ProtectionFromEvilAndGood | DragonsBreath | Blur)
+        matches!(self, SpiritualWeapon | Bless | ShieldOfFaith | ProtectionFromEvilAndGood | DragonsBreath | Blur | Invisibility | Entangle)
     }
 
     /// `friendly_fire._spell_is_harmful` on the YAML properties.
@@ -209,7 +222,7 @@ impl SpellId {
         !matches!(
             self,
             Bless | ShieldOfFaith | CureWounds | HealingWord | Aid | ProtectionFromEvilAndGood | Sanctuary
-                | SpareTheDying | LesserRestoration | DragonsBreath | Blur | Shield | MageArmor
+                | SpareTheDying | LesserRestoration | DragonsBreath | Blur | Shield | MageArmor | Invisibility
         )
     }
 
@@ -373,10 +386,14 @@ impl Fight {
 
     /// `spell_ai.save_fail_probability(target, save, dc, magical=True)`.
     pub fn save_fail_probability(&self, t: usize, ab: Ability, dc: i32) -> f64 {
-        self.save_fail_probability_with_disadvantage(t, ab, dc, false)
+        self.save_fail_probability_ex(t, ab, dc, false, false)
     }
 
     pub(crate) fn save_fail_probability_with_disadvantage(&self, t: usize, ab: Ability, dc: i32, dis: bool) -> f64 {
+        self.save_fail_probability_ex(t, ab, dc, false, dis)
+    }
+
+    pub(crate) fn save_fail_probability_ex(&self, t: usize, ab: Ability, dc: i32, extra_adv: bool, extra_dis: bool) -> f64 {
         let unit = &self.units[t];
         if matches!(ab, Ability::Str | Ability::Dex) {
             if unit.has(St::Paralyzed) {
@@ -388,9 +405,11 @@ impl Fight {
         }
         let modifier = unit.save_mod(ab);
         let offsets = self.bless_offsets(t);
+        let adv = extra_adv || unit.t.magic_resistance;
+        let dis = extra_dis || (ab == Ability::Dex && self.is_restrained(t));
         let mut success = 0.0f64;
         for o in &offsets {
-            success += d20_at_least(dc - modifier - o, false, dis);
+            success += d20_at_least(dc - modifier - o, adv, dis);
         }
         success /= offsets.len() as f64;
         1.0 - success
@@ -398,11 +417,15 @@ impl Fight {
 
     /// `ai_estimates.save_fail_chance`.
     pub(crate) fn save_fail_chance_est(&self, t: usize, ab: Ability, dc: i32) -> f64 {
+        self.save_fail_chance_adv(t, ab, dc, false)
+    }
+
+    pub(crate) fn save_fail_chance_adv(&self, t: usize, ab: Ability, dc: i32, adv: bool) -> f64 {
         let unit = &self.units[t];
         if matches!(ab, Ability::Str | Ability::Dex) && unit.has(St::Paralyzed) {
             return 1.0;
         }
-        1.0 - d20_success_chance(unit.save_mod(ab), dc, false, false)
+        1.0 - d20_success_chance(unit.save_mod(ab), dc, adv, false)
     }
 
     /// `ai_estimates.heal_value(target, expected_heal)`.
@@ -604,22 +627,42 @@ impl Fight {
         };
         let t = self.redirect_window(caster, t, face, total, false, origin).unwrap_or(t);
         let ac = self.attack_ac(origin, t);
-        self.describe_attack_cover(&mut atk_fmt, t, ac, false);
         self.resolve_trigger(caster, HookEv::AttackResolved);
         let items = self.resolve_trigger(t, HookEv::AfterAttackRollTarget);
         let nat20 = face == 20 && mode != RollMode::Disadvantage || (mode == RollMode::Disadvantage && face == 20);
         let nat1 = face == 1;
+        let mut force_miss = false;
+        let mut shield_cast = None;
+        if self.rule_version >= 16 {
+            if let Some((blocks, at_level)) = self.shield_reaction_ex(t, total, ac, nat20, nat1, false) {
+                force_miss = blocks;
+                shield_cast = Some((at_level, total, ac));
+            }
+        }
+        self.describe_attack_cover(&mut atk_fmt, t, ac, shield_cast.is_some());
+        if let Some((slot_level, total, ac)) = shield_cast {
+            self.apply_shield(t);
+            self.emit_web(crate::web_events::WebEv::ShieldCast {
+                u: t,
+                pos: self.units[t].pos,
+                slot_level,
+                attacker: caster,
+                attack_name: spell.name(),
+                total,
+                ac,
+            });
+        }
         let hit = if nat20 {
             true
         } else if nat1 {
             false
         } else {
-            total >= ac
+            total >= ac && !force_miss
         };
         if self.units[t].t.pc {
             self.units[t].pools_init = true;
         }
-        self.reaction_scan(caster, t, hit);
+        self.reaction_scan(caster, t, !nat1 && (nat20 || total >= ac));
         (hit, nat20, items, t, atk_fmt)
     }
 
@@ -637,11 +680,22 @@ impl Fight {
         if self.rule_version < 4 { last.is_some() } else { last == Some((self.round, self.turn_idx)) }
     }
 
+    /// Whether `spell` is currently listed in `u`'s active multiattack groups (e.g. Dryad Charm Monster).
+    pub(crate) fn multiattack_spell(&self, u: usize, spell: SpellId) -> bool {
+        let unit = &self.units[u];
+        if unit.t.multiattack.is_empty() || unit.ma_groups.is_empty() {
+            return false;
+        }
+        let key = spell.key();
+        unit.ma_groups.iter().any(|(_, names)| names.contains(&key))
+    }
+
     /// `SpellAction.can_cast` (and the `spell_list` disable reasons).
     fn can_cast(&self, u: usize, spell: SpellId) -> bool {
         let unit = &self.units[u];
         let level = spell.level();
-        if level > 0 && self.next_slot(u, level).is_none() && !unit.free_casts.contains(&spell) {
+        let is_at_will = unit.t.caster.as_ref().is_some_and(|c| c.at_will.contains(&spell));
+        if level > 0 && !is_at_will && self.next_slot(u, level).is_none() && !unit.free_casts.contains(&spell) {
             return false;
         }
         if spell.consumed_holy_water() && unit.holy_water < 1 {
@@ -650,14 +704,14 @@ impl Fight {
         if spell == SpellId::Shield {
             return false;
         }
-        let needs_slot = level > 0 && (self.rule_version < 4 || !unit.free_casts.contains(&spell));
+        let needs_slot = level > 0 && !is_at_will && (self.rule_version < 4 || !unit.free_casts.contains(&spell));
         if needs_slot && self.spent_slot_this_turn(u) {
             return false;
         }
         if spell.bonus_action() {
             unit.bonus > 0
         } else {
-            unit.action > 0
+            unit.action > 0 || (unit.ma_started && self.multiattack_spell(u, spell))
         }
     }
 
@@ -706,6 +760,8 @@ impl Fight {
             SpareTheDying => (15, TargetTypes::AlliesSelfEnemies, 1, 1),
             LesserRestoration => (5, TargetTypes::AlliesSelf, 1, 1),
             MageArmor => (5, TargetTypes::AlliesSelf, 1, 1),
+            RayOfSickness => (60, TargetTypes::Enemies, 1, 1),
+            CharmMonster => (30, TargetTypes::Enemies, 1, 1),
             _ => (0, TargetTypes::Enemies, 0, 0),
         }
     }
@@ -736,9 +792,14 @@ impl Fight {
         let base = spell.level();
         if base == 0 { return vec![(0, false)]; }
         let unit = &self.units[u];
+        let caster = unit.t.caster.as_ref();
+        let fixed_lvl = caster
+            .and_then(|c| c.spell_levels.iter().find(|&&(s, _)| s == spell).map(|&(_, l)| l))
+            .unwrap_or(base);
+        let is_at_will = caster.is_some_and(|c| c.at_will.contains(&spell));
         let mut payments = Vec::new();
-        if unit.free_casts.contains(&spell) {
-            payments.push((base, true));
+        if is_at_will || unit.free_casts.contains(&spell) {
+            payments.push((fixed_lvl, true));
         }
         if self.rule_version < 9 {
             if payments.is_empty() {
@@ -783,6 +844,9 @@ impl Fight {
             let harmful = spell.harmful();
             let own = targets.iter().any(|&t| t == u || self.allies(u, t));
             if harmful && own {
+                continue;
+            }
+            if harmful && targets.iter().any(|&t| self.is_charmed_by(u, t)) {
                 continue;
             }
             if !harmful && targets.iter().any(|&t| self.opposing(u, t)) {
@@ -1214,6 +1278,73 @@ impl Fight {
                 let stake = self.expected_dpr(t, None) + if self.foes_near(t, 5).is_empty() { 0.0 } else { 2.0 };
                 weight * stake
             }
+            Invisibility => {
+                let target = t0.unwrap_or(u);
+                if self.units[target].invisible() || self.units[u].concentration.is_some() {
+                    return POINTLESS;
+                }
+                let enemies = self.opponents_of(u).into_iter().any(|e| self.units[e].conscious());
+                if !enemies {
+                    return POINTLESS;
+                }
+                let hp_frac = self.units[u].hp as f64 / self.max_hp_of(u).max(1) as f64;
+                if hp_frac <= 0.5 { 5.5 } else { 3.5 }
+            }
+            RayOfSickness => {
+                let Some(t) = t0 else { return POINTLESS };
+                if !self.opposing(u, t) {
+                    return POINTLESS;
+                }
+                let modifier = self.units[u].t.caster.as_ref().map_or(0, |k| k.spell_attack);
+                let ac = self.attack_ac(self.units[u].pos, t);
+                let wk = self.kind_for_spell(u, c.spell, WeaponKind::spell_ranged(60));
+                let (adv, dis) = self.advantage_flags(u, t, wk);
+                let mode = Fight::mode_of(adv, dis);
+                let p_hit = crate::dice::prob_at_least(20, modifier, ac, mode);
+                let n = 2 + (c.at_level - 1).max(0);
+                p_hit * (n as f64 * 4.5)
+            }
+            CharmMonster => {
+                let Some(t) = t0 else { return POINTLESS };
+                if self.units[t].dead() || self.units[t].t.immune_charmed || self.is_charmed_by(t, u) {
+                    return POINTLESS;
+                }
+                let dc = self.spell_dc_for(u, c.spell);
+                let p_fail = self.save_fail_chance_adv(t, Ability::Wis, dc, true);
+                7.0 * p_fail
+            }
+            Entangle => {
+                let Some((ox, oy)) = c.point else { return POINTLESS };
+                let dc = self.spell_dc_for(u, c.spell);
+                let mut seen: Vec<usize> = Vec::new();
+                let mut score = 0.0;
+                let mut foes = 0;
+                for dx in 0..4 {
+                    for dy in 0..4 {
+                        let p = (ox + dx, oy + dy);
+                        if !self.grid.in_bounds(p.0, p.1) {
+                            continue;
+                        }
+                        for idx in 0..self.units.len() {
+                            if idx == u || self.units[idx].dead() || self.units[idx].pos != p || seen.contains(&idx) {
+                                continue;
+                            }
+                            seen.push(idx);
+                            if self.units[idx].t.immune_restrained || self.is_restrained(idx) {
+                                continue;
+                            }
+                            let p_fail = self.save_fail_chance_est(idx, Ability::Str, dc);
+                            if self.opposing(u, idx) {
+                                foes += 1;
+                                score += 8.0 * p_fail;
+                            } else {
+                                score -= 10.0 * p_fail;
+                            }
+                        }
+                    }
+                }
+                if foes > 0 { score } else { POINTLESS }
+            }
             _ => 0.0,
         }
     }
@@ -1398,6 +1529,9 @@ impl Fight {
             if !self.units[t].frightened_by.is_empty() {
                 self.expire_fear(t);
             }
+            if self.units[t].lured_by.is_some() {
+                self.expire_lured(t);
+            }
             self.lose_dodge_if_ineligible(t);
             // a rage ends on the Incapacitated condition, whatever applied it
             if self.units[t].raging {
@@ -1463,14 +1597,22 @@ impl Fight {
             Some(e) => *e = entry,
             None => self.units[t].turned_by.push(entry),
         }
-        // apply_fear(ends_on_damage); the shadow is immune to Frightened
+        // apply_fear(ends_on_damage=True); the shadow is immune to Frightened
         if !self.units[t].t.immune_frightened {
-            match self.units[t].frightened_by.iter_mut().find(|e| e.0 == src) {
-                Some(e) => *e = (src, gt + 60),
-                None => self.units[t].frightened_by.push((src, gt + 60)),
-            }
-            self.sync_fear(t);
+            self.apply_timed_fear(t, src, 60, true);
         }
+    }
+
+    pub fn apply_timed_fear(&mut self, t: usize, src: usize, duration: i32, ends_on_damage: bool) {
+        if self.units[t].dead() || self.units[t].t.immune_frightened {
+            return;
+        }
+        let until = self.gt() + duration;
+        match self.units[t].frightened_by.iter_mut().find(|e| e.0 == src) {
+            Some(e) => *e = (src, until, ends_on_damage),
+            None => self.units[t].frightened_by.push((src, until, ends_on_damage)),
+        }
+        self.sync_fear(t);
     }
 
     fn sync_fear(&mut self, t: usize) {
@@ -1562,7 +1704,7 @@ impl Fight {
         let gt = self.gt();
         let cheb = |a: Pos, b: Pos| (a.0 - b.0).abs().max((a.1 - b.1).abs());
         let unit = &self.units[u];
-        let timed = unit.frightened_by.iter().filter(|&&(_, until)| gt < until).map(|&(f, _)| f);
+        let timed = unit.frightened_by.iter().filter(|&&(_, until, _)| gt < until).map(|&(f, _, _)| f);
         let turn = unit.source_fear.iter().map(|&(f, _)| f);
         for f in timed.chain(turn) {
             if self.units[f].dead() {
@@ -1597,15 +1739,15 @@ impl Fight {
     /// `fear.active_fear_sources` (timed entries): a read (N20-046);
     /// [`Fight::expire_fear`] ends lapsed entries.
     pub fn active_fear_sources(&self, t: usize) -> Vec<usize> {
-        self.units[t].frightened_by.iter().filter(|&&(s, until)| !self.fear_lapsed(s, until)).map(|e| e.0).collect()
+        self.units[t].frightened_by.iter().filter(|&&(s, until, _)| !self.fear_lapsed(s, until)).map(|e| e.0).collect()
     }
 
     /// `fear.expire_fear`: drop the lapsed timed entries; the status follows
     /// the table when one ended.
     pub fn expire_fear(&mut self, t: usize) {
         let before = self.units[t].frightened_by.len();
-        let keep: Vec<(usize, i32)> =
-            self.units[t].frightened_by.iter().copied().filter(|&(s, until)| !self.fear_lapsed(s, until)).collect();
+        let keep: Vec<(usize, i32, bool)> =
+            self.units[t].frightened_by.iter().copied().filter(|&(s, until, _)| !self.fear_lapsed(s, until)).collect();
         if keep.len() != before {
             self.units[t].frightened_by = keep;
             self.sync_fear(t);
@@ -1615,7 +1757,13 @@ impl Fight {
     /// Damage ends fear (`ends_on_damage`) and the turn effect.
     pub fn on_damaged_turn_fear(&mut self, t: usize) {
         if !self.units[t].frightened_by.is_empty() {
-            for s in self.active_fear_sources(t) {
+            let ends: Vec<usize> = self.units[t]
+                .frightened_by
+                .iter()
+                .filter(|&&(s, until, eod)| eod && !self.fear_lapsed(s, until))
+                .map(|e| e.0)
+                .collect();
+            for s in ends {
                 self.end_fear(t, s);
             }
         }
@@ -1686,19 +1834,34 @@ impl Fight {
     /// `Spell.consume`: action economy, slot or free cast, materials, and the
     /// turn's spell record.
     fn consume_spell(&mut self, u: usize, c: &Cast) {
-        let unit = &mut self.units[u];
+        let is_ma_spell = !c.spell.bonus_action() && self.multiattack_spell(u, c.spell);
         if c.spell.bonus_action() {
+            let unit = &mut self.units[u];
             unit.bonus = (unit.bonus - 1).max(0);
+        } else if is_ma_spell {
+            if !self.units[u].ma_started {
+                self.units[u].action = (self.units[u].action - 1).max(0);
+                self.units[u].ma_started = true;
+            }
+            self.narrow_multiattack(u, Some(c.spell.key()));
+            if self.units[u].ma_groups.iter().all(|(_, v)| v.is_empty()) {
+                self.clear_multiattack(u);
+            }
         } else {
+            let unit = &mut self.units[u];
             unit.action = (unit.action - 1).max(0);
         }
+        let unit = &mut self.units[u];
+        let is_at_will = unit.t.caster.as_ref().is_some_and(|k| k.at_will.contains(&c.spell));
         let level = if c.spell.level() > 0 { c.at_level } else { 0 };
         if c.free {
             if self.rule_version < 4 {
                 unit.last_slot_turn = Some((self.round, self.turn_idx));
             }
-            if let Some(i) = unit.free_casts.iter().position(|&s| s == c.spell) {
-                unit.free_casts.remove(i);
+            if !is_at_will {
+                if let Some(i) = unit.free_casts.iter().position(|&s| s == c.spell) {
+                    unit.free_casts.remove(i);
+                }
             }
         } else if level > 0 {
             let l = if unit.slots[level as usize] >= 1 { Some(level) } else { (level.max(1)..=2).find(|&x| unit.slots[x as usize] > 0) };
@@ -1787,7 +1950,7 @@ impl Fight {
             SacredFlame => {
                 let t = t0.unwrap();
                 let dc = self.spell_dc_for(u, c.spell);
-                let total = self.save_throw(t, Ability::Dex);
+                let total = self.save_throw_ex(t, Ability::Dex, false, 0, true, false, false).0;
                 if total < dc || self.units[u].t.potent_cantrip {
                     let faces = self.roll_dice(u, "spells.sacred_flame", 1, 8);
                     let amount: i32 = faces.iter().sum();
@@ -1901,7 +2064,7 @@ impl Fight {
                     if self.units[t].dead() {
                         continue;
                     }
-                    let total = self.save_throw(t, Ability::Wis);
+                    let total = self.save_throw_ex(t, Ability::Wis, false, 0, true, false, false).0;
                     if total >= dc {
                         items.push(Item::SpellMiss { t, save: Some(SaveOutcome::Made), atk_roll_fmt: None });
                         continue;
@@ -1915,6 +2078,80 @@ impl Fight {
             SpareTheDying => items.push(Item::Stabilize(t0.unwrap())),
             LesserRestoration => items.push(Item::Restore(t0.unwrap_or(u))),
             MageArmor => items.push(Item::MageArmor(t0.unwrap())),
+            Invisibility => items.push(Item::Invisibility(t0.unwrap_or(u))),
+            RayOfSickness => {
+                let t = t0.unwrap();
+                let (hit, nat20, dismiss, t, atk_fmt) =
+                    self.evaluate_spell_attack(u, t, RayOfSickness, WeaponKind::spell_ranged(60));
+                for d in dismiss {
+                    items.push(Item::Dismiss(d.0, d.1));
+                }
+                if hit {
+                    let n = 2 + (c.at_level - 1).max(0);
+                    let n = if nat20 { n * 2 } else { n };
+                    let faces = self.roll_dice(u, "spells.ray_of_sickness", n, 8);
+                    let amount: i32 = faces.iter().sum();
+                    let dmg_fmt = self.web_events.is_some().then(|| {
+                        crate::web_events::fmt_dice_roll(8, &faces, 0, false, amount)
+                    });
+                    items.push(Item::Damage {
+                        t,
+                        amount,
+                        dt: Dmg::Poison,
+                        crit: nat20,
+                        save: None,
+                        atk_roll_fmt: atk_fmt,
+                        dmg_roll_fmt: dmg_fmt,
+                    });
+                    if !self.units[t].t.immune_poisoned {
+                        items.push(Item::RayOfSickness { t });
+                    }
+                } else {
+                    items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: atk_fmt });
+                }
+            }
+            CharmMonster => {
+                let t = t0.unwrap();
+                let dc = self.spell_dc_for(u, c.spell);
+                if self.units[t].t.immune_charmed {
+                    items.push(Item::CharmMonster { t, charmed: false });
+                } else {
+                    let in_combat = self.opposing(u, t);
+                    let total = self.save_throw_ex(t, Ability::Wis, false, 0, true, true, in_combat).0;
+                    items.push(Item::CharmMonster { t, charmed: total < dc });
+                }
+            }
+            Entangle => {
+                let (ox, oy) = c.point.unwrap();
+                let mut squares = Vec::with_capacity(16);
+                for dx in 0..4 {
+                    for dy in 0..4 {
+                        let p = (ox + dx, oy + dy);
+                        if self.grid.in_bounds(p.0, p.1) {
+                            squares.push(p);
+                        }
+                    }
+                }
+                let dc = self.spell_dc_for(u, c.spell);
+                let mut seen: Vec<usize> = Vec::new();
+                let mut failed: Vec<usize> = Vec::new();
+                for &sq in &squares {
+                    for idx in 0..self.units.len() {
+                        if idx == u || self.units[idx].dead() || self.units[idx].pos != sq || seen.contains(&idx) {
+                            continue;
+                        }
+                        seen.push(idx);
+                        if self.units[idx].t.immune_restrained {
+                            continue;
+                        }
+                        let (passed, _) = self.save_check_ex(None, idx, Ability::Str, dc, false, true, false);
+                        if !passed {
+                            failed.push(idx);
+                        }
+                    }
+                }
+                items.push(Item::Entangle { squares, dc, failed });
+            }
             ScorchingRay if self.rule_version >= 14 => {}
             ChromaticOrb if self.rule_version >= 13 => {}
             _ => rerolled = self.resolve_sorcerer(u, c, &mut items, &mut rolls),
@@ -2188,6 +2425,86 @@ impl Fight {
                         self.units[t].statuses.retain(|s| *s != St::Paralyzed);
                     } else if unit.poisoned() {
                         self.units[t].stench_poison.clear();
+                        self.units[t].statuses.retain(|s| *s != St::Poisoned);
+                        let ros: Vec<u32> = self.active_effects(t, EffKey::RayOfSickness);
+                        for o in ros {
+                            self.dismiss_effect(t, o);
+                        }
+                    }
+                }
+                Item::Invisibility(t) => {
+                    let obj = self.new_obj(Invisibility, ObjKind::Invisibility, u, vec![t], false);
+                    self.add_casted(u, t, obj, Some(3600));
+                    if self.units[u].concentration != Some(obj) {
+                        self.concentration_on(u, obj);
+                    }
+                    self.register_effect(t, EffKey::Invisible, obj, Some(3600));
+                    self.register_hook(t, HookEv::AttackResolved, HookKind::InvisibilityBreak, obj, Some(3600));
+                    self.register_hook(t, HookEv::SpellCast, HookKind::InvisibilityBreak, obj, Some(3600));
+                    if !self.units[t].has(St::Invisible) {
+                        self.units[t].statuses.push(St::Invisible);
+                    }
+                }
+                Item::RayOfSickness { t } => {
+                    if !self.units[t].dead() && !self.units[t].t.immune_poisoned {
+                        let added = !self.units[t].has(St::Poisoned);
+                        if added {
+                            self.units[t].statuses.push(St::Poisoned);
+                        }
+                        let obj = self.new_obj(
+                            RayOfSickness,
+                            ObjKind::RaySickness { target: t, armed: false, added_status: added },
+                            u,
+                            vec![t],
+                            true,
+                        );
+                        self.add_casted(u, t, obj, Some(12));
+                        self.register_effect(t, EffKey::RayOfSickness, obj, Some(12));
+                        self.register_hook(u, HookEv::StartOfTurn, HookKind::RaySicknessStart, obj, Some(12));
+                        self.register_hook(u, HookEv::EndOfTurn, HookKind::RaySicknessEnd, obj, Some(12));
+                    }
+                }
+                Item::CharmMonster { t, charmed } => {
+                    for other in 0..self.units.len() {
+                        if other != t
+                            && self.units[other]
+                                .charmed_by
+                                .iter()
+                                .any(|c| c.source == u && c.source_spell == Some("charm_monster"))
+                        {
+                            self.end_charm(other, u);
+                        }
+                    }
+                    if charmed && !self.units[t].dead() {
+                        self.apply_charm(t, u, None, None, true, true, Some("charm_monster"));
+                    }
+                }
+                Item::Entangle { squares, dc, failed } => {
+                    let duration = 60;
+                    let zone_obj = self.new_obj(
+                        Entangle,
+                        ObjKind::Entangle { squares, dc, restraints: Vec::new(), expires_at: self.gt() + duration },
+                        u,
+                        Vec::new(),
+                        true,
+                    );
+                    self.add_casted(u, u, zone_obj, Some(duration));
+                    self.concentration_on(u, zone_obj);
+                    for t in failed {
+                        if !self.units[t].dead() && !self.units[t].t.immune_restrained {
+                            let r_obj = self.new_obj(
+                                Entangle,
+                                ObjKind::EntangleRestraint { target: t, dc, zone: zone_obj },
+                                u,
+                                vec![t],
+                                true,
+                            );
+                            if let ObjKind::Entangle { restraints, .. } = &mut self.objs[zone_obj as usize].kind {
+                                restraints.push(r_obj);
+                            }
+                            self.register_effect(t, EffKey::RestrainedOverride, r_obj, Some(duration));
+                            self.register_effect(t, EffKey::EscapableRestraint, r_obj, Some(duration));
+                        }
                     }
                 }
             }
@@ -2342,7 +2659,11 @@ impl Fight {
                 let mut saved = false;
                 if !*heal {
                     let dc = self.spell_dc(u);
-                    let total = self.save_throw(t, Ability::Con);
+                    let total = if self.rule_version >= 16 {
+                        self.save_throw_ex(t, Ability::Con, false, 0, true, false, false).0
+                    } else {
+                        self.save_throw(t, Ability::Con)
+                    };
                     saved = total >= dc;
                     if saved {
                         amount = roll.div_euclid(2);

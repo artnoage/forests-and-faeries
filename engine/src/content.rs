@@ -196,9 +196,58 @@ impl Dice {
     }
 }
 
+pub fn size_rank(size: &str) -> Option<u8> {
+    match size {
+        "tiny" => Some(0),
+        "small" => Some(1),
+        "medium" => Some(2),
+        "large" => Some(3),
+        "huge" => Some(4),
+        "gargantuan" => Some(5),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Condition {
     Paralyzed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetCond {
+    Frightened,
+    ZeroHpLiving,
+    GrappledBySource,
+    Grappled,
+    CharmedBySource,
+    Incapacitated,
+    Restrained,
+    Unconscious,
+    Paralyzed,
+    Prone,
+}
+
+impl TargetCond {
+    pub fn parse(s: &str) -> Option<TargetCond> {
+        match s {
+            "frightened" => Some(TargetCond::Frightened),
+            "zero_hp_living" => Some(TargetCond::ZeroHpLiving),
+            "grappled_by_source" => Some(TargetCond::GrappledBySource),
+            "grappled" => Some(TargetCond::Grappled),
+            "willing" | "charmed_by_source" => Some(TargetCond::CharmedBySource),
+            "incapacitated" => Some(TargetCond::Incapacitated),
+            "restrained" => Some(TargetCond::Restrained),
+            "unconscious" => Some(TargetCond::Unconscious),
+            "paralyzed" => Some(TargetCond::Paralyzed),
+            "prone" => Some(TargetCond::Prone),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdvCond {
+    TargetGrappledBySource,
 }
 
 /// An on-hit rider of an NPC attack (`on_hit` YAML).
@@ -219,17 +268,29 @@ pub enum OnHit {
     /// (a mummy's Dreadful Glare): Frightened of the attacker until the end
     /// of its next turn (`fear.apply_fear(until_source_turn_end=True)`).
     Frighten,
+    /// `fail: push:<feet>` (Satyr Hooves): push target straight away.
+    Push { feet: i32, max_size_rank: Option<u8> },
+    /// `fail: grapple:<dc>` (Bugbear Warrior Grab): grapple target with escape DC.
+    Grapple { escape_dc: i32, max_size_rank: Option<u8> },
+    /// `fail: status:charmed` (Sprite Enchanting Bow).
+    Charm { start_of_source_next_turn: bool, repeat_save_when_harmed: bool, ai_value: f64 },
+    /// `fail: effect:consume_life` (Will-o'-Wisp Consume Life).
+    ConsumeLife { heal_die: Dice },
 }
 
 impl OnHit {
     /// The YAML `fail:` text.
-    pub fn fail(&self) -> &'static str {
+    pub fn fail(&self) -> String {
         match self {
-            OnHit::SaveCondition { .. } => "condition:paralyzed",
-            OnHit::LifeDrain => "effect:life_drain",
-            OnHit::StrengthDrain => "effect:strength_drain",
-            OnHit::Curse => "effect:no_healing",
-            OnHit::Frighten => "effect:frightened",
+            OnHit::SaveCondition { .. } => "condition:paralyzed".to_string(),
+            OnHit::LifeDrain => "effect:life_drain".to_string(),
+            OnHit::StrengthDrain => "effect:strength_drain".to_string(),
+            OnHit::Curse => "effect:no_healing".to_string(),
+            OnHit::Frighten => "effect:frightened".to_string(),
+            OnHit::Push { feet, .. } => format!("push:{feet}"),
+            OnHit::Grapple { escape_dc, .. } => format!("grapple:{escape_dc}"),
+            OnHit::Charm { .. } => "status:charmed".to_string(),
+            OnHit::ConsumeLife { .. } => "effect:consume_life".to_string(),
         }
     }
 }
@@ -305,6 +366,80 @@ pub struct AttackDef {
     /// Minion's daggers): index into `Template::inventory`. No item left, no
     /// attack; an NPC throw spends one (G8b).
     pub npc_item: Option<u8>,
+    /// Bonus action cost override (Will-o'-Wisp `consume_life`).
+    pub bonus_action: bool,
+    /// Recharge threshold on start-of-turn 1d6 (Sea Hag `death_glare`: 5).
+    pub recharge: Option<i32>,
+    /// Target condition restrictions (any-of; e.g. `frightened`, `zero_hp_living`).
+    pub target_if: Vec<TargetCond>,
+    /// Conditional Advantage on attack roll (`target:grappled_by_source`).
+    pub advantage_if: Option<AdvCond>,
+    /// On failed save, drop target to 0 HP if `hp <= threshold`, else deal `damage` (Sea Hag `death_glare`).
+    pub drop_to_zero_hp_lte: Option<i32>,
+    /// Ends Vanish/Invisibility immediately when used (Will-o'-Wisp `consume_life`).
+    pub breaks_invisibility: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct AreaAbilityDef {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub shape: &'static str,
+    pub range: i32,
+    pub width: i32,
+    pub save: Ability,
+    pub dc: i32,
+    pub damage: Dice,
+    pub damage_type: Dmg,
+    pub half_on_success: bool,
+    pub bonus_action: bool,
+    pub speed_penalty: Option<i32>,
+    pub recharge: Option<i32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TeleportDef {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub bonus_action: bool,
+    pub tree_stride: bool,
+    pub range: i32,
+    pub tree_range: i32,
+    pub tree_adjacency: i32,
+    pub recharge: Option<i32>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LuringSongDef {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub range: i32,
+    pub dc: i32,
+    pub humanoid: bool,
+    pub giant: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct VanishDef {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub bonus_action: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DeathBurstDef {
+    pub radius: i32,
+    pub save: Ability,
+    pub dc: i32,
+    pub damage: Dice,
+    pub damage_type: Dmg,
+    pub half_on_success: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct VileAppearanceDef {
+    pub dc: i32,
+    pub range: i32,
 }
 
 /// An NPC `swap_retarget` reaction (`natural20/utils/npc_reactions.py`, the
@@ -357,16 +492,21 @@ pub enum SpellId {
     Shield,
     // wizard (Ilyra)
     MageArmor,
+    // fey campaign innate / monster spells (SRD 5.2.1)
+    Invisibility,
+    RayOfSickness,
+    CharmMonster,
+    Entangle,
 }
 
 impl SpellId {
-    pub const ALL: [SpellId; 27] = {
+    pub const ALL: [SpellId; 31] = {
         use SpellId::*;
         [
             SacredFlame, GuidingBolt, SpiritualWeapon, Bless, ShieldOfFaith, CureWounds, HealingWord, Aid, Command,
             ProtectionFromEvilAndGood, Sanctuary, SpareTheDying, LesserRestoration, SorcerousBurst, Firebolt,
             RayOfFrost, AcidSplash, ChromaticOrb, MagicMissile, BurningHands, Thunderwave, Shatter, ScorchingRay,
-            DragonsBreath, Blur, Shield, MageArmor,
+            DragonsBreath, Blur, Shield, MageArmor, Invisibility, RayOfSickness, CharmMonster, Entangle,
         ]
     };
 
@@ -413,6 +553,16 @@ pub struct CasterSpec {
     pub innate_sorcery: i32,
     /// Known Metamagic options.
     pub metamagic: Vec<Mm>,
+    /// True for NPC innate spellcasting (`spellcasting.innate: true`).
+    pub innate: bool,
+    /// Innate at-will spells (unlimited free casts, no pool in `resources`).
+    pub at_will: Vec<SpellId>,
+    /// Inert per-day innate pools registered at NPC init (`innate:pass_without_trace`).
+    pub inert_pools: Vec<(&'static str, i32)>,
+    /// Spells restricted to self-only targeting (Sprite/Green Hag `invisibility`).
+    pub self_only: Vec<SpellId>,
+    /// Fixed innate upcast levels (Green Hag `ray_of_sickness`: 3).
+    pub spell_levels: Vec<(SpellId, i32)>,
 }
 
 /// A creature of the pool. `id` is the natural20 content id.
@@ -425,14 +575,18 @@ pub struct Template {
     pub remarkable_athlete: bool,
     pub name: &'static str,
     pub size: &'static str,
+    pub size_rank: u8,
     pub pc: bool,
     pub ac: i32,
     pub max_hp: i32,
     pub speed: i32,
     pub fly: bool,
+    pub hover: bool,
     /// STR, DEX, CON, INT, WIS, CHA.
     pub abil: [i32; 6],
     pub save_prof: [bool; 6],
+    /// Derived skill modifiers: `[medicine, athletics, acrobatics]`.
+    pub skills: [i32; 3],
     pub prof_bonus: i32,
     /// `initiative_bonus()` as natural20 computes it.
     pub init_bonus: i32,
@@ -448,11 +602,18 @@ pub struct Template {
     pub immune_poisoned: bool,
     /// Condition immunity to Frightened (the shadow).
     pub immune_frightened: bool,
-    /// Condition immunities with no effect here (observation features only).
     pub immune_charmed: bool,
     pub immune_exhaustion: bool,
+    pub immune_grappled: bool,
+    pub immune_restrained: bool,
+    pub immune_unconscious: bool,
     pub undead: bool,
     pub elf: bool,
+    pub humanoid: bool,
+    pub beast: bool,
+    pub giant: bool,
+    pub fey: bool,
+    pub fey_ancestry: bool,
     /// One of Protection from Evil and Good's creature types
     /// (`protection_from_evil_and_good.protected_against`: aberration,
     /// celestial, elemental, fey, fiend, undead): the goblins are Fey.
@@ -460,7 +621,7 @@ pub struct Template {
     /// `undead_fortitude: {dc_base, bypass}`.
     pub undead_fortitude: Option<(i32, u32)>,
     pub stench_dc: Option<i32>,
-    /// Multiattack combinations (`multiattack` YAML), as attack-name lists.
+    /// Multiattack combinations (`multiattack` YAML), as attack/spell name lists.
     pub multiattack: Vec<Vec<&'static str>>,
     // Fighter
     pub improved_critical: bool,
@@ -528,6 +689,17 @@ pub struct Template {
     pub danger_sense: bool,
     /// Path of the Berserker: Frenzy.
     pub frenzy: bool,
+    // Fey campaign NPC traits & special actions (SRD 5.2.1)
+    pub flyby: bool,
+    pub magic_resistance: bool,
+    pub blurred_form: bool,
+    pub abduct: bool,
+    pub vile_appearance: Option<VileAppearanceDef>,
+    pub death_burst: Option<DeathBurstDef>,
+    pub area_abilities: Vec<AreaAbilityDef>,
+    pub teleports: Vec<TeleportDef>,
+    pub luring_song: Option<LuringSongDef>,
+    pub vanish: Option<VanishDef>,
 }
 
 impl Template {
@@ -568,6 +740,7 @@ pub enum Feature {
     RecklessAttack,
     DangerSense,
     Frenzy,
+    FeyAncestry,
     Inert,
 }
 
@@ -592,12 +765,13 @@ impl Feature {
             "reckless_attack" => RecklessAttack,
             "danger_sense" => DangerSense,
             "frenzy" => Frenzy,
+            "fey_ancestry" => FeyAncestry,
             "remarkable_athlete" => RemarkableAthlete,
             "potent_cantrip" => PotentCantrip,
             "wizard_subclass" | "evocation_savant" | "martial_archetype" | "weapon_mastery" | "divine_order" | "divine_domain"
             | "draconic_resilience" | "sorcerer_subclass" | "draconic_spells" | "spellcasting" | "alert"
             | "magic_initiate_cleric" | "magic_initiate_wizard" | "resourceful" | "skillful" | "versatile"
-            | "elven_lineage" | "fey_ancestry" | "keen_senses" | "trance" | "defense" | "ritual_adept"
+            | "elven_lineage" | "keen_senses" | "trance" | "defense" | "ritual_adept"
             | "arcane_recovery" | "scholar" | "unarmored_defense_barbarian" | "primal_path" | "primal_knowledge" => Inert,
             _ => return None,
         })
@@ -614,6 +788,12 @@ pub enum Trait {
     NimbleEscape,
     IncorporealMovement,
     ShadowStealth,
+    Flyby,
+    MagicResistance,
+    BlurredForm,
+    Abduct,
+    VileAppearance,
+    DeathBurst,
     Inert,
 }
 
@@ -626,7 +806,15 @@ impl Trait {
             "pack_tactics" => Trait::PackTactics,
             "incorporeal_movement" => Trait::IncorporealMovement,
             "shadow_stealth" => Trait::ShadowStealth,
-            "sunlight_sensitivity" | "sunlight_weakness" | "amorphous" => Trait::Inert,
+            "flyby" => Trait::Flyby,
+            "magic_resistance" => Trait::MagicResistance,
+            "blurred_form" => Trait::BlurredForm,
+            "abduct" => Trait::Abduct,
+            "vile_appearance" => Trait::VileAppearance,
+            "death_burst" => Trait::DeathBurst,
+            "sunlight_sensitivity" | "sunlight_weakness" | "amorphous"
+            | "amphibious" | "coven_magic" | "mimicry" | "ephemeral" | "illumination"
+            | "speak_with_beasts_and_plants" => Trait::Inert,
             _ => return None,
         })
     }
@@ -708,6 +896,18 @@ pub struct OnHitDoc {
     pub dc: Option<i32>,
     #[serde(default)]
     pub condition: Option<String>,
+    #[serde(default)]
+    pub feet: Option<i32>,
+    #[serde(default)]
+    pub escape_dc: Option<i32>,
+    #[serde(default)]
+    pub duration: Option<String>,
+    #[serde(default)]
+    pub repeat_save_when_harmed: Option<bool>,
+    #[serde(default)]
+    pub ai_value: Option<f64>,
+    #[serde(default)]
+    pub heal_die: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -755,6 +955,74 @@ pub struct AttackDoc {
     /// Mummy: a save action without damage (Dreadful Glare).
     #[serde(default)]
     pub no_damage: bool,
+    #[serde(default)]
+    pub cost: Option<String>,
+    #[serde(default)]
+    pub recharge: Option<i32>,
+    #[serde(default)]
+    pub target_if: Vec<String>,
+    #[serde(default)]
+    pub advantage_if: Option<String>,
+    #[serde(default)]
+    pub drop_to_zero_hp_lte: Option<i32>,
+    #[serde(default)]
+    pub breaks_invisibility: bool,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct AreaAbilityDoc {
+    pub name: String,
+    pub label: String,
+    pub shape: String,
+    pub range: i32,
+    #[serde(default)]
+    pub width: Option<i32>,
+    pub save: String,
+    pub dc: i32,
+    pub damage: String,
+    pub damage_type: String,
+    pub half_on_success: bool,
+    pub cost: String,
+    #[serde(default)]
+    pub on_fail: Vec<String>,
+    #[serde(default)]
+    pub recharge: Option<i32>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct TeleportDoc {
+    pub name: String,
+    pub label: String,
+    pub cost: String,
+    pub tree_stride: bool,
+    #[serde(default)]
+    pub range: Option<i32>,
+    #[serde(default)]
+    pub tree_range: Option<i32>,
+    #[serde(default)]
+    pub tree_adjacency: Option<i32>,
+    #[serde(default)]
+    pub recharge: Option<i32>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct LuringSongDoc {
+    pub name: String,
+    pub label: String,
+    pub range: i32,
+    pub dc: i32,
+    pub target_types: Vec<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct VanishDoc {
+    pub name: String,
+    pub label: String,
+    pub cost: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -795,6 +1063,8 @@ pub struct FreeCastDoc {
     pub spell: String,
     pub pool: String,
     pub uses: i32,
+    #[serde(default)]
+    pub at_will: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -824,6 +1094,12 @@ pub struct SpellcastingDoc {
     pub spell_info: Vec<SpellInfoDoc>,
     pub free_casts: Vec<FreeCastDoc>,
     pub resources: BTreeMap<String, i32>,
+    #[serde(default)]
+    pub innate: bool,
+    #[serde(default)]
+    pub self_only: Vec<String>,
+    #[serde(default)]
+    pub spell_levels: BTreeMap<String, i32>,
 }
 
 /// One `content/<pack>/<id>.json` file.
@@ -848,6 +1124,8 @@ pub struct ContentDoc {
     pub max_hp: i32,
     pub speed: i32,
     pub fly: bool,
+    #[serde(default)]
+    pub hover: bool,
     pub abilities: BTreeMap<String, i32>,
     pub proficiency_bonus: i32,
     pub saves: BTreeMap<String, i32>,
@@ -856,6 +1134,8 @@ pub struct ContentDoc {
     pub damage: DamageMods,
     pub condition_immunities: Vec<String>,
     pub passive_perception: i32,
+    #[serde(default)]
+    pub skills: BTreeMap<String, i32>,
     #[serde(default)]
     pub darkvision: i32,
     #[serde(default)]
@@ -867,6 +1147,14 @@ pub struct ContentDoc {
     pub loadout: Option<LoadoutDoc>,
     pub classes: BTreeMap<String, i32>,
     pub attacks: Vec<AttackDoc>,
+    #[serde(default)]
+    pub area_abilities: Vec<AreaAbilityDoc>,
+    #[serde(default)]
+    pub teleports: Vec<TeleportDoc>,
+    #[serde(default)]
+    pub luring_song: Option<LuringSongDoc>,
+    #[serde(default)]
+    pub vanish: Option<VanishDoc>,
     pub multiattack: Vec<Vec<String>>,
     #[serde(default)]
     pub expected_round_damage: Option<ErdDoc>,
@@ -946,9 +1234,10 @@ impl Template {
         if d.pc != (d.side == "heroes") || !matches!(d.side.as_str(), "heroes" | "monsters") {
             return Err(format!("side {:?} with pc {}", d.side, d.pc));
         }
-        if !matches!(d.size.as_str(), "small" | "medium") {
-            return Err(format!("size {:?}: only 1x1 creatures (Small, Medium) are supported", d.size));
+        if !matches!(d.size.as_str(), "tiny" | "small" | "medium") {
+            return Err(format!("size {:?}: only 1x1 creatures (Tiny, Small, Medium) are supported", d.size));
         }
+        let srank = size_rank(&d.size).unwrap_or(2);
         if d.tags.object {
             return Err("objects are not creatures".into());
         }
@@ -968,6 +1257,11 @@ impl Template {
                 return Err(format!("{} save {save:+} is neither the modifier nor modifier + PB", a.short()));
             };
         }
+        let skills = [
+            d.skills.get("medicine").copied().unwrap_or_else(|| ability_mod(abil[Ability::Wis.idx()])),
+            d.skills.get("athletics").copied().unwrap_or_else(|| ability_mod(abil[Ability::Str.idx()])),
+            d.skills.get("acrobatics").copied().unwrap_or_else(|| ability_mod(abil[Ability::Dex.idx()])),
+        ];
         let mut cond = HashSet::new();
         for c in &d.condition_immunities {
             if !CONDITIONS.contains(&c.as_str()) {
@@ -983,13 +1277,16 @@ impl Template {
             remarkable_athlete: false,
             name: intern(&d.name),
             size: intern(&d.size),
+            size_rank: srank,
             pc: d.pc,
             ac: d.ac,
             max_hp: d.max_hp,
             speed: d.speed,
             fly: d.fly,
+            hover: d.hover,
             abil,
             save_prof,
+            skills,
             prof_bonus: d.proficiency_bonus,
             init_bonus: d.initiative.bonus,
             init_adv: d.initiative.advantage,
@@ -1003,10 +1300,18 @@ impl Template {
             immune_frightened: cond.contains("frightened"),
             immune_charmed: cond.contains("charmed"),
             immune_exhaustion: cond.contains("exhaustion"),
+            immune_grappled: cond.contains("grappled"),
+            immune_restrained: cond.contains("restrained"),
+            immune_unconscious: cond.contains("unconscious"),
             undead: d.tags.undead,
             pfeg_protected: d.tags.undead
                 || d.races.iter().any(|r| matches!(r.as_str(), "aberration" | "celestial" | "elemental" | "fey" | "fiend" | "undead")),
             elf: d.tags.elf,
+            humanoid: d.pc || d.races.iter().any(|r| r == "humanoid"),
+            beast: d.races.iter().any(|r| r == "beast"),
+            giant: d.races.iter().any(|r| r == "giant"),
+            fey: d.races.iter().any(|r| r == "fey"),
+            fey_ancestry: false,
             undead_fortitude: None,
             stench_dc: None,
             multiattack: Vec::new(),
@@ -1049,6 +1354,16 @@ impl Template {
             frenzy: false,
             swap_retarget: None,
             inventory: Vec::new(),
+            flyby: false,
+            magic_resistance: false,
+            blurred_form: false,
+            abduct: false,
+            vile_appearance: None,
+            death_burst: None,
+            area_abilities: Vec::new(),
+            teleports: Vec::new(),
+            luring_song: None,
+            vanish: None,
         };
         match (&d.inventory, d.pc) {
             (Some(inv), false) => {
@@ -1154,13 +1469,76 @@ impl Template {
                 return Err(format!("spare {} without a thrown attack", t.gear[i as usize].0));
             }
         }
-        for combo in &d.multiattack {
-            let mut names = Vec::new();
-            for n in combo {
-                let def = t.attacks.iter().find(|a| a.name == n).ok_or_else(|| format!("multiattack names {n:?}"))?;
-                names.push(def.name);
+        for aa in &d.area_abilities {
+            if d.pc {
+                return Err("area_abilities on a hero".into());
             }
-            t.multiattack.push(names);
+            let mut speed_penalty = None;
+            for rider in &aa.on_fail {
+                if let Some(rest) = rider.strip_prefix("speed_penalty:") {
+                    let pen: i32 = rest.split(':').next().unwrap_or("10").parse()
+                        .map_err(|_| format!("area_ability {} bad speed_penalty {rider:?}", aa.name))?;
+                    speed_penalty = Some(pen);
+                } else {
+                    return Err(format!("area_ability {} on_fail {rider:?} is not implemented", aa.name));
+                }
+            }
+            if !matches!(aa.shape.as_str(), "cone" | "radius" | "line") {
+                return Err(format!("area_ability {} shape {:?} is not implemented", aa.name, aa.shape));
+            }
+            t.area_abilities.push(AreaAbilityDef {
+                name: intern(&aa.name),
+                label: intern(&aa.label),
+                shape: intern(&aa.shape),
+                range: aa.range,
+                width: aa.width.unwrap_or(5),
+                save: ability(&aa.save)?,
+                dc: aa.dc,
+                damage: Dice::parse(&aa.damage)?,
+                damage_type: dmg(&aa.damage_type)?,
+                half_on_success: aa.half_on_success,
+                bonus_action: aa.cost == "bonus_action",
+                speed_penalty,
+                recharge: aa.recharge,
+            });
+        }
+        for tp in &d.teleports {
+            if d.pc {
+                return Err("teleports on a hero".into());
+            }
+            t.teleports.push(TeleportDef {
+                name: intern(&tp.name),
+                label: intern(&tp.label),
+                bonus_action: tp.cost == "bonus_action",
+                tree_stride: tp.tree_stride,
+                range: tp.range.unwrap_or(30),
+                tree_range: tp.tree_range.unwrap_or(60),
+                tree_adjacency: tp.tree_adjacency.unwrap_or(5),
+                recharge: tp.recharge,
+            });
+        }
+        if let Some(ls) = &d.luring_song {
+            if d.pc {
+                return Err("luring_song on a hero".into());
+            }
+            t.luring_song = Some(LuringSongDef {
+                name: intern(&ls.name),
+                label: intern(&ls.label),
+                range: ls.range,
+                dc: ls.dc,
+                humanoid: ls.target_types.iter().any(|s| s == "humanoid"),
+                giant: ls.target_types.iter().any(|s| s == "giant"),
+            });
+        }
+        if let Some(vn) = &d.vanish {
+            if d.pc {
+                return Err("vanish on a hero".into());
+            }
+            t.vanish = Some(VanishDef {
+                name: intern(&vn.name),
+                label: intern(&vn.label),
+                bonus_action: vn.cost == "bonus_action",
+            });
         }
         let melee = t.attacks.iter().filter(|a| !a.ranged).map(|a| a.range).max();
         if !d.pc && melee != t.melee_ft {
@@ -1184,6 +1562,30 @@ impl Template {
                 Trait::NimbleEscape => t.nimble_escape = Some(param_i32(tr, "stealth")?),
                 Trait::IncorporealMovement => t.incorporeal = true,
                 Trait::ShadowStealth => t.shadow_stealth = Some(param_i32(tr, "stealth")?),
+                Trait::Flyby => t.flyby = true,
+                Trait::MagicResistance => t.magic_resistance = true,
+                Trait::BlurredForm => t.blurred_form = true,
+                Trait::Abduct => t.abduct = true,
+                Trait::VileAppearance => {
+                    t.vile_appearance = Some(VileAppearanceDef {
+                        dc: param_i32(tr, "dc")?,
+                        range: param_i32(tr, "range")?,
+                    });
+                }
+                Trait::DeathBurst => {
+                    let save_s = tr.params.get("save").and_then(|v| v.as_str()).ok_or("death_burst: no save")?;
+                    let dmg_s = tr.params.get("damage").and_then(|v| v.as_str()).ok_or("death_burst: no damage")?;
+                    let dt_s = tr.params.get("damage_type").and_then(|v| v.as_str()).ok_or("death_burst: no damage_type")?;
+                    let half = tr.params.get("half_on_success").and_then(|v| v.as_bool()).unwrap_or(true);
+                    t.death_burst = Some(DeathBurstDef {
+                        radius: param_i32(tr, "radius")?,
+                        save: ability(save_s)?,
+                        dc: param_i32(tr, "dc")?,
+                        damage: Dice::parse(dmg_s)?,
+                        damage_type: dmg(dt_s)?,
+                        half_on_success: half,
+                    });
+                }
                 Trait::Inert => {}
             }
         }
@@ -1238,6 +1640,7 @@ impl Template {
                 Feature::RecklessAttack => t.reckless_attack = true,
                 Feature::DangerSense => t.danger_sense = true,
                 Feature::Frenzy => t.frenzy = true,
+                Feature::FeyAncestry => t.fey_ancestry = true,
                 Feature::FontOfMagic | Feature::Inert => {}
             }
         }
@@ -1251,6 +1654,19 @@ impl Template {
         }
         if (t.turn_undead || t.divine_spark || t.preserve_life) && !t.channel_divinity {
             return Err("a Channel Divinity option without Channel Divinity".into());
+        }
+        for combo in &d.multiattack {
+            let mut names = Vec::new();
+            for n in combo {
+                if let Some(def) = t.attacks.iter().find(|a| a.name == n) {
+                    names.push(def.name);
+                } else if let Some(sp) = t.caster.as_ref().and_then(|c| c.spells.iter().find(|s| s.key() == n)) {
+                    names.push(sp.key());
+                } else {
+                    return Err(format!("multiattack names {n:?}"));
+                }
+            }
+            t.multiattack.push(names);
         }
         Ok(t)
     }
@@ -1297,11 +1713,16 @@ fn attack(
     for oh in &a.on_hit {
         let mut not_undead = false;
         let mut not_elf = false;
+        let mut max_size_rank = None;
         for c in &oh.if_ {
             match c.as_str() {
                 "!object" => {}
                 "!undead" => not_undead = true,
                 "!elf" => not_elf = true,
+                s if s.starts_with("size<=") => {
+                    let lim = &s["size<=".len()..];
+                    max_size_rank = Some(size_rank(lim).ok_or_else(|| format!("unknown size {lim:?}"))?);
+                }
                 other => return Err(format!("on_hit if clause {other:?} is not implemented")),
             }
         }
@@ -1319,6 +1740,22 @@ fn attack(
             "strength_drain" if !has_save && !not_undead && !not_elf => OnHit::StrengthDrain,
             "curse" if !has_save && !not_undead && !not_elf && !a.no_damage => OnHit::Curse,
             "frighten" if !has_save && !not_undead && !not_elf && save_attack.is_some() && a.no_damage => OnHit::Frighten,
+            "push" if !has_save && !not_undead && !not_elf => OnHit::Push {
+                feet: oh.feet.ok_or("push without feet")?,
+                max_size_rank,
+            },
+            "grapple" if !has_save && !not_undead && !not_elf => OnHit::Grapple {
+                escape_dc: oh.escape_dc.ok_or("grapple without escape_dc")?,
+                max_size_rank,
+            },
+            "charm" if !has_save && !not_undead && !not_elf => OnHit::Charm {
+                start_of_source_next_turn: oh.duration.as_deref() == Some("start_of_source_next_turn"),
+                repeat_save_when_harmed: oh.repeat_save_when_harmed.unwrap_or(true),
+                ai_value: oh.ai_value.unwrap_or(8.0),
+            },
+            "consume_life" if !has_save && !not_undead && !not_elf && save_attack.is_some() && a.no_damage => OnHit::ConsumeLife {
+                heal_die: Dice::parse(oh.heal_die.as_deref().unwrap_or("3d6"))?,
+            },
             other => return Err(format!("on_hit {other:?} (with these options) is not implemented")),
         });
     }
@@ -1404,6 +1841,21 @@ fn attack(
             return Err("an NPC thrown attack is a melee attack made with an inventory item".into());
         }
     }
+    let target_if = a
+        .target_if
+        .iter()
+        .map(|s| TargetCond::parse(s).ok_or_else(|| format!("target_if {s:?} is not implemented")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let advantage_if = match a.advantage_if.as_deref() {
+        None => None,
+        Some("target:grappled_by_source") => Some(AdvCond::TargetGrappledBySource),
+        Some(other) => return Err(format!("advantage_if {other:?} is not implemented")),
+    };
+    let bonus_action = match a.cost.as_deref() {
+        None | Some("action") => false,
+        Some("bonus_action") => true,
+        Some(other) => return Err(format!("attack cost {other:?} is not implemented")),
+    };
     Ok(AttackDef {
         name: intern(&a.name),
         ranged,
@@ -1431,6 +1883,12 @@ fn attack(
         versatile,
         item,
         npc_item,
+        bonus_action,
+        recharge: a.recharge,
+        target_if,
+        advantage_if,
+        drop_to_zero_hp_lte: a.drop_to_zero_hp_lte,
+        breaks_invisibility: a.breaks_invisibility,
     })
 }
 
@@ -1466,15 +1924,23 @@ fn caster(sc: &SpellcastingDoc, t: &Template, metamagic: Vec<Mm>) -> Result<Cast
     }
     let mut free_casts = Vec::new();
     let mut free_cast_pools = Vec::new();
+    let mut at_will = Vec::new();
     for f in &sc.free_casts {
+        if f.at_will {
+            at_will.push(spell(&f.spell)?);
+            continue;
+        }
         if f.uses != 1 {
             return Err(format!("free cast pool {} with {} uses", f.pool, f.uses));
         }
         free_casts.push(spell(&f.spell)?);
         free_cast_pools.push(intern(&f.pool));
     }
-    for k in sc.resources.keys() {
-        if !matches!(k.as_str(), "channel_divinity" | "holy_water" | "sorcery_points" | "innate_sorcery") {
+    let mut inert_pools = Vec::new();
+    for (k, &v) in &sc.resources {
+        if k.starts_with("innate:") {
+            inert_pools.push((intern(k), v));
+        } else if !matches!(k.as_str(), "channel_divinity" | "holy_water" | "sorcery_points" | "innate_sorcery") {
             return Err(format!("resource {k:?} is not implemented"));
         }
     }
@@ -1483,6 +1949,11 @@ fn caster(sc: &SpellcastingDoc, t: &Template, metamagic: Vec<Mm>) -> Result<Cast
         || t.innate_sorcery != sc.resources.contains_key("innate_sorcery")
     {
         return Err("resources and features disagree".into());
+    }
+    let self_only = sc.self_only.iter().map(|s| spell(s)).collect::<Result<Vec<_>, _>>()?;
+    let mut spell_levels = Vec::new();
+    for (k, &lvl) in &sc.spell_levels {
+        spell_levels.push((spell(k)?, lvl));
     }
     Ok(CasterSpec {
         ability: ab,
@@ -1500,6 +1971,11 @@ fn caster(sc: &SpellcastingDoc, t: &Template, metamagic: Vec<Mm>) -> Result<Cast
         sorcery_points: res("sorcery_points"),
         innate_sorcery: res("innate_sorcery"),
         metamagic,
+        innate: sc.innate,
+        at_will,
+        inert_pools,
+        self_only,
+        spell_levels,
     })
 }
 
@@ -1665,6 +2141,22 @@ impl ContentPool {
         for f in d.features.iter().chain(d.traits.iter()) {
             need("mechanics", &f.id)?;
         }
+        for aa in &d.area_abilities {
+            need("mechanics", &format!("area_save:{}", aa.name))?;
+            need("action_kinds", "npc_area_ability")?;
+        }
+        for tp in &d.teleports {
+            need("mechanics", &format!("teleport:{}", tp.name))?;
+            need("action_kinds", "npc_teleport")?;
+        }
+        if d.luring_song.is_some() {
+            need("mechanics", "luring_song")?;
+            need("action_kinds", "luring_song")?;
+        }
+        if d.vanish.is_some() {
+            need("mechanics", "vanish")?;
+            need("action_kinds", "npc_vanish")?;
+        }
         if let Some(sc) = &d.spellcasting {
             for s in sc.spells.iter().chain(sc.reaction_spells.iter()) {
                 need("spells", s)?;
@@ -1781,17 +2273,48 @@ impl ContentPool {
         }
         if !t.pc {
             let actions = s.get("actions").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-            let names: Vec<&str> = actions.iter().filter_map(|a| a.get("name").and_then(|v| v.as_str())).collect();
+            let atk_actions: Vec<&serde_json::Value> = actions
+                .iter()
+                .filter(|a| matches!(a.get("type").and_then(|v| v.as_str()), Some("melee_attack" | "ranged_attack")))
+                .collect();
+            let special_actions: Vec<(&str, &str)> = actions
+                .iter()
+                .filter_map(|a| {
+                    let ty = a.get("type").and_then(|v| v.as_str())?;
+                    if matches!(ty, "melee_attack" | "ranged_attack") {
+                        return None;
+                    }
+                    Some((ty, a.get("name").and_then(|v| v.as_str()).unwrap_or("")))
+                })
+                .collect();
+            let names: Vec<&str> = atk_actions.iter().filter_map(|a| a.get("name").and_then(|v| v.as_str())).collect();
             // one YAML action per row; a thrown row is part of its melee row's action
             let rows = t.yaml_rows();
             let ours: Vec<&str> = rows.iter().map(|&(i, _)| t.attacks[i].name).collect();
             cmp("actions", format!("{ours:?}"), format!("{names:?}"));
-            for (a, &(i, thrown)) in actions.iter().zip(rows.iter()) {
+            let mut action_diffs = Vec::new();
+            for (a, &(i, thrown)) in atk_actions.iter().zip(rows.iter()) {
                 let def = &t.attacks[i];
                 if let Err(e) = check_action(t, def, thrown.map(|j| &t.attacks[j]), a) {
-                    diffs.push(format!("{}: {e}", def.name));
+                    action_diffs.push(format!("{}: {e}", def.name));
                 }
             }
+            let mut our_special: Vec<(&str, &str)> = Vec::new();
+            for aa in &t.area_abilities {
+                our_special.push(("area_save", aa.name));
+            }
+            for tp in &t.teleports {
+                our_special.push(("teleport", tp.name));
+            }
+            if let Some(ls) = &t.luring_song {
+                our_special.push(("luring_song", ls.name));
+            }
+            if let Some(vn) = &t.vanish {
+                our_special.push(("vanish", vn.name));
+            }
+            cmp("special_actions", format!("{our_special:?}"), format!("{special_actions:?}"));
+            drop(cmp);
+            diffs.extend(action_diffs);
         }
         if diffs.is_empty() {
             Ok(())
@@ -1831,7 +2354,7 @@ impl ContentPool {
             "speed": t.speed, "size": t.size, "abil": abil, "init_bonus": t.init_bonus, "npc": !t.pc,
         });
         if !t.pc {
-            let actions: Vec<serde_json::Value> = t
+            let mut actions: Vec<serde_json::Value> = t
                 .yaml_rows()
                 .into_iter()
                 .map(|(i, thrown)| {
@@ -1886,6 +2409,18 @@ impl ContentPool {
                     x
                 })
                 .collect();
+            for aa in &t.area_abilities {
+                actions.push(json!({"name": aa.name, "type": "area_save"}));
+            }
+            for tp in &t.teleports {
+                actions.push(json!({"name": tp.name, "type": "teleport"}));
+            }
+            if let Some(ls) = &t.luring_song {
+                actions.push(json!({"name": ls.name, "type": "luring_song"}));
+            }
+            if let Some(vn) = &t.vanish {
+                actions.push(json!({"name": vn.name, "type": "vanish"}));
+            }
             row["actions"] = json!(actions);
         }
         self.check_stats(uid, &row).map_err(|e| format!("stats_row disagrees with check_stats: {e}"))?;
@@ -1997,11 +2532,11 @@ fn check_action(t: &Template, def: &AttackDef, thrown: Option<&AttackDef>, a: &s
     if int("multiattack_group") != def.multiattack_group {
         return Err("multiattack_group".into());
     }
-    let fails: Vec<&str> = get("on_hit")
+    let fails: Vec<String> = get("on_hit")
         .and_then(|v| v.as_array())
-        .map(|l| l.iter().filter_map(|x| x.get("fail").and_then(|v| v.as_str())).collect())
+        .map(|l| l.iter().filter_map(|x| x.get("fail").and_then(|v| v.as_str()).map(String::from)).collect())
         .unwrap_or_default();
-    let ours: Vec<&str> = def.on_hit.iter().map(|o| o.fail()).collect();
+    let ours: Vec<String> = def.on_hit.iter().map(|o| o.fail()).collect();
     if fails != ours {
         return Err(format!("on_hit {fails:?}"));
     }
@@ -2045,6 +2580,8 @@ mod tests {
         for id in [
             "guy", "elion", "curogana", "mara", "ilyra", "skeleton", "zombie", "ghoul", "ghast", "specter", "shadow", "wight",
             "goblin_minion", "goblin_warrior", "goblin_boss", "mummy", "chruna",
+            "violet_fungus", "giant_wasp", "satyr", "steam_mephit", "blink_dog", "sprite",
+            "green_hag", "bugbear_warrior", "dryad", "harpy", "sea_hag", "will_o_wisp",
         ] {
             assert!(pool.tid(id).is_some(), "{id}");
         }

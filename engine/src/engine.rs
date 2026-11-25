@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use crate::web_events::{DeathSave, SaveOutcome};
-use crate::content::{ability_mod, Ability, AtkAbility, AttackDef, Condition, ContentPool, Dice, Dmg, OnHit, SpellId, Template};
+use crate::content::{ability_mod, Ability, AdvCond, AtkAbility, AttackDef, Condition, ContentPool, Dice, Dmg, OnHit, SpellId, TargetCond, Template};
 use crate::effects::{EffEntry, EffKey, EffObj, Hook, HookEv};
 use crate::spells::Cast;
 use crate::dice::plus_string_modifier;
@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 15;
+pub const CURRENT_RULE_VERSION: i32 = 16;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,6 +32,11 @@ pub enum St {
     Frightened,
     /// Hidden (`do_hide`; `Unit::hidden_stealth` holds the Stealth total).
     Hidden,
+    Poisoned,
+    Charmed,
+    Grappled,
+    Restrained,
+    Invisible,
 }
 
 impl St {
@@ -45,8 +50,26 @@ impl St {
             St::Incapacitated => "incapacitated",
             St::Frightened => "frightened",
             St::Hidden => "hidden",
+            St::Poisoned => "poisoned",
+            St::Charmed => "charmed",
+            St::Grappled => "grappled",
+            St::Restrained => "restrained",
+            St::Invisible => "invisible",
         }
     }
+}
+
+/// Source-linked Charmed entry (`monster_traits.apply_charm`).
+#[derive(Clone, Debug)]
+pub struct CharmEntry {
+    pub source: usize,
+    pub until: Option<i32>,
+    pub save_type: Option<Ability>,
+    pub dc: Option<i32>,
+    pub repeat_save_when_harmed: bool,
+    pub ends_on_harm_no_save: bool,
+    pub expires_on_source_turn_start: bool,
+    pub source_spell: Option<&'static str>,
 }
 
 /// `GenericController.battle_data[battle][entity]`: the native AI's memory.
@@ -123,13 +146,27 @@ pub struct Unit {
     pub casted: Vec<(usize, u32, Option<i32>)>,
     /// `attributes['turned_by']`: (cleric, until, added_incapacitated).
     pub turned_by: Vec<(usize, i32, bool)>,
-    /// `attributes['frightened_by']`: (source, until).
-    pub frightened_by: Vec<(usize, i32)>,
+    /// `attributes['frightened_by']`: (source, until, ends_on_damage).
+    pub frightened_by: Vec<(usize, i32, bool)>,
     /// `attributes['frightened_by']` entries that last until the end of the
     /// source's next turn (`fear.SourceTurnExpiry`, a mummy's Dreadful
     /// Glare): (source, skip_current_turn). No time limit; they end at that
     /// turn's end or when the source dies.
     pub source_fear: Vec<(usize, bool)>,
+    /// `attributes['charmed_by']` (Sprite Enchanting Bow, Dryad Charm Monster, Harpy Luring Song).
+    pub charmed_by: Vec<CharmEntry>,
+    /// `entity.grapples` + `attributes['grapple_escape_dcs']`: (grappler, escape_dc).
+    pub grappled_by: Vec<(usize, Option<i32>)>,
+    /// `entity.grappling_targets()`: creatures this unit is currently grappling.
+    pub grappling: Vec<usize>,
+    /// `attributes['lured_by']`: (harpy, dc, added_incapacitated).
+    pub lured_by: Option<(usize, i32, bool)>,
+    /// `attributes['luring_song_immunities']`: (harpy, until).
+    pub luring_song_immune: Vec<(usize, i32)>,
+    /// `attributes['vile_appearance_immunities']`: (sea_hag, until).
+    pub vile_immune: Vec<(usize, i32)>,
+    /// `attributes['recharge_spent']`: names of spent rechargeable NPC actions/abilities.
+    pub recharge_spent: Vec<&'static str>,
     /// Cursed (`NoHealingEffect` with `duration: indefinite`, a mummy's
     /// Rotting Fist): can't regain Hit Points (`heal_override:1` in the digest).
     pub cursed: bool,
@@ -228,11 +265,23 @@ impl Unit {
     }
     /// `available_movement`: 0 while grappled or unconscious, else the stored budget.
     pub fn available_movement(&self) -> i32 {
-        if self.unconscious() {
+        if self.unconscious() || self.is_grappled() {
             0
         } else {
             self.movement.max(self.champion_movement)
         }
+    }
+    #[inline]
+    pub fn is_grappled(&self) -> bool {
+        !self.grappled_by.is_empty()
+    }
+    #[inline]
+    pub fn is_grappling(&self) -> bool {
+        !self.grappling.is_empty()
+    }
+    #[inline]
+    pub fn invisible(&self) -> bool {
+        self.has(St::Invisible)
     }
     /// `Entity.has_reaction`: no incapacitated creature (unconscious
     /// included, N20-019) can react.
@@ -251,7 +300,19 @@ impl Unit {
     }
     /// `Entity.poisoned()`.
     pub fn poisoned(&self) -> bool {
-        !self.stench_poison.is_empty() && !self.t.immune_poisoned
+        (!self.stench_poison.is_empty() || self.has(St::Poisoned)) && !self.t.immune_poisoned
+    }
+    /// Current Athletics check modifier (tracks Strength drain).
+    pub fn athletics_mod(&self) -> i32 {
+        self.t.skills[1] + (self.str_mod() - crate::content::ability_mod(self.t.abil[0]))
+    }
+    /// Current Acrobatics check modifier.
+    pub fn acrobatics_mod(&self) -> i32 {
+        self.t.skills[2]
+    }
+    /// Current Medicine check modifier.
+    pub fn medicine_mod(&self) -> i32 {
+        self.t.skills[0]
     }
     pub fn save_mod(&self, ab: Ability) -> i32 {
         let score = if ab == Ability::Str { self.strength() } else { self.t.abil[ab.idx()] };
@@ -331,6 +392,22 @@ pub enum Act {
     /// Weapon Mastery Cleave: `CleaveAttackAction` (free) with attack row
     /// `atk` on a creature of the open window.
     Cleave { atk: usize, target: usize },
+    /// `FirstAidAction` (Action: Medicine DC 10 to stabilize an adjacent dying creature).
+    FirstAid { target: usize },
+    /// `EscapeGrappleAction` (Action: Athletics/Acrobatics vs escape DC).
+    EscapeGrapple { target: usize },
+    /// `BreakFreeAction` (Action: STR Athletics vs Entangle DC, self-only).
+    BreakFree { target: usize },
+    /// `DropGrappleAction` (Free: release a dead/unconscious/non-hostile grappled creature).
+    DropGrapple { target: usize },
+    /// `NpcAreaAction` (`type: area_save`, e.g. Steam Mephit Steam Breath).
+    NpcAreaAbility { idx: usize, target: Option<Pos> },
+    /// `NpcTeleportAction` (`type: teleport`, e.g. Blink Dog Teleport, Dryad Tree Stride).
+    NpcTeleport { idx: usize, dest: Pos },
+    /// `LuringSongAction` (Harpy Action, Concentration, 300-ft Emanation).
+    LuringSong,
+    /// `NpcVanishAction` (Will-o'-Wisp Bonus Action, Concentration, Invisible).
+    NpcVanish,
     /// End the turn: the last row of every external decision (`env.rs`);
     /// never executed as an action.
     EndTurn,
@@ -351,17 +428,26 @@ pub struct WeaponKind {
     /// A Strength attack of a creature with Reckless Attack
     /// (`Fight::weapon_kind`).
     pub str_attack: bool,
+    /// Advantage when target is grappled by source (Bugbear Warrior Light Hammer).
+    pub adv_if_grappled_by_source: bool,
 }
 
 impl WeaponKind {
     pub fn melee() -> WeaponKind {
-        WeaponKind { ranged: false, melee: true, range: 5, spell: false, str_attack: false }
+        WeaponKind { ranged: false, melee: true, range: 5, spell: false, str_attack: false, adv_if_grappled_by_source: false }
     }
     pub fn spell_ranged(range: i32) -> WeaponKind {
-        WeaponKind { ranged: true, melee: false, range, spell: true, str_attack: false }
+        WeaponKind { ranged: true, melee: false, range, spell: true, str_attack: false, adv_if_grappled_by_source: false }
     }
     pub fn of(def: &AttackDef) -> WeaponKind {
-        WeaponKind { ranged: def.ranged, melee: !def.ranged, range: def.range, spell: false, str_attack: false }
+        WeaponKind {
+            ranged: def.ranged,
+            melee: !def.ranged,
+            range: def.range,
+            spell: false,
+            str_attack: false,
+            adv_if_grappled_by_source: def.advantage_if == Some(AdvCond::TargetGrappledBySource),
+        }
     }
 }
 
@@ -393,6 +479,14 @@ impl Act {
             Act::ExtendRage => "extend_rage",
             Act::RecklessAttack => "reckless_attack",
             Act::Cleave { .. } => "cleave",
+            Act::FirstAid { .. } => "first_aid",
+            Act::EscapeGrapple { .. } => "escape_grapple",
+            Act::BreakFree { .. } => "break_free",
+            Act::DropGrapple { .. } => "drop_grapple",
+            Act::NpcAreaAbility { .. } => "npc_area_ability",
+            Act::NpcTeleport { .. } => "npc_teleport",
+            Act::LuringSong => "luring_song",
+            Act::NpcVanish => "npc_vanish",
             Act::EndTurn => "end_turn",
         }
     }
@@ -406,6 +500,10 @@ enum HitEffect {
     StrengthDrain,
     Curse,
     Frighten,
+    Push { distance: i32 },
+    Grapple { escape_dc: Option<i32> },
+    Charm { duration: Option<&'static str>, save_dc: Option<(Ability, i32)>, repeat_save_when_harmed: bool },
+    ConsumeLife { heal_die: Dice },
 }
 
 /// Damage context for `take_damage` (the result item natural20 passes).
@@ -651,10 +749,17 @@ impl Fight {
                 turned_by: Vec::new(),
                 frightened_by: Vec::new(),
                 source_fear: Vec::new(),
+                charmed_by: Vec::new(),
+                grappled_by: Vec::new(),
+                grappling: Vec::new(),
+                lured_by: None,
+                luring_song_immune: Vec::new(),
+                vile_immune: Vec::new(),
+                recharge_spent: Vec::new(),
                 cursed: false,
                 save_immune_to: Vec::new(),
                 until_next_turn: Vec::new(),
-                pools_init: false,
+                pools_init: !t.pc && t.caster.as_ref().is_some_and(|c| !c.free_casts.is_empty() || !c.inert_pools.is_empty()),
                 innate_until: None,
                 unseen: Vec::new(),
                 sap: None,
@@ -788,6 +893,12 @@ impl Fight {
         if a == b {
             return true;
         }
+        if self.units[b].invisible() {
+            let sense = self.units[a].t.blindsight.max(self.units[a].t.truesight);
+            if !(sense > 0 && self.dist(a, b) * 5 <= sense && self.clear_sight(self.units[a].pos, self.units[b].pos)) {
+                return false;
+            }
+        }
         if let Some(stealth) = self.units[b].hidden_stealth {
             let sense = self.units[a].t.blindsight;
             if self.units[a].t.passive_perception < stealth && !(sense > 0 && self.dist(a, b) * 5 <= sense) {
@@ -795,6 +906,66 @@ impl Fight {
             }
         }
         self.sees_lit_square(a, self.units[b].pos)
+    }
+
+    /// True if `u` has the Restrained condition (direct status or `restrained_override`, e.g. Entangle).
+    pub fn is_restrained(&self, u: usize) -> bool {
+        self.units[u].has(St::Restrained) || self.has_effect(u, EffKey::RestrainedOverride)
+    }
+
+    /// True if `u` is currently charmed by `charmer` (non-expired, charmer alive).
+    pub fn is_charmed_by(&self, u: usize, charmer: usize) -> bool {
+        let gt = self.gt();
+        self.units[u].charmed_by.iter().any(|c| {
+            c.source == charmer
+                && c.until.map_or(true, |x| gt < x)
+                && !self.units[charmer].dead()
+        })
+    }
+
+    /// True if `u` is actively lured by a living, non-incapacitated Harpy's Luring Song.
+    pub fn is_lured(&self, u: usize) -> bool {
+        let Some((harpy, _, _)) = self.units[u].lured_by else { return false };
+        let h = &self.units[harpy];
+        if h.dead() || h.incapacitated() {
+            return false;
+        }
+        h.concentration
+            .is_some_and(|c| matches!(self.objs[c as usize].kind, crate::effects::ObjKind::LuringSong { .. }))
+    }
+
+    /// True when `u` is lured and physically able to move toward the Harpy.
+    pub fn can_lure_move(&self, u: usize) -> bool {
+        if !self.is_lured(u) || self.units[u].dead() {
+            return false;
+        }
+        let unit = &self.units[u];
+        !(unit.has(St::Unconscious) || unit.has(St::Dead) || unit.has(St::Paralyzed))
+    }
+
+    /// True when moving while grappling slows `u` (not `abduct`, target non-Tiny and within 1 size).
+    pub fn drag_penalty(&self, u: usize) -> bool {
+        let unit = &self.units[u];
+        if !unit.is_grappling() || unit.t.abduct {
+            return false;
+        }
+        let my_rank = unit.t.size_rank as i32;
+        unit.grappling.iter().any(|&t| {
+            let tr = self.units[t].t.size_rank as i32;
+            tr > 0 && (tr - my_rank) >= -1
+        })
+    }
+
+    /// True if `p` is inside an active `Entangle` difficult-terrain zone.
+    pub fn is_entangle_square(&self, p: Pos) -> bool {
+        let gt = self.gt();
+        self.objs.iter().any(|o| {
+            !o.ended
+                && match &o.kind {
+                    crate::effects::ObjKind::Entangle { squares, expires_at, .. } => gt < *expires_at && squares.contains(&p),
+                    _ => false,
+                }
+        })
     }
 
     #[inline]
@@ -934,7 +1105,12 @@ impl Fight {
             return false;
         }
         if let Some(o) = self.token_at(p) {
-            if o != u && self.opposing(o, u) && !self.units[o].incapacitated() && !(self.creature_space_rules && self.units[o].t.size == "tiny") {
+            if o != u
+                && self.opposing(o, u)
+                && !self.units[o].incapacitated()
+                && !(self.creature_space_rules && self.units[o].t.size == "tiny")
+                && self.units[o].t.size_rank.abs_diff(self.units[u].t.size_rank) < 2
+            {
                 return false;
             }
         }
@@ -957,8 +1133,11 @@ impl Fight {
             && (!self.creature_space_rules || (!self.allies(u, o) && self.units[o].t.size != "tiny"))
     }
 
-    /// Occupied difficult terrain under the tape's ruleset.
+    /// Occupied or zone difficult terrain under the tape's ruleset.
     pub fn difficult(&self, u: usize, p: Pos) -> bool {
+        if self.is_entangle_square(p) {
+            return true;
+        }
         match self.token_at(p) {
             Some(o) => self.difficult_occupant(u, o),
             None => false,
@@ -1014,6 +1193,22 @@ impl Fight {
                 }
             }
         }
+        if !self.units[u].t.fly {
+            let gt = self.gt();
+            for obj in &self.objs {
+                if !obj.ended {
+                    if let crate::effects::ObjKind::Entangle { squares, expires_at, .. } = &obj.kind {
+                        if gt < *expires_at {
+                            for &(x, y) in squares {
+                                if self.grid.in_bounds(x, y) {
+                                    mask.set(self.grid.index(x, y));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         mask
     }
 
@@ -1064,19 +1259,38 @@ impl Fight {
     }
 
     pub(crate) fn save_throw_with_cover(&mut self, u: usize, ab: Ability, disadvantage: bool, cover: i32) -> (i32, String) {
+        self.save_throw_ex(u, ab, disadvantage, cover, false, false, false)
+    }
+
+    pub(crate) fn save_throw_ex(
+        &mut self,
+        u: usize,
+        ab: Ability,
+        disadvantage: bool,
+        cover: i32,
+        is_magical: bool,
+        is_charmed: bool,
+        extra_adv: bool,
+    ) -> (i32, String) {
         if matches!(ab, Ability::Str | Ability::Dex) && self.units[u].has(St::Paralyzed) {
             // `DieRoll.roll("1")` -> `DieRoll([1], 0, 0)` -> `describe() == "0"`, `result() == 1`
             return (1, "0 = 1".to_string());
         }
         let m = self.units[u].save_mod(ab) + cover;
         // Rage: Advantage on Strength saves; Danger Sense: on Dexterity saves
-        // unless Incapacitated (2024)
+        // unless Incapacitated (2024); Magic Resistance: on saves vs spells &
+        // magical effects; Fey Ancestry: on saves vs Charmed.
         let adv = (ab == Ability::Str && self.is_raging(u))
-            || (ab == Ability::Dex && (self.units[u].t.danger_sense && !self.units[u].incapacitated()
-                || self.rule_version >= 6 && self.benefits_from_dodge(u)));
+            || (ab == Ability::Dex
+                && (self.units[u].t.danger_sense && !self.units[u].incapacitated()
+                    || self.rule_version >= 6 && self.benefits_from_dodge(u)))
+            || (is_magical && self.units[u].t.magic_resistance)
+            || (is_charmed && self.units[u].t.fey_ancestry)
+            || extra_adv;
         // Heightened Spell: the first opponent of the caster to save rolls
         // with Disadvantage (`metamagic.heightened_disadvantage`).
-        let mut dis = disadvantage;
+        // Restrained: Disadvantage on Dexterity saving throws.
+        let mut dis = disadvantage || (ab == Ability::Dex && self.is_restrained(u));
         if let Some((caster, used)) = self.heightened {
             if !used && caster != u && self.opposing(caster, u) {
                 self.heightened = Some((caster, true));
@@ -1152,12 +1366,12 @@ impl Fight {
         }
     }
 
-    /// `UndeadArena._can_take_turn`: a turned creature still gets its turn.
+    /// `GeneralArena._can_take_turn`: a turned or lured creature still gets its turn.
     pub fn can_take_turn(&mut self, u: usize) -> bool {
         if !self.units[u].conscious() {
             return false;
         }
-        !self.units[u].incapacitated() || self.can_flee(u)
+        !self.units[u].incapacitated() || self.can_flee(u) || self.can_lure_move(u)
     }
 
     /// Single iteration of `_open_turn` (shared between `Fight::open_turn` and `WebArena::open_turn_loop`).
@@ -1299,6 +1513,14 @@ impl Fight {
             self.expire_mastery(u);
         }
         self.stench_start_of_turn(u);
+        self.vile_appearance_start_of_turn(u);
+        self.expire_charms_on_turn_start(u);
+        self.roll_recharges(u);
+        self.prune_invalid_grapples(u);
+        let grapplers: Vec<usize> = self.units[u].grappled_by.iter().map(|&(g, _)| g).collect();
+        for g in grapplers {
+            self.prune_invalid_grapples(g);
+        }
     }
 
     /// `StenchEffect.start_of_turn`: a CON save against each living ghast
@@ -1368,6 +1590,22 @@ impl Fight {
                     match groups.iter_mut().find(|(k, _)| *k == g) {
                         Some(e) => e.1.push(a.name),
                         None => groups.push((g, vec![a.name])),
+                    }
+                }
+            }
+            // Innate spells named in multiattack (e.g. Dryad Charm Monster) join group 1.
+            if let Some(caster) = unit.t.caster.as_ref() {
+                for &sp in &caster.spells {
+                    let key = sp.key();
+                    if unit.t.multiattack.iter().any(|c| c.contains(&key)) {
+                        match groups.iter_mut().find(|(k, _)| *k == 1) {
+                            Some(e) => {
+                                if !e.1.contains(&key) {
+                                    e.1.push(key);
+                                }
+                            }
+                            None => groups.push((1, vec![key])),
+                        }
                     }
                 }
             }
@@ -1442,6 +1680,9 @@ impl Fight {
         // `SourceTurnExpiry.end_of_turn` hooks on this creature: the fear it
         // caused ends at the end of its next turn
         self.source_fear_end_of_turn(u);
+        if self.is_lured(u) {
+            self.repeat_lure_save(u);
+        }
     }
 
     /// `Battle.end_turn` + `Battle.next_turn` (shared with `WebArena`).
@@ -1550,8 +1791,12 @@ impl Fight {
                 u.action -= 1;
             }
             Act::Dodge => {
+                let eligible = self.rule_version < 16
+                    || (!self.units[src].incapacitated()
+                        && !self.units[src].is_grappled()
+                        && self.speed_of(src) > 0);
                 let u = &mut self.units[src];
-                u.dodge = true;
+                u.dodge = eligible;
                 u.action = (u.action - 1).max(0);
             }
             Act::Stand => {
@@ -1608,6 +1853,20 @@ impl Fight {
                 self.do_spell(src, c);
                 self.note_noise(src);
             }
+            Act::FirstAid { target } => self.do_first_aid(src, *target),
+            Act::EscapeGrapple { target } => self.do_escape_grapple(src, *target),
+            Act::BreakFree { target } => self.do_break_free(src, *target),
+            Act::DropGrapple { target } => self.release_grapple(src, *target),
+            Act::NpcAreaAbility { idx, target } => {
+                self.do_npc_area_ability(src, *idx, *target);
+                self.note_noise(src);
+            }
+            Act::NpcTeleport { idx, dest } => self.do_npc_teleport(src, *idx, *dest),
+            Act::LuringSong => {
+                self.do_luring_song(src);
+                self.note_noise(src);
+            }
+            Act::NpcVanish => self.do_npc_vanish(src),
             other => self.do_feature(src, other),
         }
         // the end of `Battle.commit`: conditions whose source dropped or lapsed end
@@ -1624,7 +1883,7 @@ impl Fight {
         } else {
             self.difficult(u, to) && !self.units[u].t.fly
         };
-        1 + self.units[u].prone() as i32 + i32::from(difficult)
+        1 + self.units[u].prone() as i32 + i32::from(difficult) + i32::from(self.drag_penalty(u))
     }
 
     /// `compute_actual_moves(entity, path, map, battle, budget)` for paths of
@@ -1705,7 +1964,7 @@ impl Fight {
     }
 
     pub(crate) fn commit_move_prefix(&mut self, src: usize, moves: Vec<Pos>, in_transit: bool) {
-        if self.units[src].unconscious() {
+        if self.units[src].unconscious() || (self.rule_version >= 16 && self.units[src].dead()) {
             self.units[src].movement = 0;
             return;
         }
@@ -1740,6 +1999,17 @@ impl Fight {
         for &p in &seg {
             if trail.last() != Some(&p) {
                 trail.push(p);
+            }
+        }
+        // Dragged grappled targets trail behind the mover (move_action.py:207-231).
+        if self.units[src].is_grappling() {
+            let dragged = self.units[src].grappling.clone();
+            for (i, t) in dragged.into_iter().enumerate() {
+                let lag = i + 1;
+                if seg.len() > lag {
+                    let target_dest = seg[seg.len() - 1 - lag];
+                    self.move_to(t, target_dest);
+                }
             }
         }
         self.emit_web(crate::web_events::WebEv::MoveExecuted { u: src, path: seg });
@@ -1786,11 +2056,17 @@ impl Fight {
     /// `opportunity_attack_list` + `retrieve_opportunity_attacks`:
     /// (reactor, index in path where the mover left its reach).
     pub fn opportunity_attacks(&self, mover: usize, path: &[Pos]) -> Vec<(usize, usize)> {
+        if self.units[mover].t.flyby && self.units[mover].t.fly {
+            return Vec::new();
+        }
         let mut entered = vec![false; self.units.len()];
         let mut left = Vec::new();
         for (index, &p) in path.iter().enumerate() {
             for e in 0..self.units.len() {
                 if self.units[e].dead() || !self.opposing(e, mover) {
+                    continue;
+                }
+                if self.rule_version >= 16 && self.units[mover].grappling.contains(&e) {
                     continue;
                 }
                 if !self.units[e].has_reaction() {
@@ -1902,11 +2178,20 @@ impl Fight {
             if o.spell == SpellId::ProtectionFromEvilAndGood && s.t.pfeg_protected { dis("Protection from Evil and Good"); }
             if matches!(o.kind, crate::effects::ObjKind::Blur) && !self.ignores_blur(src, tgt) { dis("Blur"); }
         }
+        if t.t.blurred_form && !t.incapacitated() {
+            dis("Blurred Form");
+        }
+        if wk.adv_if_grappled_by_source && t.grappled_by.iter().any(|&(g, _)| g == src) {
+            adv("target grappled");
+        }
         let gt = self.gt();
-        if s.frightened_by.iter().any(|&(f, until)| gt < until && !self.units[f].dead() && self.can_see(src, f))
+        if s.frightened_by.iter().any(|&(f, until, _)| gt < until && !self.units[f].dead() && self.can_see(src, f))
             || s.source_fear.iter().any(|&(f, _)| !self.units[f].dead() && self.can_see(src, f)) { dis("Frightened"); }
         if s.prone() { dis("attacker prone"); }
         if s.poisoned() { dis("attacker poisoned"); }
+        if self.is_restrained(src) { dis("attacker restrained"); }
+        if self.is_restrained(tgt) { adv("target restrained"); }
+        if s.is_grappled() && !s.grappled_by.iter().any(|&(g, _)| g == tgt) { dis("grappled"); }
         if t.has(St::Paralyzed) { adv("target paralyzed"); }
         if current && t.unconscious() { adv("target unconscious"); }
         if t.prone() {
@@ -2009,6 +2294,9 @@ impl Fight {
     pub fn attack_available(&self, u: usize, atk: usize) -> bool {
         let unit = &self.units[u];
         let def = &unit.t.attacks[atk];
+        if def.recharge.is_some() && unit.recharge_spent.contains(&def.name) {
+            return false;
+        }
         if let Some(k) = def.npc_item {
             return unit.items[k as usize] > 0;
         }
@@ -2030,10 +2318,13 @@ impl Fight {
     /// `AttackAction.can(entity, battle, {'npc_action': ...})` on the creature's turn.
     pub fn can_attack(&self, u: usize, atk: usize) -> bool {
         let unit = &self.units[u];
+        let def = &unit.t.attacks[atk];
+        if def.bonus_action {
+            return unit.bonus > 0;
+        }
         if unit.action > 0 {
             return true;
         }
-        let def = &unit.t.attacks[atk];
         if self.npc_multiattack(u, def) {
             return unit.ma_started;
         }
@@ -2041,7 +2332,7 @@ impl Fight {
     }
 
     /// `narrow_multiattack_groups(entity_state, used_name)`.
-    fn narrow_multiattack(&mut self, u: usize, used: Option<&'static str>) {
+    pub(crate) fn narrow_multiattack(&mut self, u: usize, used: Option<&'static str>) {
         let unit = &mut self.units[u];
         if unit.ma_combos.is_empty() {
             return;
@@ -2092,7 +2383,7 @@ impl Fight {
     }
 
     /// `Multiattack.clear_multiattack`.
-    fn clear_multiattack(&mut self, u: usize) {
+    pub(crate) fn clear_multiattack(&mut self, u: usize) {
         let unit = &mut self.units[u];
         unit.ma_groups.clear();
         unit.ma_combos.clear();
@@ -2169,8 +2460,11 @@ impl Fight {
         if let Some((ab, dc)) = def.save_attack {
             // `_resolve_save_attack`: the target saves; a failure is a hit
             // (no attack roll, so no critical hit).
+            if def.breaks_invisibility {
+                self.resolve_trigger(src, HookEv::AttackResolved);
+            }
             let cover = self.save_cover(self.units[src].pos, tgt, ab);
-                    let total = self.save_throw_with_cover(tgt, ab, false, cover).0;
+            let total = self.save_throw_with_cover(tgt, ab, false, cover).0;
             if total >= dc {
                 if def.save_immune {
                     // `grant_save_immunity` (the miss item's `save_immunity`)
@@ -2202,6 +2496,16 @@ impl Fight {
                         atk_roll_fmt: None,
                         dmg_roll_fmt: None,
                     });
+                }
+                self.spend_attack(src, atk, reaction, cleave);
+                return;
+            }
+            if def.drop_to_zero_hp_lte.is_some_and(|lte| !self.units[tgt].dead() && self.units[tgt].hp <= lte) {
+                self.units[tgt].hp = 0;
+                if !self.units[tgt].t.pc {
+                    self.make_dead(tgt);
+                } else {
+                    self.make_unconscious(tgt);
                 }
                 self.spend_attack(src, atk, reaction, cleave);
                 return;
@@ -2412,6 +2716,23 @@ impl Fight {
                 OnHit::StrengthDrain => effects.push(HitEffect::StrengthDrain),
                 OnHit::Curse => effects.push(HitEffect::Curse),
                 OnHit::Frighten => effects.push(HitEffect::Frighten),
+                OnHit::Push { feet, max_size_rank } => {
+                    if max_size_rank.map_or(true, |m| self.units[tgt].t.size_rank <= m) {
+                        effects.push(HitEffect::Push { distance: feet });
+                    }
+                }
+                OnHit::Grapple { escape_dc, max_size_rank } => {
+                    if max_size_rank.map_or(true, |m| self.units[tgt].t.size_rank <= m) {
+                        effects.push(HitEffect::Grapple { escape_dc: Some(escape_dc) });
+                    }
+                }
+                OnHit::Charm { start_of_source_next_turn, repeat_save_when_harmed, .. } => {
+                    let duration = if start_of_source_next_turn { Some("start_of_source_next_turn") } else { None };
+                    effects.push(HitEffect::Charm { duration, save_dc: None, repeat_save_when_harmed });
+                }
+                OnHit::ConsumeLife { heal_die } => {
+                    effects.push(HitEffect::ConsumeLife { heal_die });
+                }
             }
         }
         // commit: the damage item, then riders and effects in order
@@ -2566,6 +2887,33 @@ impl Fight {
                     self.notes.glare_fail += 1;
                     self.apply_source_fear(tgt, src);
                 }
+                HitEffect::Push { distance } => {
+                    if !self.units[tgt].dead() {
+                        let dest = self.push_square_dist(tgt, self.units[src].pos, &[], distance);
+                        if dest != self.units[tgt].pos && self.token_at(dest).map_or(true, |o| o == tgt) {
+                            self.move_to(tgt, dest);
+                            self.prune_grapples_around(tgt);
+                        }
+                    }
+                }
+                HitEffect::Grapple { escape_dc } => {
+                    if !self.units[tgt].dead() && !self.units[tgt].t.immune_grappled {
+                        self.apply_grapple(src, tgt, escape_dc);
+                    }
+                }
+                HitEffect::Charm { duration, save_dc, repeat_save_when_harmed } => {
+                    self.apply_charm(tgt, src, save_dc, duration, repeat_save_when_harmed, false, None);
+                }
+                HitEffect::ConsumeLife { heal_die } => {
+                    if !self.units[tgt].dead() {
+                        self.make_dead(tgt);
+                    }
+                    if !self.units[src].dead() {
+                        let rolls = self.roll_dice(src, "heal", heal_die.count, heal_die.sides);
+                        let healed: i32 = rolls.iter().sum::<i32>() + heal_die.modifier;
+                        self.heal(src, healed);
+                    }
+                }
                 HitEffect::StrengthDrain => {
                     let v = self.trace.draw("", "fn:apply", 4, RollMode::Normal).one();
                     let sp = self.units[src].pos;
@@ -2652,7 +3000,7 @@ impl Fight {
         let modifier = self.units[u].t.nimble_escape.or(self.units[u].t.shadow_stealth).unwrap_or(0);
         let gt = self.gt();
         let unit = &self.units[u];
-        let feared = unit.frightened_by.iter().any(|&(f, until)| gt < until && !self.units[f].dead() && self.can_see(u, f))
+        let feared = unit.frightened_by.iter().any(|&(f, until, _)| gt < until && !self.units[f].dead() && self.can_see(u, f))
             || unit.source_fear.iter().any(|&(f, _)| !self.units[f].dead() && self.can_see(u, f));
         let mode = RollMode::from_flags(false, unit.poisoned() || feared);
         let face = self.roll_d20(u, "dice roll for stealth", mode);
@@ -2743,6 +3091,9 @@ impl Fight {
     fn consume_attack(&mut self, src: usize, atk: usize, reaction: bool) {
         let t = self.units[src].t;
         let def = &t.attacks[atk];
+        if def.recharge.is_some() && !self.units[src].recharge_spent.contains(&def.name) {
+            self.units[src].recharge_spent.push(def.name);
+        }
         if let (true, Some(k)) = (def.thrown, def.npc_item) {
             // an NPC throw spends one of the items its attack is made with
             // (hit, miss or blind miss); the thrown item is not tracked
@@ -2768,11 +3119,13 @@ impl Fight {
         }
         {
             let u = &mut self.units[src];
-            if def.multiattack_group.is_some() && !reaction {
+            if def.multiattack_group.is_some() && !reaction && !def.bonus_action {
                 u.ma_started = true;
             }
             if reaction {
                 u.reaction = (u.reaction - 1).max(0);
+            } else if def.bonus_action {
+                u.bonus = (u.bonus - 1).max(0);
             } else {
                 u.action = (u.action - 1).max(0);
             }
@@ -2784,7 +3137,7 @@ impl Fight {
             // the attack reveals a hidden attacker
             u.break_stealth();
         }
-        if t.pc {
+        if t.pc || def.bonus_action {
             return;
         }
         let name = def.name;
@@ -2957,7 +3310,15 @@ impl Fight {
             self.units[u].hp = 0;
         }
         if total > 0 {
+            if let Some(att) = attacker {
+                if !self.units[u].charmed_by.is_empty() {
+                    self.on_harmed_while_charmed(u, att);
+                }
+            }
             self.on_damaged_turn_fear(u);
+            if self.units[u].lured_by.is_some() {
+                self.on_damaged_lured(u, attacker);
+            }
         }
         // item['_applied_damage']
         Some(total)
@@ -2987,6 +3348,12 @@ impl Fight {
         }
         let pos = self.units[u].pos;
         let monster = self.units[u].team == 1;
+        // Release grapples held by or holding `u` (`entity.py:1486-1489`).
+        self.drop_all_grapples(u);
+        let grapplers: Vec<usize> = self.units[u].grappled_by.iter().map(|&(g, _)| g).collect();
+        for g in grapplers {
+            self.release_grapple(g, u);
+        }
         let unit = &mut self.units[u];
         unit.add_status(St::Dead);
         if self.rule_version >= 8 {
@@ -2996,6 +3363,9 @@ impl Fight {
             }
         }
         self.end_rage_if_incapacitated(u);
+        if self.units[u].t.death_burst.is_some() {
+            self.trigger_death_burst(u);
+        }
         let unit = &mut self.units[u];
         unit.do_prone();
         unit.remove_status(St::Stable);
@@ -3013,10 +3383,11 @@ impl Fight {
 
     /// `Entity.make_unconscious`.
     fn make_unconscious(&mut self, u: usize) {
-        let unit = &mut self.units[u];
-        if unit.unconscious() || unit.dead() {
+        if self.units[u].unconscious() || self.units[u].dead() {
             return;
         }
+        self.drop_all_grapples(u);
+        let unit = &mut self.units[u];
         unit.do_prone();
         unit.statuses.push(St::Unconscious);
         self.lose_dodge_if_ineligible(u);
@@ -3150,13 +3521,16 @@ impl Fight {
                     res: [u.action, u.bonus, u.reaction, u.movement],
                     ds: [u.death_saves, u.death_fails],
                     strength: u.t.abil[0],
-                    sl: caster.map(|_| [u.slots[1], u.slots[2]]),
-                    conc: u.concentration.map(|c| self.objs[c as usize].spell.key().to_string()),
+                    sl: caster.filter(|_| u.t.pc).map(|_| [u.slots[1], u.slots[2]]),
+                    conc: u.concentration.map(|c| self.objs[c as usize].conc_name().to_string()),
                     cd: caster.filter(|_| u.t.channel_divinity).map(|_| u.cd),
                     pools: caster.filter(|_| u.pools_init).and_then(|c| {
                         let mut m = std::collections::BTreeMap::new();
                         for (s, name) in c.free_casts.iter().zip(c.free_cast_pools.iter()) {
                             m.insert(name.to_string(), if u.free_casts.contains(s) { 1 } else { 0 });
+                        }
+                        for &(name, val) in &c.inert_pools {
+                            m.insert(name.to_string(), val);
                         }
                         if m.is_empty() { None } else { Some(m) }
                     }),
@@ -3239,8 +3613,759 @@ impl Fight {
             Act::SpiritualWeaponAttack { target } => format!("spiritual_weapon_attack:>{}", self.units[*target].id),
             Act::RedirectAttack { ally, .. } => format!("redirect_attack:>{}:reaction", self.units[*ally].id),
             Act::Cleave { target, .. } => format!("cleave:>{}", self.units[*target].id),
+            Act::FirstAid { target } => format!("first_aid:>{}", self.units[*target].id),
+            Act::EscapeGrapple { target } => format!("escape_grapple:>{}", self.units[*target].id),
+            Act::BreakFree { target } => format!("break_free:>{}", self.units[*target].id),
+            Act::DropGrapple { target } => format!("drop_grapple:>{}", self.units[*target].id),
+            Act::NpcAreaAbility { idx, target } => {
+                let name = self.units[src].t.area_abilities[*idx].name;
+                match target {
+                    Some(p) => format!("npc_area_ability:{name}:@{},{}", p.0, p.1),
+                    None => format!("npc_area_ability:{name}"),
+                }
+            }
+            Act::NpcTeleport { idx, dest } => {
+                let name = self.units[src].t.teleports[*idx].name;
+                format!("npc_teleport:{name}:@{},{}", dest.0, dest.1)
+            }
+            Act::LuringSong => "luring_song".to_string(),
+            Act::NpcVanish => "npc_vanish".to_string(),
             other => other.kind().to_string(),
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Fey campaign mechanics: Vile Appearance, Recharges, Grapple, Charm,
+    // Luring Song, Death Burst, First Aid, Escape Grapple, Break Free,
+    // NPC Area Ability, NPC Teleport, NPC Vanish.
+    // ------------------------------------------------------------------
+
+    /// `VileAppearanceEffect.start_of_turn`: WIS save DC 11 vs living Sea Hag
+    /// within 30 ft in sight for Beasts/Humanoids (24h immunity on pass, 6s Fear on fail).
+    fn vile_appearance_start_of_turn(&mut self, u: usize) {
+        if self.units[u].dead() || self.units[u].t.immune_frightened {
+            return;
+        }
+        let t = self.units[u].t;
+        if !(t.pc || t.beast || t.humanoid) {
+            return;
+        }
+        let gt = self.gt();
+        let sources: Vec<usize> = (0..self.units.len())
+            .filter(|&o| o != u && !self.units[o].dead() && self.units[o].t.vile_appearance.is_some())
+            .collect();
+        for src in sources {
+            let va = self.units[src].t.vile_appearance.unwrap();
+            if self.dist(src, u) * 5 > va.range {
+                continue;
+            }
+            if !self.can_see(u, src) {
+                continue;
+            }
+            if self.units[u].vile_immune.iter().any(|&(s, until)| s == src && gt < until) {
+                continue;
+            }
+            if self.pfeg_wards(u, src) {
+                continue;
+            }
+            let total = self.save_throw_ex(u, Ability::Wis, false, 0, false, false, false).0;
+            if total >= va.dc {
+                let until = gt + 24 * 3600;
+                match self.units[u].vile_immune.iter_mut().find(|e| e.0 == src) {
+                    Some(e) => e.1 = until,
+                    None => self.units[u].vile_immune.push((src, until)),
+                }
+            } else {
+                // Frightened until start of target's next turn (6s), does NOT end on damage.
+                self.apply_timed_fear(u, src, 6, false);
+            }
+        }
+    }
+
+    /// `npc_area_action.roll_recharges`: roll 1d6 for each spent rechargeable ability.
+    fn roll_recharges(&mut self, u: usize) {
+        if self.units[u].recharge_spent.is_empty() {
+            return;
+        }
+        let spent = self.units[u].recharge_spent.clone();
+        for name in spent {
+            let needed = self.units[u]
+                .t
+                .attacks
+                .iter()
+                .find(|a| a.name == name)
+                .and_then(|a| a.recharge)
+                .or_else(|| self.units[u].t.area_abilities.iter().find(|a| a.name == name).and_then(|a| a.recharge))
+                .or_else(|| self.units[u].t.teleports.iter().find(|a| a.name == name).and_then(|a| a.recharge));
+            let Some(min_roll) = needed else { continue };
+            let roll = self.roll_dice(u, "recharge", 1, 6)[0];
+            if roll >= min_roll {
+                self.units[u].recharge_spent.retain(|&n| n != name);
+            }
+        }
+    }
+
+    /// Apply a grapple (`target.do_grappled_by(source)` + `grapple_escape_dcs`).
+    pub fn apply_grapple(&mut self, src: usize, tgt: usize, escape_dc: Option<i32>) {
+        if self.units[tgt].dead() || self.units[tgt].t.immune_grappled {
+            return;
+        }
+        if !self.units[tgt].grappled_by.iter().any(|&(g, _)| g == src) {
+            self.units[tgt].grappled_by.push((src, escape_dc));
+        } else if let Some(dc) = escape_dc {
+            if let Some(e) = self.units[tgt].grappled_by.iter_mut().find(|e| e.0 == src) {
+                e.1 = Some(dc);
+            }
+        }
+        if !self.units[src].grappling.contains(&tgt) {
+            self.units[src].grappling.push(tgt);
+        }
+        self.units[tgt].add_status(St::Grappled);
+    }
+
+    /// Free release of `tgt` by `src` (`grappling.release`).
+    pub fn release_grapple(&mut self, src: usize, tgt: usize) {
+        self.units[src].grappling.retain(|&t| t != tgt);
+        self.units[tgt].grappled_by.retain(|&(g, _)| g != src);
+        if self.units[tgt].grappled_by.is_empty() {
+            self.units[tgt].remove_status(St::Grappled);
+        }
+    }
+
+    /// Drop every grapple held by `src` (`entity.drop_grapple`).
+    pub fn drop_all_grapples(&mut self, src: usize) {
+        let targets = std::mem::take(&mut self.units[src].grappling);
+        for tgt in targets {
+            self.units[tgt].grappled_by.retain(|&(g, _)| g != src);
+            if self.units[tgt].grappled_by.is_empty() {
+                self.units[tgt].remove_status(St::Grappled);
+            }
+        }
+    }
+
+    /// `grappling.prune_invalid_grapples(entity, battle)`.
+    pub fn prune_invalid_grapples(&mut self, src: usize) {
+        if !self.units[src].is_grappling() {
+            return;
+        }
+        let incap = self.units[src].incapacitated();
+        let reach_ft = self.units[src].t.melee_ft.unwrap_or(5).max(5);
+        let targets = self.units[src].grappling.clone();
+        for tgt in targets {
+            let out_of_reach = self.dist(src, tgt) * 5 > reach_ft;
+            if incap || self.units[tgt].dead() || out_of_reach {
+                self.release_grapple(src, tgt);
+            }
+        }
+    }
+
+    /// Prune grapples held by `u` and anyone grappling `u` (after teleport/push).
+    pub fn prune_grapples_around(&mut self, u: usize) {
+        self.prune_invalid_grapples(u);
+        let grapplers: Vec<usize> = self.units[u].grappled_by.iter().map(|&(g, _)| g).collect();
+        for g in grapplers {
+            self.prune_invalid_grapples(g);
+        }
+    }
+
+    /// `grappling.ai_release_candidates`: first held creature that is dead, unconscious, or non-hostile.
+    pub fn grapple_release_target(&self, u: usize) -> Option<usize> {
+        if !self.units[u].is_grappling() {
+            return None;
+        }
+        for &t in &self.units[u].grappling {
+            if self.units[t].dead() || self.units[t].unconscious() || !self.opposing(u, t) {
+                return Some(t);
+            }
+        }
+        None
+    }
+
+    /// `monster_traits.apply_charm`.
+    pub fn apply_charm(
+        &mut self,
+        tgt: usize,
+        charmer: usize,
+        save_dc: Option<(Ability, i32)>,
+        duration: Option<&'static str>,
+        repeat_save_when_harmed: bool,
+        ends_on_harm_no_save: bool,
+        source_spell: Option<&'static str>,
+    ) -> bool {
+        if self.units[tgt].dead() || self.units[tgt].t.immune_charmed {
+            return false;
+        }
+        let gt = self.gt();
+        let expires_on_source_turn_start = duration == Some("start_of_source_next_turn");
+        let until = if expires_on_source_turn_start {
+            None
+        } else {
+            let secs = duration.and_then(|s| s.parse::<i32>().ok()).unwrap_or(86400);
+            if secs > 0 { Some(gt + secs) } else { None }
+        };
+        let entry = CharmEntry {
+            source: charmer,
+            until,
+            save_type: save_dc.map(|(a, _)| a),
+            dc: save_dc.map(|(_, d)| d),
+            repeat_save_when_harmed,
+            ends_on_harm_no_save,
+            expires_on_source_turn_start,
+            source_spell,
+        };
+        match self.units[tgt].charmed_by.iter_mut().find(|c| c.source == charmer) {
+            Some(e) => *e = entry,
+            None => self.units[tgt].charmed_by.push(entry),
+        }
+        self.units[tgt].add_status(St::Charmed);
+        true
+    }
+
+    /// `monster_traits.end_charm`.
+    pub fn end_charm(&mut self, tgt: usize, charmer: usize) {
+        let before = self.units[tgt].charmed_by.len();
+        self.units[tgt].charmed_by.retain(|c| c.source != charmer);
+        if self.units[tgt].charmed_by.len() != before && self.units[tgt].charmed_by.is_empty() {
+            self.units[tgt].remove_status(St::Charmed);
+        }
+    }
+
+    /// Prune expired or dead-charmer entries from `charmed_by`.
+    pub fn expire_charms(&mut self, tgt: usize) {
+        if self.units[tgt].charmed_by.is_empty() {
+            return;
+        }
+        let gt = self.gt();
+        let before = self.units[tgt].charmed_by.len();
+        let dead: Vec<bool> = self.units.iter().map(|u| u.dead()).collect();
+        self.units[tgt]
+            .charmed_by
+            .retain(|c| c.until.map_or(true, |x| gt < x) && !dead[c.source]);
+        if self.units[tgt].charmed_by.len() != before && self.units[tgt].charmed_by.is_empty() {
+            self.units[tgt].remove_status(St::Charmed);
+        }
+    }
+
+    /// `monster_traits.expire_charms_on_turn_start`.
+    fn expire_charms_on_turn_start(&mut self, src: usize) {
+        for tgt in 0..self.units.len() {
+            if self.units[tgt].charmed_by.iter().any(|c| c.source == src && c.expires_on_source_turn_start) {
+                self.end_charm(tgt, src);
+            }
+        }
+    }
+
+    /// `monster_traits.on_harmed_while_charmed`.
+    fn on_harmed_while_charmed(&mut self, tgt: usize, attacker: usize) {
+        if attacker == tgt {
+            return;
+        }
+        self.expire_charms(tgt);
+        let entries = self.units[tgt].charmed_by.clone();
+        for c in entries {
+            if !c.repeat_save_when_harmed {
+                continue;
+            }
+            let same_side = attacker == c.source || !self.opposing(attacker, c.source);
+            if !same_side {
+                continue;
+            }
+            if c.ends_on_harm_no_save {
+                self.end_charm(tgt, c.source);
+                continue;
+            }
+            match (c.save_type, c.dc) {
+                (Some(ab), Some(dc)) => {
+                    let total = self.save_throw_ex(tgt, ab, false, 0, false, true, false).0;
+                    if total >= dc {
+                        self.end_charm(tgt, c.source);
+                    }
+                }
+                _ => self.end_charm(tgt, c.source),
+            }
+        }
+    }
+
+    /// `luring_song.apply_lure`.
+    pub fn apply_lure(&mut self, tgt: usize, harpy: usize, dc: i32) {
+        if self.units[tgt].dead() || self.units[tgt].t.immune_charmed || self.is_lured(tgt) {
+            return;
+        }
+        if !self.apply_charm(tgt, harpy, Some((Ability::Wis, dc)), None, false, false, None) {
+            return;
+        }
+        let mut added_incap = false;
+        if !self.units[tgt].has(St::Incapacitated) {
+            self.units[tgt].add_status(St::Incapacitated);
+            added_incap = true;
+        }
+        self.units[tgt].lured_by = Some((harpy, dc, added_incap));
+        self.lose_dodge_if_ineligible(tgt);
+        self.end_rage_if_incapacitated(tgt);
+    }
+
+    /// `luring_song.end_lure`.
+    pub fn end_lure(&mut self, tgt: usize) {
+        let Some((harpy, _, added_incap)) = self.units[tgt].lured_by.take() else { return };
+        self.end_charm(tgt, harpy);
+        if added_incap && self.units[tgt].turned_by.is_empty() {
+            self.units[tgt].remove_status(St::Incapacitated);
+        }
+    }
+
+    /// Release all creatures currently lured by `harpy` (concentration ended / harpy incapacitated).
+    pub(crate) fn end_all_lures_by(&mut self, harpy: usize) {
+        let targets: Vec<usize> = (0..self.units.len())
+            .filter(|&o| self.units[o].lured_by.is_some_and(|(h, _, _)| h == harpy))
+            .collect();
+        for t in targets {
+            self.end_lure(t);
+        }
+    }
+
+    /// `luring_song.expire_lured`.
+    pub fn expire_lured(&mut self, tgt: usize) {
+        if self.units[tgt].lured_by.is_some() && !self.is_lured(tgt) {
+            self.end_lure(tgt);
+        }
+    }
+
+    /// `luring_song.repeat_lure_save`.
+    pub fn repeat_lure_save(&mut self, tgt: usize) {
+        let Some((harpy, dc, _)) = self.units[tgt].lured_by else { return };
+        if !self.is_lured(tgt) || self.units[tgt].dead() {
+            return;
+        }
+        let total = self.save_throw_ex(tgt, Ability::Wis, false, 0, true, true, false).0;
+        if total >= dc {
+            self.end_lure(tgt);
+            let until = self.gt() + 24 * 3600;
+            match self.units[tgt].luring_song_immune.iter_mut().find(|e| e.0 == harpy) {
+                Some(e) => e.1 = until,
+                None => self.units[tgt].luring_song_immune.push((harpy, until)),
+            }
+        }
+    }
+
+    /// `luring_song.on_damaged`: repeat WIS save on damage from any source other than the harpy.
+    fn on_damaged_lured(&mut self, tgt: usize, attacker: Option<usize>) {
+        let Some((harpy, _, _)) = self.units[tgt].lured_by else { return };
+        if !self.is_lured(tgt) {
+            return;
+        }
+        if attacker == Some(harpy) {
+            return;
+        }
+        self.repeat_lure_save(tgt);
+    }
+
+    /// `luring_song.lure_step`: 1-square step directly toward the harpy (not avoiding OAs).
+    pub fn lure_step(&self, u: usize) -> Option<Vec<Pos>> {
+        if !self.can_lure_move(u) {
+            return None;
+        }
+        let Some((harpy, _, _)) = self.units[u].lured_by else { return None };
+        if self.dist(u, harpy) * 5 <= 5 {
+            return None;
+        }
+        let budget = self.units[u].available_movement().div_euclid(5);
+        if budget < 1 {
+            return None;
+        }
+        let (ox, oy) = self.units[u].pos;
+        let (hx, hy) = self.units[harpy].pos;
+        let cur_dist = (ox - hx).abs().max((oy - hy).abs());
+        let mut best: Option<Vec<Pos>> = None;
+        let mut best_key: Option<(i32, i32, i32, i32)> = None;
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let (nx, ny) = (ox + dx, oy + dy);
+                if !self.grid.in_bounds(nx, ny) {
+                    continue;
+                }
+                let nd = (nx - hx).abs().max((ny - hy).abs());
+                if nd >= cur_dist {
+                    continue;
+                }
+                if !self.placeable(u, (nx, ny)) {
+                    continue;
+                }
+                let trial = [(ox, oy), (nx, ny)];
+                let (moves, _) = self.compute_actual_moves(u, &trial, budget);
+                if moves.len() != 2 {
+                    continue;
+                }
+                let euclid2 = (nx - hx) * (nx - hx) + (ny - hy) * (ny - hy);
+                let key = (nd, euclid2, nx, ny);
+                if best_key.map_or(true, |bk| key < bk) {
+                    best_key = Some(key);
+                    best = Some(moves);
+                }
+            }
+        }
+        best
+    }
+
+    /// `monster_traits.trigger_death_burst` (Steam Mephit Death Burst).
+    fn trigger_death_burst(&mut self, src: usize) {
+        let Some(db) = self.units[src].t.death_burst else { return };
+        let origin = self.units[src].pos;
+        let squares = self.squares_in_radius(origin, db.radius, false);
+        let targets = self.creatures_in_squares(&squares, Some(src));
+        if targets.is_empty() {
+            return;
+        }
+        let rolls = self.roll_dice(src, "death_burst", db.damage.count, db.damage.sides);
+        let full: i32 = rolls.iter().sum::<i32>() + db.damage.modifier;
+        for t in targets {
+            let (passed, _) = self.save_check_ex(None, t, db.save, db.dc, false, true, false);
+            if passed && !db.half_on_success {
+                continue;
+            }
+            let amount = if passed { full.div_euclid(2) } else { full };
+            self.take_damage(t, amount, db.damage_type, false, None, Some(src));
+        }
+    }
+
+    /// Roll a skill check with Natural20's `skill_check_terms` advantage/disadvantage.
+    fn roll_skill_check(&mut self, u: usize, skill: &str, modifier: i32, tag: &str) -> i32 {
+        let gt = self.gt();
+        let unit = &self.units[u];
+        let mut adv = false;
+        let mut dis = false;
+        if unit.poisoned() {
+            dis = true;
+        }
+        if unit.frightened_by.iter().any(|&(f, until, _)| gt < until && !self.units[f].dead() && self.can_see(u, f))
+            || unit.source_fear.iter().any(|&(f, _)| !self.units[f].dead() && self.can_see(u, f))
+        {
+            dis = true;
+        }
+        if skill == "athletics" && (unit.t.remarkable_athlete || self.is_raging(u)) {
+            adv = true;
+        }
+        let mode = Fight::mode_of(adv, dis);
+        let face = self.roll_d20(u, tag, mode);
+        face + plus_string_modifier(modifier)
+    }
+
+    /// `FirstAidAction`: Medicine DC 10 to stabilize an adjacent unconscious dying creature.
+    fn do_first_aid(&mut self, src: usize, tgt: usize) {
+        let med_mod = self.units[src].medicine_mod();
+        let total = self.roll_skill_check(src, "medicine", med_mod, "dice roll for medicine");
+        if total >= 10 && !self.units[tgt].dead() && self.units[tgt].unconscious() && !self.units[tgt].has(St::Stable) {
+            let unit = &mut self.units[tgt];
+            unit.add_status(St::Stable);
+            unit.death_saves = 0;
+            unit.death_fails = 0;
+        }
+        let u = &mut self.units[src];
+        u.action = (u.action - 1).max(0);
+    }
+
+    /// `EscapeGrappleAction`: Athletics (if > Acrobatics) else Acrobatics vs escape DC.
+    fn do_escape_grapple(&mut self, src: usize, grappler: usize) {
+        let ath = self.units[src].athletics_mod();
+        let acr = self.units[src].acrobatics_mod();
+        let total = if ath > acr {
+            self.roll_skill_check(src, "athletics", ath, "dice roll for athletics")
+        } else {
+            self.roll_skill_check(src, "acrobatics", acr, "dice roll for acrobatics")
+        };
+        let escape_dc = self.units[src].grappled_by.iter().find(|&&(g, _)| g == grappler).and_then(|&(_, dc)| dc);
+        let escaped = match escape_dc {
+            Some(dc) => total >= dc,
+            None => {
+                let g_ath = self.units[grappler].athletics_mod();
+                let g_total = self.roll_skill_check(grappler, "athletics", g_ath, "dice roll for athletics");
+                total > g_total
+            }
+        };
+        if escaped {
+            self.release_grapple(grappler, src);
+        }
+        let u = &mut self.units[src];
+        u.action = (u.action - 1).max(0);
+    }
+
+    /// `BreakFreeAction`: STR Athletics vs Entangle escape DC (self-only).
+    fn do_break_free(&mut self, src: usize, tgt: usize) {
+        let restraint = self.active_effects(tgt, EffKey::EscapableRestraint).into_iter().next();
+        let Some(obj) = restraint else { return };
+        let dc = match self.objs[obj as usize].kind {
+            crate::effects::ObjKind::EntangleRestraint { dc, .. } => dc,
+            _ => return,
+        };
+        let ath = self.units[src].athletics_mod();
+        let total = self.roll_skill_check(src, "athletics", ath, "athletics");
+        self.units[src].action = (self.units[src].action - 1).max(0);
+        if total >= dc {
+            self.dismiss_entangle_restraint(obj);
+        }
+    }
+
+    /// `NpcAreaAction` (Steam Mephit Steam Breath).
+    fn do_npc_area_ability(&mut self, src: usize, idx: usize, target: Option<Pos>) {
+        let def = &self.units[src].t.area_abilities[idx];
+        let origin = self.units[src].pos;
+        let squares = match def.shape {
+            "radius" | "self" | "emanation" => self.squares_in_radius(origin, def.range, true),
+            _ => match target {
+                Some(dir) => self.squares_in_cone(origin, dir, (def.range / 5).max(1), true),
+                None => Vec::new(),
+            },
+        };
+        let targets = self.creatures_in_squares(&squares, Some(src));
+        let rolls = self.roll_dice(src, def.name, def.damage.count, def.damage.sides);
+        let full: i32 = rolls.iter().sum::<i32>() + def.damage.modifier;
+        let mut outcomes: Vec<(usize, bool, Option<i32>)> = Vec::with_capacity(targets.len());
+        for t in targets {
+            let (passed, _) = self.save_check_ex(None, t, def.save, def.dc, false, false, false);
+            let dmg = if passed && !def.half_on_success {
+                None
+            } else if passed {
+                Some(full.div_euclid(2))
+            } else {
+                Some(full)
+            };
+            outcomes.push((t, passed, dmg));
+        }
+        // Commit: consume cost & mark recharge spent, then damage + on_fail riders.
+        if def.bonus_action {
+            self.units[src].bonus = (self.units[src].bonus - 1).max(0);
+        } else {
+            self.units[src].action = (self.units[src].action - 1).max(0);
+        }
+        if def.recharge.is_some() && !self.units[src].recharge_spent.contains(&def.name) {
+            self.units[src].recharge_spent.push(def.name);
+        }
+        for (t, passed, dmg) in outcomes {
+            if let Some(amount) = dmg {
+                let mut hs = HitState::default();
+                self.damage_event(src, t, amount, def.damage_type, false, &mut hs);
+            }
+            if !passed && !self.units[t].dead() {
+                if let Some(pen) = def.speed_penalty {
+                    let obj = self.new_obj(
+                        SpellId::RayOfFrost,
+                        crate::effects::ObjKind::SpeedPenalty { target: t, penalty: pen, armed: false },
+                        src,
+                        vec![t],
+                        true,
+                    );
+                    self.register_effect(t, EffKey::SpeedOverride, obj, None);
+                    self.register_hook(src, HookEv::StartOfTurn, crate::effects::HookKind::SpeedPenaltyStart, obj, None);
+                    self.register_hook(src, HookEv::EndOfTurn, crate::effects::HookKind::SpeedPenaltyEnd, obj, None);
+                }
+            }
+        }
+    }
+
+    /// Valid destinations for an `NpcTeleportDef` (Blink Dog Teleport / Dryad Tree Stride).
+    pub fn npc_teleport_destinations(&self, u: usize, idx: usize) -> Vec<Pos> {
+        let def = &self.units[u].t.teleports[idx];
+        let origin = self.units[u].pos;
+        if def.tree_stride {
+            let trees = self.grid.trees();
+            if trees.is_empty() {
+                return Vec::new();
+            }
+            let adj_ft = def.tree_adjacency;
+            let tree_range_ft = def.tree_range;
+            let near_trees: Vec<Pos> = trees
+                .iter()
+                .copied()
+                .filter(|&t| self.square_distance(origin, t) * 5 <= adj_ft)
+                .collect();
+            if near_trees.is_empty() {
+                return Vec::new();
+            }
+            let mut dest_trees: Vec<Pos> = Vec::new();
+            for &t1 in &near_trees {
+                for &t2 in trees {
+                    if t2 != t1 && self.square_distance(t1, t2) * 5 <= tree_range_ft && !dest_trees.contains(&t2) {
+                        dest_trees.push(t2);
+                    }
+                }
+            }
+            if dest_trees.is_empty() {
+                return Vec::new();
+            }
+            let adj_sq = (adj_ft / 5).max(1);
+            let mut out: Vec<Pos> = Vec::new();
+            for (tx, ty) in dest_trees {
+                for dx in -adj_sq..=adj_sq {
+                    for dy in -adj_sq..=adj_sq {
+                        let p = (tx + dx, ty + dy);
+                        if p == origin || !self.grid.in_bounds(p.0, p.1) {
+                            continue;
+                        }
+                        if self.placeable(u, p) && !out.contains(&p) {
+                            out.push(p);
+                        }
+                    }
+                }
+            }
+            out.sort();
+            return out;
+        }
+        let reach = (def.range / 5).max(1);
+        let mut out = Vec::new();
+        let x0 = (origin.0 - reach).max(0);
+        let x1 = (origin.0 + reach).min(self.grid.w - 1);
+        let y0 = (origin.1 - reach).max(0);
+        let y1 = (origin.1 + reach).min(self.grid.h - 1);
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                let p = (x, y);
+                if p == origin || self.square_distance(origin, p) * 5 > def.range {
+                    continue;
+                }
+                if !self.placeable(u, p) {
+                    continue;
+                }
+                if !self.sees_lit_square(u, p) {
+                    continue;
+                }
+                out.push(p);
+            }
+        }
+        out
+    }
+
+    /// `NpcTeleportAction` execution.
+    fn do_npc_teleport(&mut self, src: usize, idx: usize, dest: Pos) {
+        let def = &self.units[src].t.teleports[idx];
+        if def.bonus_action {
+            self.units[src].bonus = (self.units[src].bonus - 1).max(0);
+        } else {
+            self.units[src].action = (self.units[src].action - 1).max(0);
+        }
+        if def.recharge.is_some() && !self.units[src].recharge_spent.contains(&def.name) {
+            self.units[src].recharge_spent.push(def.name);
+        }
+        if self.placeable(src, dest) {
+            self.move_to(src, dest);
+            self.prune_grapples_around(src);
+        }
+    }
+
+    /// Eligible targets for Harpy `LuringSong`.
+    pub fn luring_song_targets(&self, src: usize) -> Vec<usize> {
+        let Some(cfg) = self.units[src].t.luring_song else { return Vec::new() };
+        let gt = self.gt();
+        (0..self.units.len())
+            .filter(|&o| {
+                if o == src || self.units[o].dead() {
+                    return false;
+                }
+                if self.dist(src, o) * 5 > cfg.range {
+                    return false;
+                }
+                let t = self.units[o].t;
+                if !(t.pc || t.humanoid || t.giant) {
+                    return false;
+                }
+                if self.is_lured(o) {
+                    return false;
+                }
+                if self.units[o].luring_song_immune.iter().any(|&(s, until)| s == src && gt < until) {
+                    return false;
+                }
+                true
+            })
+            .collect()
+    }
+
+    /// `LuringSongAction` execution (Harpy).
+    fn do_luring_song(&mut self, src: usize) {
+        let Some(cfg) = self.units[src].t.luring_song else { return };
+        let targets = self.luring_song_targets(src);
+        let mut saves: Vec<(usize, bool)> = Vec::with_capacity(targets.len());
+        for t in targets {
+            if self.units[t].t.immune_charmed {
+                saves.push((t, true));
+                continue;
+            }
+            let total = self.save_throw_ex(t, Ability::Wis, false, 0, true, true, false).0;
+            saves.push((t, total >= cfg.dc));
+        }
+        self.units[src].action = (self.units[src].action - 1).max(0);
+        if let Some(prior) = self.units[src].concentration {
+            self.dismiss_effect(src, prior);
+        }
+        let obj = self.new_obj(
+            SpellId::CharmMonster,
+            crate::effects::ObjKind::LuringSong { dc: cfg.dc },
+            src,
+            Vec::new(),
+            true,
+        );
+        self.concentration_on(src, obj);
+        let until = self.gt() + 24 * 3600;
+        for (t, passed) in saves {
+            if passed {
+                match self.units[t].luring_song_immune.iter_mut().find(|e| e.0 == src) {
+                    Some(e) => e.1 = until,
+                    None => self.units[t].luring_song_immune.push((src, until)),
+                }
+            } else {
+                self.apply_lure(t, src, cfg.dc);
+            }
+        }
+    }
+
+    /// `NpcVanishAction` execution (Will-o'-Wisp).
+    fn do_npc_vanish(&mut self, src: usize) {
+        self.units[src].bonus = (self.units[src].bonus - 1).max(0);
+        if let Some(prior) = self.units[src].concentration {
+            self.dismiss_effect(src, prior);
+        }
+        let obj = self.new_obj(
+            SpellId::Invisibility,
+            crate::effects::ObjKind::Vanish,
+            src,
+            vec![src],
+            true,
+        );
+        self.concentration_on(src, obj);
+        self.register_effect(src, EffKey::Invisible, obj, Some(3600));
+        self.register_hook(src, HookEv::AttackResolved, crate::effects::HookKind::InvisibilityBreak, obj, Some(3600));
+        self.register_hook(src, HookEv::SpellCast, crate::effects::HookKind::InvisibilityBreak, obj, Some(3600));
+        self.units[src].add_status(St::Invisible);
+    }
+
+    /// Check `target_if` conditions for an NPC attack (`monster_traits._target_condition`).
+    pub fn attack_target_allowed(&self, src: usize, tgt: usize, def: &AttackDef) -> bool {
+        if self.is_charmed_by(src, tgt) {
+            return false;
+        }
+        if def.save_immune && self.units[tgt].save_immune_to.contains(&(src, def.name)) {
+            return false;
+        }
+        if def.target_if.is_empty() {
+            return true;
+        }
+        let u = &self.units[tgt];
+        def.target_if.iter().any(|cond| match cond {
+            TargetCond::Frightened => {
+                u.has(St::Frightened) || !u.frightened_by.is_empty() || !u.source_fear.is_empty()
+            }
+            TargetCond::ZeroHpLiving => {
+                !u.dead() && u.hp <= 0 && !u.t.undead && !u.t.construct
+            }
+            TargetCond::GrappledBySource => u.grappled_by.iter().any(|&(g, _)| g == src),
+            TargetCond::Grappled => u.is_grappled(),
+            TargetCond::CharmedBySource => self.is_charmed_by(tgt, src),
+            TargetCond::Incapacitated => u.incapacitated(),
+            TargetCond::Restrained => self.is_restrained(tgt),
+            TargetCond::Unconscious => u.unconscious(),
+            TargetCond::Paralyzed => u.has(St::Paralyzed),
+            TargetCond::Prone => u.prone(),
+        })
     }
 }
 

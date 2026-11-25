@@ -71,9 +71,13 @@ impl Bits {
 pub struct Grid {
     pub w: i32,
     pub h: i32,
-    /// Original rows: wall, bright floor, dim floor or dark floor.
+    /// Original rows: wall (`H`), tree (`T`), bright floor (`.`), dim (`d`) or dark (`D`).
     pub rows: Vec<String>,
     wall: Vec<bool>,
+    /// Large+ tree squares (`T`): impassable/opaque like walls, usable by Dryad Tree Stride.
+    tree: Vec<bool>,
+    /// Sorted `(x, y)` coordinates of all `'T'` squares (matches natural20 `_tree_positions`).
+    trees: Vec<Pos>,
     pub(crate) symmetric_sight: bool,
     /// 8-connected floor components under the A* neighbour rule (-1: wall).
     comp: Vec<i32>,
@@ -144,19 +148,33 @@ impl Grid {
             return Err(format!("map width {w} (1..={MAX_SIDE})"));
         }
         let mut wall = Vec::with_capacity(w * h);
+        let mut tree = Vec::with_capacity(w * h);
+        let mut trees = Vec::new();
         for (y, row) in rows.iter().enumerate() {
             let row = row.as_ref();
             if row.len() != w {
                 return Err(format!("map row {y} has {} squares, not {w}", row.len()));
             }
-            for c in row.chars() {
+            for (x, c) in row.chars().enumerate() {
                 match c {
-                    'H' => wall.push(true),
-                    '.' | 'd' | 'D' => wall.push(false),
-                    other => return Err(format!("map square {other:?} (expected H (wall), . (bright), d (dim) or D (dark))")),
+                    'H' => {
+                        wall.push(true);
+                        tree.push(false);
+                    }
+                    'T' => {
+                        wall.push(true);
+                        tree.push(true);
+                        trees.push((x as i32, y as i32));
+                    }
+                    '.' | 'd' | 'D' => {
+                        wall.push(false);
+                        tree.push(false);
+                    }
+                    other => return Err(format!("map square {other:?} (expected H (wall), T (tree), . (bright), d (dim) or D (dark))")),
                 }
             }
         }
+        trees.sort();
         let (w, h) = (w as i32, h as i32);
         let n = (w * h) as usize;
         let mut grid = Grid {
@@ -164,6 +182,8 @@ impl Grid {
             h,
             rows: rows.iter().map(|r| r.as_ref().to_string()).collect(),
             wall,
+            tree,
+            trees,
             symmetric_sight: true,
             comp: Vec::new(),
             los: (0..n).map(|_| OnceLock::new()).collect(),
@@ -290,6 +310,18 @@ impl Grid {
     #[inline]
     pub fn is_wall(&self, x: i32, y: i32) -> bool {
         !self.in_bounds(x, y) || self.wall[self.index(x, y)]
+    }
+
+    /// True if `(x, y)` is a Large+ tree tile (`T`).
+    #[inline]
+    pub fn is_tree(&self, x: i32, y: i32) -> bool {
+        self.in_bounds(x, y) && self.tree[self.index(x, y)]
+    }
+
+    /// Sorted `(x, y)` coordinates of every Large+ tree square (`T`).
+    #[inline]
+    pub fn trees(&self) -> &[Pos] {
+        &self.trees
     }
 
     /// Floor illumination as encoded in the observation: dark (0), dim (1), bright (2).
@@ -656,6 +688,8 @@ struct LegendYaml {
     name: Option<String>,
     #[serde(rename = "type")]
     kind: String,
+    #[serde(default)]
+    large_tree: bool,
 }
 
 /// The `ember:` key: generator or hand-made metadata (natural20 ignores it).
@@ -694,13 +728,16 @@ pub fn load_yaml(text: &str) -> Result<MapFile, String> {
         return Err(format!("illumination {} (only 1.0 is supported)", doc.map.illumination));
     }
     for (sym, entry) in &doc.legend {
-        if sym != "H" || !LEGEND_TYPES.contains(&entry.kind.as_str()) {
-            return Err(format!("legend {sym}: {} (only H stone_wall is supported)", entry.kind));
+        if !matches!(sym.as_str(), "H" | "T") || !LEGEND_TYPES.contains(&entry.kind.as_str()) {
+            return Err(format!("legend {sym}: {} (only H/T stone_wall is supported)", entry.kind));
         }
-        let _ = &entry.name;
+        let _ = (&entry.name, entry.large_tree);
     }
     if doc.map.base.iter().any(|r| r.contains('H')) && !doc.legend.contains_key("H") {
         return Err("walls without an H legend entry".into());
+    }
+    if doc.map.base.iter().any(|r| r.contains('T')) && !doc.legend.contains_key("T") {
+        return Err("trees without a T legend entry".into());
     }
     let grid = Grid::shared(&doc.map.base)?;
     Ok(MapFile { name: doc.name, ember: doc.ember.unwrap_or_default(), grid })

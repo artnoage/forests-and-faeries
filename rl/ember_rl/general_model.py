@@ -92,7 +92,9 @@ def vocab_id_slots(path: str | Path | None = None) -> dict[str, int]:
 # reads as a count, ('scale', 4.). Set the real encoding here when an ember-gen version defines one. Every
 # version's channels are a prefix of the next one's, so a model keeps the transform of its own channels
 # (16-channel ember-gen-v1 models are unchanged).
-EXTRA_MAP_TRANSFORM: dict[int, tuple] = {}
+EXTRA_MAP_TRANSFORM: dict[int, tuple] = {
+    17: ('bin',),  # 17 Large+ tree squares (ember-gen-v4, Dryad Tree Stride)
+}
 
 
 def map_transform(channels: int) -> tuple:

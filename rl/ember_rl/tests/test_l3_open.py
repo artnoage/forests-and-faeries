@@ -678,7 +678,8 @@ def test_model_accepts_extra_map_channels():
     from ember_rl.general_model import build_general, general_config, map_transform, MAP_TRANSFORM
     from ember_rl.general_env import DEFAULT_DIMS
     assert map_transform(17) == MAP_TRANSFORM and map_transform(16) == MAP_TRANSFORM[:16]
-    assert map_transform(18)[-1] == ('scale', 4.)
+    assert map_transform(18)[-1] == ('bin',)
+    assert map_transform(19)[-1] == ('scale', 4.)
     dims = dict(DEFAULT_DIMS, map_channels=18)
     model = build_general(general_config(dims, d_model=32, heads=2, encoder_layers=1, decoder_layers=1,
                                          cnn_channels=8, cnn_layers=2))

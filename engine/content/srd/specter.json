@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "3fee5e69e7955f9d528ea4d828b9f51436324380",
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
@@ -79,8 +79,13 @@
   "restrained",
   "unconscious"
  ],
- "darkvision": 60,
  "passive_perception": 10,
+ "skills": {
+  "medicine": 0,
+  "athletics": -5,
+  "acrobatics": 2
+ },
+ "darkvision": 60,
  "attacks": [
   {
    "name": "life_drain",

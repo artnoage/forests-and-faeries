@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "3fee5e69e7955f9d528ea4d828b9f51436324380",
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/characters/mara_l1.yml": "ea4428816d6851adbd3ad72462f3f9b38515f8c79e3fcc2c6af40e704de11c42",
@@ -67,6 +67,11 @@
  },
  "condition_immunities": [],
  "passive_perception": 13,
+ "skills": {
+  "medicine": 1,
+  "athletics": 5,
+  "acrobatics": 2
+ },
  "base_id": "mara",
  "loadout": {
   "equipment": [

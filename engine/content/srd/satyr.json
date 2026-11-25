@@ -1,0 +1,138 @@
+{
+ "schema": 1,
+ "id": "satyr",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/satyr.yml": "270214c1169bd8b1f754e045044cf74432fb9ea4531bdd1d426179544aebee22"
+  }
+ },
+ "side": "monsters",
+ "name": "Satyr",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "fey"
+ ],
+ "ac": 13,
+ "max_hp": 31,
+ "speed": 40,
+ "fly": false,
+ "abilities": {
+  "str": 12,
+  "dex": 16,
+  "con": 11,
+  "int": 12,
+  "wis": 10,
+  "cha": 14
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 1,
+  "dex": 3,
+  "con": 0,
+  "int": 1,
+  "wis": 0,
+  "cha": 2
+ },
+ "initiative": {
+  "bonus": 3,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 12,
+ "skills": {
+  "medicine": 0,
+  "athletics": 1,
+  "acrobatics": 3
+ },
+ "attacks": [
+  {
+   "name": "hooves",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 5,
+   "damage": "1d4+3",
+   "damage_type": "bludgeoning",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "push",
+     "if": [
+      "!object",
+      "size<=medium"
+     ],
+     "feet": 10
+    }
+   ],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "mockery",
+   "type": "ranged_attack",
+   "range": 90,
+   "range_max": 90,
+   "to_hit": null,
+   "damage": "1d6+2",
+   "damage_type": "psychic",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": {
+    "save": "wis",
+    "dc": 12
+   },
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    5,
+    5.5
+   ],
+   [
+    null,
+    5.5
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [
+  {
+   "id": "magic_resistance"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

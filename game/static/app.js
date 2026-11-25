@@ -377,7 +377,9 @@
     shadow: { resistances: ['acid', 'cold', 'fire', 'lightning', 'thunder'], immunities: ['necrotic', 'poison'], vulnerabilities: ['radiant'] },
     skeleton: { resistances: [], immunities: ['poison'], vulnerabilities: ['bludgeoning'] },
     specter: { resistances: ['acid', 'bludgeoning', 'cold', 'fire', 'lightning', 'piercing', 'slashing', 'thunder'], immunities: ['necrotic', 'poison'], vulnerabilities: [] },
+    steam_mephit: { resistances: [], immunities: ['fire', 'poison'], vulnerabilities: [] },
     wight: { resistances: ['necrotic'], immunities: ['poison'], vulnerabilities: [] },
+    will_o_wisp: { resistances: ['acid', 'bludgeoning', 'cold', 'fire', 'necrotic', 'piercing', 'slashing'], immunities: ['lightning', 'poison'], vulnerabilities: [] },
     zombie: { resistances: [], immunities: ['poison'], vulnerabilities: [] },
   };
   const DAMAGE_TYPES = new Set(['acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder']);

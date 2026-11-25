@@ -28,7 +28,11 @@
    "paralyzed": 4,
    "incapacitated": 5,
    "frightened": 6,
-   "poisoned": 7
+   "poisoned": 7,
+   "charmed": 8,
+   "grappled": 9,
+   "restrained": 10,
+   "invisible": 11
   },
   "action_kinds": {
    "move": 0,
@@ -56,7 +60,14 @@
    "disengage": 22,
    "spiritual_weapon_move": 23,
    "create_spell_slot": 24,
-   "convert_spell_slot": 25
+   "convert_spell_slot": 25,
+   "first_aid": 26,
+   "escape_grapple": 27,
+   "break_free": 28,
+   "npc_area_ability": 29,
+   "npc_teleport": 30,
+   "luring_song": 31,
+   "npc_vanish": 32
   },
   "effects": {
    "bless": 0,
@@ -73,7 +84,11 @@
    "strength_override": 11,
    "timed_condition": 12,
    "ac_override": 13,
-   "heal_override": 14
+   "heal_override": 14,
+   "invisible": 15,
+   "restrained_override": 16,
+   "escapable_restraint": 17,
+   "ray_of_sickness": 18
   },
   "creatures": {
    "guy": 0,
@@ -94,7 +109,19 @@
    "mummy": 15,
    "chruna": 16,
    "animated_armor": 17,
-   "kobold_warrior": 18
+   "kobold_warrior": 18,
+   "violet_fungus": 19,
+   "giant_wasp": 20,
+   "satyr": 21,
+   "steam_mephit": 22,
+   "blink_dog": 23,
+   "sprite": 24,
+   "green_hag": 25,
+   "bugbear_warrior": 26,
+   "dryad": 27,
+   "harpy": 28,
+   "sea_hag": 29,
+   "will_o_wisp": 30
   },
   "classes": {
    "fighter": 0,
@@ -122,7 +149,20 @@
    "scimitar": 15,
    "rotting_fist": 16,
    "dreadful_glare": 17,
-   "halberd": 18
+   "halberd": 18,
+   "rotting_touch": 19,
+   "sting": 20,
+   "hooves": 21,
+   "mockery": 22,
+   "needle_sword": 23,
+   "enchanting_bow": 24,
+   "grab": 25,
+   "light_hammer": 26,
+   "vine_lash": 27,
+   "thorn_burst": 28,
+   "death_glare": 29,
+   "shock": 30,
+   "consume_life": 31
   },
   "mechanics": {
    "great_weapon_fighting": 0,
@@ -193,7 +233,28 @@
    "wizard_subclass": 65,
    "evocation_savant": 66,
    "potent_cantrip": 67,
-   "pack_tactics": 68
+   "pack_tactics": 68,
+   "flyby": 69,
+   "magic_resistance": 70,
+   "push": 71,
+   "blurred_form": 72,
+   "death_burst": 73,
+   "area_save:steam_breath": 74,
+   "teleport:teleport": 75,
+   "charm": 76,
+   "amphibious": 77,
+   "coven_magic": 78,
+   "mimicry": 79,
+   "abduct": 80,
+   "grapple": 81,
+   "speak_with_beasts_and_plants": 82,
+   "teleport:tree_stride": 83,
+   "luring_song": 84,
+   "vile_appearance": 85,
+   "ephemeral": 86,
+   "illumination": 87,
+   "consume_life": 88,
+   "vanish": 89
   },
   "spells": {
    "sacred_flame": 0,
@@ -222,7 +283,11 @@
    "chromatic_orb": 23,
    "dragons_breath": 24,
    "shield": 25,
-   "mage_armor": 26
+   "mage_armor": 26,
+   "invisibility": 27,
+   "ray_of_sickness": 28,
+   "charm_monster": 29,
+   "entangle": 30
   },
   "characters": {
    "guy": 0,

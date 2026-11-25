@@ -1,0 +1,181 @@
+{
+ "schema": 1,
+ "id": "green_hag",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/items/spells.yml": "c1b81c583658369eb926cb93134e8a7c0a0a07e49614d7f6d67ed60b270ad321",
+   "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
+   "templates/rulesets/5e-2024/npcs/green_hag.yml": "3b4d0f64312ccab8c801b31b63750bb7ae26652c4c520dedb1fa508e8e740580"
+  }
+ },
+ "side": "monsters",
+ "name": "Green Hag",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "fey"
+ ],
+ "ac": 17,
+ "max_hp": 82,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 18,
+  "dex": 12,
+  "con": 16,
+  "int": 13,
+  "wis": 14,
+  "cha": 14
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 4,
+  "dex": 1,
+  "con": 3,
+  "int": 1,
+  "wis": 2,
+  "cha": 2
+ },
+ "initiative": {
+  "bonus": 1,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 14,
+ "skills": {
+  "medicine": 2,
+  "athletics": 4,
+  "acrobatics": 1
+ },
+ "darkvision": 60,
+ "attacks": [
+  {
+   "name": "claw",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 6,
+   "damage": "1d8+4",
+   "damage_type": "slashing",
+   "ability": null,
+   "proficient": null,
+   "additional": [
+    {
+     "damage": "1d6",
+     "damage_type": "poison"
+    }
+   ],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": 1,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [
+  [
+   "claw",
+   "claw"
+  ]
+ ],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    6,
+    12.0
+   ]
+  ],
+  "count": 2
+ },
+ "traits": [
+  {
+   "id": "amphibious"
+  },
+  {
+   "id": "coven_magic"
+  },
+  {
+   "id": "mimicry"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": {
+  "class": "innate",
+  "level": 0,
+  "ability": "wis",
+  "attack": 4,
+  "dc": 12,
+  "slots": [
+   0
+  ],
+  "spells": [
+   "invisibility",
+   "ray_of_sickness"
+  ],
+  "reaction_spells": [],
+  "inert_spells": [
+   "dancing_lights",
+   "disguise_self",
+   "minor_illusion"
+  ],
+  "spell_info": [
+   {
+    "id": "invisibility",
+    "name": "Invisibility",
+    "level": 2,
+    "casting_time": "1:action",
+    "concentration": true
+   },
+   {
+    "id": "ray_of_sickness",
+    "name": "Ray of Sickness",
+    "level": 1,
+    "casting_time": "1:action",
+    "concentration": false
+   }
+  ],
+  "free_casts": [
+   {
+    "spell": "invisibility",
+    "pool": "at_will:invisibility",
+    "uses": 0,
+    "at_will": true
+   },
+   {
+    "spell": "ray_of_sickness",
+    "pool": "at_will:ray_of_sickness",
+    "uses": 0,
+    "at_will": true
+   }
+  ],
+  "resources": {},
+  "innate": true,
+  "self_only": [
+   "invisibility"
+  ],
+  "spell_levels": {
+   "ray_of_sickness": 3
+  }
+ }
+}

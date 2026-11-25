@@ -112,15 +112,27 @@ impl Fight {
         self.units[u].innate_until.map_or(false, |x| self.gt() < x)
     }
 
-    /// `Entity.speed()`: walking (or flying) speed after Ray of Frost's
-    /// `speed_override`; two rays still cost only 10 ft (N20-022).
+    /// `Entity.speed()`: walking (or flying) speed after Restrained (0), Ray of Frost
+    /// (-10 once, N20-022), and `SpeedPenalty` (e.g. Steam Breath -10).
     pub fn speed_of(&self, u: usize) -> i32 {
-        let s = self.units[u].speed();
-        if self.active_effects(u, EffKey::SpeedOverride).is_empty() {
-            s
-        } else {
-            (s - 10).max(0)
+        if self.is_restrained(u) {
+            return 0;
         }
+        let mut s = self.units[u].speed();
+        let active = self.active_effects(u, EffKey::SpeedOverride);
+        let mut ray_of_frost = false;
+        for o in active {
+            match self.objs[o as usize].kind {
+                ObjKind::SpeedPenalty { penalty, .. } => s = (s - penalty).max(0),
+                _ => {
+                    if !ray_of_frost {
+                        ray_of_frost = true;
+                        s = (s - 10).max(0);
+                    }
+                }
+            }
+        }
+        s
     }
 
     /// `battle.opponents_of(c)` (battle order, not dead).
@@ -377,7 +389,7 @@ impl Fight {
     }
 
     /// `select_cone` with `optimize_conal_targets`.
-    fn cone_target(&mut self, u: usize, range_sq: i32, require_los: bool) -> Option<Pos> {
+    pub(crate) fn cone_target(&mut self, u: usize, range_sq: i32, require_los: bool) -> Option<Pos> {
         let cur = self.units[u].pos;
         let (w, h) = (self.grid.w, self.grid.h);
         let mut positions = Vec::new();
@@ -487,6 +499,64 @@ impl Fight {
             }
         }
         best
+    }
+
+    /// `select_square` with `_optimize_square_targets` (e.g. Entangle 20-ft square).
+    pub(crate) fn square_target(&mut self, u: usize, range_ft: i32, size_ft: i32) -> Option<Pos> {
+        let cur = self.units[u].pos;
+        let max_sq = (range_ft / 5).max(0);
+        let size_sq = (size_ft / 5).max(1);
+        let mut positions = Vec::new();
+        for dx in -max_sq..=max_sq {
+            for dy in -max_sq..=max_sq {
+                let (nx, ny) = (cur.0 + dx, cur.1 + dy);
+                if !self.grid.in_bounds(nx, ny) {
+                    continue;
+                }
+                positions.push((nx, ny));
+            }
+        }
+        if positions.is_empty() {
+            return None;
+        }
+        let sensed = self.sensed_foe_squares(u);
+        let mut best: Option<Pos> = None;
+        let mut best_score = 1.0;
+        for (ox, oy) in positions {
+            let mut squares = Vec::with_capacity((size_sq * size_sq) as usize);
+            for dx in 0..size_sq {
+                for dy in 0..size_sq {
+                    let (sx, sy) = (ox + dx, oy + dy);
+                    if self.grid.in_bounds(sx, sy) {
+                        squares.push((sx, sy));
+                    }
+                }
+            }
+            let score = self.score_squares(u, &squares, &sensed);
+            if score >= best_score {
+                best_score = score;
+                best = Some((ox, oy));
+            }
+        }
+        best
+    }
+
+    /// `SaveCheck.make(creature, ability, dc)` for magical spells (respects Magic Resistance & Fey Ancestry).
+    pub(crate) fn save_check_ex(
+        &mut self,
+        origin: Option<Pos>,
+        c: usize,
+        ab: Ability,
+        dc: i32,
+        disadvantage: bool,
+        is_magical: bool,
+        is_charmed: bool,
+    ) -> (bool, bool) {
+        if matches!(ab, Ability::Str | Ability::Dex) && (self.units[c].has(St::Paralyzed) || !self.units[c].conscious()) {
+            return (false, false);
+        }
+        let cover = origin.map_or(0, |o| self.point_save_cover(o, c, ab));
+        (self.save_throw_ex(c, ab, disadvantage, cover, is_magical, is_charmed, false).0 >= dc, true)
     }
 
     // ------------------------------------------------------------------
@@ -661,6 +731,27 @@ impl Fight {
                     }
                 }
             }
+            Invisibility => {
+                let self_only = self.units[u].t.caster.as_ref().is_some_and(|c| c.self_only.contains(&Invisibility));
+                if self_only {
+                    out.push((vec![u], false, None, None));
+                } else {
+                    for t in self.acquire_targets(u, 5, TargetTypes::AlliesSelf) {
+                        out.push((vec![t], false, None, None));
+                    }
+                }
+            }
+            Entangle => {
+                let max_sq = 18;
+                for dx in -max_sq..=max_sq {
+                    for dy in -max_sq..=max_sq {
+                        let (nx, ny) = (origin.0 + dx, origin.1 + dy);
+                        if self.grid.in_bounds(nx, ny) {
+                            out.push((Vec::new(), false, Some((nx, ny)), None));
+                        }
+                    }
+                }
+            }
             _ => {}
         }
         out
@@ -727,6 +818,21 @@ impl Fight {
             }
             Thunderwave => {
                 if let Some(p) = self.cube_target(u, 3) {
+                    out.push((Vec::new(), false, Some(p), None));
+                }
+            }
+            Invisibility => {
+                let self_only = self.units[u].t.caster.as_ref().is_some_and(|c| c.self_only.contains(&Invisibility));
+                if self_only {
+                    out.push((vec![u], false, None, None));
+                } else {
+                    for t in self.acquire_targets(u, 5, TargetTypes::AlliesSelf) {
+                        out.push((vec![t], false, None, None));
+                    }
+                }
+            }
+            Entangle => {
+                if let Some(p) = self.square_target(u, 90, 20) {
                     out.push((Vec::new(), false, Some(p), None));
                 }
             }
@@ -1321,18 +1427,18 @@ impl Fight {
     /// `SaveCheck.make(creature, ability, dc)`: Paralyzed (STR/DEX) and
     /// downed (STR/DEX) creatures fail without rolling (`roll=None` -> `rolled=false`).
     fn save_check(&mut self, origin: Pos, c: usize, ab: Ability, dc: i32, disadvantage: bool) -> (bool, bool) {
-        if matches!(ab, Ability::Str | Ability::Dex) && (self.units[c].has(St::Paralyzed) || !self.units[c].conscious()) {
-            return (false, false);
-        }
-        (self.save_throw_with_cover(c, ab, disadvantage, self.point_save_cover(origin, c, ab)).0 >= dc, true)
+        self.save_check_ex(Some(origin), c, ab, dc, disadvantage, true, false)
     }
 
     /// `push_from(map, x, y, distance=10, reserved=...)` for a 1x1 creature:
     /// the push stops short of unplaceable and reserved squares.
     fn push_square(&self, t: usize, from: Pos, reserved: &[Pos]) -> Pos {
+        self.push_square_dist(t, from, reserved, 10)
+    }
+
+    pub(crate) fn push_square_dist(&self, t: usize, from: Pos, reserved: &[Pos], d: i32) -> Pos {
         let (x, y) = self.units[t].pos;
         let (px, py) = from;
-        let d = 10;
         let (mut ox, mut oy): (i32, i32) = (0, 0);
         if px == x && py != y {
             oy = if py < y { d } else { -d };
@@ -1789,6 +1895,18 @@ impl Fight {
     /// `ShieldSpell.after_attack_roll` for a target that knows Shield:
     /// (the +5 blocks this attack, slot level) when it casts.
     pub fn shield_reaction(&mut self, t: usize, total: i32, ac: i32, nat20: bool, nat1: bool) -> Option<(bool, i32)> {
+        self.shield_reaction_ex(t, total, ac, nat20, nat1, true)
+    }
+
+    pub fn shield_reaction_ex(
+        &mut self,
+        t: usize,
+        total: i32,
+        ac: i32,
+        nat20: bool,
+        nat1: bool,
+        record_dec: bool,
+    ) -> Option<(bool, i32)> {
         // Shield is prepared but not a turn option (not in `spells`)
         let knows = self.units[t].t.caster.as_ref().map_or(false, |c| c.reaction_spells.contains(&SpellId::Shield));
         if !knows || !(ac <= total && total < ac + 5) {
@@ -1810,18 +1928,20 @@ impl Fight {
             return None;
         }
         let at_level = self.next_slot(t, 1)?;
-        let act = Act::Spell(Box::new(Cast {
-            spell: SpellId::Shield,
-            at_level,
-            free: false,
-            targets: vec![t],
-            multi: false,
-            point: None,
-            mm: None,
-            dt: None,
-        }));
-        let chosen = self.select_reaction(t, vec![act]);
-        chosen.as_ref()?;
+        if record_dec {
+            let act = Act::Spell(Box::new(Cast {
+                spell: SpellId::Shield,
+                at_level,
+                free: false,
+                targets: vec![t],
+                multi: false,
+                point: None,
+                mm: None,
+                dt: None,
+            }));
+            let chosen = self.select_reaction(t, vec![act]);
+            chosen.as_ref()?;
+        }
         let unit = &mut self.units[t];
         unit.reaction = (unit.reaction - 1).max(0);
         unit.slots[at_level as usize] -= 1;

@@ -609,7 +609,7 @@ fn check_relations(env: &Env, o: &Obs) {
                 let want = live
                     && match RELATIONS[r] {
                         "frightened_of" => {
-                            ui.frightened_by.iter().any(|&(s, until)| s == j && gt < until)
+                            ui.frightened_by.iter().any(|&(s, until, _)| s == j && gt < until)
                                 || ui.source_fear.iter().any(|&(s, _)| s == j)
                         }
                         "save_immune" => ui.save_immune_to.iter().any(|&(s, _)| s == j) || ui.stench_immune.contains(&j),
@@ -929,7 +929,8 @@ fn feature_names_and_vocab() {
     }
     assert_eq!(Version::default(), Version::V2);
     assert_eq!(Version::parse("ember-gen-v3").unwrap(), Version::V3);
-    assert!(Version::parse("ember-gen-v4").is_err());
+    assert_eq!(Version::parse("ember-gen-v4").unwrap(), Version::V4);
+    assert!(Version::parse("ember-gen-v5").is_err());
 }
 
 /// Golden digests: the first and last decision and the two final views of

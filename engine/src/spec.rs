@@ -85,8 +85,8 @@ impl EncounterSpec {
         if rows.is_empty() || rows.iter().any(|r| r.len() != rows[0].len()) {
             return Err("map rows must be non-empty and of equal length".into());
         }
-        if let Some(c) = rows.iter().flat_map(|r| r.chars()).find(|&c| c != 'H' && c != '.') {
-            return Err(format!("map rows may only use 'H' and '.', not {c:?}"));
+        if let Some(c) = rows.iter().flat_map(|r| r.chars()).find(|&c| !matches!(c, 'H' | 'T' | '.' | 'd' | 'D')) {
+            return Err(format!("map rows may only use 'H', 'T', '.', 'd' and 'D', not {c:?}"));
         }
         let (w, h) = (rows[0].len(), rows.len());
         if w > MAX_SIDE || h > MAX_SIDE {

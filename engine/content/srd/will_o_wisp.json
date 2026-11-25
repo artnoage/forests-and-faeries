@@ -1,0 +1,174 @@
+{
+ "schema": 1,
+ "id": "will_o_wisp",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/will_o_wisp.yml": "18747a533235ba911fd6180694ee80c694e37a5bbb398515251a8161d79c4bec"
+  }
+ },
+ "side": "monsters",
+ "name": "Will-o'-Wisp",
+ "pc": false,
+ "size": "tiny",
+ "tags": {
+  "undead": true,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "undead"
+ ],
+ "ac": 19,
+ "max_hp": 27,
+ "speed": 50,
+ "fly": true,
+ "abilities": {
+  "str": 1,
+  "dex": 28,
+  "con": 10,
+  "int": 13,
+  "wis": 14,
+  "cha": 11
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": -5,
+  "dex": 9,
+  "con": 0,
+  "int": 1,
+  "wis": 2,
+  "cha": 0
+ },
+ "initiative": {
+  "bonus": 9,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [
+   "acid",
+   "bludgeoning",
+   "cold",
+   "fire",
+   "necrotic",
+   "piercing",
+   "slashing"
+  ],
+  "immunities": [
+   "lightning",
+   "poison"
+  ],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [
+  "exhaustion",
+  "grappled",
+  "paralyzed",
+  "petrified",
+  "poisoned",
+  "prone",
+  "restrained",
+  "unconscious"
+ ],
+ "passive_perception": 12,
+ "skills": {
+  "medicine": 2,
+  "athletics": -5,
+  "acrobatics": 9
+ },
+ "hover": true,
+ "darkvision": 120,
+ "attacks": [
+  {
+   "name": "shock",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 4,
+   "damage": "2d8+2",
+   "damage_type": "lightning",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "consume_life",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": null,
+   "damage": "0",
+   "damage_type": null,
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "consume_life",
+     "if": [],
+     "heal_die": "3d6"
+    }
+   ],
+   "save_attack": {
+    "save": "con",
+    "dc": 10
+   },
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "no_damage": true,
+   "cost": "bonus_action",
+   "target_if": [
+    "zero_hp_living"
+   ],
+   "breaks_invisibility": true
+  }
+ ],
+ "vanish": {
+  "name": "vanish",
+  "label": "Vanish",
+  "cost": "bonus_action"
+ },
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    11.0
+   ],
+   [
+    null,
+    0.0
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [
+  {
+   "id": "ephemeral"
+  },
+  {
+   "id": "illumination"
+  },
+  {
+   "id": "incorporeal_movement"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

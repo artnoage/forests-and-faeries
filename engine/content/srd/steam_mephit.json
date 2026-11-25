@@ -1,0 +1,144 @@
+{
+ "schema": 1,
+ "id": "steam_mephit",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/steam_mephit.yml": "041dcf475a7f951369e8ad93dfec5bd2aaf80a17535655b5e78a030ef300b476"
+  }
+ },
+ "side": "monsters",
+ "name": "Steam Mephit",
+ "pc": false,
+ "size": "small",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "elemental"
+ ],
+ "ac": 10,
+ "max_hp": 17,
+ "speed": 30,
+ "fly": true,
+ "abilities": {
+  "str": 5,
+  "dex": 11,
+  "con": 10,
+  "int": 11,
+  "wis": 10,
+  "cha": 12
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": -3,
+  "dex": 0,
+  "con": 0,
+  "int": 0,
+  "wis": 0,
+  "cha": 1
+ },
+ "initiative": {
+  "bonus": 0,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [
+   "fire",
+   "poison"
+  ],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [
+  "exhaustion",
+  "poisoned"
+ ],
+ "passive_perception": 10,
+ "skills": {
+  "medicine": 0,
+  "athletics": -3,
+  "acrobatics": 0
+ },
+ "darkvision": 60,
+ "attacks": [
+  {
+   "name": "claw",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 2,
+   "damage": "1d4",
+   "damage_type": "slashing",
+   "ability": null,
+   "proficient": null,
+   "additional": [
+    {
+     "damage": "1d4",
+     "damage_type": "fire"
+    }
+   ],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "area_abilities": [
+  {
+   "name": "steam_breath",
+   "label": "Steam Breath",
+   "shape": "cone",
+   "range": 15,
+   "save": "con",
+   "dc": 10,
+   "damage": "2d4",
+   "damage_type": "fire",
+   "half_on_success": true,
+   "cost": "action",
+   "on_fail": [
+    "speed_penalty:10:end_of_source_next_turn"
+   ],
+   "recharge": 6
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    2,
+    5.0
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [
+  {
+   "id": "blurred_form"
+  },
+  {
+   "id": "death_burst",
+   "radius": 5,
+   "save": "dex",
+   "dc": 10,
+   "damage": "2d4",
+   "damage_type": "fire",
+   "half_on_success": true
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

@@ -126,8 +126,8 @@ def validate_rows(rows, name='map'):
     width = len(rows[0])
     if not (1 <= width <= MAX_SIZE) or any(len(r) != width for r in rows):
         raise CatalogueError(f'{name}: rows must be rectangular within 1..{MAX_SIZE}')
-    if any(ch not in '.dDH' for r in rows for ch in r):
-        raise CatalogueError(f'{name}: expected H (wall), . (bright), d (dim) or D (dark)')
+    if any(ch not in '.dDHT' for r in rows for ch in r):
+        raise CatalogueError(f'{name}: expected H (wall), T (tree), . (bright), d (dim) or D (dark)')
     if not _connected_floor(rows):
         raise CatalogueError(f'{name}: floor must be one connected component')
 
@@ -210,7 +210,7 @@ class Level:
         occupied = set()
         for item in self.suggested_placements():
             x, y = item['x'], item['y']
-            if not (0 <= x < width and 0 <= y < height) or self.rows[y][x] == 'H':
+            if not (0 <= x < width and 0 <= y < height) or self.rows[y][x] in ('H', 'T'):
                 raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: {item["id"]} not on floor at {(x, y)}')
             if (x, y) in occupied:
                 raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: duplicate placement at {(x, y)}')
@@ -276,7 +276,7 @@ def _check_scene(scene, rows, name):
             continue
         for yy in range(y, y + d):
             for xx in range(x, x + w):
-                if rows[yy][xx] != 'H':
+                if rows[yy][xx] not in ('H', 'T'):
                     raise CatalogueError(f'{name}: prop {kind} at {(xx, yy)} covers a floor cell')
 
 

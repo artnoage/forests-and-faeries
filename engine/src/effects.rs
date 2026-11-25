@@ -37,6 +37,14 @@ pub enum EffKey {
     DragonsBreath,
     /// Mage Armor's base AC (`PlayerCharacter.armor_class` evaluates it).
     AcOverride,
+    /// Invisibility / Will-o'-Wisp Vanish (`invisibility_spell.py`).
+    Invisible,
+    /// Entangle restraint (`entangle_spell.py`).
+    RestrainedOverride,
+    /// Break Free opt-in (`break_free_action.py`).
+    EscapableRestraint,
+    /// Ray of Sickness 5e-2024 auto-Poisoned until end of caster's next turn.
+    RayOfSickness,
 }
 
 impl EffKey {
@@ -53,6 +61,10 @@ impl EffKey {
             EffKey::SpeedOverride => "speed_override",
             EffKey::DragonsBreath => "dragons_breath",
             EffKey::AcOverride => "ac_override",
+            EffKey::Invisible => "invisible",
+            EffKey::RestrainedOverride => "restrained_override",
+            EffKey::EscapableRestraint => "escapable_restraint",
+            EffKey::RayOfSickness => "ray_of_sickness",
         }
     }
 }
@@ -89,6 +101,14 @@ pub enum HookKind {
     RayOfFrostStart,
     /// `ShieldSpell.start_of_turn` (on the caster).
     ShieldStart,
+    /// `InvisibilitySpell.attack_resolved` / `spell_cast` (breaks invisibility).
+    InvisibilityBreak,
+    /// `RaySicknessPoison.start_of_turn` / `end_of_turn` (on the caster).
+    RaySicknessStart,
+    RaySicknessEnd,
+    /// `SpeedPenaltyEffect.start_of_turn` / `end_of_turn` (on the source).
+    SpeedPenaltyStart,
+    SpeedPenaltyEnd,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -119,6 +139,20 @@ pub enum ObjKind {
     Breath { target: usize, dt: crate::content::Dmg, dice: i32 },
     /// `BlurEffect` (on the caster; its concentration).
     Blur,
+    /// `InvisibilitySpell` (Concentration on caster; breaks on attack/spell).
+    Invisibility,
+    /// `VanishEffect` (Will-o'-Wisp Concentration; breaks on attack or Consume Life).
+    Vanish,
+    /// `LuringSongConcentration` (Harpy Concentration; dismissing ends lure on victims).
+    LuringSong { dc: i32 },
+    /// `EntangleSpell` + `EntangleZone` (20-ft square of Difficult Terrain + restraints).
+    Entangle { squares: Vec<Pos>, dc: i32, restraints: Vec<u32>, expires_at: i32 },
+    /// `EntangleRestraint` (on one restrained creature; self-only Break Free).
+    EntangleRestraint { target: usize, dc: i32, zone: u32 },
+    /// `RaySicknessPoison` (Poisoned until end of caster's next turn).
+    RaySickness { target: usize, armed: bool, added_status: bool },
+    /// `SpeedPenaltyEffect` (Steam Breath -10 ft speed until end of source's next turn).
+    SpeedPenalty { target: usize, penalty: i32, armed: bool },
 }
 
 #[derive(Clone, Debug)]
@@ -130,6 +164,19 @@ pub struct EffObj {
     /// `effect.action.target` of a `Spell` object (in target order).
     pub targets: Vec<usize>,
     pub ended: bool,
+}
+
+impl EffObj {
+    /// Concentration string written into `UnitDigest.conc` (mirrors `n20_record.py`).
+    pub fn conc_name(&self) -> &'static str {
+        match &self.kind {
+            ObjKind::Vanish => "vanish",
+            ObjKind::LuringSong { .. } => "luring_song",
+            ObjKind::Invisibility => "invisibility",
+            ObjKind::Entangle { .. } => "entangle",
+            _ => self.spell.key(),
+        }
+    }
 }
 
 impl Fight {
@@ -238,13 +285,21 @@ impl Fight {
         if self.units[u].concentration == Some(obj) {
             self.units[u].concentration = None;
         }
-        if matches!(self.objs[obj as usize].kind, ObjKind::Spell) {
+        if matches!(self.objs[obj as usize].kind, ObjKind::Spell | ObjKind::Invisibility) {
             let targets = self.objs[obj as usize].targets.clone();
             for t in targets {
                 self.remove_effect(t, obj);
             }
         }
         self.remove_effect(u, obj);
+        // `LuringSongConcentration` and `EntangleZone` have no entry in `u.effects` or
+        // `u.casted` (for LuringSong), so `remove_effect` won't call `obj_dismiss` unless
+        // invoked directly when dismissing concentration.
+        if !self.objs[obj as usize].ended
+            && matches!(self.objs[obj as usize].kind, ObjKind::LuringSong { .. } | ObjKind::Entangle { .. } | ObjKind::Vanish | ObjKind::Invisibility)
+        {
+            self.obj_dismiss(obj, u);
+        }
     }
 
     /// The effect object's own `dismiss(entity, ...)` hook.
@@ -298,6 +353,99 @@ impl Fight {
                     self.units[source].concentration = None;
                 }
             }
+            ObjKind::Invisibility => {
+                // `InvisibilitySpell.dismiss(entity)`: remove 'invisible' from entity.statuses
+                self.units[entity].statuses.retain(|s| *s != St::Invisible);
+                let targets = self.objs[obj as usize].targets.clone();
+                for t in targets {
+                    self.units[t].statuses.retain(|s| *s != St::Invisible);
+                }
+            }
+            ObjKind::Vanish => {
+                // `VanishEffect.dismiss(entity)`: `InvisibilitySpell._end_for_target`
+                self.invisibility_end_for_target(entity, obj);
+            }
+            ObjKind::LuringSong { .. } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                let source = self.objs[obj as usize].source;
+                self.end_all_lures_by(source);
+            }
+            ObjKind::Entangle { restraints, .. } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                for r in restraints {
+                    self.dismiss_entangle_restraint(r);
+                }
+                if let ObjKind::Entangle { restraints, .. } = &mut self.objs[obj as usize].kind {
+                    restraints.clear();
+                }
+            }
+            ObjKind::EntangleRestraint { target, zone, .. } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                self.remove_effect(target, obj);
+                if let ObjKind::Entangle { restraints, .. } = &mut self.objs[zone as usize].kind {
+                    restraints.retain(|&r| r != obj);
+                }
+            }
+            ObjKind::RaySickness { target, added_status, .. } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                if added_status {
+                    self.units[target].statuses.retain(|s| *s != St::Poisoned);
+                }
+                if target != entity {
+                    self.remove_effect(target, obj);
+                }
+                let source = self.objs[obj as usize].source;
+                if source != entity {
+                    self.remove_effect(source, obj);
+                }
+                self.units[source].hooks.retain(|h| h.obj != obj);
+            }
+            ObjKind::SpeedPenalty { target, .. } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                let source = self.objs[obj as usize].source;
+                self.remove_effect(target, obj);
+                self.remove_effect(source, obj);
+                self.units[source].hooks.retain(|h| h.obj != obj);
+            }
+        }
+    }
+
+    /// `InvisibilitySpell._end_for_target(entity, effect)`: drops `St::Invisible`,
+    /// `effects` entries, and `hooks` for `obj` without clearing concentration.
+    pub fn invisibility_end_for_target(&mut self, u: usize, obj: u32) {
+        let unit = &mut self.units[u];
+        unit.statuses.retain(|s| *s != St::Invisible);
+        for (_, list) in unit.effects.iter_mut() {
+            list.retain(|e| e.obj != obj);
+        }
+        unit.hooks.retain(|h| h.obj != obj);
+    }
+
+    /// Dismiss one `EntangleRestraint` object cleanly.
+    pub fn dismiss_entangle_restraint(&mut self, obj: u32) {
+        let ObjKind::EntangleRestraint { target, zone, .. } = self.objs[obj as usize].kind else { return };
+        if self.objs[obj as usize].ended {
+            return;
+        }
+        self.objs[obj as usize].ended = true;
+        self.remove_effect(target, obj);
+        if let ObjKind::Entangle { restraints, .. } = &mut self.objs[zone as usize].kind {
+            restraints.retain(|&r| r != obj);
         }
     }
 
@@ -364,6 +512,27 @@ impl Fight {
                 }
                 HookKind::RayOfFrostStart => self.ray_of_frost_end(u, h.obj),
                 HookKind::ShieldStart => self.dismiss_effect(u, h.obj),
+                HookKind::InvisibilityBreak => self.invisibility_end_for_target(u, h.obj),
+                HookKind::RaySicknessStart => {
+                    if let ObjKind::RaySickness { armed, .. } = &mut self.objs[h.obj as usize].kind {
+                        *armed = true;
+                    }
+                }
+                HookKind::RaySicknessEnd => {
+                    if let ObjKind::RaySickness { armed: true, .. } = self.objs[h.obj as usize].kind {
+                        self.dismiss_effect(u, h.obj);
+                    }
+                }
+                HookKind::SpeedPenaltyStart => {
+                    if let ObjKind::SpeedPenalty { armed, .. } = &mut self.objs[h.obj as usize].kind {
+                        *armed = true;
+                    }
+                }
+                HookKind::SpeedPenaltyEnd => {
+                    if let ObjKind::SpeedPenalty { armed: true, .. } = self.objs[h.obj as usize].kind {
+                        self.obj_dismiss(h.obj, u);
+                    }
+                }
             }
         }
         out

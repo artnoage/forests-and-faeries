@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "3fee5e69e7955f9d528ea4d828b9f51436324380",
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/characters/curogana_l1.yml": "02841372527ce2146135a153f78d4fcb693404d6d34f9ec1e74644d103581443",
@@ -14,7 +14,7 @@
    "templates/feats/magic_initiate_wizard.yml": "b74bc6eb71afac330ef6e946eabd36b399ba3991f336f908a86b35a14874fdc2",
    "templates/items/equipment.yml": "0e4a7f72acce1eb5fc6e2a26071f3ebc1a3604286c600fba0f533e771bb12cc0",
    "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
-   "templates/items/spells.yml": "dd45c5e4f7e47e77c20ebb9da60bf5a548647e185c6f658818bfadca466b37d8",
+   "templates/items/spells.yml": "c1b81c583658369eb926cb93134e8a7c0a0a07e49614d7f6d67ed60b270ad321",
    "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
    "templates/rulesets/5e-2024/char_classes/sorcerer.yml": "2b3a85ef2c17e0dc9bc0244ffe5a2efbb367938e817bd812515dc81fc2dc5d40",
    "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
@@ -67,8 +67,13 @@
   "vulnerabilities": []
  },
  "condition_immunities": [],
- "darkvision": 60,
  "passive_perception": 11,
+ "skills": {
+  "medicine": -1,
+  "athletics": 0,
+  "acrobatics": 3
+ },
+ "darkvision": 60,
  "base_id": "curogana",
  "loadout": {
   "equipment": [
@@ -181,27 +186,27 @@
   "spell_info": [
    {
     "id": "sorcerous_burst",
-    "sorcerer_spell": true,
     "name": "Sorcerous Burst",
     "level": 0,
     "casting_time": "1:action",
-    "concentration": false
+    "concentration": false,
+    "sorcerer_spell": true
    },
    {
     "id": "acid_splash",
-    "sorcerer_spell": true,
     "name": "Acid Splash",
     "level": 0,
     "casting_time": "1:action",
-    "concentration": false
+    "concentration": false,
+    "sorcerer_spell": true
    },
    {
     "id": "firebolt",
-    "sorcerer_spell": true,
     "name": "Firebolt",
     "level": 0,
     "casting_time": "1:action",
-    "concentration": false
+    "concentration": false,
+    "sorcerer_spell": true
    },
    {
     "id": "ray_of_frost",
@@ -212,11 +217,11 @@
    },
    {
     "id": "burning_hands",
-    "sorcerer_spell": true,
     "name": "Burning Hands",
     "level": 1,
     "casting_time": "1:action",
-    "concentration": false
+    "concentration": false,
+    "sorcerer_spell": true
    },
    {
     "id": "magic_missile",
@@ -227,11 +232,11 @@
    },
    {
     "id": "shield",
-    "sorcerer_spell": true,
     "name": "Shield",
     "level": 1,
     "casting_time": "1:reaction",
-    "concentration": false
+    "concentration": false,
+    "sorcerer_spell": true
    }
   ],
   "free_casts": [

@@ -1,0 +1,112 @@
+{
+ "schema": 1,
+ "id": "blink_dog",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/rulesets/5e-2024/npcs/blink_dog.yml": "a2026c464c71614bd003a5bda24616dc7c6649f9b6ef18cbf600a5a131b6b113"
+  }
+ },
+ "side": "monsters",
+ "name": "Blink Dog",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "fey"
+ ],
+ "ac": 13,
+ "max_hp": 22,
+ "speed": 40,
+ "fly": false,
+ "abilities": {
+  "str": 12,
+  "dex": 17,
+  "con": 12,
+  "int": 10,
+  "wis": 13,
+  "cha": 11
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 1,
+  "dex": 3,
+  "con": 1,
+  "int": 0,
+  "wis": 1,
+  "cha": 0
+ },
+ "initiative": {
+  "bonus": 3,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 15,
+ "skills": {
+  "medicine": 1,
+  "athletics": 1,
+  "acrobatics": 3
+ },
+ "darkvision": 60,
+ "attacks": [
+  {
+   "name": "bite",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 5,
+   "damage": "1d4+3",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "teleports": [
+  {
+   "name": "teleport",
+   "label": "Teleport",
+   "cost": "bonus_action",
+   "tree_stride": false,
+   "range": 40,
+   "recharge": 4
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    5,
+    5.5
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

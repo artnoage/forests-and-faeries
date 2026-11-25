@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "3fee5e69e7955f9d528ea4d828b9f51436324380",
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/characters/ilyra_l3.yml": "bcca586dd84ac74d051e51f7a203c2c05f482ad39d3e2f3869a075e80f03ba12",
@@ -15,7 +15,7 @@
    "templates/feats/magic_initiate_wizard.yml": "b74bc6eb71afac330ef6e946eabd36b399ba3991f336f908a86b35a14874fdc2",
    "templates/items/equipment.yml": "0e4a7f72acce1eb5fc6e2a26071f3ebc1a3604286c600fba0f533e771bb12cc0",
    "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
-   "templates/items/spells.yml": "dd45c5e4f7e47e77c20ebb9da60bf5a548647e185c6f658818bfadca466b37d8",
+   "templates/items/spells.yml": "c1b81c583658369eb926cb93134e8a7c0a0a07e49614d7f6d67ed60b270ad321",
    "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
    "templates/rulesets/5e-2024/char_classes/wizard.yml": "8ad83f18d89eede8752039f59b8c76f2a553f44b846562947cbdae36eb7ff73b",
    "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
@@ -68,6 +68,11 @@
  },
  "condition_immunities": [],
  "passive_perception": 13,
+ "skills": {
+  "medicine": 1,
+  "athletics": -1,
+  "acrobatics": 2
+ },
  "base_id": "ilyra",
  "loadout": {
   "equipment": [

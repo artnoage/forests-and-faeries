@@ -1,0 +1,170 @@
+{
+ "schema": 1,
+ "id": "sprite",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/items/spells.yml": "c1b81c583658369eb926cb93134e8a7c0a0a07e49614d7f6d67ed60b270ad321",
+   "templates/rulesets/5e-2024/items/spells.yml": "5edfe926d0bb561d6795ba37fe920eca5cff22741de27a0329150690fff1f0de",
+   "templates/rulesets/5e-2024/npcs/sprite.yml": "d70c9ebc397fa82c8c5c9dcbc5b1b6f9fedd7227af419fcf552834e9b1c974d0"
+  }
+ },
+ "side": "monsters",
+ "name": "Sprite",
+ "pc": false,
+ "size": "tiny",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "fey"
+ ],
+ "ac": 15,
+ "max_hp": 10,
+ "speed": 40,
+ "fly": true,
+ "abilities": {
+  "str": 3,
+  "dex": 18,
+  "con": 10,
+  "int": 14,
+  "wis": 13,
+  "cha": 11
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": -4,
+  "dex": 4,
+  "con": 0,
+  "int": 2,
+  "wis": 1,
+  "cha": 0
+ },
+ "initiative": {
+  "bonus": 4,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 13,
+ "skills": {
+  "medicine": 1,
+  "athletics": -4,
+  "acrobatics": 4
+ },
+ "attacks": [
+  {
+   "name": "needle_sword",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 6,
+   "damage": "1d4+4",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "enchanting_bow",
+   "type": "ranged_attack",
+   "range": 40,
+   "range_max": 160,
+   "to_hit": 6,
+   "damage": "1",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "charm",
+     "if": [
+      "!object"
+     ],
+     "duration": "start_of_source_next_turn",
+     "repeat_save_when_harmed": false,
+     "ai_value": 5.0
+    }
+   ],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    6,
+    6.5
+   ],
+   [
+    6,
+    1.0
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": {
+  "class": "innate",
+  "level": 0,
+  "ability": "cha",
+  "attack": 2,
+  "dc": 10,
+  "slots": [
+   0
+  ],
+  "spells": [
+   "invisibility"
+  ],
+  "reaction_spells": [],
+  "inert_spells": [],
+  "spell_info": [
+   {
+    "id": "invisibility",
+    "name": "Invisibility",
+    "level": 2,
+    "casting_time": "1:action",
+    "concentration": true
+   }
+  ],
+  "free_casts": [
+   {
+    "spell": "invisibility",
+    "pool": "at_will:invisibility",
+    "uses": 0,
+    "at_will": true
+   }
+  ],
+  "resources": {},
+  "innate": true,
+  "self_only": [
+   "invisibility"
+  ]
+ }
+}
