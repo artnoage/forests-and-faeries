@@ -30,6 +30,19 @@ export const CAST_MODELS = Object.freeze({
   goblin_boss:    Object.freeze({ file: 'models/goblin_boss.glb',    height: 1.08, group: 'monster' }),
   animated_armor: Object.freeze({ file: 'models/animated_armor.glb', height: 1.36, group: 'monster' }),
   kobold_warrior: Object.freeze({ file: 'models/kobold_warrior.glb', height: 0.94, group: 'monster' }),
+  // Fey campaign creatures (11 Tripo multiview originals + 1 procedural Blender Will-o'-Wisp)
+  violet_fungus:   Object.freeze({ file: 'models/violet_fungus.glb',   height: 1.15, group: 'monster' }),
+  giant_wasp:      Object.freeze({ file: 'models/giant_wasp.glb',      height: 1.02, group: 'monster' }),
+  satyr:           Object.freeze({ file: 'models/satyr.glb',           height: 1.28, group: 'monster' }),
+  steam_mephit:    Object.freeze({ file: 'models/steam_mephit.glb',    height: 0.92, group: 'monster' }),
+  blink_dog:       Object.freeze({ file: 'models/blink_dog.glb',       height: 0.90, group: 'monster' }),
+  sprite:          Object.freeze({ file: 'models/sprite.glb',          height: 0.72, group: 'monster' }),
+  dryad:           Object.freeze({ file: 'models/dryad.glb',           height: 1.32, group: 'monster' }),
+  bugbear_warrior: Object.freeze({ file: 'models/bugbear_warrior.glb', height: 1.42, group: 'monster' }),
+  harpy:           Object.freeze({ file: 'models/harpy.glb',           height: 1.32, group: 'monster' }),
+  sea_hag:         Object.freeze({ file: 'models/sea_hag.glb',         height: 1.30, group: 'monster' }),
+  green_hag:       Object.freeze({ file: 'models/green_hag.glb',       height: 1.34, group: 'monster' }),
+  will_o_wisp:     Object.freeze({ file: 'models/will_o_wisp.glb',     height: 0.88, group: 'monster', ghost: 0.86, glow: '#7ceeff', glowIntensity: 0.58 }),
 });
 
 export const CAST_KEYS = Object.freeze(Object.keys(CAST_MODELS));

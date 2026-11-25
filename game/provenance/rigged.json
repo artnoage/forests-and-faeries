@@ -1,5 +1,5 @@
 {
- "what": "The eighteen rigged figures of Forests and Faeries (game/static/models/).",
+ "what": "The thirty rigged figures of Forests and Faeries (game/static/models/).",
  "pipeline": "Project-original meshes (Codex / Gemini reference images, Tripo multiview image-to-3D, reduced in Blender; see mesh_source) rigged and animated by Gemini with its own armatures, geodesic skinning and clips. No third-party geometry, armature, texture or animation data.",
  "rig_manifests": [
   "<repo-root> (with hashes)",
@@ -12,7 +12,8 @@
   "animated_armor": "2026-11-20 (SRD 5.2.1 Medium Construct, rigged from the raw Tripo mesh)",
   "kobold_warrior": "2026-11-20 (SRD 5.2.1 Small Dragon, rigid bone-parented Kobold_Dagger on Weapon.R + Tail.1/Tail.2)",
   "six-hero polish (guy, mara, elion, ilyra, curogana, chruna)": "2026-11-20 (watertight --weld meshes from raw Tripo masters with 0 UV-seam cracks, rigid bone-parented weapons/shields/staves, two-handed Chruna halberd IK, zero-slide Leg-IK walk/run cycles, smooth clip crossfading in skinned-cast.js)",
-  "weapon grips (guy, chruna, mara, ilyra, elion)": "2026-11-24 (game/tools/figures/grips.py: weapons through the fist, two-handed weapons in both hands, shields on the forearm, gear limited to the character sheet)"
+  "weapon grips (guy, chruna, mara, ilyra, elion)": "2026-11-24 (game/tools/figures/grips.py: weapons through the fist, two-handed weapons in both hands, shields on the forearm, gear limited to the character sheet)",
+  "fey campaign batch (12 creatures)": "2026-11-25 (11 SRD 5.2.1 Tripo multiview meshes [440.0/520.0 cr] + 1 procedural Blender Will-o'-Wisp [0 cr]; welded ~18k tris, 9 clips each, rigid Weapon.R on Bugbear Warrior and Sprite)"
  },
  "figures": [
   {
@@ -774,6 +775,470 @@
    },
    "rigged_by": "Gemini (Ember Crucible agent), Blender 5.2, <repo-root>",
    "rig_manifest_sha256_match": null
+  },
+  {
+   "kind": "violet_fungus",
+   "file": "game/static/models/violet_fungus.glb",
+   "sha256": "32947ad0917201e4823d9db487fa4d0ebb930950bf9a866f3efdace27c858125",
+   "bytes": 996152,
+   "triangles": 17997,
+   "bones": 12,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_2e8387fe-0add-4798-90a9-779c6b413393"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/violet_fungus/model-web.glb",
+    "sha256": "7f6fd7e0cddf754a1c54f181353849a1df82747d16e895da45400c2fee2f7f41",
+    "tripo": {
+     "task_id": "2e8387fe-0add-4798-90a9-779c6b413393",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "fa37dbb72dd490f44923d5cf8cc90bce9cac0f4c56623e14ca300bd9b0c2851b"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "giant_wasp",
+   "file": "game/static/models/giant_wasp.glb",
+   "sha256": "061a457cbdcb1aace8396fa59b1ecc1d79557d644182e5ba3b4a2425685274a7",
+   "bytes": 1026192,
+   "triangles": 17996,
+   "bones": 11,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_811a124c-dd10-404d-9739-efb94b218421"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/giant_wasp/model-web.glb",
+    "sha256": "f81171198210c3adb25e324f3f726ea1398f43876f433cf7936bfeb9f06e35f3",
+    "tripo": {
+     "task_id": "811a124c-dd10-404d-9739-efb94b218421",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "1d5aff9dc35fe41e1f0d1d6adeced0e227b37dc1c240c8f2c9428bb6babe0dae"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "satyr",
+   "file": "game/static/models/satyr.glb",
+   "sha256": "2b4216e8cfd4a02e46fba783fdde70c8cab555c78a9c15652863b8de916d6b7f",
+   "bytes": 1135408,
+   "triangles": 17998,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_f008625c-57d6-4606-8e35-fb3e31e806f9"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/satyr/model-web.glb",
+    "sha256": "1eea92548584a0f0337f72979af36cea560195d409a78b805f1a64a05983ae90",
+    "tripo": {
+     "task_id": "f008625c-57d6-4606-8e35-fb3e31e806f9",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "945042862bb660f7be0f8272056ac5d2d973cbedfa024a82f119ca4b6cd62769"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "steam_mephit",
+   "file": "game/static/models/steam_mephit.glb",
+   "sha256": "beac1f5703cf9c624e2e69216d4b34e33c9b1ae06250cd4b29bb05bcf70f5a71",
+   "bytes": 1049884,
+   "triangles": 17998,
+   "bones": 26,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_ea8dfd74-8fa2-4e5c-a3b2-2de48478e1b8"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/steam_mephit/model-web.glb",
+    "sha256": "9e5844b1b7b77c26a62f7fdf09737f3e728621ac1bd77edeefc85777a02f5561",
+    "tripo": {
+     "task_id": "ea8dfd74-8fa2-4e5c-a3b2-2de48478e1b8",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "8639e7d6fc0a873384b9b4b5b6a33ae8fa992e1cd98268f4ecd820549796b490"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "blink_dog",
+   "file": "game/static/models/blink_dog.glb",
+   "sha256": "0bb8015afe29d12d446e94e38f234b1db2be49f84e55a8151add35b24d28bb38",
+   "bytes": 1051392,
+   "triangles": 17998,
+   "bones": 16,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_4a8169a9-f9f0-4eba-8791-5cddc6d0652b"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/blink_dog/model-web.glb",
+    "sha256": "40f687768fbe059162984bbd2a030553e9da5de690c61440350967237eaa2b1c",
+    "tripo": {
+     "task_id": "4a8169a9-f9f0-4eba-8791-5cddc6d0652b",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "18c67d0ba0179d1a0b7ea9215c91dd4d7e780b422dce071c28aac881d79a1ca2"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "sprite",
+   "file": "game/static/models/sprite.glb",
+   "sha256": "2506b2b5039eeaf15d504f37e8f54087dd6298cd0a2fdda8ebe66d91a6d57665",
+   "bytes": 1191172,
+   "triangles": 17998,
+   "bones": 25,
+   "rigid_weapons": {
+    "Sprite_Needle_Sword": "Weapon.R"
+   },
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_8c9cae33-b2b2-4fa1-a9f4-32880b4c134d"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/sprite/model-web.glb",
+    "sha256": "034c0defde15e40984ef8bf180a721fc116827dc9be023bcee00a6e0fc79ff70",
+    "tripo": {
+     "task_id": "8c9cae33-b2b2-4fa1-a9f4-32880b4c134d",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "68e87ad338760e6d77d72858114f28e5931c08a9e8026cf26fe9236f421ae3fe"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "dryad",
+   "file": "game/static/models/dryad.glb",
+   "sha256": "557ade7f944672a1a6716cd1e7f0130d6efdff08dff811f0d90db805cf50d32e",
+   "bytes": 1223468,
+   "triangles": 17998,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_ee985f54-6b9a-45e5-a61d-493ff08ab1a7"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/dryad/model-web.glb",
+    "sha256": "20b4c6b20d9727829ff14f64adcb20df148db60115ef483075f5d5cc407b4c39",
+    "tripo": {
+     "task_id": "ee985f54-6b9a-45e5-a61d-493ff08ab1a7",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "f385c839f86c5b846efe014a7766439066695cb8940598162241a7bc93df751b"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "bugbear_warrior",
+   "file": "game/static/models/bugbear_warrior.glb",
+   "sha256": "eae2a2718f59a310069c2c22c71a31612a95ace8c3cb5366aa7d21e848199080",
+   "bytes": 1232376,
+   "triangles": 17997,
+   "bones": 21,
+   "rigid_weapons": {
+    "Bugbear_Hammer": "Weapon.R"
+   },
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_3ffdb82f-e404-468c-9f36-6de86c55c09a"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/bugbear_warrior/model-web.glb",
+    "sha256": "410b5a64553586519ac8edd597fbfa0ce2d901d4034a2837d1f189255c762c6e",
+    "tripo": {
+     "task_id": "3ffdb82f-e404-468c-9f36-6de86c55c09a",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "1d753744081822fd727c1b96b2d94e790d79f027508153e0d35521aea5c9db51"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "harpy",
+   "file": "game/static/models/harpy.glb",
+   "sha256": "1ce452efd4c12341f2db6fafe47b03ca00ea461f35245e2e93af3c64a0e62efd",
+   "bytes": 1284856,
+   "triangles": 17996,
+   "bones": 24,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_345ebb3b-e847-4ea7-8362-59829029e927"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/harpy/model-web.glb",
+    "sha256": "ec74e32a05b52b597442248317ad9e314de2c357ac0ceb85a9ec3a890573a4ba",
+    "tripo": {
+     "task_id": "345ebb3b-e847-4ea7-8362-59829029e927",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "5bc85895a27d94f00cfaed80d0320018c5fce30c99b6f76b0d2a94e89c534aa3"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "sea_hag",
+   "file": "game/static/models/sea_hag.glb",
+   "sha256": "06f0e5bf3d39448cdae298903ec7af008a7218e36500ee93951cdc0b5c8f03ad",
+   "bytes": 1267336,
+   "triangles": 17998,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_661d55f6-8611-47ef-918c-976a25e82692"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/sea_hag/model-web.glb",
+    "sha256": "5c5ae6230825af270b0568cd68150bcd807756b96d94e9fa9dea0ff050b5b961",
+    "tripo": {
+     "task_id": "661d55f6-8611-47ef-918c-976a25e82692",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "5a04b0f68e69c413172d48b066dc4f706fb153ee475bdeae69f983c125b71a20"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "green_hag",
+   "file": "game/static/models/green_hag.glb",
+   "sha256": "3c4123862677770c6e5ecc910e8a03374134bfe54304cda2d3407153af0592d9",
+   "bytes": 1279604,
+   "triangles": 17996,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "tripo_material_3f29223a-a90a-4376-988b-4f124b51680a"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "file": "<repo-root>/monsters/green_hag/model-web.glb",
+    "sha256": "cab5ed4803228e8505fa709afb2b7b9361a9eef4f31537f02b3a322c5ef48c59",
+    "tripo": {
+     "task_id": "3f29223a-a90a-4376-988b-4f124b51680a",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "f66814f112b3417d8d22532774791ffa6338d565c17bbdd967a05e6c94434c9d"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "will_o_wisp",
+   "file": "game/static/models/will_o_wisp.glb",
+   "sha256": "27f3a9e31f4972bc0f7aea4330dd9f5c67ecd5cd3980007b64739304c5b8a948",
+   "bytes": 369160,
+   "triangles": 8152,
+   "bones": 9,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "Wisp_Core",
+    "Wisp_Flame"
+   ],
+   "mesh_source": {
+    "group": "fey",
+    "procedural_blender": "Blender 5.2.3 LTS (0 Tripo credits)"
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
   }
  ]
 }

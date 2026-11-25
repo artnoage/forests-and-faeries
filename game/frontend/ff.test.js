@@ -33,6 +33,10 @@ test('every hero and monster of the catalogue has a figure', () => {
   assert.equal(resolveCastKey({ content: 'goblin_boss', team: 'monsters' }), 'goblin_boss');
   assert.equal(resolveCastKey({ content: 'animated_armor', team: 'monsters', id: 'animated_armor-1' }), 'animated_armor');
   assert.equal(resolveCastKey({ content: 'kobold_warrior', team: 'monsters', id: 'kobold_warrior-1' }), 'kobold_warrior');
+  for (const fey of ['violet_fungus', 'giant_wasp', 'satyr', 'steam_mephit', 'blink_dog', 'sprite',
+    'dryad', 'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp']) {
+    assert.equal(resolveCastKey({ content: fey, team: 'monsters', id: `${fey}-1` }), fey);
+  }
   for (const base of ['guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna']) {
     for (const lv of [1, 2, 3]) {
       assert.equal(resolveCastKey({ content: `${base}_l${lv}`, base_id: base, level: lv, team: 'heroes', id: `${base}_l${lv}` }), base);
@@ -210,6 +214,8 @@ test('every figure is rigged with the clips the scene plays', async () => {
       ilyra: [['Ilyra_Staff', 'Weapon.R']],
       chruna: [['Chruna_Halberd', 'Weapon.R']],
       kobold_warrior: [['Kobold_Dagger', 'Weapon.R']],
+      bugbear_warrior: [['Bugbear_Hammer', 'Weapon.R']],
+      sprite: [['Sprite_Needle_Sword', 'Weapon.R']],
     };
     if (Object.hasOwn(rigidExpected, key)) {
       const nodes = doc.nodes || [];
