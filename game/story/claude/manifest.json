@@ -104,7 +104,7 @@
    "title": "The Last Wick",
    "place": "The Lower Galleries",
    "encounter": "lantern_mine",
-   "preset": "l2_the_last_wick_v3",
+   "preset": "l2_the_last_wick_story",
    "blurb": "Under the hills the lamps go out one by one, and a dead knight is waiting.",
    "node": [
     0.76,
@@ -132,7 +132,7 @@
    "title": "Under the Loadstone",
    "place": "The Loadstone",
    "encounter": "lantern_mine",
-   "preset": "l3_under_the_loadstone_v3",
+   "preset": "l3_under_the_loadstone_story",
    "blurb": "The short way to the river, under a black rock where the dead of the March are waiting.",
    "node": [
     0.425,
@@ -146,7 +146,7 @@
    "title": "The Sunken Toll",
    "place": "The Drowned Lock",
    "encounter": "reed_lock",
-   "preset": "l3_the_sunken_toll_v3",
+   "preset": "l3_the_sunken_toll_story",
    "blurb": "The end of the road: a drowned lock, and four queens who want their seal back.",
    "node": [
     0.735,

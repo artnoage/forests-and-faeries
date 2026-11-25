@@ -83,6 +83,7 @@
     "zombie-1": [7, 1],
     "zombie-2": [6, 2]
    },
+   "balance": {"games": 200, "native": {"hero_win_rate": 0.85, "wins": 170, "losses": 30, "unfinished": 0, "ci95": [0.7939, 0.8929], "mean_heroes_down": 1.1, "mean_rounds": 3.7}, "best_ai": {"hero_win_rate": 0.95, "wins": 190, "losses": 10, "unfinished": 0, "ci95": [0.9104, 0.9726], "mean_heroes_down": 0.34, "mean_rounds": 3.36, "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"}, "grade": "Easy", "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap", "engine": "ember-rs b6fb061", "measured": "2026-11-25"},
    "variant_of": "lantern_mine/l2_the_long_haul"
   },
   {
@@ -102,6 +103,7 @@
     "wight-1": [2, 9],
     "shadow-2": [3, 9]
    },
+   "balance": {"games": 200, "native": {"hero_win_rate": 0.275, "wins": 55, "losses": 145, "unfinished": 0, "ci95": [0.2178, 0.3407], "mean_heroes_down": 2.52, "mean_rounds": 11.34}, "best_ai": {"hero_win_rate": 0.625, "wins": 125, "losses": 74, "unfinished": 1, "ci95": [0.5561, 0.6891], "mean_heroes_down": 1.52, "mean_rounds": 10.61, "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"}, "grade": "Hard", "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap", "engine": "ember-rs b6fb061", "measured": "2026-11-25"},
    "variant_of": "lantern_mine/l2_the_last_wick"
   },
   {
@@ -146,6 +148,7 @@
     "wight-2": [13, 7],
     "specter-2": [12, 7]
    },
+   "balance": {"games": 200, "native": {"hero_win_rate": 0.28, "wins": 56, "losses": 144, "unfinished": 0, "ci95": [0.2224, 0.3459], "mean_heroes_down": 2.31, "mean_rounds": 11.12}, "best_ai": {"hero_win_rate": 0.71, "wins": 142, "losses": 58, "unfinished": 0, "ci95": [0.6436, 0.7685], "mean_heroes_down": 1.12, "mean_rounds": 12.14, "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"}, "grade": "Hard", "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap", "engine": "ember-rs b6fb061", "measured": "2026-11-25"},
    "variant_of": "lantern_mine/l3_under_the_loadstone"
   }
  ]

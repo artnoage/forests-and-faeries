@@ -83,6 +83,7 @@
     "shadow-1": [4, 8],
     "shadow-2": [3, 9]
    },
+   "balance": {"games": 200, "native": {"hero_win_rate": 0.78, "wins": 156, "losses": 44, "unfinished": 0, "ci95": [0.7176, 0.8318], "mean_heroes_down": 1.12, "mean_rounds": 5.1}, "best_ai": {"hero_win_rate": 0.945, "wins": 189, "losses": 11, "unfinished": 0, "ci95": [0.9042, 0.969], "mean_heroes_down": 0.39, "mean_rounds": 4.25, "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"}, "grade": "Easy", "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap", "engine": "ember-rs b6fb061", "measured": "2026-11-25"},
    "variant_of": "bell_court/l2_rain_in_the_arcade"
   },
   {
@@ -143,6 +144,7 @@
     "goblin_boss-1": [9, 8],
     "animated_armor-5": [8, 8]
    },
+   "balance": {"games": 200, "native": {"hero_win_rate": 0.34, "wins": 68, "losses": 132, "unfinished": 0, "ci95": [0.2779, 0.4081], "mean_heroes_down": 2.32, "mean_rounds": 4.64}, "best_ai": {"hero_win_rate": 0.59, "wins": 118, "losses": 82, "unfinished": 0, "ci95": [0.5208, 0.6558], "mean_heroes_down": 1.71, "mean_rounds": 5.54, "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"}, "grade": "Between", "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap", "engine": "ember-rs b6fb061", "measured": "2026-11-25"},
    "variant_of": "bell_court/l3_the_last_toll"
   },
   {

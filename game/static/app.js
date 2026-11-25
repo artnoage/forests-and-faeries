@@ -540,7 +540,8 @@
   const movesTo = (x, y) => currentActions().filter(a => a.kind === 'move' && targetsCell(a, x, y));
 
   function levelByKey(encounter, preset) {
-    for (const group of catalogue) for (const p of group.presets) if (group.id === encounter && p.id === preset) return { group, preset: p };
+    // A story's own chapter levels (story_presets) are found here but stay out of the Practice lists.
+    for (const group of catalogue) for (const p of [...group.presets, ...(group.story_presets || [])]) if (group.id === encounter && p.id === preset) return { group, preset: p };
     return null;
   }
   const currentLevel = () => state?.level ? levelByKey(state.level.encounter, state.level.id) : null;
@@ -1027,7 +1028,8 @@
       return `<div class="setup-figure"><button class="setup-select ${setupFigure === unit.id ? 'selected' : ''}" data-figure="${escape(unit.id)}" aria-pressed="${setupFigure === unit.id}" ${busy ? 'disabled' : ''}>${portrait(unit)}<span><span class="roster-title"><span class="roster-title-name">${escape(unit.name)}</span>${heroLevelBadge(unit, 'setup-lv-pill')}</span><small>${escape(nativeClass(unit, unit.team !== 'heroes'))} · ${placed ? escape(cellName(placed.x, placed.y)) : 'not placed'}</small></span></button><button class="setup-remove" data-remove="${escape(unit.id)}" aria-label="Remove ${escape(unit.name)}" ${busy || !placed ? 'disabled' : ''}>×</button></div>`;
     }).join('');
     const level = currentLevel();
-    const presets = level?.group.presets || [];
+    const presets = [...(level?.group.presets || [])];
+    if (level && !presets.includes(level.preset)) presets.push(level.preset);
     const select = $('setup-preset');
     const sig = `${level?.group.id}:${presets.map(p => p.id).join()}`;
     if (select.dataset.signature !== sig) {

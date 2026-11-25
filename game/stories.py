@@ -146,8 +146,11 @@ def check(story_id, levels=None):
         if not isinstance(cid, str) or cid in seen:
             problems.append(f'{cw}: needs a unique id')
         seen.add(cid)
-        if (chapter.get('encounter'), chapter.get('preset')) not in levels:
+        level = levels.get((chapter.get('encounter'), chapter.get('preset')))
+        if level is None:
             problems.append(f'{cw}: {chapter.get("encounter")}/{chapter.get("preset")} is not a public catalogue level')
+        elif level.preset.get('story') not in (None, story_id):
+            problems.append(f'{cw}: {chapter.get("encounter")}/{chapter.get("preset")} belongs to story {level.preset["story"]!r}')
         if 'hero_level' in chapter and chapter['hero_level'] not in (1, 2, 3):
             problems.append(f'{cw}: hero_level must be 1, 2 or 3')
         if 'seed' in chapter and not (type(chapter['seed']) is int and 0 <= chapter['seed'] <= 2**31 - 1):

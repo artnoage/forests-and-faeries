@@ -347,7 +347,7 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
   const rankedCounts = { Easy: 0, Medium: 0, Hard: 0, Unbeatable: 0 };
   let classicCount = 0;
   for (const e of pubEncounters) {
-    for (const p of e.presets) {
+    for (const p of e.presets.filter(p => !p.story)) {   // a story's own chapter levels are not in Practice
       if (legacyIds.has(e.id)) classicCount++;
       else rankedCounts[p.difficulty] = (rankedCounts[p.difficulty] || 0) + 1;
       assert.doesNotMatch(p.name, /\(\+[12] monsters?\)/i, `${e.id}/${p.id} has no dev suffix`);

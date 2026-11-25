@@ -376,6 +376,180 @@
      7
     ]
    }
+  },
+  {
+   "id": "l2_the_last_wick_story",
+   "name": "The Last Wick",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "The rail bends around a tongue of uncut rock.",
+   "party": [
+    "elion_l2",
+    "curogana_l2",
+    "chruna_l2"
+   ],
+   "roster": [
+    "shadow",
+    "specter",
+    "wight"
+   ],
+   "placements": {
+    "elion_l2": [
+     11,
+     2
+    ],
+    "curogana_l2": [
+     13,
+     3
+    ],
+    "chruna_l2": [
+     10,
+     2
+    ],
+    "shadow-1": [
+     2,
+     8
+    ],
+    "specter-1": [
+     4,
+     10
+    ],
+    "wight-1": [
+     2,
+     9
+    ]
+   },
+   "variant_of": "lantern_mine/l2_the_last_wick_v3",
+   "balance": {
+    "games": 200,
+    "native": {
+     "hero_win_rate": 0.505,
+     "wins": 101,
+     "losses": 99,
+     "unfinished": 0,
+     "ci95": [
+      0.4363,
+      0.5735
+     ],
+     "mean_heroes_down": 1.95,
+     "mean_rounds": 9.5
+    },
+    "best_ai": {
+     "hero_win_rate": 0.785,
+     "wins": 157,
+     "losses": 41,
+     "unfinished": 2,
+     "ci95": [
+      0.723,
+      0.8363
+     ],
+     "mean_heroes_down": 1.01,
+     "mean_rounds": 8.54,
+     "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"
+    },
+    "grade": "Medium",
+    "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap",
+    "engine": "ember-rs b6fb061",
+    "measured": "2026-11-25"
+   },
+   "story": "claude"
+  },
+  {
+   "id": "l3_under_the_loadstone_story",
+   "name": "Under the Loadstone",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The near bend hides the far end of the gallery.",
+   "party": [
+    "elion",
+    "curogana",
+    "chruna"
+   ],
+   "roster": [
+    "shadow",
+    "shadow",
+    "skeleton",
+    "skeleton",
+    "specter",
+    "wight",
+    "wight"
+   ],
+   "placements": {
+    "elion": [
+     4,
+     3
+    ],
+    "curogana": [
+     6,
+     3
+    ],
+    "chruna": [
+     3,
+     5
+    ],
+    "shadow-1": [
+     13,
+     6
+    ],
+    "shadow-2": [
+     9,
+     9
+    ],
+    "skeleton-1": [
+     12,
+     4
+    ],
+    "skeleton-2": [
+     9,
+     7
+    ],
+    "specter-1": [
+     11,
+     7
+    ],
+    "wight-1": [
+     10,
+     9
+    ],
+    "wight-2": [
+     13,
+     7
+    ]
+   },
+   "variant_of": "lantern_mine/l3_under_the_loadstone_v3",
+   "balance": {
+    "games": 200,
+    "native": {
+     "hero_win_rate": 0.45,
+     "wins": 90,
+     "losses": 110,
+     "unfinished": 0,
+     "ci95": [
+      0.3826,
+      0.5192
+     ],
+     "mean_heroes_down": 2.0,
+     "mean_rounds": 11.2
+    },
+    "best_ai": {
+     "hero_win_rate": 0.85,
+     "wins": 170,
+     "losses": 30,
+     "unfinished": 0,
+     "ci95": [
+      0.7939,
+      0.8929
+     ],
+     "mean_heroes_down": 0.73,
+     "mean_rounds": 10.48,
+     "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"
+    },
+    "grade": "Medium",
+    "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap",
+    "engine": "ember-rs b6fb061",
+    "measured": "2026-11-25"
+   },
+   "story": "claude"
   }
  ]
 }

@@ -14,7 +14,10 @@ Each encounter is a data file ``encounters/<id>.json`` (private ones in
   ``blurb``, ``party`` (hero content ids), ``roster`` (monster content ids, in
   order: ``<content>-<n>`` unit ids are numbered per content), optional
   ``names`` (unit id -> display name), ``placements`` (unit id -> [x, y], the
-  suggested layout) and optional ``balance`` notes.
+  suggested layout) and optional ``balance`` notes;
+* a preset with ``story`` (a story id) is that story's own chapter level: it is
+  loaded and playable like any other, but the start screen's Practice lists leave
+  it out (``catalogue_view`` puts it under ``story_presets``).
 
 Rules come only from the map rows and the content ids compiled into
 ``ember_rs.ContentPool``: zero ``natural20`` imports at runtime.
@@ -224,6 +227,7 @@ class Level:
                 'blurb': preset['blurb'], 'theme': self.theme, 'private': self.private,
                 'map': {'name': self.map_name, 'width': len(self.rows[0]), 'height': len(self.rows)},
                 'hero_level': preset.get('hero_level'),
+                **({'story': preset['story']} if preset.get('story') else {}),
                 'party': [dict(_hero_sheet(h)) for h in preset['party']],
                 'roster': [{'content': c, 'name': _title(c), 'count': n} for c, n in roster.items()]}
 
@@ -305,6 +309,8 @@ def _validate(encounter, path):
         if preset['id'] in seen:
             raise CatalogueError(f'{path.name}: duplicate preset {preset["id"]!r}')
         seen.add(preset['id'])
+        if 'story' in preset and not (isinstance(preset['story'], str) and preset['story']):
+            raise CatalogueError(f'{path.name}: preset {preset["id"]!r}: story must be a story id')
         if preset['difficulty'] not in DIFFICULTIES:
             raise CatalogueError(f'{path.name}: difficulty must be one of {DIFFICULTIES}')
         if preset.get('theme') and preset['theme'] not in THEMES:
@@ -347,12 +353,13 @@ def default_level(include_private=False):
 
 
 def catalogue_view(include_private=False):
-    """The start screen's list: encounters with their presets, in order."""
+    """The start screen's list: encounters with their presets, in order. A story's own
+    chapter levels go under ``story_presets``, out of the Practice lists."""
     groups = []
     for level in load(include_private).values():
         if not groups or groups[-1]['id'] != level.encounter_id:
             enc = level.encounter
             groups.append({'id': enc['id'], 'name': enc['name'], 'blurb': enc['blurb'],
-                           'private': level.private, 'presets': []})
-        groups[-1]['presets'].append(level.view())
+                           'private': level.private, 'presets': [], 'story_presets': []})
+        groups[-1]['story_presets' if level.preset.get('story') else 'presets'].append(level.view())
     return groups

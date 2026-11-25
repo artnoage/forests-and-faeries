@@ -545,6 +545,88 @@
      7
     ]
    }
+  },
+  {
+   "id": "l3_the_sunken_toll_story",
+   "name": "The Sunken Toll",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "The long bank links the landing to either crossing.",
+   "party": [
+    "curogana",
+    "mara_l3",
+    "elion"
+   ],
+   "roster": [
+    "mummy",
+    "mummy",
+    "mummy",
+    "mummy"
+   ],
+   "placements": {
+    "curogana": [
+     2,
+     6
+    ],
+    "mara_l3": [
+     3,
+     8
+    ],
+    "elion": [
+     2,
+     5
+    ],
+    "mummy-1": [
+     10,
+     3
+    ],
+    "mummy-2": [
+     11,
+     8
+    ],
+    "mummy-3": [
+     9,
+     3
+    ],
+    "mummy-4": [
+     11,
+     7
+    ]
+   },
+   "variant_of": "reed_lock/l3_the_sunken_toll_v3",
+   "balance": {
+    "games": 200,
+    "native": {
+     "hero_win_rate": 0.34,
+     "wins": 68,
+     "losses": 132,
+     "unfinished": 0,
+     "ci95": [
+      0.2779,
+      0.4081
+     ],
+     "mean_heroes_down": 2.35,
+     "mean_rounds": 5.9
+    },
+    "best_ai": {
+     "hero_win_rate": 0.785,
+     "wins": 157,
+     "losses": 43,
+     "unfinished": 0,
+     "ci95": [
+      0.723,
+      0.8363
+     ],
+     "mean_heroes_down": 1.0,
+     "mean_rounds": 5.93,
+     "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"
+    },
+    "grade": "Medium",
+    "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap",
+    "engine": "ember-rs b6fb061",
+    "measured": "2026-11-25"
+   },
+   "story": "claude"
   }
  ]
 }

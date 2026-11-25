@@ -7,6 +7,8 @@ The start screen offers three modes:
 
 Each chapter of a story is an ordinary catalogue level, started through the normal server path (`/api/new`, the suggested layout, monsters played by the engine). Nothing carries over between fights: no hit points, loot or level-ups. A story raises its heroes' level by choosing levels whose parties are higher-level.
 
+A chapter can also play a story's own variant of a level: a preset in `game/encounters/<encounter>.json` with `"story": "<story id>"` (and `variant_of` naming the level it changes) is loaded and playable like any other, but `/api/encounters` lists it under `story_presets`, so the Practice lists never show it, and `python -m game.stories --check` refuses it in another story. Its grading rows live in a pool of their own (`game/encounters/story-off-the-map/`, exported to `catalogs/game-levels-story-off-the-map.jsonl`) with the measured win rates in `balance`, which the catalog row records. Off the Map uses three: chapters 4 and 6 without the Practice level's added monster, and chapter 7 with Elion in Chruna's place.
+
 This note is the contract between the shared shell and the stories.
 
 ## Files

@@ -185,6 +185,7 @@
     "mummy-3": [9, 3],
     "mummy-4": [11, 7]
    },
+   "balance": {"games": 200, "native": {"hero_win_rate": 0.165, "wins": 33, "losses": 167, "unfinished": 0, "ci95": [0.12, 0.2227], "mean_heroes_down": 2.77, "mean_rounds": 4.83}, "best_ai": {"hero_win_rate": 0.46, "wins": 92, "losses": 108, "unfinished": 0, "ci95": [0.3923, 0.5292], "mean_heroes_down": 2.08, "mean_rounds": 4.74, "policy": "f4-oldleague phase 84 heroes (ember-gen-v3 features)"}, "grade": "Hard", "method": "two-AI grading: 200 seeded games per hero player (engine native AI, best trained policy), monsters native, these placements, win = every monster down, 30-round cap", "engine": "ember-rs b6fb061", "measured": "2026-11-25"},
    "variant_of": "reed_lock/l3_the_sunken_toll"
   },
   {
