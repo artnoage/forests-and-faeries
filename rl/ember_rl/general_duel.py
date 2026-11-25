@@ -158,7 +158,21 @@ def fixed_specs(args, specs: SpecSource):
         evaluation, reports['eval'] = specs.stratified(args.eval_split, n_eval, EVAL_SEED_BASE, **options)
     if not dev or not evaluation:
         raise ValueError('empty development or evaluation spec list')
+    # A spec file shorter than the episode counts asked for: a development round plays the file's games
+    # (--dev-episodes is not used), and an evaluation matchup repeats the file's games, which are
+    # deterministic for greedy policies (32 specs under --eval-native-episodes 512 are 32 games, 16 times).
+    short = {}
+    if args.dev_specs and getattr(args, 'schedule', None) == 'gated' and len(dev) < args.dev_episodes:
+        short['dev'] = dict(games=len(dev), asked=args.dev_episodes)
+    if args.eval_specs and len(evaluation) < n_eval:
+        short['eval'] = dict(games=len(evaluation), asked=n_eval)
+    for name, row in short.items():
+        print(f'WARNING: --{name}-specs holds {row["games"]} games but {row["asked"]} episodes were asked for: '
+              + ('each development round plays only those games' if name == 'dev' else
+                 'evaluation matchups repeat those games'), flush=True)
     gaps = {name: r['uncovered'] for name, r in reports.items() if r['uncovered']}
+    if short:
+        reports['short_spec_files'] = short
     if gaps and not getattr(args, 'allow_uncovered', False):
         raise SystemExit(f'cells that training draws have no development/evaluation games: {gaps} '
                          '(add rows to those splits, raise the episode counts, or pass --allow-uncovered)')

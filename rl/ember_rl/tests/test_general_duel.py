@@ -146,6 +146,31 @@ def test_native_opponent_and_dev_specs_file(tmp_path):
     assert kinds <= {'heroes=native'}
 
 
+def test_short_spec_files_are_reported(tmp_path, capsys):
+    """A --dev-specs / --eval-specs file with fewer games than the episode counts asked for is not silent:
+    the development round plays only the file's games and evaluations repeat them."""
+    from ember_rl.general_env import EpisodeSpec, write_specs
+    specs = tmp_path / 'two.jsonl'
+    write_specs(specs, [EpisodeSpec('fake-test-0', 1, 2, 3, 0, 0), EpisodeSpec('fake-test-1', 4, 5, 6, 0, 0)])
+    out = tmp_path / 'short'
+    duel.main(['--output', str(out), '--schedule', 'gated', '--dev-every', '64', '--dev-specs', str(specs),
+               '--eval-specs', str(specs), '--dev-episodes', '8', '--eval-native-episodes', '6',
+               '--min-phase-decisions', '0', '--gate-threshold', '1', '--phase-budget', '0',
+               '--eval-slot-fraction', '1', '--eval-every', '1000', '--max-updates', '1',
+               *PPO, *TINY, '--max-rounds', '3'])
+    printed = capsys.readouterr().out
+    assert 'WARNING: --dev-specs holds 2 games but 8 episodes were asked for' in printed
+    assert 'WARNING: --eval-specs holds 2 games but 6 episodes were asked for' in printed
+    sampling = [r for r in rows(out, 'metrics.jsonl') if r['type'] == 'sampling'][0]
+    assert sampling['short_spec_files'] == {'dev': {'games': 2, 'asked': 8}, 'eval': {'games': 2, 'asked': 6}}
+    # Lists as long as asked for stay silent.
+    quiet = tmp_path / 'quiet'
+    duel.main(['--output', str(quiet), '--eval-specs', str(specs), '--eval-every', '1000', '--max-updates', '1',
+               *PPO, *TINY, '--max-rounds', '3'])
+    assert 'WARNING: --eval-specs' not in capsys.readouterr().out
+    assert 'short_spec_files' not in [r for r in rows(quiet, 'metrics.jsonl') if r['type'] == 'sampling'][0]
+
+
 def test_ember_backend_rejects_hp_handicap_and_natural20_rejects_distill(tmp_path):
     with pytest.raises(SystemExit):
         duel.main(['--output', str(tmp_path / 'h'), '--hp-handicap', '1.5', *TINY])
