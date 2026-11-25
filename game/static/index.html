@@ -430,6 +430,8 @@
       </div>
     </div>
 
+    <aside class="ability-info float" id="ability-info" role="status" aria-live="polite" hidden></aside>
+
     <section class="expedition-dock" id="expedition-dock" aria-label="Your party">
       <div class="expedition-head">
         <span class="eyebrow hero-txt">YOUR PARTY</span>
@@ -465,7 +467,9 @@
         <div class="hotbar-popbar" id="hotbar-popbar" hidden>
           <div id="action-options" class="action-options"></div>
           <div id="target-options" class="target-options" aria-label="Choices"></div>
+          <button class="mini-action-btn info-toggle" id="ability-info-toggle" aria-expanded="false" aria-controls="ability-info-inline" title="What this action does"><span class="info-i" aria-hidden="true">i</span>About</button>
           <button class="mini-action-btn" id="chooser-back" title="Clear the selected action (Esc)">✕ Clear</button>
+          <div id="ability-info-inline" class="ability-info inline" role="note" hidden></div>
         </div>
         <div class="hotbar-main">
           <div class="actor-medallion-pod" id="active-actor-pod">
@@ -496,6 +500,16 @@
     </div>
   </div>
 
+  <!-- CHARACTER SHEET -->
+  <dialog id="sheet-dialog" aria-labelledby="sheet-title">
+    <div class="dialog-heading">
+      <span class="eyebrow">CHARACTER SHEET</span>
+      <button class="button quiet" id="close-sheet" aria-label="Close">✕</button>
+    </div>
+    <div id="sheet-units" class="sheet-units" role="group" aria-label="Figures"></div>
+    <div id="sheet-body" class="sheet-body"></div>
+  </dialog>
+
   <!-- HOW TO PLAY -->
   <dialog id="help-dialog" aria-labelledby="help-title">
     <div class="dialog-heading">
@@ -506,7 +520,8 @@
     <ol class="manual">
       <li><b>Choose a difficulty and level.</b> Pick <b>Easy</b>, <b>Medium</b>, <b>Hard</b> or <b>Unbeatable</b> (levels no language-model player won and where both game AIs won fewer than half of their 500 games), or open <b>Classic</b> for the eleven earlier ungraded fights from The Crypt and The Vault. <code>✦ Levels</code> reopens the chooser at any time. <b>Fight</b> uses the suggested layout and rolls initiative at once; <b>Place the figures</b> lets you put each figure on a square first (select it, then click a highlighted square), then press <b>Roll initiative and start</b>.</li>
       <li><b>Take your turn.</b> On your turn you have one action, one bonus action and your movement. You regain your reaction at the start of your turn; a trigger can let you use it on your turn or someone else's. The cards at the bottom are everything the engine allows right now. Pick a card, then a highlighted creature or square. Moving is a card too: teal squares are reachable, and the tooltip shows the cost. A path that leaves a conscious enemy's reach highlights orange and asks you to <b>Confirm</b> (using <b>Disengage</b>, or a Champion's <b>Remarkable Athlete</b> free move after a critical hit, protects the move). Hidden foes are revealed automatically as soon as a hero can see them clearly. Several moves and a bonus action can follow one another. Press <b>End Turn</b> when you are done.</li>
-      <li><b>Choices, cover and warnings.</b> A spell with several slot levels shows <b>Slot</b> pills; a sorcerer's Metamagic, or a feature with modes, shows <b>Metamagic</b> or <b>Mode</b> pills. Every choice shows its cost, target damage defenses (<b>takes double</b>, <b>resists</b> or <b>immune to</b>), and any target cover (<b>+2</b> half cover or <b>+5</b> three-quarters cover, traced corner-to-corner). Heals on a cursed (Mummy Rot) ally, or <b>Aid</b> that would grant no Hit Points to an already-aided ally at 0 HP, are marked with a warning.</li>
+      <li><b>Choices, cover and warnings.</b> One card stands for each ability: a spell cast with a damage type you pick (Chromatic Orb, Sorcerous Burst, Dragon's Breath) shows <b>Damage type</b> pills, a dagger shows <b>Melee</b> or <b>Thrown</b>, and the card remembers your last pick for the rest of the fight. A spell with several slot levels shows <b>Slot</b> pills; a sorcerer's Metamagic, or a feature with modes, shows <b>Metamagic</b> or <b>Mode</b> pills. Every choice shows its cost, target damage defenses (<b>takes double</b>, <b>resists</b> or <b>immune to</b>), and any target cover (<b>+2</b> half cover or <b>+5</b> three-quarters cover, traced corner-to-corner). Heals on a cursed (Mummy Rot) ally, or <b>Aid</b> that would grant no Hit Points to an already-aided ally at 0 HP, are marked with a warning.</li>
+      <li><b>What a card does, and the character sheet.</b> Hover a card, or reach it with <kbd>Tab</kbd>, to read what it does: its cost and uses left, range, area, save or attack roll and dice. On a touch screen, pick the card and press <b>About</b>. <b>Sheet</b> on a party card (or beside the acting figure, or in the inspector) opens the character sheet: AC, hit points, conditions, Dying or Stable with death saves, spell slots and uses left, and every feature, attack and spell. Monsters are in the same panel.</li>
       <li><b>Darts, rays and several targets.</b> <b>Magic Missile</b> (each dart strikes as its own damage instance) and multi-target spells (<b>Bless</b>, <b>Aid</b>, <b>Command</b> — currently Grovel/Halt chosen automatically) ask you to split targets first: click creatures (or use + and −) until the count is full, then press <b>Cast</b>. <b>Scorching Ray</b> is aimed <b>one ray at a time</b>: after each ray resolves, pick the target for the next ray (marked <b>Ray N/M</b>, part of the same cast). <b>Chromatic Orb</b> leaps automatically to another creature within 30 feet when two damage dice show the same number.</li>
       <li><b>Areas.</b> Area spells (Burning Hands, Thunderwave, Shatter…) are aimed in two steps: click the square to aim at, look at the highlighted area, then <b>Confirm</b>. A choice marked <b>⚠ ally</b> or <b>⚠ self</b> would also hit one of your figures.</li>
       <li><b>Reactions are currently automatic.</b> In SRD 5.2.1, reactions are optional; this build currently resolves Opportunity Attacks, Shield and the Goblin Boss's Redirect Attack (on an attack roll against it) automatically when they apply.</li>

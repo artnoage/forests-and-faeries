@@ -388,7 +388,7 @@ const appHelpers = (...names) => {
   const app = read('static/app.js');
   const parts = names.map(n => {
     const fn = app.match(new RegExp(`\\n  function ${n}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`));
-    const konst = app.match(new RegExp(`\\n  const ${n} = [^\\n]*;`));
+    const konst = app.match(new RegExp(`\\n  const ${n} = [^\\n]*;`)) || app.match(new RegExp(`\\n  const ${n} = [\\[{]\\n[\\s\\S]*?\\n  [\\]}];`));
     assert.ok(fn || konst, `${n} present in app.js`);
     return (fn || konst)[0];
   });
@@ -458,4 +458,92 @@ test('a figure that died stands up again in the next fight (retry, Practice rest
   assert.match(scene, /if \(entry\.lying\) \{ entry\.rig\.reset\?\.\(\); entry\.lying = false; \}/);
   assert.match(scene, /stableRing/, 'Stable has its own ring');
   assert.match(scene, /'DYING'/, 'the label of a dying hero says so, with its death-save pips');
+});
+
+test('one card per ability: damage types, thrown use and exchanges are variants of one card', () => {
+  const { groupKey, variantOf, variantsOf, variantNoun, pickVariant, variantText } = appHelpers('catOf', 'VARIANT_DAMAGE', 'variantOf', 'groupKey', 'variantsOf', 'variantNoun', 'pickVariant', 'variantText');
+  const spell = (label, at) => ({ category: 'spell', kind: 'spell', label, spell: 'chromatic_orb', spell_level: 1, at_level: at });
+  const orbs = ['acid', 'cold', 'fire', 'lightning', 'poison', 'thunder'].flatMap(t => [spell(`Chromatic Orb (${t})`, 1), spell(`Chromatic Orb (${t})`, 2)]);
+  assert.equal(new Set(orbs.map(groupKey)).size, 1, 'every Chromatic Orb is one card');
+  assert.deepEqual(variantsOf(orbs), ['acid', 'cold', 'fire', 'lightning', 'poison', 'thunder']);
+  assert.equal(variantNoun(orbs), 'Damage type');
+  assert.equal(variantText('Damage type', 'fire'), 'Fire');
+  // The variant the player picked wins, then the one remembered for this card, then the first.
+  assert.equal(pickVariant(variantsOf(orbs), 'cold', 'fire'), 'cold');
+  assert.equal(pickVariant(variantsOf(orbs), null, 'fire'), 'fire');
+  assert.equal(pickVariant(variantsOf(orbs), 'psychic', 'gone'), 'acid');
+  // Sorcerous Burst and Dragon's Breath also come in damage types; the exhale is its own card.
+  assert.equal(groupKey({ category: 'spell', label: 'Sorcerous Burst (psychic)' }), groupKey({ category: 'spell', label: 'Sorcerous Burst (acid)' }));
+  assert.notEqual(groupKey({ category: 'spell', label: "Dragon's Breath (fire)" }), groupKey({ category: 'spell', label: "Dragon's Breath: exhale" }));
+  // A dagger and its thrown use: Melee first.
+  const daggers = [{ category: 'attack', label: 'Dagger (thrown)' }, { category: 'attack', label: 'Dagger' }];
+  assert.equal(groupKey(daggers[0]), groupKey(daggers[1]));
+  assert.deepEqual(variantsOf(daggers), ['', 'thrown']);
+  assert.deepEqual(variantsOf(daggers).map(v => variantText(variantNoun(daggers), v)), ['Melee', 'Thrown']);
+  // Font of Magic's exchanges and Preserve Life's shares are one card each.
+  const fom = ['create level 1 spell slot (2 sorcery points)', 'convert level 2 spell slot to sorcery points'].map(t => ({ category: 'feature', label: `Font of Magic: ${t}` }));
+  assert.equal(groupKey(fom[0]), groupKey(fom[1]));
+  assert.equal(variantText('Exchange', variantOf(fom[0]).value), 'Create a level 1 slot (2 points)');
+  assert.equal(variantOf({ label: 'Preserve Life (Guy +8 HP, Chruna +7 HP)' }).base, 'Preserve Life');
+  // Not variants: Mage Armor already active, Spiritual Weapon's strike, and Divine Spark's modes
+  // (one label; its heal/harm modes are the existing Mode pills).
+  assert.notEqual(groupKey({ category: 'spell', label: 'Mage Armor (already active)' }), groupKey({ category: 'spell', label: 'Mage Armor' }));
+  assert.notEqual(groupKey({ category: 'spell', label: 'Spiritual Weapon: strike' }), groupKey({ category: 'spell', label: 'Spiritual Weapon' }));
+  assert.equal(groupKey({ category: 'feature', label: 'Divine Spark', option: 'heal' }), groupKey({ category: 'feature', label: 'Divine Spark', option: 'harm' }));
+  // UI only: the actions themselves (and their ids) are untouched.
+  assert.deepEqual(orbs[0], spell('Chromatic Orb (acid)', 1));
+});
+
+test('ability info: the sheet text (with its corrections), cost, uses, range, roll and dice', () => {
+  const { abilityInfo } = appHelpers('catOf', 'VARIANT_DAMAGE', 'variantOf', 'variantText', 'normalizeSheetItem', 'BASIC_INFO', 'UNARMED_INFO', 'SPELL_RANGE', 'THROWN_RANGE', 'nameKey', 'sheetNames', 'findSheetItem', 'poolsFor', 'poolLeft', 'abilityInfo');
+  const facts = info => Object.fromEntries(info.facts);
+  const sorcerer = {
+    stats: 'High elf · CHA 18 CON 20 · Spell save DC 14, attack +6 · Speed 30 ft',
+    features: [{ name: 'Font of Magic', text: 'Three sorcery points, spent on Metamagic.' }],
+    spells: [
+      { name: 'Chromatic Orb', text: 'Level 1. Ranged attack, 3d8 damage of a type you pick.' },
+      { name: 'Burning Hands', text: 'Level 1. 15-ft cone, DEX save, 3d6 fire (half on a success).' },
+      { name: 'Magic Missile', text: 'Level 1. Three darts of 1d4+1 force that never miss; split them as you like. One free cast.' },
+    ],
+  };
+  const pools = [{ label: 'Level 1 slots', value: 2, max: 3 }, { label: 'Sorcery points', value: 1, max: 3 }, { label: 'Magic Initiate (magic missile)', value: 1, max: 1 }];
+  const orb = abilityInfo('Chromatic Orb', [{ category: 'spell', kind: 'spell', label: 'Chromatic Orb (fire)', spell: 'chromatic_orb', spell_level: 1, at_level: 1, cost: 'action + level 1 slot' }], sorcerer, pools);
+  assert.match(orb.text, /leaps to another target/, 'normalizeSheetItem corrections apply');
+  assert.equal(orb.variant, 'Fire');
+  assert.deepEqual(facts(orb), { Cost: 'Action + level 1 slot · Level 1 slots: 2 of 3 left', Range: '90 ft', Roll: 'Spell attack +6', Damage: '3d8 fire' });
+  const hands = abilityInfo('Burning Hands', [{ category: 'spell', kind: 'spell', label: 'Burning Hands', spell: 'burning_hands', spell_level: 1, at_level: 2, metamagic: 'empowered_spell', cost: 'action + level 2 slot + sorcery points' }], sorcerer, pools);
+  assert.equal(facts(hands).Area, '15-ft cone');
+  assert.equal(facts(hands).Roll, 'DEX save, DC 14 (half on a success)');
+  assert.match(facts(hands).Cost, /Sorcery points: 1 of 3 left/);
+  assert.equal(facts(hands).Upcast, 'Cast with a level 2 slot');
+  const missile = abilityInfo('Magic Missile', [{ category: 'spell', kind: 'spell', label: 'Magic Missile', spell: 'magic_missile', spell_level: 1, at_level: 1, free_cast: true, cost: 'action + Magic Initiate free cast' }], sorcerer, pools);
+  assert.equal(facts(missile).Roll, 'None: it always hits');
+  assert.match(facts(missile).Cost, /Magic Initiate \(magic missile\): 1 of 1 left/);
+  const fom = abilityInfo('Font of Magic', [{ category: 'feature', kind: 'create_spell_slot', label: 'Font of Magic: create level 1 spell slot (2 sorcery points)', cost: 'bonus action' }], sorcerer, pools);
+  assert.match(fom.text, /2 points for a level 1 slot/);
+  // Weapons: reach, thrown range, two-weapon lines and monster lines.
+  const barb = { features: [{ name: 'Halberd', text: '+5, 1d10+3 slashing. Heavy, reach 10 ft, two-handed. Mastery: Cleave.' }] };
+  assert.deepEqual(facts(abilityInfo('Halberd', [{ category: 'attack', kind: 'attack', label: 'Halberd', cost: 'action' }], barb, [])), { Cost: 'Action', Range: 'Reach 10 ft', Roll: 'Attack roll +5', Damage: '1d10+3 slashing' });
+  const wiz = { features: [{ name: 'Dagger', text: '+4 to hit, 1d4+2 piercing.' }], spells: [{ name: 'Fire Bolt', text: '' }] };
+  assert.equal(facts(abilityInfo('Dagger', [{ category: 'attack', kind: 'attack', label: 'Dagger (thrown)', cost: 'action' }], wiz, [])).Range, 'Thrown 20/60 ft');
+  assert.equal(abilityInfo('Fire Bolt', [{ category: 'spell', kind: 'spell', label: 'Fire Bolt', spell: 'fire_bolt', spell_level: 0, cost: 'action' }], wiz, []).text, 'Cantrip. Ranged attack, 1d10 fire.', 'an empty sheet text falls back');
+  const wight = { features: [{ name: 'Necrotic Sword / Bow', text: '+4, 1d8+2 plus 1d8 necrotic. Two attacks per action.' }] };
+  assert.match(abilityInfo('Necrotic Bow', [{ category: 'attack', kind: 'attack', label: 'Necrotic Bow', cost: 'action' }], wight, []).text, /Two attacks/);
+  const mummy = { features: [{ name: 'Rotting Fist (x2)', text: '+5, 1d10+3 bludgeoning plus 3d6 necrotic.' }] };
+  assert.equal(facts(abilityInfo('Rotting Fist', [{ category: 'attack', kind: 'attack', label: 'Rotting Fist', cost: 'action' }], mummy, [])).Damage, '1d10+3 bludgeoning · 3d6 necrotic');
+  // Basic actions every creature has, in SRD 5.2.1 wording.
+  assert.match(abilityInfo('Dash', [{ category: 'dash', kind: 'dash', label: 'Dash', cost: 'action' }], barb, []).text, /extra movement equal to your Speed/);
+  assert.match(abilityInfo('Dodge', [{ category: 'dodge', kind: 'dodge', label: 'Dodge', cost: 'action' }], barb, []).text, /Disadvantage if you can see the attacker/);
+  assert.match(abilityInfo('Disengage', [{ category: 'feature', kind: 'disengage', label: 'Disengage', cost: 'action' }], barb, []).text, /doesn’t provoke Opportunity Attacks/);
+  assert.match(abilityInfo('Move', [{ category: 'move', kind: 'move', label: 'Move', cost: '10 ft' }], barb, []).text, /up to your Speed/);
+  assert.match(abilityInfo('Unarmed Attack', [{ category: 'attack', kind: 'attack', label: 'Unarmed Attack', cost: 'action' }], barb, []).text, /1 \+ your Strength modifier/);
+  assert.match(abilityInfo('Stand', [{ category: 'stand', kind: 'stand', label: 'Stand', cost: 'movement' }], barb, []).text, /half your Speed/);
+});
+
+test('the character sheet and the ability info are wired into the page', () => {
+  const html = read('static/index.html'), app = read('static/app.js'), css = read('static/style.css');
+  for (const id of ['sheet-dialog', 'sheet-units', 'sheet-body', 'close-sheet', 'ability-info', 'ability-info-inline', 'ability-info-toggle']) assert.match(html, new RegExp(`id="${id}"`), id);
+  assert.match(app, /\$\('hero-roster'\)\.innerHTML = heroList\.map\(u => slot\(u\)\)/, 'every hero card has a Sheet button');
+  assert.match(app, /poolsSeen\.set\(data\.turn_id/, 'the sheet keeps the last pools seen for each figure');
+  assert.match(css, /@media \(max-width: 900px\), \(hover: none\)/, 'touch screens get the ⓘ About toggle');
 });

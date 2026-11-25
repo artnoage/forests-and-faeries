@@ -259,6 +259,7 @@
   let hadError = false, lastActionId = 0;
   const retiredEncounters = [];
   let selectedLevel = null, selectedOption = null, allocation = new Map(), preview = null, armed = null;
+  let selectedVariant = null, variantMemory = new Map(), poolsSeen = new Map(), infoKey = null, infoOpen = false, sheetUnitId = null;
   let previewSet = new Set();
 
   const DIFFICULTIES = [
@@ -295,7 +296,43 @@
   let recoveries = [], recoveryTimer = 0;
 
   const catOf = action => action.category || action.kind;
-  const groupKey = action => JSON.stringify([catOf(action), action.label]);
+  // One card per ability. The damage-type versions of a spell, a weapon's thrown use, Preserve
+  // Life's ways to share its healing and Font of Magic's exchanges are variants of one card,
+  // picked as a second step (UI only: every variant keeps its own action id).
+  const VARIANT_DAMAGE = ['acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder'];
+  function variantOf(action) {
+    const label = String(action?.label || '');
+    let m = label.match(/^(.+) \(([a-z]+)\)$/);
+    if (m && VARIANT_DAMAGE.includes(m[2])) return { base: m[1], noun: 'Damage type', value: m[2] };
+    if (m && m[2] === 'thrown') return { base: m[1], noun: 'Use', value: 'thrown' };
+    m = label.match(/^Preserve Life \((.+)\)$/);
+    if (m) return { base: 'Preserve Life', noun: 'Healing', value: m[1] };
+    m = label.match(/^Font of Magic: (.+)$/);
+    if (m) return { base: 'Font of Magic', noun: 'Exchange', value: m[1] };
+    return { base: label, noun: '', value: '' };
+  }
+  const groupKey = action => JSON.stringify([catOf(action), variantOf(action).base]);
+  function variantsOf(list) {
+    const seen = [];
+    for (const a of list) if (!seen.includes(variantOf(a).value)) seen.push(variantOf(a).value);
+    return seen.includes('') ? ['', ...seen.filter(v => v !== '')] : seen;
+  }
+  function variantNoun(list) {
+    for (const a of list) if (variantOf(a).noun) return variantOf(a).noun;
+    return '';
+  }
+  function pickVariant(variants, wanted, remembered) {
+    if (variants.includes(wanted)) return wanted;
+    return variants.includes(remembered) ? remembered : variants[0];
+  }
+  function variantText(noun, value) {
+    if (value === '') return noun === 'Use' ? 'Melee' : 'Standard';
+    if (noun === 'Exchange') {
+      return value.replace(/^create level (\d+) spell slot \((\d+) sorcery points\)$/i, 'Create a level $1 slot ($2 points)')
+        .replace(/^convert level (\d+) spell slot to sorcery points$/i, 'Level $1 slot → points');
+    }
+    return noun === 'Healing' ? value : value.charAt(0).toUpperCase() + value.slice(1);
+  }
   const activeUnit = () => state?.units.find(u => u.id === state.turn_id) || state?.units.find(u => u.active) || null;
   const canAct = () => !!state?.can_act && !busy && !watching;
   const objects = () => Array.isArray(state?.objects) ? state.objects : [];
@@ -308,12 +345,18 @@
     const groups = new Map();
     for (const action of actions()) {
       const key = groupKey(action);
-      if (!groups.has(key)) groups.set(key, { key, kind: catOf(action), label: action.label, actions: [] });
+      if (!groups.has(key)) groups.set(key, { key, kind: catOf(action), label: variantOf(action).base, actions: [] });
       groups.get(key).actions.push(action);
     }
     return [...groups.values()];
   };
-  const groupActions = () => canAct() ? actions().filter(a => groupKey(a) === selectedGroup) : [];
+  // The selected card's actions of the chosen variant (the last one picked for that card this fight).
+  const variantActions = () => {
+    const all = canAct() ? actions().filter(a => groupKey(a) === selectedGroup) : [];
+    const v = pickVariant(variantsOf(all), selectedVariant, variantMemory.get(selectedGroup));
+    return all.filter(a => variantOf(a).value === v);
+  };
+  const groupActions = variantActions;
   const paymentKey = a => a.at_level == null ? null : (a.free_cast ? 'free' : String(a.at_level));
   const levelsOf = list => [...new Set(list.map(paymentKey).filter(l => l !== null))].sort((a, b) => a === 'free' ? -1 : b === 'free' ? 1 : Number(a) - Number(b));
   const optionsOf = list => [...new Set(list.map(a => a.option || ''))].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
@@ -1026,6 +1069,26 @@
   function normalizeSheetItem(item) {
     const name = item?.name || '';
     let text = item?.text || '';
+    // Texts some sheets leave empty (the wizard's), in the other sheets' words and SRD 5.2.1's.
+    const blank = {
+      'Fire Bolt': 'Cantrip. Ranged attack, 1d10 fire.',
+      'Ray of Frost': 'Cantrip. Ranged attack, 1d8 cold, and the target’s Speed drops by 10 ft until the start of your next turn.',
+      'Acid Splash': 'Cantrip. 5-ft sphere within 60 ft; DEX save or 1d6 acid.',
+      'Mage Armor': 'Level 1. Touch a willing creature not wearing armor: its base AC becomes 13 + its DEX modifier for 8 hours.',
+      'Burning Hands': 'Level 1. 15-ft cone, DEX save, 3d6 fire (half on a success).',
+      'Thunderwave': 'Level 1. 15-ft cube from you, CON save, 2d8 thunder and a 10-ft push (half damage and no push on a success).',
+      'Chromatic Orb': 'Level 1. Ranged attack, 3d8 damage of a type you pick.',
+      'Magic Missile': 'Level 1. Three darts of 1d4+1 force that never miss; split them as you like.',
+      'Shatter': 'Level 2. 10-ft sphere within 60 ft, CON save, 3d8 thunder (half on a success).',
+      'Shield': 'Level 1 reaction (automatic): +5 AC against the triggering hit.',
+      'Magic Initiate Wizard': 'Two wizard cantrips and one level 1 wizard spell, which can be cast once without a spell slot per Long Rest.',
+      'Spellcasting': 'Wizard spells from the spellbook, cast with Intelligence.',
+      'Ritual Adept': 'Cast a Ritual spell from the spellbook as a Ritual without preparing it (not used in a fight).',
+      'Arcane Recovery': 'Recover some expended spell slots after a Short Rest, once per Long Rest (not used in a fight).',
+      'Scholar': 'Expertise in one of Arcana, History, Investigation, Medicine, Nature or Religion.',
+      'Wizard Subclass': 'Evoker.',
+    };
+    if (!text.trim() && blank[name]) text = blank[name];
     if (name === 'Command' && !/Halt/i.test(text)) {
       text = 'Level 1. WIS save or obey a one-word command. This build picks Grovel (falls Prone and ends its turn) or Halt (stays put and takes no action or Bonus Action) automatically from the SRD’s five words.';
     } else if (name === 'Dreadful Glare' && !/24 hours/i.test(text)) {
@@ -1054,6 +1117,195 @@
     return `<div class="sheet"><p class="sheet-stats">${escape(sheet.stats)}</p><details ${open ? 'open' : ''}><summary>Traits and attacks</summary>${list(sheet.features)}</details>${sheet.spells?.length ? `<details><summary>Spells</summary>${list(sheet.spells)}</details>` : ''}</div>`;
   }
 
+  // --- What an ability does: the sheet's text, its cost and what the text and data say ---------
+  // Basic actions every creature has (SRD 5.2.1 wording), by action kind.
+  const BASIC_INFO = {
+    move: 'Move up to your Speed; you can split your move before and after your action. Leaving the reach of an enemy that can see you provokes an Opportunity Attack unless you Disengage.',
+    dash: 'For the rest of the turn, you gain extra movement equal to your Speed.',
+    dodge: 'Until the start of your next turn, any attack roll made against you has Disadvantage if you can see the attacker, and you make Dexterity saving throws with Advantage. You lose this benefit if you have the Incapacitated condition or your Speed is 0.',
+    disengage: 'Your movement doesn’t provoke Opportunity Attacks for the rest of the turn.',
+    disengage_bonus: 'As a Bonus Action: your movement doesn’t provoke Opportunity Attacks for the rest of the turn.',
+    hide: 'Make a DC 15 Dexterity (Stealth) check while Heavily Obscured or behind Three-Quarters or Total Cover, out of every enemy’s line of sight. On a success you have the Invisible condition until an enemy finds you, you make a sound louder than a whisper, make an attack roll or cast a spell with a Verbal component.',
+    hide_bonus: 'As a Bonus Action: make a DC 15 Dexterity (Stealth) check while Heavily Obscured or behind Three-Quarters or Total Cover, out of every enemy’s line of sight. On a success you have the Invisible condition until an enemy finds you, you make a sound louder than a whisper, make an attack roll or cast a spell with a Verbal component.',
+    stand: 'Standing up from Prone costs movement equal to half your Speed.',
+    extend_rage: 'Bonus Action: keep your Rage going until the end of your next turn.',
+    dragons_breath_exhale: 'Action: exhale a 15-ft cone; each creature in it makes a DEX save, taking 3d6 damage of the chosen type, half on a success.',
+    create_spell_slot: 'Bonus Action: turn sorcery points into one spell slot (2 points for a level 1 slot, 3 for a level 2 slot).',
+    convert_spell_slot: 'No action: expend a spell slot to gain sorcery points equal to its level.',
+  };
+  const UNARMED_INFO = 'Unarmed Strike: a melee attack roll with Strength plus your Proficiency Bonus; on a hit, Bludgeoning damage equal to 1 + your Strength modifier.';
+  // Spell ranges (SRD 5.2.1), by spell key.
+  const SPELL_RANGE = {
+    acid_splash: '60 ft', aid: '30 ft', bless: '30 ft', blur: 'Self', burning_hands: 'Self', chromatic_orb: '90 ft',
+    command: '60 ft', cure_wounds: 'Touch', dragons_breath: 'Touch', fire_bolt: '120 ft', guiding_bolt: '120 ft',
+    healing_word: '60 ft', lesser_restoration: 'Touch', mage_armor: 'Touch', magic_missile: '120 ft',
+    protection_from_evil_and_good: 'Touch', ray_of_frost: '60 ft', sacred_flame: '60 ft', sanctuary: '30 ft',
+    scorching_ray: '120 ft', shatter: '60 ft', shield: 'Self', shield_of_faith: '60 ft', sorcerous_burst: '120 ft',
+    spare_the_dying: '15 ft', spiritual_weapon: '60 ft', thunderwave: 'Self',
+  };
+  const THROWN_RANGE = { Dagger: '20/60 ft', Handaxe: '20/60 ft', Javelin: '30/120 ft', Spear: '20/60 ft', 'Light Hammer': '20/60 ft' };
+
+  const nameKey = s => String(s || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  // The names a sheet line answers to: "Rotting Fist (x2)" is Rotting Fist; "Necrotic Sword / Bow"
+  // is Necrotic Sword and Necrotic Bow; "Shortsword / Shortbow" is either.
+  function sheetNames(name) {
+    const clean = String(name || '').replace(/\s*\([^)]*\)\s*$/, '');
+    const parts = clean.split(/\s*\/\s*/);
+    const head = parts[0].split(' ');
+    const out = [name, clean, ...parts];
+    for (const p of parts.slice(1)) if (!p.includes(' ') && head.length > 1) out.push([...head.slice(0, -1), p].join(' '));
+    return [...new Set(out.map(nameKey))];
+  }
+  function findSheetItem(sheet, label, spell) {
+    const items = [...(sheet?.features || []), ...(sheet?.spells || [])];
+    const text = String(label || '');
+    const wanted = [text, text.replace(/\s*\([^)]*\)$/, ''), text.replace(/:.*$/, ''), String(spell || '').replace(/_/g, ' ')].map(nameKey).filter(Boolean);
+    for (const w of wanted) {
+      const hit = items.find(i => sheetNames(i.name).includes(w));
+      if (hit) return normalizeSheetItem(hit);
+    }
+    return null;
+  }
+  // The pools an action draws on, from the acting creature's pools.
+  function poolsFor(a, pools) {
+    const list = Array.isArray(pools) ? pools : [];
+    const find = test => list.find(p => test(String(p.label)) && typeof p.value === 'number');
+    const out = [];
+    if (a.free_cast) out.push(find(l => nameKey(l) === nameKey(`Magic Initiate ${String(a.spell || '').replace(/_/g, ' ')}`)));
+    else if (Number(a.at_level) > 0) out.push(find(l => l === `Level ${a.at_level} slots`));
+    const byKind = { second_wind: 'Second Wind', action_surge: 'Action Surge', divine_spark: 'Channel Divinity', channel_divinity_turn_undead: 'Channel Divinity', preserve_life: 'Channel Divinity', rage: 'Rage', innate_sorcery: 'Innate Sorcery', create_spell_slot: 'Sorcery points' };
+    if (byKind[a.kind]) out.push(find(l => l === byKind[a.kind]));
+    if (a.metamagic) out.push(find(l => l === 'Sorcery points'));
+    return out.filter(Boolean);
+  }
+  const poolLeft = p => `${p.label}: ${p.value}${p.max != null ? ' of ' + p.max : ''} left`;
+
+  // label: the card's name; list: the actions of the variant shown; sheet: the actor's sheet.
+  function abilityInfo(label, list, sheet, pools) {
+    const a = list[0] || {};
+    const v = variantOf(a);
+    const item = findSheetItem(sheet, label, a.spell);
+    const basic = BASIC_INFO[a.kind] || (/^Unarmed (Attack|Strike)$/.test(label) ? UNARMED_INFO : '');
+    let text = item?.text || basic;
+    if (item?.text && BASIC_INFO[a.kind] && ['dragons_breath_exhale', 'create_spell_slot', 'convert_spell_slot'].includes(a.kind)) text = BASIC_INFO[a.kind];
+    if (!text && catOf(a) === 'attack') text = 'A weapon attack.';
+    const stats = String(sheet?.stats || '');
+    const facts = [];
+    const cost = a.kind === 'move' ? 'Movement' : String(a.cost || 'action');
+    const left = poolsFor(a, pools).map(poolLeft);
+    facts.push(['Cost', [cost.charAt(0).toUpperCase() + cost.slice(1), ...left].join(' · ')]);
+    const reach = text.match(/reach (\d+) ft/i)?.[1];
+    const bow = /bow\b/i.test(label), bowRange = bow ? text.match(/(\d+\/\d+) ft/)?.[1] : null;
+    const within = text.match(/within (\d+) ft/i)?.[1];
+    const melee = catOf(a) === 'attack' && !bow && /^\+\d/.test(text);
+    const range = v.value === 'thrown' ? (THROWN_RANGE[v.base] ? `Thrown ${THROWN_RANGE[v.base]}` : 'Thrown')
+      : SPELL_RANGE[a.spell] || (reach ? `Reach ${reach} ft` : bowRange ? bowRange + ' ft' : melee ? 'Reach 5 ft' : within ? `${within} ft` : '');
+    if (range) facts.push(['Range', range]);
+    const area = text.match(/(\d+)-ft (cone|cube|sphere|line|emanation|radius)/i);
+    if (area) facts.push(['Area', `${area[1]}-ft ${area[2].toLowerCase()}`]);
+    else if (Array.isArray(a.cells) && a.cells.length) facts.push(['Area', `${a.cells.length} squares`]);
+    if (['move', 'spiritual_weapon_move'].includes(a.kind)) return { name: label, variant: '', text, facts };
+    const save = text.match(/\b(STR|DEX|CON|INT|WIS|CHA) save(?: \(DC (\d+)\))?/);
+    const dc = save?.[2] || stats.match(/save DC (\d+)/)?.[1];
+    const spellAtk = stats.match(/attack \+(\d+)/)?.[1];
+    const weaponAtk = text.match(/^\+(\d+)/)?.[1];
+    if (save) facts.push(['Roll', `${save[1]} save${dc ? ', DC ' + dc : ''}${/half/i.test(text) ? ' (half on a success)' : ''}`]);
+    else if (/never miss/i.test(text)) facts.push(['Roll', 'None: it always hits']);
+    else if (weaponAtk) facts.push(['Roll', `Attack roll +${weaponAtk}`]);
+    else if (/\b(ranged|melee) attack|\bstrikes\b/i.test(text) && (a.spell || /^Spiritual Weapon/.test(label))) facts.push(['Roll', `Spell attack${spellAtk ? ' +' + spellAtk : ''}`]);
+    const types = VARIANT_DAMAGE.join('|');
+    const dice = [...text.matchAll(new RegExp(`(\\d+d\\d+(?:\\s*[+-]\\s*(?:\\d+|WIS))?)(?:\\s+(${types}))?`, 'g'))]
+      .map(m => `${m[1].replace(/\s+/g, ' ')}${m[2] ? ' ' + m[2] : v.noun === 'Damage type' && /damage/i.test(text) ? ' ' + v.value : ''}`);
+    if (dice.length) {
+      const healing = /\b(heal|regain)/i.test(text), harm = /damage|\b(acid|cold|fire|force|lightning|necrotic|poison|psychic|radiant|thunder|bludgeoning|piercing|slashing)\b/i.test(text);
+      facts.push([healing && harm ? 'Dice' : healing ? 'Healing' : 'Damage', [...new Set(dice)].join(' · ')]);
+    }
+    if (Number(a.at_level) > Number(a.spell_level) && Number(a.spell_level) > 0) facts.push(['Upcast', `Cast with a level ${a.at_level} slot`]);
+    return { name: label, variant: v.value ? variantText(v.noun, v.value) : '', text, facts };
+  }
+  function abilityInfoHtml(info) {
+    if (!info) return '';
+    return `<div class="ai-head"><b>${escape(info.name)}</b>${info.variant ? `<span class="ai-variant">${escape(info.variant)}</span>` : ''}</div>${info.text ? `<p class="ai-text">${escape(info.text)}</p>` : ''}<dl class="ai-facts">${info.facts.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>`;
+  }
+
+  // The info for a card: the selected card shows its chosen variant, slot and option; another
+  // card shows the variant last picked for it (or its first).
+  function infoForGroup(key) {
+    const group = groupedActions().find(g => g.key === key);
+    if (!group) return null;
+    const v = pickVariant(variantsOf(group.actions), key === selectedGroup ? selectedVariant : null, variantMemory.get(key));
+    let list = group.actions.filter(a => variantOf(a).value === v);
+    if (key === selectedGroup) { const cur = currentActions(); if (cur.length) list = cur; }
+    return abilityInfo(group.label, list, activeUnit()?.sheet, state?.resources?.pools);
+  }
+
+  // --- The character sheet: one panel for every figure -----------------------------------
+  function poolRows(pools) {
+    return pools.map(p => {
+      const n = Number(p.value), max = p.max == null ? null : Number(p.max);
+      const val = p.value === 'active' ? 'active' : max != null ? `${n} of ${max} left` : `${p.value} left`;
+      const pips = max != null && max > 0 && max <= 8 ? `<span class="pips">${Array.from({ length: max }, (_, i) => `<i class="pip use${i < n ? ' on' : ''}"></i>`).join('')}</span>` : '';
+      return `<li><b>${escape(p.label)}</b>${pips}<span>${escape(val)}</span></li>`;
+    }).join('');
+  }
+  function sheetUnits() {
+    if (!state) return [];
+    const units = state.phase === 'setup' ? (state.setup?.roster || []) : state.units;
+    return [...units.filter(u => u.team === 'heroes'), ...units.filter(u => u.team !== 'heroes')];
+  }
+  function sheetPanelHtml(unit) {
+    const acting = unit.id === state.turn_id && !['setup', 'finished'].includes(state.phase);
+    const res = state.resources || {};
+    const sheet = unit.sheet || {};
+    const speed = String(sheet.stats || '').match(/Speed (\d+) ft/)?.[1];
+    const conds = conditionLabels(unit).map(niceName);
+    const status = vitalHtml(unit) || `<span class="vital vital-up">${unit.alive === false ? 'Down' : 'Standing'}</span>`;
+    const parts = [];
+    parts.push(`<div class="sheet-head">${portrait(unit)}<div><h2 id="sheet-title">${escape(unit.name)}${heroLevelBadge(unit, 'actor-lv-pill')}</h2><p class="sheet-class">${escape(nativeClass(unit, true))}${acting ? ' · <b class="acting">acting now</b>' : ''}</p></div></div>`);
+    parts.push(`<div class="sheet-stat-row"><span><small>AC</small><b>${escape(unit.ac ?? '—')}</b></span><span><small>HP</small><b>${escape(unit.hp ?? unit.max_hp)}/${escape(unit.max_hp)}</b></span>${speed ? `<span><small>Speed</small><b>${escape(speed)} ft</b></span>` : ''}${unit.str_loss ? `<span><small>STR</small><b>−${escape(unit.str_loss)}</b></span>` : ''}</div>`);
+    parts.push(`<div class="sheet-status">${status}${lifeText(unit) ? `<span class="sheet-note">${escape(lifeText(unit))}</span>` : ''}</div>`);
+    parts.push(`<h3>Conditions and effects</h3>${conds.length ? `<ul class="sheet-tags">${conds.map(c => `<li>${escape(c)}</li>`).join('')}</ul><p class="sheet-note">The game does not send how long each one has left.</p>` : '<p class="sheet-note">None.</p>'}`);
+    if (acting) {
+      const orb = (lbl, ready) => `<li class="${ready ? 'ready' : 'spent'}"><b>${lbl}</b><span>${ready ? 'available' : 'spent'}</span></li>`;
+      parts.push(`<h3>This turn</h3><ul class="sheet-pools">${orb('Action', res.action)}${orb('Bonus action', res.bonus_action)}${orb('Reaction', res.reaction)}<li><b>Movement</b><span>${escape(res.movement ?? 0)} ft left</span></li>${Number(res.champion_movement) > 0 ? `<li><b>Free move</b><span>${escape(res.champion_movement)} ft without opportunity attacks</span></li>` : ''}</ul>`);
+    }
+    const seen = poolsSeen.get(unit.id);
+    const pools = acting ? (res.pools || []) : seen?.pools || [];
+    if (unit.team === 'heroes' || pools.length) {
+      const note = acting ? ''
+        : seen ? `<p class="sheet-note">As last shown on ${escape(unit.name)}’s turn in round ${escape(seen.round + 1)}. The game sends spell slots and uses only for the creature acting now, so a reaction (such as Shield) since then is not counted.</p>`
+          : `<p class="sheet-note">Shown from ${escape(unit.name)}’s first turn: the game sends spell slots and uses only for the creature acting now.</p>`;
+      parts.push(`<h3>Spell slots and uses</h3>${pools.length ? `<ul class="sheet-pools">${poolRows(pools)}</ul>` : (seen || acting ? '<p class="sheet-note">None.</p>' : '')}${note}`);
+    }
+    const list = items => `<ul class="sheet-list">${items.map(raw => {
+      const i = normalizeSheetItem(raw);
+      return `<li><b>${escape(i.name)}</b> ${escape(i.text)}</li>`;
+    }).join('')}</ul>`;
+    if (sheet.stats) parts.push(`<p class="sheet-stats">${escape(sheet.stats)}</p>`);
+    if (sheet.features?.length) parts.push(`<h3>Features and attacks</h3>${list(sheet.features)}`);
+    if (sheet.spells?.length) parts.push(`<h3>Spells</h3>${list(sheet.spells)}`);
+    if (unit.description) parts.push(`<p class="sheet-note">${escape(unit.description)}</p>`);
+    return parts.join('');
+  }
+  function renderSheet() {
+    const dialog = $('sheet-dialog');
+    const units = sheetUnits();
+    const unit = units.find(u => u.id === sheetUnitId) || units[0];
+    if (!unit) { $('sheet-body').innerHTML = '<p>No figures yet.</p>'; $('sheet-units').replaceChildren(); return; }
+    sheetUnitId = unit.id;
+    $('sheet-units').innerHTML = units.map(u => `<button class="sheet-unit ${u.team === 'heroes' ? 'hero' : 'monster'} ${u.id === unit.id ? 'selected' : ''}" data-sheet-unit="${escape(u.id)}" aria-pressed="${u.id === unit.id}">${escape(u.name)}</button>`).join('');
+    const scroll = dialog.scrollTop;
+    $('sheet-body').innerHTML = sheetPanelHtml(unit);
+    dialog.scrollTop = scroll;
+  }
+  function openSheet(id) {
+    sheetUnitId = id;
+    renderSheet();
+    const dialog = $('sheet-dialog');
+    if (!dialog.open) typeof dialog.showModal === 'function' ? dialog.showModal() : dialog.setAttribute('open', '');
+  }
+  const sheetButton = u => `<button class="sheet-btn" data-sheet="${escape(u.id)}" aria-label="Character sheet: ${escape(u.name)}" title="Character sheet">Sheet</button>`;
+
   function rosterButton(u, extra = '') {
     const hp = u.hp ?? u.max_hp ?? 1, maxHp = u.max_hp ?? 1;
     const conds = conditionLabels(u);
@@ -1070,15 +1322,16 @@
     const setupHeroes = state.phase === 'setup' ? (state.setup?.roster || []).filter(u => u.team === 'heroes') : [];
     const heroList = placedHeroes.length ? placedHeroes : setupHeroes;
     $('hero-count').textContent = `${heroList.filter(u => u.alive !== false).length}/${heroList.length} standing`;
-    $('hero-roster').innerHTML = heroList.map(u => rosterButton(u)).join('');
+    const slot = (u, extra = '') => `<div class="roster-slot">${rosterButton(u, extra)}${sheetButton(u)}</div>`;
+    $('hero-roster').innerHTML = heroList.map(u => slot(u)).join('');
     const enemies = state.units.filter(u => u.team === 'monsters');
     $('enemy-count').textContent = `${enemies.filter(u => u.alive).length}/${enemies.length}`;
-    $('enemy-roster').innerHTML = enemies.map(u => rosterButton(u, 'monster')).join('');
+    $('enemy-roster').innerHTML = enemies.map(u => slot(u, 'monster')).join('');
 
     const unit = activeUnit();
     $('active-actor').classList.toggle('monster', unit?.team === 'monsters');
     $('active-actor').innerHTML = unit
-      ? `<div class="actor-identity">${portrait(unit)}<div><span class="actor-class">${escape(nativeClass(unit, unit.team !== 'heroes'))}</span><h2>${escape(unit.name)}${heroLevelBadge(unit, 'actor-lv-pill')}</h2><div class="actor-hp"><strong>${escape(unit.hp)}</strong>/${escape(unit.max_hp)} HP${unit.ac ? ` · AC ${escape(unit.ac)}` : ''}</div></div></div>${hpBar(unit)}`
+      ? `<div class="actor-identity">${portrait(unit)}<div><span class="actor-class">${escape(nativeClass(unit, unit.team !== 'heroes'))}</span><h2>${escape(unit.name)}${heroLevelBadge(unit, 'actor-lv-pill')}</h2><div class="actor-hp"><strong>${escape(unit.hp)}</strong>/${escape(unit.max_hp)} HP${unit.ac ? ` · AC ${escape(unit.ac)}` : ''}</div></div>${sheetButton(unit)}</div>${hpBar(unit)}`
       : '<p class="map-tag">The fight is over.</p>';
 
     const res = state.resources || {};
@@ -1095,7 +1348,7 @@
     $('zoom-inspected-btn').disabled = !inspected || sceneUnavailable;
     if (inspected) {
       const condText = [lifeText(inspected), ...conditionLabels(inspected)].filter(Boolean).join(' · ') || 'No conditions';
-      $('inspect-content').innerHTML = `<h3>${escape(inspected.name)}${heroLevelBadge(inspected, 'actor-lv-pill')}</h3><p>${escape(nativeClass(inspected, inspected.team !== 'heroes'))}</p>${inspected.description ? `<p class="inspect-description">${escape(inspected.description)}</p>` : ''}<div class="inspection-stats"><span>HP ${escape(inspected.hp)}/${escape(inspected.max_hp)}</span>${inspected.ac ? `<span>AC ${escape(inspected.ac)}</span>` : ''}<span>${escape(cellName(inspected.x || 0, inspected.y || 0))}</span>${inspected.str_loss ? `<span>STR −${escape(inspected.str_loss)}</span>` : ''}${inspected.id === state.turn_id ? '<span class="acting">acting now</span>' : ''}</div><span class="inspection-conditions">${escape(condText)}</span>${sheetHtml(inspected, true)}`;
+      $('inspect-content').innerHTML = `<h3>${escape(inspected.name)}${heroLevelBadge(inspected, 'actor-lv-pill')}</h3><p>${escape(nativeClass(inspected, inspected.team !== 'heroes'))}</p>${inspected.description ? `<p class="inspect-description">${escape(inspected.description)}</p>` : ''}<div class="inspection-stats"><span>HP ${escape(inspected.hp)}/${escape(inspected.max_hp)}</span>${inspected.ac ? `<span>AC ${escape(inspected.ac)}</span>` : ''}<span>${escape(cellName(inspected.x || 0, inspected.y || 0))}</span>${inspected.str_loss ? `<span>STR −${escape(inspected.str_loss)}</span>` : ''}${inspected.id === state.turn_id ? '<span class="acting">acting now</span>' : ''}${inspected.sheet ? sheetButton(inspected) : ''}</div><span class="inspection-conditions">${escape(condText)}</span>${sheetHtml(inspected, true)}`;
     } else {
       $('inspect-content').innerHTML = '<h3>Inspector</h3><p>Click a figure or portrait to see its traits, attacks and spells.</p>';
     }
@@ -1158,8 +1411,20 @@
       }).join('');
     }
     renderHotbarPopbar(groups);
+    renderAbilityInfo();
     keepSelectedCardInView();
     updateStripCues();
+  }
+
+  // Hover or keyboard focus on a card shows what it does beside the deck (desktop); on touch
+  // screens the selected card's text sits behind its About button in the chooser.
+  let hoverKey = null, focusKey = null;
+  function renderAbilityInfo() {
+    const box = $('ability-info');
+    const key = hoverKey || focusKey;
+    const info = key && canAct() ? infoForGroup(key) : null;
+    box.hidden = !info;
+    box.innerHTML = info ? abilityInfoHtml(info) : '';
   }
 
   // The card strip scrolls sideways when a hero has more actions than fit. Some browsers
@@ -1222,7 +1487,12 @@
     const lv = levels.includes(selectedLevel) ? selectedLevel : levels[0];
     const opts = optionsOf(list.filter(a => paymentKey(a) === (lv ?? null)));
     const op = opts.includes(selectedOption) ? selectedOption : opts[0];
-    const pill = (attr, val, txt, on) => `<button class="option-pill ${on ? 'selected' : ''}" data-${attr}="${escape(val)}" aria-pressed="${on}">${escape(txt)}</button>`;
+    const pill = (attr, val, txt, on, cls = '') => `<button class="option-pill ${cls} ${on ? 'selected' : ''}" data-${attr}="${escape(val)}" aria-pressed="${on}">${escape(txt)}</button>`;
+    const variants = variantsOf(group.actions), noun = variantNoun(group.actions);
+    if (variants.length > 1) {
+      const vr = variantOf(list[0]).value;
+      optParts.push(`<span class="option-row variant-row"><span class="option-name">${escape(noun)}</span>${variants.map(v => pill('variant', v, variantText(noun, v), v === vr, noun === 'Damage type' ? `dmg-chip dmg-${v}` : '')).join('')}</span>`);
+    }
     if (levels.length > 1) optParts.push(`<span class="option-row"><span class="option-name">Slot</span>${levels.map(l => pill('level', l, l === 'free' ? 'Free use' : l === '0' ? 'Cantrip' : `Level ${l}`, l === lv)).join('')}</span>`);
     if (opts.length > 1) optParts.push(`<span class="option-row"><span class="option-name">${group.kind === 'spell' ? 'Metamagic' : 'Mode'}</span>${opts.map(o => pill('option', o, o === '' ? 'Standard' : niceName(o), o === op)).join('')}</span>`);
 
@@ -1300,7 +1570,8 @@
         ].filter(Boolean);
         chips.push(`<button class="target-chip confirm${hasWarning(armed) ? ' friendly-fire' : ''}" data-action="${escape(armed.id)}">${escape(bits.join(' · '))}</button>`);
       }
-      const targetActs = choices.length ? choices : cur.filter(a => hasTarget(a) || a.target_ids?.length || !hasPosition(a) || a.cells);
+      const mine = choices.filter(c => list.some(a => a.id === c.id));
+      const targetActs = mine.length ? mine : cur.filter(a => hasTarget(a) || a.target_ids?.length || !hasPosition(a) || a.cells);
       for (const a of targetActs) {
         if (seen.has(a.id) || (armed && armed.id === a.id)) continue;
         seen.add(a.id);
@@ -1312,7 +1583,12 @@
       }
     }
     tgtBox.innerHTML = chips.join('');
-    pop.hidden = !optParts.length && !chips.length;
+    const inline = $('ability-info-inline'), toggle = $('ability-info-toggle');
+    inline.innerHTML = abilityInfoHtml(infoForGroup(group.key));
+    inline.hidden = !infoOpen;
+    toggle.setAttribute('aria-expanded', String(infoOpen));
+    toggle.classList.toggle('selected', infoOpen);
+    pop.hidden = !optParts.length && !chips.length && !infoOpen;
     $('action-hint').textContent = cur[0]?.ray_count
       ? `Choose a target for Scorching Ray ${cur[0].ray_number} of ${cur[0].ray_count}${cur[0].cost ? ` (${cur[0].cost})` : ''}.`
       : armed && armed.kind === 'move' && oaWarning(armed)
@@ -1447,6 +1723,7 @@
     renderInitiative();
     renderBoard();
     renderRoster();
+    if ($('sheet-dialog').open) renderSheet();
     renderActions();
     renderLog();
     if (!playing) showLatestDice();
@@ -1563,9 +1840,13 @@
       setupFigure = null; inspectedId = null; lastLogIds = []; lastAutoRevision = null;
       focusCell = { x: 1, y: 1 };
     }
+    if (reset || data.phase === 'setup') { variantMemory = new Map(); poolsSeen = new Map(); }
+    // The game sends spell slots and uses only for the creature acting now; the sheet keeps the
+    // last ones it saw for everyone else.
+    if (data.turn_id && Array.isArray(data.resources?.pools)) poolsSeen.set(data.turn_id, { pools: data.resources.pools, round: Number(data.round) || 0 });
     armed = null; preview = null; allocation = new Map();
     if (prevTurn !== data.turn_id || reset || seenRevision === null) {
-      selectedLevel = null; selectedOption = null;
+      selectedLevel = null; selectedOption = null; selectedVariant = null;
       selectedGroup = groupedActions().find(g => g.kind === 'move')?.key || null;
       const u = activeUnit();
       if (u) {
@@ -1757,7 +2038,7 @@
       render();
       return;
     }
-    selectedGroup = key; selectedLevel = null; selectedOption = null;
+    selectedGroup = key; selectedLevel = null; selectedOption = null; selectedVariant = null;
     allocation = new Map(); armed = null; preview = null;
     const immediate = group.actions.filter(a => !hasTarget(a) && !hasPosition(a));
     const confirmFirst = immediate.some(a => NEEDS_CONFIRM.has(a.kind) || hasWarning(a));
@@ -2476,6 +2757,33 @@
   }, { passive: false });
   $('action-strip-left').addEventListener('click', () => scrollStrip(-1));
   $('action-strip-right').addEventListener('click', () => scrollStrip(1));
+  $('action-bar').addEventListener('pointerover', e => {
+    const card = e.pointerType === 'mouse' && e.target.closest('.ability-card');
+    if (card && card.dataset.group !== hoverKey) { hoverKey = card.dataset.group; renderAbilityInfo(); }
+  });
+  $('action-bar').addEventListener('pointerleave', e => {
+    if (e.pointerType === 'mouse' && hoverKey) { hoverKey = null; renderAbilityInfo(); }
+  });
+  $('action-bar').addEventListener('focusin', e => {
+    const card = e.target.closest('.ability-card');
+    if (card && card.matches(':focus-visible')) { focusKey = card.dataset.group; renderAbilityInfo(); }
+  });
+  $('action-bar').addEventListener('focusout', e => {
+    if (focusKey && !$('action-bar').contains(e.relatedTarget)) { focusKey = null; renderAbilityInfo(); }
+  });
+  $('ability-info-toggle').addEventListener('click', () => { infoOpen = !infoOpen; render(); });
+  document.addEventListener('click', e => {
+    const open = e.target.closest('[data-sheet]'), pick = e.target.closest('[data-sheet-unit]');
+    if (open) openSheet(open.dataset.sheet);
+    else if (pick) { sheetUnitId = pick.dataset.sheetUnit; renderSheet(); }
+  });
+  $('close-sheet').addEventListener('click', () => typeof $('sheet-dialog').close === 'function' ? $('sheet-dialog').close() : $('sheet-dialog').removeAttribute('open'));
+  $('sheet-dialog').addEventListener('click', e => {
+    const d = $('sheet-dialog');
+    if (e.target !== d) return;
+    const r = d.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close();
+  });
   $('chooser-back').addEventListener('click', () => {
     if (!isRayContinuation()) selectedGroup = null;
     choices = []; armed = null; preview = null;
@@ -2483,9 +2791,12 @@
     render();
   });
   $('action-options').addEventListener('click', e => {
-    const lv = e.target.closest('[data-level]'), op = e.target.closest('[data-option]');
+    const lv = e.target.closest('[data-level]'), op = e.target.closest('[data-option]'), vr = e.target.closest('[data-variant]');
     const inc = e.target.closest('[data-alloc-inc]'), dec = e.target.closest('[data-alloc-dec]'), cf = e.target.closest('[data-alloc-confirm]');
-    if (lv) { selectedLevel = lv.dataset.level; allocation = new Map(); armed = null; render(); }
+    if (vr) {
+      selectedVariant = vr.dataset.variant; variantMemory.set(selectedGroup, selectedVariant);
+      allocation = new Map(); armed = null; preview = null; viewer?.clearHoverPreview?.(); render();
+    } else if (lv) { selectedLevel = lv.dataset.level; allocation = new Map(); armed = null; render(); }
     else if (op) { selectedOption = op.dataset.option; allocation = new Map(); armed = null; render(); }
     else if (inc && !inc.disabled) { allocation.set(inc.dataset.allocInc, (allocation.get(inc.dataset.allocInc) || 0) + 1); render(); }
     else if (dec && !dec.disabled) {
@@ -2629,7 +2940,7 @@
   });
 
   document.addEventListener('keydown', e => {
-    if (e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || help.open) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || help.open || $('sheet-dialog').open) return;
     if (window.FFStory?.isOpen?.()) return;  // the story layer handles its own keys
     if (startScreenOpen) {
       if (e.key === 'Escape') {
