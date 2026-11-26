@@ -42,9 +42,26 @@ use crate::trace::Trace;
 /// `ember_rl/env.py` `POTENTIAL_SCALE`.
 pub const POTENTIAL_SCALE: f64 = 0.3;
 
+/// Default engine rule version for [`BatchEnv`] / [`Game::new`]: pinned to 17
+/// so live trainers and ladder evaluations keep exact r4 parity until rule 18
+/// (Vesper / 2024 updates) is requested explicitly via `rule_version=18`.
+pub const DEFAULT_BATCH_RULE_VERSION: i32 = 17;
+
 /// The natural20 commit whose rules this engine mirrors (written into the
-/// header of tapes the environment records).
+/// header of rule-18 tapes the environment records).
 pub const NATURAL20_COMMIT: &str = include_str!("../reference/NATURAL20_COMMIT");
+
+/// The natural20 commit for rule-17 (r4 First Aid baseline) tapes.
+pub const NATURAL20_COMMIT_RULE_17: &str = "ef91112bf07b933734bff12a94d7e724ca8f3fee";
+
+/// Return the Natural20 reference commit corresponding to `rule_version`.
+pub fn natural20_commit_for_rule_version(version: i32) -> &'static str {
+    if version < 18 {
+        NATURAL20_COMMIT_RULE_17
+    } else {
+        NATURAL20_COMMIT.trim()
+    }
+}
 
 /// The environment's configuration (the `BatchEnv` constructor).
 #[derive(Clone, Copy, Debug)]
@@ -335,7 +352,7 @@ impl Game {
         cfg: &EnvConfig,
         pool: &'static ContentPool,
     ) -> Result<Game, String> {
-        Self::with_rule_version(entry, spec, teams, units, cfg, pool, crate::engine::CURRENT_RULE_VERSION)
+        Self::with_rule_version(entry, spec, teams, units, cfg, pool, DEFAULT_BATCH_RULE_VERSION)
     }
 
     /// Start on the rules of a recorded game, before the first decision.
@@ -694,9 +711,10 @@ impl Game {
             seed: Value::Null,
         });
         let s = &self.spec;
+        let version = self.env.fight.rule_version();
         let header = Header {
-            version: self.env.fight.rule_version(),
-            n20_commit: NATURAL20_COMMIT.trim().to_string(),
+            version,
+            n20_commit: natural20_commit_for_rule_version(version).to_string(),
             units: e.units.clone(),
             placements: self.placed.placements.clone(),
             seed: s.dice_seed as i64,

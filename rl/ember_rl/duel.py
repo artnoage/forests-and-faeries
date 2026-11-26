@@ -1249,6 +1249,8 @@ def add_ember_arguments(p):
     g.add_argument('--feature-version', default='ember-gen-v2',
                    choices=('ember-gen-v1', 'ember-gen-v2', 'ember-gen-v3', 'ember-gen-v4'),
                    help='observation schema the env encodes (general_env.FEATURE_DIMS); new runs use ember-gen-v2')
+    g.add_argument('--rule-version', type=int, default=17,
+                   help='ember_rs engine rule version for BatchEnv (default: 17; pass 18 for Vesper / 2024 updates)')
     g.add_argument('--slots', type=int, default=256, help='BatchEnv slots (games in flight)')
     g.add_argument('--env-threads', type=int, default=12)
     g.add_argument('--eval-slots', type=int, default=0,

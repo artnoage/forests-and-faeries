@@ -28,6 +28,7 @@ export const ASSET_VERSIONS = Object.freeze({
   'models/specter.glb': 'a65586d24bca',
   'models/sprite.glb': '2506b2b5039e',
   'models/steam_mephit.glb': 'beac1f5703cf',
+  'models/vesper.glb': 'f7dc20207b3c',
   'models/violet_fungus.glb': '32947ad09172',
   'models/wight.glb': 'b16ef52407a4',
   'models/will_o_wisp.glb': '27f3a9e31f49',

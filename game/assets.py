@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / 'static'
 
 # Every figure the scene can load (models/<key>.glb): the project's rigged originals.
-MODEL_KEYS = ('guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna', 'skeleton', 'zombie', 'ghoul', 'ghast',
+MODEL_KEYS = ('guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna', 'vesper', 'skeleton', 'zombie', 'ghoul', 'ghast',
               'shadow', 'specter', 'wight', 'mummy', 'goblin', 'goblin_boss', 'animated_armor', 'kobold_warrior',
               'violet_fungus', 'giant_wasp', 'satyr', 'steam_mephit', 'blink_dog', 'sprite', 'dryad',
               'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp')

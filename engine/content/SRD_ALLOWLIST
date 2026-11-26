@@ -9,6 +9,8 @@ mara
 ilyra
 # Heroes (level 3, SRD 5.2.1 Barbarian 3, Path of the Berserker; natural20 docs/CHRUNA_BARBARIAN.md)
 chruna
+# Heroes (level 3, SRD 5.2.1 Tiefling Bard 3, College of Lore)
+vesper
 # Other playable hero levels. Bare ids above retain their original sheets.
 guy_l1
 guy_l2
@@ -18,6 +20,8 @@ curogana_l1
 curogana_l2
 chruna_l1
 chruna_l2
+vesper_l1
+vesper_l2
 mara_l1
 mara_l3
 ilyra_l1

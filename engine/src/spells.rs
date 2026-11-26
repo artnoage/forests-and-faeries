@@ -92,6 +92,7 @@ pub(crate) enum Item {
     Damage {
         t: usize,
         amount: i32,
+        halved: bool,
         dt: Dmg,
         crit: bool,
         save: Option<SaveOutcome>,
@@ -129,6 +130,10 @@ pub(crate) enum Item {
     RayOfSickness { t: usize },
     CharmMonster { t: usize, charmed: bool },
     Entangle { squares: Vec<Pos>, dc: i32, failed: Vec<usize> },
+    FaerieFire { targets: Vec<(usize, bool, String)>, dc: i32 },
+    SeeInvisibility,
+    ViciousMockery { t: usize },
+    StarryWisp { t: usize },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,6 +179,11 @@ impl SpellId {
             RayOfSickness => "ray_of_sickness",
             CharmMonster => "charm_monster",
             Entangle => "entangle",
+            FaerieFire => "faerie_fire",
+            SeeInvisibility => "see_invisibility",
+            ViciousMockery => "vicious_mockery",
+            StarryWisp => "starry_wisp",
+            PoisonSpray => "poison_spray",
         }
     }
 
@@ -192,6 +202,11 @@ impl SpellId {
             Invisibility => "Invisibility",
             CharmMonster => "Charm Monster",
             Entangle => "Entangle",
+            FaerieFire => "Faerie Fire",
+            SeeInvisibility => "See Invisibility",
+            ViciousMockery => "Vicious Mockery",
+            StarryWisp => "Starry Wisp",
+            PoisonSpray => "Poison Spray",
             _ => self.key(),
         }
     }
@@ -199,8 +214,10 @@ impl SpellId {
     pub fn level(self) -> i32 {
         use SpellId::*;
         match self {
-            SacredFlame | SpareTheDying | SorcerousBurst | Firebolt | RayOfFrost | AcidSplash => 0,
-            SpiritualWeapon | Aid | LesserRestoration | Shatter | ScorchingRay | DragonsBreath | Blur | Invisibility => 2,
+            SacredFlame | SpareTheDying | SorcerousBurst | Firebolt | RayOfFrost | AcidSplash
+                | ViciousMockery | StarryWisp | PoisonSpray => 0,
+            SpiritualWeapon | Aid | LesserRestoration | Shatter | ScorchingRay | DragonsBreath
+                | Blur | Invisibility | SeeInvisibility => 2,
             CharmMonster => 4,
             _ => 1,
         }
@@ -213,7 +230,11 @@ impl SpellId {
 
     pub fn concentration(self) -> bool {
         use SpellId::*;
-        matches!(self, SpiritualWeapon | Bless | ShieldOfFaith | ProtectionFromEvilAndGood | DragonsBreath | Blur | Invisibility | Entangle)
+        matches!(
+            self,
+            SpiritualWeapon | Bless | ShieldOfFaith | ProtectionFromEvilAndGood | DragonsBreath
+                | Blur | Invisibility | Entangle | FaerieFire
+        )
     }
 
     /// `friendly_fire._spell_is_harmful` on the YAML properties.
@@ -222,7 +243,8 @@ impl SpellId {
         !matches!(
             self,
             Bless | ShieldOfFaith | CureWounds | HealingWord | Aid | ProtectionFromEvilAndGood | Sanctuary
-                | SpareTheDying | LesserRestoration | DragonsBreath | Blur | Shield | MageArmor | Invisibility
+                | SpareTheDying | LesserRestoration | DragonsBreath | Blur | Shield | MageArmor
+                | Invisibility | SeeInvisibility
         )
     }
 
@@ -482,6 +504,15 @@ impl Fight {
                     1.0
                 }
             }
+            ObjKind::FaerieFire => {
+                let mut val = 0.0;
+                for i in 0..self.units.len() {
+                    if self.opposing(caster, i) && self.units[i].conscious() && self.has_effect(i, EffKey::FaerieFire) {
+                        val += if self.units[i].invisible() { 7.5 } else { 2.5 };
+                    }
+                }
+                val
+            }
             _ => 4.0,
         }
     }
@@ -572,15 +603,23 @@ impl Fight {
             + i32::from(self.rule_version < 9 && self.innate_active(caster))
     }
 
+    fn is_sorcerer_spell(&self, caster: usize, spell: SpellId) -> bool {
+        let u = &self.units[caster];
+        if self.rule_version < 18 && u.t.id == "curogana" && spell == SpellId::BurningHands {
+            return true;
+        }
+        u.t.caster.as_ref().is_some_and(|c| c.sorcerer_spells.contains(&spell))
+    }
+
     pub(crate) fn kind_for_spell(&self, caster: usize, spell: SpellId, mut wk: WeaponKind) -> WeaponKind {
         if self.rule_version >= 9 {
-            wk.spell = self.units[caster].t.caster.as_ref().is_some_and(|c| c.sorcerer_spells.contains(&spell));
+            wk.spell = self.is_sorcerer_spell(caster, spell);
         }
         wk
     }
 
     pub fn spell_dc_for(&self, caster: usize, spell: SpellId) -> i32 {
-        let qualifies = self.units[caster].t.caster.as_ref().is_some_and(|c| c.sorcerer_spells.contains(&spell));
+        let qualifies = self.is_sorcerer_spell(caster, spell);
         self.spell_dc(caster) + i32::from(self.rule_version >= 9 && qualifies && self.innate_active(caster))
     }
 
@@ -609,6 +648,7 @@ impl Fight {
             self.units[caster].sap = None;
             self.notes.sap_spent += 1;
         }
+        self.consume_vicious_mockery(caster);
         let tag = if wk.melee { format!("Melee Spell Attack: {}", spell.name()) } else { format!("Ranged Spell Attack: {}", spell.name()) };
         let (face, dv) = self.roll_d20_raw(caster, &tag, mode);
         let modifier = self.units[caster].t.caster.as_ref().map_or(0, |c| c.spell_attack);
@@ -631,12 +671,31 @@ impl Fight {
         let items = self.resolve_trigger(t, HookEv::AfterAttackRollTarget);
         let nat20 = face == 20 && mode != RollMode::Disadvantage || (mode == RollMode::Disadvantage && face == 20);
         let nat1 = face == 1;
+        if self.rule_version >= 18 && !nat20 && !nat1 && total < ac {
+            if let Some((bi_roll, new_total)) = self.try_bardic_inspiration(caster, total, ac, "spell attack") {
+                total = new_total;
+                if let Some(ref mut text) = atk_fmt {
+                    text.push_str(&format!(" + Bardic Inspiration({bi_roll}) = {new_total}"));
+                }
+            }
+        }
         let mut force_miss = false;
         let mut shield_cast = None;
         if self.rule_version >= 16 {
             if let Some((blocks, at_level)) = self.shield_reaction_ex(t, total, ac, nat20, nat1, false) {
                 force_miss = blocks;
                 shield_cast = Some((at_level, total, ac));
+            }
+        }
+        if self.rule_version >= 18 && !nat20 && !nat1 && total >= ac && !force_miss {
+            if let Some((_bard, cw_roll, new_total, turned_miss)) = self.try_cutting_words_attack(caster, t, total, ac, nat20) {
+                total = new_total;
+                if turned_miss {
+                    force_miss = true;
+                }
+                if let Some(ref mut text) = atk_fmt {
+                    text.push_str(&format!(" − Cutting Words({cw_roll}) = {new_total}"));
+                }
             }
         }
         self.describe_attack_cover(&mut atk_fmt, t, ac, shield_cast.is_some());
@@ -739,6 +798,37 @@ impl Fight {
         out
     }
 
+    /// `acquire_targets(param)` with `perception == 'known_location'`
+    /// (`StarryWisp`, `PoisonSpray`): allows visible targets or audible
+    /// invisible (non-hidden) creatures with a clear path (`clear_effect`).
+    pub(crate) fn acquire_known_location_targets(&self, u: usize, range: i32, types: TargetTypes) -> Vec<usize> {
+        let origin = self.units[u].pos;
+        let mut out = Vec::new();
+        let in_range = |t: usize| -> bool {
+            self.can_see_or_hear(u, t)
+                && self.clear_effect(origin, self.units[t].pos)
+                && self.feet(u, t) <= range
+        };
+        for t in 0..self.units.len() {
+            if self.units[t].dead() {
+                continue;
+            }
+            let enemy = self.opposing(u, t);
+            let want = match types {
+                TargetTypes::Enemies => enemy,
+                TargetTypes::Allies | TargetTypes::AlliesSelf => !enemy,
+                TargetTypes::AlliesSelfEnemies => true,
+            };
+            if want && (range <= 0 || in_range(t)) {
+                out.push(t);
+            }
+        }
+        if matches!(types, TargetTypes::AlliesSelf | TargetTypes::AlliesSelfEnemies) && !out.contains(&u) {
+            out.push(u);
+        }
+        out
+    }
+
     /// Target parameter of a spell's `build_map`: (range, types, num, min).
     fn spell_param(&self, u: usize, spell: SpellId, at_level: i32) -> (i32, TargetTypes, i32, i32) {
         use SpellId::*;
@@ -762,6 +852,8 @@ impl Fight {
             MageArmor => (5, TargetTypes::AlliesSelf, 1, 1),
             RayOfSickness => (60, TargetTypes::Enemies, 1, 1),
             CharmMonster => (30, TargetTypes::Enemies, 1, 1),
+            StarryWisp => (60, TargetTypes::Enemies, 1, 1),
+            PoisonSpray => (30, TargetTypes::Enemies, 1, 1),
             _ => (0, TargetTypes::Enemies, 0, 0),
         }
     }
@@ -772,13 +864,16 @@ impl Fight {
     }
 
     /// `FFArena._spell_actions(actor, auto_target=False)`.
-    pub(crate) fn human_spell_candidates(&mut self, u: usize, out: &mut Vec<Act>) {
+    pub fn human_spell_candidates(&mut self, u: usize, out: &mut Vec<Act>) {
         self.spell_candidates_inner(u, false, out);
     }
 
     fn spell_candidates_inner(&mut self, u: usize, auto_target: bool, out: &mut Vec<Act>) {
-        let Some(caster) = self.units[u].t.caster.as_ref() else { return };
-        for &spell in &caster.spells {
+        if self.units[u].t.caster.is_none() {
+            return;
+        }
+        let spells = self.effective_spells(u);
+        for spell in spells {
             if !self.can_cast(u, spell) {
                 continue;
             }
@@ -818,7 +913,11 @@ impl Fight {
         let mut builds: Vec<(Vec<usize>, bool, Option<Pos>, Option<Dmg>)> = Vec::new();
         let (range, types, num, min) = self.spell_param(u, spell, at_level);
         if num > 0 {
-            let pool = self.acquire_targets(u, range, types);
+            let pool = if self.rule_version >= 18 && matches!(spell, SpellId::StarryWisp | SpellId::PoisonSpray) {
+                self.acquire_known_location_targets(u, range, types)
+            } else {
+                self.acquire_targets(u, range, types)
+            };
             if num == 1 {
                 for &t in &pool {
                     builds.push((vec![t], false, None, None));
@@ -1300,7 +1399,15 @@ impl Fight {
                 let wk = self.kind_for_spell(u, c.spell, WeaponKind::spell_ranged(60));
                 let (adv, dis) = self.advantage_flags(u, t, wk);
                 let mode = Fight::mode_of(adv, dis);
-                let p_hit = crate::dice::prob_at_least(20, modifier, ac, mode);
+                // `AttackSpell.compute_hit_probability` calls `DieRolls.prob(ac)`,
+                // which subtracts Bless's expected `1d4` (2.5) and applies `ceil`:
+                // `ceil(ac - 2.5) == ac - 2`.
+                let eff_ac = if self.rule_version >= 18 && self.has_effect(u, EffKey::Bless) {
+                    ac - 2
+                } else {
+                    ac
+                };
+                let p_hit = crate::dice::prob_at_least(20, modifier, eff_ac, mode);
                 let n = 2 + (c.at_level - 1).max(0);
                 p_hit * (n as f64 * 4.5)
             }
@@ -1344,6 +1451,130 @@ impl Fight {
                     }
                 }
                 if foes > 0 { score } else { POINTLESS }
+            }
+            FaerieFire => {
+                let Some(origin) = c.point else { return POINTLESS };
+                let dc = self.spell_dc_for(u, c.spell);
+                let squares = self.faerie_fire_squares(origin);
+                let allies_ready = (0..self.units.len())
+                    .filter(|&a| a != u && self.allies(u, a) && self.units[a].conscious())
+                    .count() as f64;
+                let mut score = 0.0;
+                let mut foes_hit = 0;
+                let mut invis_hit = 0;
+                for idx in self.creatures_in_squares(&squares, None) {
+                    if self.has_effect(idx, EffKey::FaerieFire) {
+                        continue;
+                    }
+                    // Never cheat on hidden foes: only count visible or heard (non-hidden) creatures.
+                    if self.opposing(u, idx) && !self.can_see(u, idx) && self.units[idx].hidden() {
+                        continue;
+                    }
+                    let p_fail = self.save_fail_probability(idx, Ability::Dex, dc);
+                    if self.opposing(u, idx) {
+                        if !self.units[idx].conscious() {
+                            continue;
+                        }
+                        foes_hit += 1;
+                        if self.units[idx].invisible() && !self.can_see(u, idx) {
+                            invis_hit += 1;
+                            score += 15.0 * p_fail;
+                        } else {
+                            let adv_val = 2.6 + 1.1 * allies_ready.min(3.0);
+                            score += adv_val * p_fail;
+                        }
+                    } else {
+                        score -= 12.0 * p_fail;
+                    }
+                }
+                if foes_hit == 0 {
+                    return POINTLESS;
+                }
+                let conc = if invis_hit > 0 {
+                    // Only count concentration loss against another Faerie Fire; revealing unseen foes beats Bless.
+                    self.concentration_cost(u, Some(Bless)) * 0.4
+                } else {
+                    self.concentration_cost(u, None)
+                };
+                let net = score - conc;
+                if net > 0.0 { net } else { POINTLESS }
+            }
+            SeeInvisibility => {
+                if self.has_effect(u, EffKey::SeeInvisibility) {
+                    return POINTLESS;
+                }
+                // Strictly zero wasted casts when no conscious non-hidden enemy is currently invisible & unseen.
+                let unseen_invis_foes = (0..self.units.len())
+                    .filter(|&e| {
+                        self.opposing(u, e)
+                            && self.units[e].conscious()
+                            && self.units[e].invisible()
+                            && !self.units[e].hidden()
+                            && !self.can_see(u, e)
+                    })
+                    .count();
+                if unseen_invis_foes == 0 {
+                    return POINTLESS;
+                }
+                13.5 + 2.5 * (unseen_invis_foes - 1).min(2) as f64
+            }
+            ViciousMockery => {
+                let Some(t) = t0 else { return POINTLESS };
+                if !self.opposing(u, t) || self.units[t].dead() {
+                    return POINTLESS;
+                }
+                let mult = self.damage_multiplier(t, Dmg::Psychic);
+                let dis_val = if self.units[t].conscious() && !self.has_effect(t, EffKey::ViciousMockery) {
+                    0.35 * self.expected_dpr(t, None)
+                } else {
+                    0.0
+                };
+                if mult <= 0.0 && dis_val <= 0.0 {
+                    return POINTLESS;
+                }
+                let p_fail = self.save_fail_probability(t, Ability::Wis, self.spell_dc_for(u, c.spell));
+                let mut v = p_fail * (3.5 * mult + dis_val);
+                if !self.units[t].conscious() {
+                    v *= DOWNED_FOE_WEIGHT;
+                }
+                v
+            }
+            StarryWisp => {
+                let Some(t) = t0 else { return POINTLESS };
+                let can_vanish = self.units[t].t.vanish.is_some()
+                    || self.units[t].t.caster.as_ref().is_some_and(|k| k.spells.contains(&SpellId::Invisibility));
+                let rider = if self.units[t].conscious()
+                    && can_vanish
+                    && !self.has_effect(t, EffKey::StarryWisp)
+                    && !self.has_effect(t, EffKey::FaerieFire)
+                {
+                    3.2
+                } else {
+                    0.25
+                };
+                self.attack_value(
+                    u,
+                    t,
+                    self.units[u].pos,
+                    Dmg::Radiant,
+                    4.5,
+                    0.0,
+                    rider,
+                    self.kind_for_spell(u, c.spell, WeaponKind::spell_ranged(60)),
+                )
+            }
+            PoisonSpray => {
+                let Some(t) = t0 else { return POINTLESS };
+                self.attack_value(
+                    u,
+                    t,
+                    self.units[u].pos,
+                    Dmg::Poison,
+                    6.5,
+                    0.0,
+                    0.0,
+                    self.kind_for_spell(u, c.spell, WeaponKind::spell_ranged(30)),
+                )
             }
             _ => 0.0,
         }
@@ -1905,7 +2136,7 @@ impl Fight {
                 rays.paid_empowered = true;
             }
         }
-        self.commit_spell_items(u, c, items, &rolls, None);
+        self.commit_spell_items(u, c, items, &mut rolls, None);
         self.expire_timed_conditions();
         rays.next += 1;
         self.scorching_rays = if rays.next <= ScorchingRays::count(rays.level)
@@ -1950,14 +2181,15 @@ impl Fight {
             SacredFlame => {
                 let t = t0.unwrap();
                 let dc = self.spell_dc_for(u, c.spell);
-                let total = self.save_throw_ex(t, Ability::Dex, false, 0, true, false, false).0;
+                let total = self.save_with_dc(t, Ability::Dex, dc, false, 0, true, false, false).0;
                 if total < dc || self.units[u].t.potent_cantrip {
                     let faces = self.roll_dice(u, "spells.sacred_flame", 1, 8);
                     let amount: i32 = faces.iter().sum();
                     let dmg_fmt = self.web_events.is_some().then(|| crate::web_events::fmt_dice_roll(8, &faces, 0, false, amount));
                     items.push(Item::Damage {
                         t,
-                        amount: if total < dc { amount } else { amount / 2 },
+                        amount,
+                        halved: total >= dc,
                         dt: Dmg::Radiant,
                         crit: false,
                         save: Some(SaveOutcome::from_check(total >= dc, true)),
@@ -1983,6 +2215,7 @@ impl Fight {
                     items.push(Item::Damage {
                         t,
                         amount,
+                        halved: false,
                         dt: Dmg::Radiant,
                         crit: nat20,
                         save: None,
@@ -2013,6 +2246,7 @@ impl Fight {
                     items.push(Item::Damage {
                         t,
                         amount,
+                        halved: false,
                         dt: Dmg::Force,
                         crit: nat20,
                         save: None,
@@ -2064,7 +2298,7 @@ impl Fight {
                     if self.units[t].dead() {
                         continue;
                     }
-                    let total = self.save_throw_ex(t, Ability::Wis, false, 0, true, false, false).0;
+                    let total = self.save_with_dc(t, Ability::Wis, dc, false, 0, true, false, false).0;
                     if total >= dc {
                         items.push(Item::SpellMiss { t, save: Some(SaveOutcome::Made), atk_roll_fmt: None });
                         continue;
@@ -2097,6 +2331,7 @@ impl Fight {
                     items.push(Item::Damage {
                         t,
                         amount,
+                        halved: false,
                         dt: Dmg::Poison,
                         crit: nat20,
                         save: None,
@@ -2117,7 +2352,7 @@ impl Fight {
                     items.push(Item::CharmMonster { t, charmed: false });
                 } else {
                     let in_combat = self.opposing(u, t);
-                    let total = self.save_throw_ex(t, Ability::Wis, false, 0, true, true, in_combat).0;
+                    let total = self.save_with_dc(t, Ability::Wis, dc, false, 0, true, true, in_combat).0;
                     items.push(Item::CharmMonster { t, charmed: total < dc });
                 }
             }
@@ -2151,6 +2386,105 @@ impl Fight {
                     }
                 }
                 items.push(Item::Entangle { squares, dc, failed });
+            }
+            FaerieFire => {
+                let origin = c.point.unwrap();
+                let squares = self.faerie_fire_squares(origin);
+                let dc = self.spell_dc_for(u, c.spell);
+                let creatures = self.creatures_in_squares(&squares, None);
+                let mut targets = Vec::with_capacity(creatures.len());
+                for t in creatures {
+                    let (total, fmt) = self.save_with_dc(t, Ability::Dex, dc, false, 0, true, false, false);
+                    targets.push((t, total < dc, fmt));
+                }
+                items.push(Item::FaerieFire { targets, dc });
+            }
+            SeeInvisibility => {
+                items.push(Item::SeeInvisibility);
+            }
+            ViciousMockery => {
+                let t = t0.unwrap();
+                let dc = self.spell_dc_for(u, c.spell);
+                let (total, _) = self.save_with_dc(t, Ability::Wis, dc, false, 0, true, false, false);
+                if total < dc || self.units[u].t.potent_cantrip {
+                    let faces = self.roll_dice(u, "spells.vicious_mockery", 1, 6);
+                    let amount: i32 = faces.iter().sum();
+                    let dmg_fmt = self.web_events.is_some().then(|| crate::web_events::fmt_dice_roll(6, &faces, 0, false, amount));
+                    items.push(Item::Damage {
+                        t,
+                        amount,
+                        halved: total >= dc,
+                        dt: Dmg::Psychic,
+                        crit: false,
+                        save: Some(SaveOutcome::from_check(total >= dc, true)),
+                        atk_roll_fmt: None,
+                        dmg_roll_fmt: dmg_fmt,
+                    });
+                    if total < dc {
+                        items.push(Item::ViciousMockery { t });
+                    }
+                } else {
+                    items.push(Item::SpellMiss { t, save: Some(SaveOutcome::Made), atk_roll_fmt: None });
+                }
+            }
+            StarryWisp => {
+                let t = t0.unwrap();
+                let (hit, nat20, dismiss, t, atk_fmt) =
+                    self.evaluate_spell_attack(u, t, StarryWisp, WeaponKind::spell_ranged(60));
+                for d in dismiss {
+                    items.push(Item::Dismiss(d.0, d.1));
+                }
+                if hit || self.units[u].t.potent_cantrip {
+                    let n = if nat20 { 2 } else { 1 };
+                    let faces = self.roll_dice(u, "spells.starry_wisp", n, 8);
+                    let amount: i32 = faces.iter().sum();
+                    let dmg_fmt = self.web_events.is_some().then(|| {
+                        crate::web_events::fmt_dice_roll(8, &faces, 0, !hit, if hit { amount } else { amount / 2 })
+                    });
+                    items.push(Item::Damage {
+                        t,
+                        amount,
+                        halved: !hit,
+                        dt: Dmg::Radiant,
+                        crit: nat20,
+                        save: None,
+                        atk_roll_fmt: atk_fmt,
+                        dmg_roll_fmt: dmg_fmt,
+                    });
+                    if hit {
+                        items.push(Item::StarryWisp { t });
+                    }
+                } else {
+                    items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: atk_fmt });
+                }
+            }
+            PoisonSpray => {
+                let t = t0.unwrap();
+                let (hit, nat20, dismiss, t, atk_fmt) =
+                    self.evaluate_spell_attack(u, t, PoisonSpray, WeaponKind::spell_ranged(30));
+                for d in dismiss {
+                    items.push(Item::Dismiss(d.0, d.1));
+                }
+                if hit || self.units[u].t.potent_cantrip {
+                    let n = if nat20 { 2 } else { 1 };
+                    let faces = self.roll_dice(u, "spells.poison_spray", n, 12);
+                    let amount: i32 = faces.iter().sum();
+                    let dmg_fmt = self.web_events.is_some().then(|| {
+                        crate::web_events::fmt_dice_roll(12, &faces, 0, !hit, if hit { amount } else { amount / 2 })
+                    });
+                    items.push(Item::Damage {
+                        t,
+                        amount,
+                        halved: !hit,
+                        dt: Dmg::Poison,
+                        crit: nat20,
+                        save: None,
+                        atk_roll_fmt: atk_fmt,
+                        dmg_roll_fmt: dmg_fmt,
+                    });
+                } else {
+                    items.push(Item::SpellMiss { t, save: None, atk_roll_fmt: atk_fmt });
+                }
             }
             ScorchingRay if self.rule_version >= 14 => {}
             ChromaticOrb if self.rule_version >= 13 => {}
@@ -2198,21 +2532,31 @@ impl Fight {
                 self.units[u].sorcery_points -= Mm::Empowered.cost();
             }
         }
-        self.commit_spell_items(u, c, items, &rolls, spell_obj);
+        self.commit_spell_items(u, c, items, &mut rolls, spell_obj);
     }
 
-    pub(crate) fn commit_spell_items(&mut self, u: usize, c: &Cast, items: Vec<Item>, rolls: &[RollObj], spell_obj: Option<u32>) {
+    pub(crate) fn commit_spell_items(&mut self, u: usize, c: &Cast, items: Vec<Item>, rolls: &mut [RollObj], spell_obj: Option<u32>) {
         use SpellId::*;
         let spell_atk_name = crate::web_events::spell_attack_name(c.spell);
         let spell_style_name = c.spell.key();
+        let mut roll_targets: Vec<Vec<(usize, bool)>> = vec![Vec::new(); rolls.len()];
+        for item in &items {
+            if let Item::RDamage(d) = item {
+                let orig = Fight::canonical_roll(rolls, d.droll);
+                roll_targets[orig].push((d.t, rolls[d.dmg].halved));
+            }
+        }
+        let mut cw_checked = vec![false; rolls.len()];
         let mut hs = HitState::default();
         for item in items {
             match item {
-                Item::Damage { t, amount, dt, crit, save, atk_roll_fmt, dmg_roll_fmt } => {
+                Item::Damage { t, amount, halved, dt, crit, save, atk_roll_fmt, dmg_roll_fmt } => {
                     self.spell_damage_with_web(
                         u,
                         t,
                         amount,
+                        halved,
+                        true,
                         dt,
                         crit,
                         true,
@@ -2225,17 +2569,25 @@ impl Fight {
                     );
                 }
                 Item::RDamage(d) => {
-                    // each spell damage item is its own hit (`_hit_state`); read AFTER `empower()`!
+                    // Shared simultaneous-save damage rolls apply Cutting Words once before halving (SRD 5.2.1 p. 16 & p. 35).
+                    let orig = Fight::canonical_roll(rolls, d.droll);
+                    if !cw_checked[orig] {
+                        cw_checked[orig] = true;
+                        self.apply_roll_cutting_words(u, orig, &roll_targets[orig], rolls);
+                    }
+                    // each spell damage item is its own hit (`_hit_state`); read AFTER `empower()` and Cutting Words!
                     let r = &rolls[d.dmg];
                     let amount = r.amount();
                     let dmg_fmt = self.web_events.is_some().then(|| {
-                        crate::web_events::fmt_dice_roll(r.sides, &r.rolls, r.modifier, r.halved, amount)
+                        crate::web_events::fmt_dice_roll(r.sides, &r.rolls, r.modifier - r.penalty, r.halved, amount)
                     });
                     let mut h = HitState::default();
                     self.spell_damage_with_web(
                         u,
                         d.t,
                         amount,
+                        false,
+                        false,
                         d.dt,
                         d.crit,
                         !(self.rule_version >= 6 && r.halved && d.save.is_none() && d.atk_roll_fmt.is_some()),
@@ -2507,6 +2859,66 @@ impl Fight {
                         }
                     }
                 }
+                Item::FaerieFire { targets, dc } => {
+                    let duration = 60;
+                    let outlined_ids: Vec<usize> = targets.iter().filter(|(_, o, _)| *o).map(|(t, _, _)| *t).collect();
+                    let obj = self.new_obj(FaerieFire, ObjKind::FaerieFire, u, outlined_ids, true);
+                    self.add_casted(u, u, obj, Some(duration));
+                    self.concentration_on(u, obj);
+                    let sp = self.units[u].pos;
+                    for (t, outlined, roll_fmt) in targets {
+                        let tp = self.units[t].pos;
+                        if outlined && !self.units[t].dead() {
+                            self.add_casted(u, t, obj, Some(duration));
+                            self.register_effect(t, EffKey::FaerieFire, obj, Some(duration));
+                        }
+                        self.emit_web(crate::web_events::WebEv::FaerieFireTarget {
+                            caster: u,
+                            target: t,
+                            src_pos: sp,
+                            tgt_pos: tp,
+                            dc,
+                            roll_fmt,
+                            outlined,
+                        });
+                    }
+                    self.reveal_exposed_hiders();
+                }
+                Item::SeeInvisibility => {
+                    for old in self.active_effects(u, EffKey::SeeInvisibility) {
+                        self.dismiss_effect(u, old);
+                    }
+                    let duration = 3600;
+                    let obj = self.new_obj(SeeInvisibility, ObjKind::SeeInvisibility, u, vec![u], true);
+                    self.add_casted(u, u, obj, Some(duration));
+                    self.register_effect(u, EffKey::SeeInvisibility, obj, Some(duration));
+                    let pos = self.units[u].pos;
+                    self.emit_web(crate::web_events::WebEv::SeeInvisibilityCast { caster: u, pos });
+                }
+                Item::ViciousMockery { t } => {
+                    if !self.units[t].dead() {
+                        for old in self.active_effects(t, EffKey::ViciousMockery) {
+                            self.dismiss_effect(t, old);
+                        }
+                        let obj = self.new_obj(ViciousMockery, ObjKind::ViciousMockery { target: t }, u, vec![t], true);
+                        self.add_casted(u, t, obj, Some(12));
+                        self.register_effect(t, EffKey::ViciousMockery, obj, Some(12));
+                        self.register_hook(t, HookEv::EndOfTurn, HookKind::ViciousMockeryEnd, obj, Some(12));
+                    }
+                }
+                Item::StarryWisp { t } => {
+                    if !self.units[t].dead() {
+                        for old in self.active_effects(t, EffKey::StarryWisp) {
+                            self.dismiss_effect(t, old);
+                        }
+                        let obj = self.new_obj(StarryWisp, ObjKind::StarryWisp { target: t, armed: false }, u, vec![t], true);
+                        self.add_casted(u, t, obj, Some(12));
+                        self.register_effect(t, EffKey::StarryWisp, obj, Some(12));
+                        self.register_hook(u, HookEv::StartOfTurn, HookKind::StarryWispStart, obj, Some(12));
+                        self.register_hook(u, HookEv::EndOfTurn, HookKind::StarryWispEnd, obj, Some(12));
+                        self.reveal_exposed_hiders();
+                    }
+                }
             }
         }
     }
@@ -2561,7 +2973,9 @@ impl Fight {
         &mut self,
         src: usize,
         t: usize,
-        amount: i32,
+        raw_amount: i32,
+        halved: bool,
+        check_cw: bool,
         dt: Dmg,
         crit: bool,
         hit: bool,
@@ -2572,6 +2986,13 @@ impl Fight {
         dmg_roll_fmt: Option<String>,
         hs: &mut HitState,
     ) -> Option<i32> {
+        let mut raw = raw_amount;
+        if check_cw && self.rule_version >= 18 && raw > 0 && self.opposing(src, t) {
+            if let Some((_bard, _cw_roll, new_raw)) = self.try_cutting_words_damage_roll(src, raw, &[(t, halved)]) {
+                raw = new_raw;
+            }
+        }
+        let amount = if halved { raw.div_euclid(2) } else { raw };
         let sp = self.units[src].pos;
         let tp = self.units[t].pos;
         let ev_idx = self.web_events.as_ref().map(|b| b.len());
@@ -2618,7 +3039,7 @@ impl Fight {
                 let targets: Vec<usize> = self.turn_undead_targets(u).into_iter().filter(|&t| self.opposing(u, t)).collect();
                 let mut rolls = Vec::new();
                 for &t in &targets {
-                    let (total, roll_fmt) = self.save_throw_fmt(t, Ability::Wis);
+                    let (total, roll_fmt) = self.save_with_dc(t, Ability::Wis, dc, false, 0, false, false, false);
                     rolls.push((total < dc, roll_fmt));
                 }
                 for (i, (&t, (failed, roll_fmt))) in targets.iter().zip(rolls.into_iter()).enumerate() {
@@ -2660,7 +3081,7 @@ impl Fight {
                 if !*heal {
                     let dc = self.spell_dc(u);
                     let total = if self.rule_version >= 16 {
-                        self.save_throw_ex(t, Ability::Con, false, 0, true, false, false).0
+                        self.save_with_dc(t, Ability::Con, dc, false, 0, true, false, false).0
                     } else {
                         self.save_throw(t, Ability::Con)
                     };
@@ -2696,7 +3117,9 @@ impl Fight {
                     self.spell_damage_with_web(
                         u,
                         t,
-                        amount,
+                        roll,
+                        saved,
+                        true,
                         *dt,
                         false,
                         true,
@@ -2785,6 +3208,8 @@ impl Fight {
                         u,
                         t,
                         amount,
+                        false,
+                        true,
                         Dmg::Force,
                         crit,
                         true,

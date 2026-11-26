@@ -216,7 +216,8 @@ def create_app():
 
     @app.get('/api/encounters')
     def encounters():
-        return jsonify(encounters=catalogue.catalogue_view(include_private=private))
+        return jsonify(encounters=catalogue.catalogue_view(include_private=private),
+                       heroes=catalogue.practice_heroes())
 
     @app.get('/api/state')
     def state():
@@ -238,7 +239,7 @@ def create_app():
                                     max_age=store.ttl, path='/')
             return response
 
-    allowed = {'new': {'encounter', 'preset', 'seed', 'hero_level'}, 'action': {'revision', 'action_id'},
+    allowed = {'new': {'encounter', 'preset', 'seed', 'hero_level', 'party'}, 'action': {'revision', 'action_id'},
                'end-turn': {'revision'}, 'advance': {'revision', 'autoplay'},
                'setup': {'revision', 'placements', 'monster_control'}, 'start': {'revision'}}
 
@@ -284,7 +285,9 @@ def create_app():
                     level = levels.get((encounter, preset))
                     if level is None:
                         raise ValueError('Unknown encounter or preset.')
-                    if 'hero_level' in data:
+                    if 'party' in data:
+                        level = level.with_party(data['party'], hero_level=data.get('hero_level'))
+                    elif 'hero_level' in data:
                         level = level.with_hero_level(data['hero_level'])
                     game = factory(level=level, seed=seed, revision=game.revision + 1, csrf_token=game.csrf_token)
                     store.put(key, client_address(), game)

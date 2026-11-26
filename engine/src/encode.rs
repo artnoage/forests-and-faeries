@@ -64,6 +64,8 @@ pub const FEATURE_VERSION: &str = "ember-gen-v2";
 pub const FEATURE_VERSION_V1: &str = "ember-gen-v1";
 /// Fey-campaign schema with new conditions/traits/tree channel and V4 encoder fixes.
 pub const FEATURE_VERSION_V4: &str = "ember-gen-v4";
+/// Bard + Faerie Fire / See Invisibility schema (strictly extending V4 prefixes).
+pub const FEATURE_VERSION_V5: &str = "ember-gen-v5";
 /// Creature cap (token slots).
 pub const N: usize = 24;
 /// Target slots per candidate.
@@ -77,16 +79,21 @@ pub const F_A: usize = 122;
 pub const F_C_V4: usize = 200;
 pub const F_G_V4: usize = 34;
 pub const F_A_V4: usize = 128;
+/// `ember-gen-v5` widths (strictly extending V4 prefixes).
+pub const F_C_V5: usize = 208;
+pub const F_G_V5: usize = 34;
+pub const F_A_V5: usize = 134;
 /// The `ember-gen-v1` widths: the prefixes of the v2 rows.
 pub const F_C_V1: usize = 160;
 pub const F_G_V1: usize = 32;
 pub const F_A_V1: usize = 112;
 /// Pairwise relation channels (`creature_rel[i, j, r]`, `ember-gen-v2`+).
 pub const R: usize = 5;
-/// Map channels (`ember-gen-v2`/`v3`; v1: first 16; v4: 18 with tree channel) and canvas side.
+/// Map channels (`ember-gen-v2`/`v3`; v1: first 16; v4/v5: 18 with tree channel) and canvas side.
 pub const MAP_C: usize = 17;
 pub const MAP_C_V1: usize = 16;
 pub const MAP_C_V4: usize = 18;
+pub const MAP_C_V5: usize = 18;
 pub const S: usize = 32;
 pub const CELLS: usize = S * S;
 
@@ -112,6 +119,17 @@ pub const DIMS_V4: [(&str, usize); 8] = [
     ("canvas", S),
     ("relations", R),
 ];
+/// `dims` of `ember-gen-v5`.
+pub const DIMS_V5: [(&str, usize); 8] = [
+    ("N", N),
+    ("T", T),
+    ("creature", F_C_V5),
+    ("global", F_G_V5),
+    ("cand", F_A_V5),
+    ("map_channels", MAP_C_V5),
+    ("canvas", S),
+    ("relations", R),
+];
 /// `dims` of `ember-gen-v1`.
 pub const DIMS_V1: [(&str, usize); 7] =
     [("N", N), ("T", T), ("creature", F_C_V1), ("global", F_G_V1), ("cand", F_A_V1), ("map_channels", MAP_C_V1), ("canvas", S)];
@@ -125,10 +143,16 @@ pub enum Version {
     V2,
     V3,
     V4,
+    V5,
 }
 
 impl Version {
-    pub const ALL: [Version; 4] = [Version::V1, Version::V2, Version::V3, Version::V4];
+    pub const ALL: [Version; 5] = [Version::V1, Version::V2, Version::V3, Version::V4, Version::V5];
+
+    #[inline]
+    fn is_v4_plus(self) -> bool {
+        matches!(self, Version::V4 | Version::V5)
+    }
 
     pub fn name(self) -> &'static str {
         match self {
@@ -136,16 +160,18 @@ impl Version {
             Version::V2 => FEATURE_VERSION,
             Version::V3 => "ember-gen-v3",
             Version::V4 => FEATURE_VERSION_V4,
+            Version::V5 => FEATURE_VERSION_V5,
         }
     }
 
-    /// `ember-gen-v1` / `v1` / `1`, ..., `ember-gen-v4` / `v4` / `4`.
+    /// `ember-gen-v1` / `v1` / `1`, ..., `ember-gen-v5` / `v5` / `5`.
     pub fn parse(s: &str) -> Result<Version, String> {
         match s {
             "ember-gen-v1" | "v1" | "1" => Ok(Version::V1),
             "ember-gen-v2" | "v2" | "2" => Ok(Version::V2),
             "ember-gen-v3" | "v3" | "3" => Ok(Version::V3),
             "ember-gen-v4" | "v4" | "4" => Ok(Version::V4),
+            "ember-gen-v5" | "v5" | "5" => Ok(Version::V5),
             other => Err(format!("unknown feature version {other:?}")),
         }
     }
@@ -156,6 +182,7 @@ impl Version {
             Version::V1 => F_C_V1,
             Version::V2 | Version::V3 => F_C,
             Version::V4 => F_C_V4,
+            Version::V5 => F_C_V5,
         }
     }
 
@@ -165,6 +192,7 @@ impl Version {
             Version::V1 => F_G_V1,
             Version::V2 | Version::V3 => F_G,
             Version::V4 => F_G_V4,
+            Version::V5 => F_G_V5,
         }
     }
 
@@ -174,6 +202,7 @@ impl Version {
             Version::V1 => F_A_V1,
             Version::V2 | Version::V3 => F_A,
             Version::V4 => F_A_V4,
+            Version::V5 => F_A_V5,
         }
     }
 
@@ -183,6 +212,7 @@ impl Version {
             Version::V1 => MAP_C_V1,
             Version::V2 | Version::V3 => MAP_C,
             Version::V4 => MAP_C_V4,
+            Version::V5 => MAP_C_V5,
         }
     }
 
@@ -190,7 +220,7 @@ impl Version {
     pub fn relations(self) -> usize {
         match self {
             Version::V1 => 0,
-            Version::V2 | Version::V3 | Version::V4 => R,
+            Version::V2 | Version::V3 | Version::V4 | Version::V5 => R,
         }
     }
 
@@ -200,10 +230,11 @@ impl Version {
             Version::V1 => &DIMS_V1,
             Version::V2 | Version::V3 => &DIMS,
             Version::V4 => &DIMS_V4,
+            Version::V5 => &DIMS_V5,
         }
     }
 
-    /// The feature names of this version (v1/v2/v3: prefixes of v4).
+    /// The feature names of this version (v1..v4: prefixes of v5).
     pub fn names(self) -> FeatureNames {
         match self {
             Version::V1 => FeatureNames {
@@ -215,6 +246,13 @@ impl Version {
             },
             Version::V2 | Version::V3 => feature_names(),
             Version::V4 => FeatureNames {
+                creature: &CREATURE_FEATURES[..F_C_V4],
+                global: &GLOBAL_FEATURES,
+                cand: &CAND_FEATURES[..F_A_V4],
+                map: &MAP_CHANNELS,
+                relations: &RELATIONS,
+            },
+            Version::V5 => FeatureNames {
                 creature: &CREATURE_FEATURES,
                 global: &GLOBAL_FEATURES,
                 cand: &CAND_FEATURES,
@@ -226,7 +264,7 @@ impl Version {
 }
 
 /// The `action_kinds` vocabulary names, in `Act` order of [`act_kind_index`].
-pub const ACTION_KINDS: [&str; 33] = [
+pub const ACTION_KINDS: [&str; 34] = [
     "move",
     "attack",
     "dash",
@@ -263,6 +301,8 @@ pub const ACTION_KINDS: [&str; 33] = [
     "npc_teleport",
     "luring_song",
     "npc_vanish",
+    // Bard (vocabulary id 33)
+    "bardic_inspiration",
 ];
 
 // ----------------------------------------------------------------------------
@@ -270,8 +310,8 @@ pub const ACTION_KINDS: [&str; 33] = [
 // encoder resolves positions by name at compile time (`ci!`, `gi!`, `ai!`).
 // ----------------------------------------------------------------------------
 
-/// Creature token (GENERAL_ENV.md §5.2), 160 (v1) / 183 (v2/v3) / 200 (v4) floats.
-pub const CREATURE_FEATURES: [&str; F_C_V4] = [
+/// Creature token (GENERAL_ENV.md §5.2), 160 (v1) / 183 (v2/v3) / 200 (v4) / 208 (v5) floats.
+pub const CREATURE_FEATURES: [&str; F_C_V5] = [
     // relation (5)
     "is_actor", "ally", "enemy", "side_heroes", "is_pc",
     // position (10)
@@ -334,6 +374,9 @@ pub const CREATURE_FEATURES: [&str; F_C_V4] = [
     "size_tiny", "charmed", "grappled", "grappling", "restrained", "invisible", "lured",
     "magic_resistance", "flyby", "blurred_form", "abduct", "death_burst", "fey_ancestry",
     "recharge_ready_frac", "med_mod_div10", "ath_mod_div10", "acr_mod_div10",
+    // ---- ember-gen-v5 (200-207): bard & anti-invisibility effects ----
+    "bard", "bardic_inspiration_div5", "fx_bardic_inspiration", "cutting_words",
+    "fx_faerie_fire", "fx_see_invisibility", "fx_vicious_mockery", "fx_starry_wisp",
 ];
 
 /// Global vector (§5.4), 32 floats.
@@ -350,8 +393,8 @@ pub const GLOBAL_FEATURES: [&str; F_G] = [
     "party_level_min_div5", "party_level_max_div5",
 ];
 
-/// Candidate row (§5.5), 112 (v1) / 122 (v2/v3) / 128 (v4) floats.
-pub const CAND_FEATURES: [&str; F_A_V4] = [
+/// Candidate row (§5.5), 112 (v1) / 122 (v2/v3) / 128 (v4) / 134 (v5) floats.
+pub const CAND_FEATURES: [&str; F_A_V5] = [
     // kind and cost (12)
     "uses_action", "uses_bonus_action", "uses_reaction", "move_squares_div12", "no_cost", "is_end_turn",
     "is_opportunity_attack", "forced", "slot_level_div9", "free_cast", "sorcery_points_div5", "channel_divinity",
@@ -391,6 +434,9 @@ pub const CAND_FEATURES: [&str; F_A_V4] = [
     "dest_visited", "path_steps_div12",
     // ---- ember-gen-v4 (122-127): fey riders, square AoE, teleport ----
     "rider_push", "rider_grapple", "rider_charm", "rider_consume_life", "area_square", "is_teleport",
+    // ---- ember-gen-v5 (128-133): bard & anti-invisibility actions ----
+    "bardic_inspiration", "spell_faerie_fire", "spell_see_invisibility", "spell_vicious_mockery",
+    "spell_starry_wisp", "spell_poison_spray",
 ];
 
 /// Map channels (§5.3), uint8.
@@ -650,6 +696,7 @@ pub fn act_kind_index(a: &Act) -> usize {
         Act::NpcTeleport { .. } => 30,
         Act::LuringSong => 31,
         Act::NpcVanish => 32,
+        Act::BardicInspiration { .. } => 33,
     }
 }
 
@@ -1171,7 +1218,7 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
     }
     sc.dpr.clear();
     for u in 0..f.units.len() {
-        let d = if version == Version::V4 { dpr_vs_ac14_v4(f, u) } else { dpr_vs_ac14(f, u) };
+        let d = if version.is_v4_plus() { dpr_vs_ac14_v4(f, u) } else { dpr_vs_ac14(f, u) };
         sc.dpr.push(d);
     }
     sc.threat[..cells].fill(0);
@@ -1222,7 +1269,7 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
                 free[u.pos.1 as usize + 1] &= !(1u64 << u.pos.0);
             }
         }
-        let rule = if version == Version::V4 {
+        let rule = if version.is_v4_plus() {
             Rule::ClearWallCorner
         } else if f.units[a].t.pc {
             Rule::NoCornerCut
@@ -1536,7 +1583,7 @@ fn encode_map(cx: &Ctx, map: &mut [u8]) {
             }
         }
     }
-    if cx.version == Version::V4 {
+    if cx.version.is_v4_plus() {
         for &tpos in g.trees() {
             if g.in_bounds(tpos.0, tpos.1) {
                 map[ch::TREE * CELLS + cx.canvas(tpos)] = 1;
@@ -1666,8 +1713,11 @@ fn encode_creatures(cx: &Ctx, out: &mut ObsSlot) {
         if cx.v2 {
             creature_row_v2(cx, i, row);
         }
-        if cx.version == Version::V4 {
+        if cx.version.is_v4_plus() {
             creature_row_v4(cx, i, row);
+        }
+        if cx.version == Version::V5 {
+            creature_row_v5(cx, i, row);
         }
         let u = &f.units[i];
         out.creature_ids[i * 3] = cx.ids.kind[u.tid as usize];
@@ -1808,7 +1858,7 @@ fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("movement_div60")] = u.available_movement() as f32 / 60.0;
     let ma_left = if t.multiattack.is_empty() {
         0
-    } else if cx.version == Version::V4 {
+    } else if cx.version.is_v4_plus() {
         if u.ma_combos.is_empty() {
             u.ma_groups.iter().map(|(_, v)| v.len()).max().unwrap_or(0)
         } else {
@@ -1853,27 +1903,34 @@ fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("reach_div10")] = t.melee_ft.unwrap_or(0) as f32 / 10.0;
     row[ci!("weapon_range_div120")] = range as f32 / 120.0;
     row[ci!("attacks_per_action_div3")] =
-        if cx.version == Version::V4 { attacks_per_action_v4(f, i) } else { attacks_per_action(f, i) } as f32 / 3.0;
+        if cx.version.is_v4_plus() { attacks_per_action_v4(f, i) } else { attacks_per_action(f, i) } as f32 / 3.0;
     row[ci!("dpr_vs_ac14_div20")] = (cx.sc.dpr[i] / 20.0) as f32;
     if let Some(c) = &t.caster {
         use SpellId::*;
         row[ci!("spell_attack_div10")] = c.spell_attack as f32 / 10.0;
         row[ci!("spell_dc_div20")] = f.spell_dc(i) as f32 / 20.0;
         row[ci!("caster")] = 1.0;
-        let has = |l: &[SpellId]| c.spells.iter().any(|s| l.contains(s));
+        let eff_spells = f.effective_spells(i);
+        let has = |l: &[SpellId]| eff_spells.iter().any(|s| l.contains(s));
         let mut area = has(&[AcidSplash, Shatter, BurningHands, Thunderwave, DragonsBreath]);
-        if cx.version == Version::V4 {
+        if cx.version.is_v4_plus() {
             area |= has(&[Entangle]) || !t.area_abilities.is_empty();
+        }
+        if cx.version == Version::V5 {
+            area |= has(&[FaerieFire]);
         }
         row[ci!("has_area_spell")] = b(area);
         row[ci!("has_heal")] = b(has(&[CureWounds, HealingWord, Aid]) || t.divine_spark || t.preserve_life);
         ranged_attack |=
             has(&[SacredFlame, GuidingBolt, SorcerousBurst, Firebolt, RayOfFrost, ChromaticOrb, MagicMissile, ScorchingRay]);
-        if cx.version == Version::V4 {
+        if cx.version.is_v4_plus() {
             ranged_attack |= has(&[RayOfSickness]);
         }
+        if cx.version == Version::V5 {
+            ranged_attack |= has(&[ViciousMockery, StarryWisp, PoisonSpray]);
+        }
     } else {
-        if cx.version == Version::V4 && !t.area_abilities.is_empty() {
+        if cx.version.is_v4_plus() && !t.area_abilities.is_empty() {
             row[ci!("has_area_spell")] = 1.0;
         }
         row[ci!("has_heal")] = b(t.divine_spark || t.preserve_life);
@@ -1910,7 +1967,7 @@ mod rel {
 /// A character's level (the larger of its fighter and caster levels; 0 for
 /// monsters).
 fn pc_level(t: &crate::content::Template, version: Version) -> i32 {
-    if matches!(version, Version::V3 | Version::V4) {
+    if matches!(version, Version::V3 | Version::V4 | Version::V5) {
         return t.level;
     }
     t.fighter_level.max(t.caster.as_ref().map_or(0, |c| c.level))
@@ -1956,7 +2013,7 @@ fn relation_masks(f: &Fight, version: Version, sc: &mut Scratch) {
             for &s in &u.stench_immune {
                 immune |= 1 << s;
             }
-            if version == Version::V4 {
+            if version.is_v4_plus() {
                 for &(s, until) in &u.luring_song_immune {
                     if gt < until {
                         immune |= 1 << s;
@@ -1989,7 +2046,7 @@ fn relation_masks(f: &Fight, version: Version, sc: &mut Scratch) {
                     effect |= 1 << s;
                 }
             }
-            if version == Version::V4 {
+            if version.is_v4_plus() {
                 for c in &u.charmed_by {
                     if c.until.is_none_or(|x| gt < x) {
                         effect |= 1 << c.source;
@@ -2162,6 +2219,21 @@ fn creature_row_v4(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("med_mod_div10")] = u.medicine_mod() as f32 / 10.0;
     row[ci!("ath_mod_div10")] = u.athletics_mod() as f32 / 10.0;
     row[ci!("acr_mod_div10")] = u.acrobatics_mod() as f32 / 10.0;
+}
+
+/// The `ember-gen-v5` part of a creature's token (indices 200-207).
+fn creature_row_v5(cx: &Ctx, i: usize, row: &mut [f32]) {
+    let f = cx.f;
+    let u = &f.units[i];
+    let t = u.t;
+    row[ci!("bard")] = b(t.bard);
+    row[ci!("bardic_inspiration_div5")] = if t.bard { u.bardic_inspiration_count as f32 / 5.0 } else { 0.0 };
+    row[ci!("fx_bardic_inspiration")] = b(f.has_effect(i, EffKey::BardicInspiration));
+    row[ci!("cutting_words")] = b(t.cutting_words && u.has_reaction() && u.conscious() && u.bardic_inspiration_count > 0);
+    row[ci!("fx_faerie_fire")] = b(f.has_effect(i, EffKey::FaerieFire));
+    row[ci!("fx_see_invisibility")] = b(f.has_effect(i, EffKey::SeeInvisibility));
+    row[ci!("fx_vicious_mockery")] = b(f.has_effect(i, EffKey::ViciousMockery));
+    row[ci!("fx_starry_wisp")] = b(f.has_effect(i, EffKey::StarryWisp));
 }
 
 /// The position group of a creature's token (absent when it is masked).
@@ -2645,7 +2717,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             row[ai!("targets_self")] = 1.0;
             let rng = if def.tree_stride { def.tree_range } else { def.range };
             row[ai!("range_div120")] = rng as f32 / 120.0;
-            if cx.version == Version::V4 {
+            if cx.version.is_v4_plus() {
                 row[ai!("is_teleport")] = 1.0;
             }
             cell = cx.canvas(*dest) as i16;
@@ -2658,7 +2730,7 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             row[ai!("ends_concentration")] = b(unit.concentration.is_some());
             row[ai!("save_based")] = 1.0;
             row[ai!("save_vs_wis")] = 1.0;
-            if cx.version == Version::V4 {
+            if cx.version.is_v4_plus() {
                 row[ai!("rider_charm")] = 1.0;
             }
             if let Some(cfg) = unit.t.luring_song {
@@ -2690,6 +2762,19 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
             est.p_sum = 1.0;
             est.p_n = 1.0;
             est.ally(a, 0.0);
+        }
+        Act::BardicInspiration { target } => {
+            row[ai!("uses_bonus_action")] = 1.0;
+            row[ai!("buff")] = 1.0;
+            row[ai!("range_div120")] = 60.0 / 120.0;
+            row[ai!("duration_div10")] = 1.0;
+            if cx.version == Version::V5 {
+                row[ai!("bardic_inspiration")] = 1.0;
+            }
+            tg.add(*target);
+            est.p_sum = 1.0;
+            est.p_n = 1.0;
+            est.ally(*target, 0.0);
         }
         Act::Spell(c) => {
             spell_id = cx.ids.spell(c.spell);
@@ -2861,7 +2946,7 @@ fn attack_riders(f: &Fight, a: usize, atk: usize, target: Option<(usize, f64)>, 
     row[ai!("kill_at_zero")] = b(def.kill_at_zero);
     row[ai!("no_damage")] = b(def.no_damage);
     row[ai!("immune_on_save")] = b(def.save_immune);
-    if version == Version::V4 {
+    if version.is_v4_plus() {
         row[ai!("rider_push")] = b(def.on_hit.iter().any(|o| matches!(o, OnHit::Push { .. })));
         row[ai!("rider_grapple")] = b(def.on_hit.iter().any(|o| matches!(o, OnHit::Grapple { .. })));
         row[ai!("rider_charm")] = b(def.on_hit.iter().any(|o| matches!(o, OnHit::Charm { .. })));
@@ -3082,12 +3167,12 @@ fn area_save(f: &Fight, a: usize, c: usize, ab: Ability, dc: i32, full: f64, hal
 fn duration_rounds(s: SpellId) -> f32 {
     use SpellId::*;
     match s {
-        Bless | Sanctuary | Blur | DragonsBreath | SpiritualWeapon | Entangle => 10.0,
+        Bless | Sanctuary | Blur | DragonsBreath | SpiritualWeapon | Entangle | FaerieFire => 10.0,
         ShieldOfFaith | ProtectionFromEvilAndGood => 100.0,
-        Invisibility => 600.0,
+        Invisibility | SeeInvisibility => 600.0,
         Aid | MageArmor => 4800.0,
         CharmMonster => 14400.0,
-        GuidingBolt | RayOfFrost | RayOfSickness | Command | Shield => 1.0,
+        GuidingBolt | RayOfFrost | RayOfSickness | Command | Shield | ViciousMockery | StarryWisp => 1.0,
         _ => 0.0,
     }
 }
@@ -3153,8 +3238,16 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                 area_save(f, a, t, Ability::Dex, dc, dice_stats(d).0, false, Dmg::Radiant, heightened, est);
             }
         }
-        GuidingBolt | Firebolt | RayOfFrost | RayOfSickness | ChromaticOrb | SorcerousBurst | SpiritualWeapon => {
+        GuidingBolt | Firebolt | RayOfFrost | RayOfSickness | ChromaticOrb | SorcerousBurst | SpiritualWeapon
+        | StarryWisp | PoisonSpray => {
             row[ai!("spell_attack_roll")] = 1.0;
+            if cx.version == Version::V5 {
+                if s == StarryWisp {
+                    row[ai!("spell_starry_wisp")] = 1.0;
+                } else if s == PoisonSpray {
+                    row[ai!("spell_poison_spray")] = 1.0;
+                }
+            }
             let (wk, n, sides, flat, dt) = match s {
                 GuidingBolt => (ranged(120), 4 + (at - 1).max(0), 6, 0, Dmg::Radiant),
                 Firebolt => (ranged(120), 1, 10, 0, Dmg::Fire),
@@ -3162,6 +3255,8 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                 RayOfSickness => (ranged(60), 2 + (at - 1).max(0), 8, 0, Dmg::Poison),
                 ChromaticOrb => (ranged(90), 3 + (at - 1).max(0), 8, 0, c.dt.unwrap_or(Dmg::Acid)),
                 SorcerousBurst => (ranged(120), 1, 8, 0, c.dt.unwrap_or(Dmg::Acid)),
+                StarryWisp => (ranged(60), 1, 8, 0, Dmg::Radiant),
+                PoisonSpray => (ranged(30), 1, 12, 0, Dmg::Poison),
                 _ => (WeaponKind::melee(), 1 + (at - 2).max(0), 8, f.spell_mod(a), Dmg::Force),
             };
             if s == SpiritualWeapon {
@@ -3307,7 +3402,7 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
         }
         CharmMonster => {
             save(row, Ability::Wis, false);
-            if cx.version == Version::V4 {
+            if cx.version.is_v4_plus() {
                 row[ai!("rider_charm")] = 1.0;
             }
             for &t in &c.targets {
@@ -3323,7 +3418,7 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
         }
         Entangle => {
             save(row, Ability::Str, false);
-            if cx.version == Version::V4 {
+            if cx.version.is_v4_plus() {
                 row[ai!("area_square")] = 1.0;
             }
             if let Some(p) = c.point {
@@ -3356,9 +3451,52 @@ fn spell_row(cx: &Ctx, a: usize, c: &Cast, row: &mut [f32], tg: &mut Targets, es
                 }
             }
         }
+        FaerieFire => {
+            save(row, Ability::Dex, false);
+            row[ai!("area_cube")] = 1.0;
+            if cx.version.is_v4_plus() {
+                row[ai!("area_square")] = 1.0;
+            }
+            if cx.version == Version::V5 {
+                row[ai!("spell_faerie_fire")] = 1.0;
+            }
+            if let Some(p) = c.point {
+                let creatures = f.creatures_in_squares(&f.faerie_fire_squares(p), None);
+                let mut first_enemy = heightened;
+                for t in creatures {
+                    if cx.masked(t) {
+                        continue;
+                    }
+                    tg.add(t);
+                    let h = first_enemy && f.opposing(a, t);
+                    if h {
+                        first_enemy = false;
+                    }
+                    let fail = f.save_fail_probability_ex(t, Ability::Dex, dc, false, h);
+                    est.hit(f, a, t, 1.0, fail, 0.0);
+                }
+            }
+        }
+        ViciousMockery => {
+            save(row, Ability::Wis, false);
+            row[ai!("ranged")] = 1.0;
+            row[ai!("range_div120")] = 60.0 / 120.0;
+            let d = Dice::new(1, 6, 0);
+            dmg_desc(row, d, Dmg::Psychic);
+            if cx.version == Version::V5 {
+                row[ai!("spell_vicious_mockery")] = 1.0;
+            }
+            if let Some(t) = t0 {
+                tg.add(t);
+                area_save(f, a, t, Ability::Wis, dc, dice_stats(d).0, false, Dmg::Psychic, heightened, est);
+            }
+        }
         Bless | ShieldOfFaith | ProtectionFromEvilAndGood | Sanctuary | MageArmor | Blur | DragonsBreath
-        | LesserRestoration | SpareTheDying | Shield | Invisibility => {
+        | LesserRestoration | SpareTheDying | Shield | Invisibility | SeeInvisibility => {
             row[ai!("buff")] = 1.0;
+            if s == SeeInvisibility && cx.version == Version::V5 {
+                row[ai!("spell_see_invisibility")] = 1.0;
+            }
             est.p_sum = 1.0;
             est.p_n = 1.0;
             for &t in &c.targets {

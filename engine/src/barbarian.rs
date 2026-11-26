@@ -291,7 +291,11 @@ impl Fight {
                 continue;
             }
             let (to_hit, dmg, _) = self.attack_numbers(u, ai);
-            let damage = 0.0 + dmg.count as f64 * (dmg.sides + 1) as f64 / 2.0 + dmg.modifier as f64;
+            let damage = if self.rule_version >= 18 {
+                dmg.average()
+            } else {
+                0.0 + dmg.count as f64 * (dmg.sides + 1) as f64 / 2.0 + dmg.modifier as f64
+            };
             profiles.push((to_hit, damage, def.range));
         }
         if profiles.is_empty() {

@@ -197,6 +197,54 @@
      "measured": "2026-11-26"
     }
    }
+  },
+  {
+   "id": "vesper_wisp_fen",
+   "name": "Lanterns in the Mire",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Two invisible Will-o'-Wisps drift over the dark fen beside a sea hag and a harpy — combine Vesper's Faerie Fire and Curogana's See Invisibility.",
+   "party": [
+    "guy",
+    "curogana",
+    "vesper"
+   ],
+   "roster": [
+    "will_o_wisp",
+    "will_o_wisp",
+    "sea_hag",
+    "harpy"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     3
+    ],
+    "curogana": [
+     4,
+     5
+    ],
+    "vesper": [
+     2,
+     7
+    ],
+    "will_o_wisp-1": [
+     11,
+     5
+    ],
+    "will_o_wisp-2": [
+     12,
+     5
+    ],
+    "sea_hag-1": [
+     13,
+     3
+    ],
+    "harpy-1": [
+     12,
+     3
+    ]
+   }
   }
  ]
 }

@@ -55,12 +55,20 @@ fn public_pack_licence_and_provenance() {
         let attribution = doc["attribution"].as_str().unwrap();
         assert!(attribution.contains("System Reference Document 5.2.1") && attribution.contains("Creative Commons"), "content/{path}");
         let prov = &doc["provenance"];
-        assert!(is_hex(prov["natural20_commit"].as_str().unwrap(), 40), "content/{path}: natural20 commit");
-        assert_eq!(prov["exporter"], "validation/export_content.py");
-        let files = prov["files"].as_object().unwrap();
-        assert!(!files.is_empty(), "content/{path}: no source files");
-        for (f, sha) in files {
-            assert!(is_hex(sha.as_str().unwrap(), 64), "content/{path}: {f}");
+        if prov["exporter"] == "srd-5.2.1-direct" {
+            assert_eq!(prov["natural20_commit"], "srd-5.2.1-direct", "content/{path}");
+            assert!(
+                matches!(id, "vesper" | "vesper_l1" | "vesper_l2"),
+                "content/{path}: unexpected direct SRD provenance without Natural20 export"
+            );
+        } else {
+            assert!(is_hex(prov["natural20_commit"].as_str().unwrap(), 40), "content/{path}: natural20 commit");
+            assert_eq!(prov["exporter"], "validation/export_content.py");
+            let files = prov["files"].as_object().unwrap();
+            assert!(!files.is_empty(), "content/{path}: no source files");
+            for (f, sha) in files {
+                assert!(is_hex(sha.as_str().unwrap(), 64), "content/{path}: {f}");
+            }
         }
         seen.insert(id.to_string());
     }

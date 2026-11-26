@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 17;
+pub const CURRENT_RULE_VERSION: i32 = 18;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,6 +37,7 @@ pub enum St {
     Grappled,
     Restrained,
     Invisible,
+    Deafened,
 }
 
 impl St {
@@ -55,6 +56,7 @@ impl St {
             St::Grappled => "grappled",
             St::Restrained => "restrained",
             St::Invisible => "invisible",
+            St::Deafened => "deafened",
         }
     }
 }
@@ -116,6 +118,8 @@ pub struct Unit {
     // fighter resources
     pub second_wind_count: i32,
     pub action_surge_count: i32,
+    // bard resources (SRD 5.2.1)
+    pub bardic_inspiration_count: i32,
     pub mem: Memory,
     /// `StrengthDrainEffect` running reduction (one effect per creature).
     pub str_drain: Option<i32>,
@@ -319,12 +323,12 @@ impl Unit {
         let m = crate::content::ability_mod(score);
         m + if self.t.save_prof[ab.idx()] { self.t.prof_bonus } else { 0 }
     }
-    pub(crate) fn add_status(&mut self, s: St) {
+    pub fn add_status(&mut self, s: St) {
         if !self.has(s) {
             self.statuses.push(s);
         }
     }
-    fn remove_status(&mut self, s: St) {
+    pub fn remove_status(&mut self, s: St) {
         self.statuses.retain(|x| *x != s);
     }
     /// `do_prone`.
@@ -408,6 +412,8 @@ pub enum Act {
     LuringSong,
     /// `NpcVanishAction` (Will-o'-Wisp Bonus Action, Concentration, Invisible).
     NpcVanish,
+    /// Bard: `BardicInspiration` (Bonus Action, 60 ft ally who can see or hear you).
+    BardicInspiration { target: usize },
     /// End the turn: the last row of every external decision (`env.rs`);
     /// never executed as an action.
     EndTurn,
@@ -487,6 +493,7 @@ impl Act {
             Act::NpcTeleport { .. } => "npc_teleport",
             Act::LuringSong => "luring_song",
             Act::NpcVanish => "npc_vanish",
+            Act::BardicInspiration { .. } => "bardic_inspiration",
             Act::EndTurn => "end_turn",
         }
     }
@@ -732,6 +739,7 @@ impl Fight {
                 initiative: 0.0,
                 second_wind_count: t.second_wind_uses,
                 action_surge_count: t.action_surge_uses,
+                bardic_inspiration_count: t.bardic_inspiration_uses,
                 mem: Memory { visited: Bits::new(g.cells()), ..Default::default() },
                 str_drain: None,
                 stench_poison: Vec::new(),
@@ -864,10 +872,26 @@ impl Fight {
         self.units[a].team != self.units[b].team
     }
 
+    /// Light level at `pos` (0 = Darkness, 1 = Dim Light, 2 = Bright Light),
+    /// including 10-ft Dim Light shed by creatures outlined by `Faerie Fire` or
+    /// `Starry Wisp` (SRD 5.2.1, rules v18+).
+    pub fn effective_light_level(&self, pos: Pos) -> u8 {
+        let base = self.grid.light_level(pos);
+        if base >= 1 || self.rule_version < 18 {
+            return base;
+        }
+        let lit = (0..self.units.len()).any(|o| {
+            !self.units[o].dead()
+                && (self.has_effect(o, EffKey::FaerieFire) || self.has_effect(o, EffKey::StarryWisp))
+                && self.square_distance(self.units[o].pos, pos) * 5 <= 10
+        });
+        if lit { 1 } else { 0 }
+    }
+
     /// Check the effect path and the observer's senses at the target square.
     pub(crate) fn sees_lit_square(&self, observer: usize, pos: Pos) -> bool {
         let u = &self.units[observer];
-        if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.grid.light_level(pos) == 0 {
+        if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.effective_light_level(pos) == 0 {
             let senses = u.t.darkvision.max(u.t.blindsight).max(u.t.truesight);
             if self.square_distance(u.pos, pos) * 5 > senses { return false; }
         }
@@ -877,11 +901,11 @@ impl Fight {
     pub(crate) fn sees_hider_clearly(&self, observer: usize, hider: usize) -> bool {
         let pos = self.units[hider].pos;
         if self.rule_version < 11 { return self.sees_lit_square(observer, pos); }
-        self.grid.light_level(pos) > 0 && self.sees_lit_square(observer, pos)
+        self.effective_light_level(pos) > 0 && self.sees_lit_square(observer, pos)
             && self.grid.corner_wall_grade(self.units[observer].pos, pos) < 3
     }
 
-    fn reveal_exposed_hiders(&mut self) {
+    pub(crate) fn reveal_exposed_hiders(&mut self) {
         if self.rule_version < 11 { return; }
         for hider in 0..self.units.len() {
             if !self.units[hider].hidden() { continue; }
@@ -894,15 +918,42 @@ impl Fight {
         }
     }
 
+    /// Active prepared/known spells for `u`, preserving `curogana`'s legacy
+    /// `Burning Hands` spell on `rule_version < 18` so recorded parity/golden
+    /// suites stay 100% deterministic.
+    pub fn effective_spells(&self, u: usize) -> Vec<SpellId> {
+        let Some(caster) = self.units[u].t.caster.as_ref() else {
+            return Vec::new();
+        };
+        let legacy_curogana = self.rule_version < 18 && self.units[u].t.id == "curogana";
+        caster
+            .spells
+            .iter()
+            .map(|&sp| {
+                if legacy_curogana && sp == SpellId::SeeInvisibility {
+                    SpellId::BurningHands
+                } else {
+                    sp
+                }
+            })
+            .collect()
+    }
+
     #[inline]
     pub fn can_see(&self, a: usize, b: usize) -> bool {
         if a == b {
             return true;
         }
         if self.units[b].invisible() {
-            let sense = self.units[a].t.blindsight.max(self.units[a].t.truesight);
-            if !(sense > 0 && self.dist(a, b) * 5 <= sense && self.clear_sight(self.units[a].pos, self.units[b].pos)) {
-                return false;
+            let negated = self.rule_version >= 18
+                && (self.has_effect(b, EffKey::FaerieFire)
+                    || self.has_effect(b, EffKey::StarryWisp)
+                    || self.has_effect(a, EffKey::SeeInvisibility));
+            if !negated {
+                let sense = self.units[a].t.blindsight.max(self.units[a].t.truesight);
+                if !(sense > 0 && self.dist(a, b) * 5 <= sense && self.clear_sight(self.units[a].pos, self.units[b].pos)) {
+                    return false;
+                }
             }
         }
         if let Some(stealth) = self.units[b].hidden_stealth {
@@ -1321,6 +1372,34 @@ impl Fight {
         (total, fmt)
     }
 
+    /// Saving throw against a known `dc`, triggering automatic post-failure
+    /// Bardic Inspiration (SRD 5.2.1, rules v18+) when rolling the die's max
+    /// can turn the failure into a success.
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_with_dc(
+        &mut self,
+        u: usize,
+        ab: Ability,
+        dc: i32,
+        disadvantage: bool,
+        cover: i32,
+        is_magical: bool,
+        is_charmed: bool,
+        extra_adv: bool,
+    ) -> (i32, String) {
+        let auto_fail = matches!(ab, Ability::Str | Ability::Dex) && self.units[u].has(St::Paralyzed);
+        let (mut total, mut fmt) = self.save_throw_ex(u, ab, disadvantage, cover, is_magical, is_charmed, extra_adv);
+        if self.rule_version >= 18 && !auto_fail && total < dc {
+            if let Some((bi_roll, new_total)) = self.try_bardic_inspiration(u, total, dc, "saving throw") {
+                total = new_total;
+                if self.web_events.is_some() {
+                    fmt.push_str(&format!(" + Bardic Inspiration({bi_roll}) = {new_total}"));
+                }
+            }
+        }
+        (total, fmt)
+    }
+
     /// `Entity.save_throw(save, battle, opts={'dc': dc})` for the scenario's
     /// creatures; returns the total.
     pub fn save_throw(&mut self, u: usize, ab: Ability) -> i32 {
@@ -1553,7 +1632,7 @@ impl Fight {
                 continue;
             }
             let dc = self.units[src].t.stench_dc.unwrap_or(10);
-            let total = self.save_throw(u, Ability::Con);
+            let total = self.save_with_dc(u, Ability::Con, dc, false, 0, false, false, false).0;
             let passed = total >= dc;
             if passed {
                 self.units[u].stench_immune.push(src);
@@ -1766,7 +1845,7 @@ impl Fight {
     }
 
     /// `Battle.execute_action` (resolve + commit).
-    pub(crate) fn execute_action(&mut self, src: usize, act: &Act) {
+    pub fn execute_action(&mut self, src: usize, act: &Act) {
         if !matches!(act, Act::Move(_)) {
             self.units[src].champion_movement = 0;
         }
@@ -1873,6 +1952,7 @@ impl Fight {
                 self.note_noise(src);
             }
             Act::NpcVanish => self.do_npc_vanish(src),
+            Act::BardicInspiration { target } => self.do_bardic_inspiration(src, *target),
             other => self.do_feature(src, other),
         }
         // the end of `Battle.commit`: conditions whose source dropped or lapsed end
@@ -2199,6 +2279,8 @@ impl Fight {
             adv("Pack Tactics");
         }
         if self.has_effect(tgt, EffKey::TargetedAdvantageOverride) { adv("Guiding Bolt"); }
+        if self.rule_version >= 18 && self.has_effect(tgt, EffKey::FaerieFire) && self.can_see(src, tgt) { adv("Faerie Fire"); }
+        if self.rule_version >= 18 && self.has_effect(src, EffKey::ViciousMockery) { dis("Vicious Mockery"); }
         if wk.spell && self.innate_active(src) { adv("Innate Sorcery"); }
         for obj in self.active_effects(tgt, EffKey::AttackedAdvantageModifier) {
             let o = &self.objs[obj as usize];
@@ -2436,6 +2518,16 @@ impl Fight {
         }
     }
 
+    /// Spend any active `Vicious Mockery` Disadvantage on `src`'s attack roll.
+    pub(crate) fn consume_vicious_mockery(&mut self, src: usize) {
+        if self.rule_version < 18 {
+            return;
+        }
+        for obj in self.active_effects(src, EffKey::ViciousMockery) {
+            self.dismiss_effect(src, obj);
+        }
+    }
+
     /// `AttackAction` resolve + commit; `cleave`: the Cleave mastery's extra
     /// attack (`CleaveAttackAction`: free, no positive ability modifier to
     /// damage, opens no window).
@@ -2464,6 +2556,7 @@ impl Fight {
         let mut dismiss: Vec<(usize, u32)> = Vec::new();
         let mut force_miss = false;
         let mut shield_cast = None;
+        let mut cutting_words_used = false;
         let mut atk_roll_fmt: Option<String> = None;
         // the roll had Advantage and no Disadvantage (`advantage_mod > 0`):
         // `condition: advantage` riders apply
@@ -2491,7 +2584,7 @@ impl Fight {
                 self.resolve_trigger(src, HookEv::AttackResolved);
             }
             let cover = self.save_cover(self.units[src].pos, tgt, ab);
-            let total = self.save_throw_with_cover(tgt, ab, false, cover).0;
+            let total = self.save_with_dc(tgt, ab, dc, false, cover, false, false, false).0;
             if total >= dc {
                 if def.save_immune {
                     // `grant_save_immunity` (the miss item's `save_immunity`)
@@ -2550,6 +2643,7 @@ impl Fight {
                 self.units[src].sap = None;
                 self.notes.sap_spent += 1;
             }
+            self.consume_vicious_mockery(src);
             let mode = Fight::mode_of(adv, dis);
             let mod_val = plus_string_modifier(to_hit);
             let (face, dv) = self.roll_d20_raw(src, "attack", mode);
@@ -2579,14 +2673,45 @@ impl Fight {
             // advantage/disadvantage are independent and can be equal)
             let nat20 = face == 20;
             let nat1 = face == 1;
+            let critical_roll = nat20 || (t.improved_critical && face >= 19);
+            if self.rule_version >= 18
+                && !critical_roll
+                && !nat1
+                && total < ac
+                && blind_occupant != Some(tgt)
+            {
+                if let Some((bi_roll, new_total)) = self.try_bardic_inspiration(src, total, ac, "attack") {
+                    total = new_total;
+                    if let Some(ref mut text) = atk_roll_fmt {
+                        text.push_str(&format!(" + Bardic Inspiration({bi_roll}) = {new_total}"));
+                    }
+                }
+            }
             // the target's reaction spells (`ShieldSpell.after_attack_roll`)
             if let Some((blocks, at_level)) = self.shield_reaction(tgt, total, ac, nat20, nat1) {
                 force_miss = blocks;
                 shield_cast = Some((at_level, total, ac));
             }
+            if self.rule_version >= 18
+                && !critical_roll
+                && !nat1
+                && total >= ac
+                && !force_miss
+                && blind_occupant != Some(tgt)
+            {
+                if let Some((_bard, cw_roll, new_total, turned_miss)) = self.try_cutting_words_attack(src, tgt, total, ac, critical_roll) {
+                    cutting_words_used = true;
+                    total = new_total;
+                    if turned_miss {
+                        force_miss = true;
+                    }
+                    if let Some(ref mut text) = atk_roll_fmt {
+                        text.push_str(&format!(" − Cutting Words({cw_roll}) = {new_total}"));
+                    }
+                }
+            }
             self.describe_attack_cover(&mut atk_roll_fmt, tgt, ac, shield_cast.is_some());
-            let mut c = nat20 || (t.improved_critical && face >= 19);
-            let critical_roll = c;
+            let mut c = critical_roll;
             // `weapon.get('type') == 'melee_attack'`: a thrown dagger too
             if !c
                 && (self.units[tgt].has(St::Paralyzed) || self.units[tgt].unconscious())
@@ -2745,7 +2870,7 @@ impl Fight {
                         continue;
                     }
                     let cover = self.save_cover(self.units[src].pos, tgt, ability);
-                    let total = self.save_throw_with_cover(tgt, ability, false, cover).0;
+                    let total = self.save_with_dc(tgt, ability, dc, false, cover, false, false, false).0;
                     if total < dc {
                         effects.push(HitEffect::Condition(condition));
                     }
@@ -2774,7 +2899,12 @@ impl Fight {
             }
         }
         // commit: the damage item, then riders and effects in order
-        let amount: i32 = base.iter().sum::<i32>() + frenzy + dmg.modifier;
+        let mut amount: i32 = base.iter().sum::<i32>() + frenzy + dmg.modifier;
+        if self.rule_version >= 18 && !def.no_damage && dmg.sides > 0 && !cutting_words_used && amount > 0 {
+            if let Some((_bard, _cw_roll, new_amount)) = self.try_cutting_words_damage(src, tgt, amount) {
+                amount = new_amount;
+            }
+        }
         let mut hs = HitState { kill_at_zero: def.kill_at_zero, ..HitState::default() };
         // a `no_damage` action has no damage event (`damage_event` skipped)
         let combined = self.rule_version >= 7 && !def.no_damage && !riders.is_empty();
@@ -3026,9 +3156,12 @@ impl Fight {
             return;
         }
         let def: &'static AttackDef = &self.units[src].t.attacks[atk];
-        if self.web_human_blind_attack && self.units[src].sap.is_some() {
-            self.units[src].sap = None;
-            self.notes.sap_spent += 1;
+        if self.web_human_blind_attack {
+            if self.units[src].sap.is_some() {
+                self.units[src].sap = None;
+                self.notes.sap_spent += 1;
+            }
+            self.consume_vicious_mockery(src);
         }
         let (_face, _dv) = self.roll_d20_raw(src, "attack", RollMode::Disadvantage);
         if self.web_human_blind_attack {
@@ -3056,11 +3189,19 @@ impl Fight {
             || unit.source_fear.iter().any(|&(f, _)| !self.units[f].dead() && self.can_see(u, f));
         let mode = RollMode::from_flags(false, unit.poisoned() || feared);
         let face = self.roll_d20(u, "dice roll for stealth", mode);
-        let total = face + plus_string_modifier(modifier);
+        let mut total = face + plus_string_modifier(modifier);
         let seen = (0..self.units.len()).any(|o| {
             let x = &self.units[o];
             o != u && !x.dead() && self.opposing(o, u) && x.conscious() && self.sees_hider_clearly(o, u)
         });
+        if !seen {
+            if let Some((_, boosted)) = self.try_bardic_inspiration(u, total, 15, "Stealth check") {
+                total = boosted;
+            }
+            if let Some((_, _, lowered, _)) = self.try_cutting_words_ability_check(u, total, 15, "Stealth check") {
+                total = lowered;
+            }
+        }
         self.emit_web(crate::web_events::WebEv::HideResult { actor: u, total, seen });
         if !seen && total >= 15 {
             self.notes.hide_success += 1;
@@ -3351,7 +3492,7 @@ impl Fight {
         } else if let Some(c) = self.units[u].concentration.filter(|_| total > 0 || self.rule_version < 7) {
             // concentration check: DC max(10, half the damage taken)
             let dc = 10.max(total.div_euclid(2));
-            let (save, roll) = self.save_throw_fmt(u, Ability::Con);
+            let (save, roll) = self.save_with_dc(u, Ability::Con, dc, false, 0, false, false, false);
             let spell = self.objs[c as usize].spell;
             self.emit_web(crate::web_events::WebEv::ConcentrationSave { target: u, spell, roll, dc, passed: save >= dc });
             if save < dc {
@@ -3689,6 +3830,7 @@ impl Fight {
             }
             Act::LuringSong => "luring_song".to_string(),
             Act::NpcVanish => "npc_vanish".to_string(),
+            Act::BardicInspiration { target } => format!("bardic_inspiration:>{}", self.units[*target].id),
             other => other.kind().to_string(),
         }
     }
@@ -3727,7 +3869,7 @@ impl Fight {
             if self.pfeg_wards(u, src) {
                 continue;
             }
-            let total = self.save_throw_ex(u, Ability::Wis, false, 0, false, false, false).0;
+            let total = self.save_with_dc(u, Ability::Wis, va.dc, false, 0, false, false, false).0;
             if total >= va.dc {
                 let until = gt + 24 * 3600;
                 match self.units[u].vile_immune.iter_mut().find(|e| e.0 == src) {
@@ -3935,7 +4077,7 @@ impl Fight {
             }
             match (c.save_type, c.dc) {
                 (Some(ab), Some(dc)) => {
-                    let total = self.save_throw_ex(tgt, ab, false, 0, false, true, false).0;
+                    let total = self.save_with_dc(tgt, ab, dc, false, 0, false, true, false).0;
                     if total >= dc {
                         self.end_charm(tgt, c.source);
                     }
@@ -3995,7 +4137,7 @@ impl Fight {
         if !self.is_lured(tgt) || self.units[tgt].dead() {
             return;
         }
-        let total = self.save_throw_ex(tgt, Ability::Wis, false, 0, true, true, false).0;
+        let total = self.save_with_dc(tgt, Ability::Wis, dc, false, 0, true, true, false).0;
         if total >= dc {
             self.end_lure(tgt);
             let until = self.gt() + 24 * 3600;
@@ -4122,7 +4264,15 @@ impl Fight {
     /// `FirstAidAction`: Medicine DC 10 to stabilize an adjacent unconscious dying creature.
     fn do_first_aid(&mut self, src: usize, tgt: usize) {
         let med_mod = self.units[src].medicine_mod();
-        let (total, roll_fmt) = self.roll_skill_check_fmt(src, "medicine", med_mod, "dice roll for medicine");
+        let (mut total, mut roll_fmt) = self.roll_skill_check_fmt(src, "medicine", med_mod, "dice roll for medicine");
+        if let Some((bi, boosted)) = self.try_bardic_inspiration(src, total, 10, "Medicine check") {
+            total = boosted;
+            roll_fmt = format!("{roll_fmt} + Bardic Inspiration({bi}) = {total}");
+        }
+        if let Some((_, cw, lowered, _)) = self.try_cutting_words_ability_check(src, total, 10, "Medicine check") {
+            total = lowered;
+            roll_fmt = format!("{roll_fmt} − Cutting Words({cw}) = {total}");
+        }
         let success = total >= 10 && !self.units[tgt].dead() && self.units[tgt].unconscious() && !self.units[tgt].has(St::Stable);
         if success {
             let unit = &mut self.units[tgt];
@@ -4151,17 +4301,43 @@ impl Fight {
     fn do_escape_grapple(&mut self, src: usize, grappler: usize) {
         let ath = self.units[src].athletics_mod();
         let acr = self.units[src].acrobatics_mod();
-        let (skill, (total, roll_fmt)) = if ath > acr {
+        let (skill, (mut total, mut roll_fmt)) = if ath > acr {
             ("Athletics", self.roll_skill_check_fmt(src, "athletics", ath, "dice roll for athletics"))
         } else {
             ("Acrobatics", self.roll_skill_check_fmt(src, "acrobatics", acr, "dice roll for acrobatics"))
         };
         let escape_dc = self.units[src].grappled_by.iter().find(|&&(g, _)| g == grappler).and_then(|&(_, dc)| dc);
         let (escaped, dc_text) = match escape_dc {
-            Some(dc) => (total >= dc, format!("DC {dc}")),
+            Some(dc) => {
+                if let Some((bi, boosted)) = self.try_bardic_inspiration(src, total, dc, "escape check") {
+                    total = boosted;
+                    roll_fmt = format!("{roll_fmt} + Bardic Inspiration({bi}) = {total}");
+                }
+                if let Some((_, cw, lowered, _)) = self.try_cutting_words_ability_check(src, total, dc, "escape check") {
+                    total = lowered;
+                    roll_fmt = format!("{roll_fmt} − Cutting Words({cw}) = {total}");
+                }
+                (total >= dc, format!("DC {dc}"))
+            }
             None => {
                 let g_ath = self.units[grappler].athletics_mod();
-                let (g_total, g_fmt) = self.roll_skill_check_fmt(grappler, "athletics", g_ath, "dice roll for athletics");
+                let (mut g_total, mut g_fmt) = self.roll_skill_check_fmt(grappler, "athletics", g_ath, "dice roll for athletics");
+                if let Some((bi, boosted)) = self.try_bardic_inspiration(src, total, g_total + 1, "escape check") {
+                    total = boosted;
+                    roll_fmt = format!("{roll_fmt} + Bardic Inspiration({bi}) = {total}");
+                }
+                if let Some((_, cw, lowered, _)) = self.try_cutting_words_ability_check(src, total, g_total + 1, "escape check") {
+                    total = lowered;
+                    roll_fmt = format!("{roll_fmt} − Cutting Words({cw}) = {total}");
+                }
+                if let Some((bi, boosted)) = self.try_bardic_inspiration(grappler, g_total, total, "grapple check") {
+                    g_total = boosted;
+                    g_fmt = format!("{g_fmt} + Bardic Inspiration({bi}) = {g_total}");
+                }
+                if let Some((_, cw, lowered, _)) = self.try_cutting_words_ability_check(grappler, g_total, total, "grapple check") {
+                    g_total = lowered;
+                    g_fmt = format!("{g_fmt} − Cutting Words({cw}) = {g_total}");
+                }
                 (total > g_total, format!("Athletics {g_fmt}"))
             }
         };
@@ -4195,7 +4371,15 @@ impl Fight {
             _ => return,
         };
         let ath = self.units[src].athletics_mod();
-        let (total, roll_fmt) = self.roll_skill_check_fmt(src, "athletics", ath, "athletics");
+        let (mut total, mut roll_fmt) = self.roll_skill_check_fmt(src, "athletics", ath, "athletics");
+        if let Some((bi, boosted)) = self.try_bardic_inspiration(src, total, dc, "Athletics check") {
+            total = boosted;
+            roll_fmt = format!("{roll_fmt} + Bardic Inspiration({bi}) = {total}");
+        }
+        if let Some((_, cw, lowered, _)) = self.try_cutting_words_ability_check(src, total, dc, "Athletics check") {
+            total = lowered;
+            roll_fmt = format!("{roll_fmt} − Cutting Words({cw}) = {total}");
+        }
         let success = total >= dc;
         self.units[src].action = (self.units[src].action - 1).max(0);
         if success {
@@ -4396,7 +4580,7 @@ impl Fight {
                 saves.push((t, true));
                 continue;
             }
-            let total = self.save_throw_ex(t, Ability::Wis, false, 0, true, true, false).0;
+            let total = self.save_with_dc(t, Ability::Wis, cfg.dc, false, 0, true, true, false).0;
             saves.push((t, total >= cfg.dc));
         }
         self.units[src].action = (self.units[src].action - 1).max(0);

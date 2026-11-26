@@ -67,7 +67,8 @@
    "npc_area_ability": 29,
    "npc_teleport": 30,
    "luring_song": 31,
-   "npc_vanish": 32
+   "npc_vanish": 32,
+   "bardic_inspiration": 33
   },
   "effects": {
    "bless": 0,
@@ -88,7 +89,12 @@
    "invisible": 15,
    "restrained_override": 16,
    "escapable_restraint": 17,
-   "ray_of_sickness": 18
+   "ray_of_sickness": 18,
+   "faerie_fire": 19,
+   "see_invisibility": 20,
+   "vicious_mockery": 21,
+   "starry_wisp": 22,
+   "bardic_inspiration": 23
   },
   "creatures": {
    "guy": 0,
@@ -121,14 +127,16 @@
    "dryad": 27,
    "harpy": 28,
    "sea_hag": 29,
-   "will_o_wisp": 30
+   "will_o_wisp": 30,
+   "vesper": 31
   },
   "classes": {
    "fighter": 0,
    "cleric": 1,
    "sorcerer": 2,
    "wizard": 3,
-   "barbarian": 4
+   "barbarian": 4,
+   "bard": 5
   },
   "attacks": {
    "greatsword": 0,
@@ -254,7 +262,15 @@
    "ephemeral": 86,
    "illumination": 87,
    "consume_life": 88,
-   "vanish": 89
+   "vanish": 89,
+   "bardic_inspiration": 90,
+   "expertise": 91,
+   "jack_of_all_trades": 92,
+   "bard_subclass": 93,
+   "bonus_proficiencies": 94,
+   "cutting_words": 95,
+   "fiendish_legacy": 96,
+   "otherworldly_presence": 97
   },
   "spells": {
    "sacred_flame": 0,
@@ -287,7 +303,12 @@
    "invisibility": 27,
    "ray_of_sickness": 28,
    "charm_monster": 29,
-   "entangle": 30
+   "entangle": 30,
+   "faerie_fire": 31,
+   "see_invisibility": 32,
+   "vicious_mockery": 33,
+   "starry_wisp": 34,
+   "poison_spray": 35
   },
   "characters": {
    "guy": 0,
@@ -295,7 +316,8 @@
    "curogana": 2,
    "mara": 3,
    "ilyra": 4,
-   "chruna": 5
+   "chruna": 5,
+   "vesper": 6
   }
  }
 }

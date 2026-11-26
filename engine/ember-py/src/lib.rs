@@ -27,10 +27,14 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
 use rayon::prelude::*;
 
-use ember::batch::{dest_decision, EnvConfig, EpisodeSpec, Game, Info, MoveMode, RowKind, UnitRef, NATURAL20_COMMIT};
+use ember::batch::{
+    dest_decision, EnvConfig, EpisodeSpec, Game, Info, MoveMode, RowKind, UnitRef, DEFAULT_BATCH_RULE_VERSION,
+    NATURAL20_COMMIT,
+};
 use ember::catalog::Catalog;
 use ember::content::{embedded_files, ContentPool as CorePool};
 use ember::encode::{encode_decision, encode_value, ObsSlot, Version, CELLS, FEATURE_VERSION, N, S, T};
+use ember::engine::CURRENT_RULE_VERSION;
 use ember::env::{Controller, Decision};
 
 fn verr(msg: impl Into<String>) -> PyErr {
@@ -157,17 +161,77 @@ fn public_pack(p: &Path) -> bool {
     s == "srd" || s.ends_with("content/srd")
 }
 
-fn load_pool(paths: &[String]) -> Result<&'static CorePool, String> {
-    static POOLS: OnceLock<Mutex<HashMap<Vec<String>, &'static CorePool>>> = OnceLock::new();
+/// Accept the frozen rule-17 (`09bec740`) `srd/curogana.json` alongside the
+/// compiled rule-18 copy so rule-17 training/eval packs load cleanly without
+/// relaxing checks on any other field or file.
+fn is_rule17_curogana(embedded: &str, disk: &str) -> bool {
+    const RULE17_COMMIT: &str = "09bec740a7c0da50ab6618a233fd635eb1169334";
+    let Ok(emb_val) = serde_json::from_str::<serde_json::Value>(embedded) else {
+        return false;
+    };
+    let Ok(mut disk_val) = serde_json::from_str::<serde_json::Value>(disk) else {
+        return false;
+    };
+    if disk_val.pointer("/provenance/natural20_commit").and_then(|v| v.as_str()) != Some(RULE17_COMMIT) {
+        return false;
+    }
+    let Some(emb_known) = emb_val.pointer("/spellcasting/spells").and_then(|v| v.as_array()) else {
+        return false;
+    };
+    let Some(emb_details) = emb_val.pointer("/spellcasting/spell_info").and_then(|v| v.as_array()) else {
+        return false;
+    };
+    let Some(known_idx) = emb_known.iter().position(|v| v.as_str() == Some("see_invisibility")) else {
+        return false;
+    };
+    let Some(det_idx) = emb_details.iter().position(|v| v.get("id").and_then(|x| x.as_str()) == Some("see_invisibility")) else {
+        return false;
+    };
+    let expected_bh = serde_json::json!({
+        "id": "burning_hands",
+        "name": "Burning Hands",
+        "level": 1,
+        "casting_time": "1:action",
+        "concentration": false,
+        "sorcerer_spell": true
+    });
+    if let Some(known) = disk_val.pointer_mut("/spellcasting/spells").and_then(|v| v.as_array_mut()) {
+        if known.get(known_idx).and_then(|v| v.as_str()) != Some("burning_hands") {
+            return false;
+        }
+        known[known_idx] = serde_json::Value::String("see_invisibility".into());
+    } else {
+        return false;
+    }
+    if let Some(details) = disk_val.pointer_mut("/spellcasting/spell_info").and_then(|v| v.as_array_mut()) {
+        if details.get(det_idx) != Some(&expected_bh) {
+            return false;
+        }
+        details[det_idx] = emb_details[det_idx].clone();
+    } else {
+        return false;
+    }
+    if let (Some(d_obj), Some(emb_prov)) = (disk_val.as_object_mut(), emb_val.get("provenance")) {
+        d_obj.insert("provenance".into(), emb_prov.clone());
+    } else {
+        return false;
+    }
+    disk_val == emb_val
+}
+
+fn load_pool(paths: &[String]) -> Result<(&'static CorePool, i32), String> {
+    static POOLS: OnceLock<Mutex<HashMap<Vec<String>, (&'static CorePool, i32)>>> = OnceLock::new();
     let cache = POOLS.get_or_init(Default::default);
-    if let Some(p) = cache.lock().unwrap().get(paths) {
+    if let Some(&p) = cache.lock().unwrap().get(paths) {
         return Ok(p);
     }
     let mut extra: Vec<PathBuf> = Vec::new();
+    let mut max_rule_version = CURRENT_RULE_VERSION;
     for raw in paths {
         let p = PathBuf::from(raw);
         if public_pack(&p) {
             // the embedded copy is used; a checkout on disk must be the same
+            // (or the frozen rule-17 `09bec740` curogana pack for rule <= 17).
             if p.is_dir() {
                 for entry in std::fs::read_dir(&p).map_err(|e| format!("{raw}: {e}"))? {
                     let f = entry.map_err(|e| e.to_string())?.path();
@@ -176,6 +240,9 @@ fn load_pool(paths: &[String]) -> Result<&'static CorePool, String> {
                         let disk = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
                         match embedded_files().iter().find(|(q, _)| *q == name) {
                             Some((_, text)) if *text == disk => {}
+                            Some((_, text)) if name == "srd/curogana.json" && is_rule17_curogana(text, &disk) => {
+                                max_rule_version = max_rule_version.min(17);
+                            }
                             _ => return Err(format!("{} differs from the pack compiled into ember_rs; rebuild it", f.display())),
                         }
                     }
@@ -189,8 +256,9 @@ fn load_pool(paths: &[String]) -> Result<&'static CorePool, String> {
         extra.push(p);
     }
     let pool = CorePool::load(&extra)?.leak();
-    cache.lock().unwrap().insert(paths.to_vec(), pool);
-    Ok(pool)
+    let entry = (pool, max_rule_version);
+    cache.lock().unwrap().insert(paths.to_vec(), entry);
+    Ok(entry)
 }
 
 /// The creatures the engine can play: the embedded SRD 5.2.1 pack
@@ -199,6 +267,7 @@ fn load_pool(paths: &[String]) -> Result<&'static CorePool, String> {
 #[pyclass(module = "ember_rs", frozen)]
 struct ContentPool {
     pool: &'static CorePool,
+    max_rule_version: i32,
     paths: Vec<String>,
 }
 
@@ -208,7 +277,13 @@ impl ContentPool {
     #[pyo3(signature = (paths=None))]
     fn new(paths: Option<Vec<String>>) -> PyResult<Self> {
         let paths = paths.unwrap_or_default();
-        Ok(ContentPool { pool: load_pool(&paths).map_err(verr)?, paths })
+        let (pool, max_rule_version) = load_pool(&paths).map_err(verr)?;
+        Ok(ContentPool { pool, max_rule_version, paths })
+    }
+
+    #[getter]
+    fn max_rule_version(&self) -> i32 {
+        self.max_rule_version
     }
 
     /// Content ids: heroes then monsters, each sorted.
@@ -470,6 +545,8 @@ struct BatchEnv {
     version: Version,
     /// How the policy moves (`moves`): one-square rows or destination rows.
     moves: MoveMode,
+    /// Engine rule version played by `reset()` (defaults to `DEFAULT_BATCH_RULE_VERSION` = 17).
+    rule_version: i32,
 }
 
 impl BatchEnv {
@@ -529,7 +606,7 @@ impl BatchEnv {
     #[new]
     #[pyo3(signature = (n_slots, content=None, threads=12, scores=true, objective="health_score", max_rounds=30,
                         standing_weight=0.5, max_steps=4096, catalog=None, feature_version=FEATURE_VERSION,
-                        moves="step"))]
+                        moves="step", rule_version=DEFAULT_BATCH_RULE_VERSION))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
@@ -544,12 +621,16 @@ impl BatchEnv {
         catalog: Option<Bound<'_, PyAny>>,
         feature_version: &str,
         moves: &str,
+        rule_version: i32,
     ) -> PyResult<Self> {
         if n_slots == 0 {
             return Err(verr("n_slots must be at least 1"));
         }
         let version = Version::parse(feature_version).map_err(verr)?;
         let moves = MoveMode::parse(moves).map_err(verr)?;
+        if !(1..=CURRENT_RULE_VERSION).contains(&rule_version) {
+            return Err(verr(format!("rule_version must be in 1..={CURRENT_RULE_VERSION}, not {rule_version}")));
+        }
         let health = match objective {
             "health_score" => true,
             "native" => false,
@@ -565,6 +646,13 @@ impl BatchEnv {
             Some(c) => c,
             None => Py::new(py, ContentPool::new(None)?)?,
         };
+        if rule_version > content.get().max_rule_version {
+            return Err(verr(format!(
+                "rule_version={rule_version} requires a rule-{rule_version} content pack, \
+                 but the content pack on disk is rule {}",
+                content.get().max_rule_version
+            )));
+        }
         let pool = content.get().pool;
         let catalog = match catalog {
             None => Catalog::builtin(pool),
@@ -605,6 +693,7 @@ impl BatchEnv {
             cur: 0,
             version,
             moves,
+            rule_version,
         })
     }
 
@@ -627,6 +716,11 @@ impl BatchEnv {
     #[getter]
     fn moves(&self) -> &'static str {
         self.moves.name()
+    }
+
+    #[getter]
+    fn rule_version(&self) -> i32 {
+        self.rule_version
     }
 
     #[getter]
@@ -693,12 +787,12 @@ impl BatchEnv {
         for s in &specs {
             entries.push(self.catalog.get(&s.encounter).cloned().ok_or_else(|| verr(format!("unknown encounter {:?}", s.encounter)))?);
         }
-        let (cfg, pool, rt) = (self.cfg, self.pool, &self.rt);
+        let (cfg, pool, rt, rule_version) = (self.cfg, self.pool, &self.rt, self.rule_version);
         let built: Vec<Result<Game, String>> = py.allow_threads(|| {
             rt.install(|| {
                 (0..specs.len())
                     .into_par_iter()
-                    .map(|i| Game::new(&entries[i], &specs[i], ctrls[i].0, &ctrls[i].1, &cfg, pool))
+                    .map(|i| Game::with_rule_version(&entries[i], &specs[i], ctrls[i].0, &ctrls[i].1, &cfg, pool, rule_version))
                     .collect()
             })
         });
@@ -831,6 +925,7 @@ impl BatchEnv {
         if let Some(o) = &other {
             let (a, b) = (&me.cfg, &o.cfg);
             let same = std::ptr::eq(me.pool, o.pool)
+                && me.rule_version == o.rule_version
                 && (a.scores, a.health, a.max_rounds, a.max_steps) == (b.scores, b.health, b.max_rounds, b.max_steps)
                 && a.standing_weight == b.standing_weight;
             if !same {
@@ -1084,7 +1179,7 @@ fn dims(py: Python<'_>, version: Version) -> PyResult<Bound<'_, PyDict>> {
 fn place<'py>(py: Python<'py>, row: &Bound<'py, PyAny>, layout_seed: i64, content: Option<Py<ContentPool>>) -> PyResult<Bound<'py, PyAny>> {
     let pool = match content {
         Some(c) => c.get().pool,
-        None => load_pool(&[]).map_err(verr)?,
+        None => load_pool(&[]).map_err(verr)?.0,
     };
     let json = py.import("json")?;
     let text: String = json.call_method1("dumps", (row,))?.extract()?;
@@ -1272,6 +1367,8 @@ fn ember_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     m.add("FEATURE_VERSIONS", versions)?;
     m.add("NATURAL20_COMMIT", NATURAL20_COMMIT.trim())?;
+    m.add("DEFAULT_BATCH_RULE_VERSION", DEFAULT_BATCH_RULE_VERSION)?;
+    m.add("CURRENT_RULE_VERSION", CURRENT_RULE_VERSION)?;
     m.add("WEB_REPLAY_VERSION", ember::present::CURRENT_WEB_REPLAY_VERSION)?;
     m.add("DEFAULT_CATALOG", PyString::new(py, ember::catalog::DEFAULT_CATALOG))?;
     m.add_class::<ContentPool>()?;

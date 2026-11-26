@@ -930,7 +930,8 @@ fn feature_names_and_vocab() {
     assert_eq!(Version::default(), Version::V2);
     assert_eq!(Version::parse("ember-gen-v3").unwrap(), Version::V3);
     assert_eq!(Version::parse("ember-gen-v4").unwrap(), Version::V4);
-    assert!(Version::parse("ember-gen-v5").is_err());
+    assert_eq!(Version::parse("ember-gen-v5").unwrap(), Version::V5);
+    assert!(Version::parse("ember-gen-v6").is_err());
 }
 
 /// Golden digests: the first and last decision and the two final views of

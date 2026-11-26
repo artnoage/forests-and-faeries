@@ -612,3 +612,52 @@ def test_champion_choice_interrupts_an_enemy_move(take_move):
     assert not state['champion_interrupt'] and state['turn_id'] == 'zombie-1'
     coords = {u['id']: [u['x'], u['y']] for u in state['units']}
     assert coords == {'mara_l3': [2 if take_move else 3, 2], 'zombie-1': [6, 2]}
+
+
+def test_vesper_practice_party_picker_and_fey_presets(ff_app):
+    client = ff_app.test_client()
+    enc = client.get('/api/encounters').get_json()
+    heroes = {h['base_id'] for h in enc['heroes']}
+    assert 'vesper' in heroes
+    practice = {(g['id'], p['id']) for g in enc['encounters'] for p in g['presets']}
+    assert ('whispering_glade', 'vesper_sprite_ring') in practice
+    assert ('whispering_glade', 'vesper_glade_ambush') in practice
+    assert ('mire_crossing', 'vesper_wisp_fen') in practice
+
+    # Vesper selectable in ANY Practice fight at levels 1, 2 and 3.
+    state = client.get('/api/state').get_json()
+    for lvl in (1, 2, 3):
+        resp = post(client, '/api/new', state, {
+            'encounter': 'crypt',
+            'preset': 'bone_patrol',
+            'hero_level': lvl,
+            'party': ['vesper', 'guy', 'curogana'],
+        })
+        assert resp.status_code == 200, resp.get_json()
+        state = resp.get_json()
+        party_bases = [h['base_id'] for h in state['level']['party']]
+        assert party_bases == ['vesper', 'guy', 'curogana']
+        assert all(h['level'] == lvl for h in state['level']['party'])
+        expected_id = 'vesper' if lvl == 3 else f'vesper_l{lvl}'
+        assert any(u['id'] == expected_id and u['class'] == 'bard' for u in state['units'])
+
+    # Story presets refuse custom party overrides; unknown/duplicate heroes return 400.
+    story_bad = post(client, '/api/new', state, {
+        'encounter': 'whispering_glade',
+        'preset': 'l1_spore_ring',
+        'party': ['vesper', 'guy'],
+    })
+    assert story_bad.status_code == 400
+    dup_bad = post(client, '/api/new', state, {
+        'encounter': 'crypt',
+        'preset': 'bone_patrol',
+        'party': ['vesper', 'vesper'],
+    })
+    assert dup_bad.status_code == 400
+    unk_bad = post(client, '/api/new', state, {
+        'encounter': 'crypt',
+        'preset': 'bone_patrol',
+        'party': ['nobody'],
+    })
+    assert unk_bad.status_code == 400
+

@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 19;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 20;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -543,20 +543,39 @@ impl WebArena {
 
     /// SRD 5.2.1 ("Invisible" & "Unseen Attackers and Targets"): an invisible
     /// creature that has not taken the Hide action cannot be seen (without
-    /// Blindsight/Truesight), yet its location is still known (heard/sensed).
+    /// Blindsight/Truesight/See Invisibility), yet its location is still known.
+    /// From replay_version >= 20, display is per active hero: solid if outlined
+    /// by Faerie Fire / Starry Wisp or seen by the currently acting hero (e.g.
+    /// Curogana with See Invisibility), shimmering on other heroes' turns.
     fn invisible_unseen_by_heroes(&self, u: usize) -> bool {
         if self.replay_version < 19 || self.finished || self.monster_control == "manual" {
             return false;
         }
         let f = self.fight.as_ref().unwrap();
         let unit = &f.units[u];
-        unit.team != 0
-            && unit.conscious()
-            && unit.invisible()
-            && !self.concealed_from_heroes(u)
-            && !(0..f.units.len()).any(|hero| {
-                f.units[hero].team == 0 && f.units[hero].conscious() && f.can_see(hero, u)
-            })
+        if !(unit.team != 0 && unit.conscious() && unit.invisible() && !self.concealed_from_heroes(u)) {
+            return false;
+        }
+        if self.replay_version >= 20 {
+            if f.has_effect(u, EffKey::FaerieFire) || f.has_effect(u, EffKey::StarryWisp) {
+                return false;
+            }
+            if !f.order.is_empty() {
+                let active = self.acting_unit(f);
+                if f.units[active].team == 0 && f.units[active].conscious() {
+                    return !f.can_see(active, u);
+                }
+            }
+            return !(0..f.units.len()).any(|hero| {
+                f.units[hero].team == 0
+                    && f.units[hero].conscious()
+                    && !f.has_effect(hero, EffKey::SeeInvisibility)
+                    && f.can_see(hero, u)
+            });
+        }
+        !(0..f.units.len()).any(|hero| {
+            f.units[hero].team == 0 && f.units[hero].conscious() && f.can_see(hero, u)
+        })
     }
 
     fn acting_unit(&self, fight: &Fight) -> usize {
@@ -649,7 +668,8 @@ impl WebArena {
             1..=3 => i32::from(self.replay_version),
             4 => 3,
             5..=18 => i32::from(self.replay_version - 1),
-            _ => 17,
+            19 => 17,
+            _ => 18,
         });
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
@@ -797,6 +817,13 @@ impl WebArena {
         &self.roster[self.fight_to_roster[u]].content
     }
 
+    fn spell_display_name(&self, key: &str) -> String {
+        if self.replay_version < 20 && key == "ray_of_sickness" {
+            return present_text::title_words(key);
+        }
+        present_text::spell_display_name(key)
+    }
+
     fn take_raw_draws(&mut self) -> Vec<Value> {
         let Some(f) = &mut self.fight else { return Vec::new() };
         let draws: Vec<Value> = f.trace.take_captured().iter().filter_map(ev_to_draw_json).collect();
@@ -896,7 +923,7 @@ impl WebArena {
                 if was_hidden { deferred_spell_log = Some(line); } else { self.push_log(&line, "spell", round); }
             }
             Act::Spell(c) => {
-                let name = present_text::spell_display_name(c.spell.key());
+                let name = self.spell_display_name(c.spell.key());
                 let mut extra = Vec::new();
                 if c.at_level > c.spell.level() && c.spell.level() >= 0 && c.at_level > 0 {
                     extra.push(format!("at level {}", c.at_level));
@@ -1206,6 +1233,32 @@ impl WebArena {
                         self.push_log(&format!("{name} recovers from being turned ({reason})."), "info", r);
                     }
                 }
+                WebEv::BardicInspirationSpent { target, pos, roll, old_total, new_total, threshold, succeeded, roll_kind } => {
+                    let r = self.current_round();
+                    let who = self.unit_display_name(target).to_string();
+                    let outcome = if succeeded { "turning the failure into a success" } else { "still falling short" };
+                    let gap = (threshold - old_total).max(1);
+                    self.push_log(
+                        &format!("{who} auto-triggers Bardic Inspiration on {roll_kind} (missed by {gap} ≤ 6): +1d6({roll}) raises {old_total} to {new_total} vs {threshold}, {outcome}."),
+                        "status",
+                        r,
+                    );
+                    let uid = self.fight.as_ref().unwrap().units[target].id.clone();
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("buff"));
+                    m.insert("variant".into(), json!("bardic_inspiration"));
+                    m.insert("source_id".into(), json!(uid));
+                    m.insert("target_id".into(), json!(uid));
+                    m.insert("outcome".into(), json!(if succeeded { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!(format!("INSPIRED +{roll}")));
+                    m.insert("source".into(), json!({"x": pos.0, "y": pos.1}));
+                    m.insert("target".into(), json!({"x": pos.0, "y": pos.1}));
+                    if let Some(eff) = self.push_effect(m) {
+                        self.pending_effects.push(eff);
+                    }
+                }
                 _ => {}
             }
         }
@@ -1244,6 +1297,12 @@ impl WebArena {
                 "dragons_breath_exhale" => "dragons_breath",
                 "chromatic_orb" => "chromatic_orb",
                 "ray_of_frost" => "ray_of_frost",
+                "ray_of_sickness" if self.replay_version >= 20 => "ray_of_sickness",
+                "faerie_fire" => "faerie_fire",
+                "see_invisibility" => "see_invisibility",
+                "vicious_mockery" => "vicious_mockery",
+                "starry_wisp" => "starry_wisp",
+                "poison_spray" => "poison_spray",
                 "spiritual_weapon" | "spiritual_weapon_attack" => "spiritual_weapon",
                 "command" => "command",
                 _ => "generic",
@@ -1295,6 +1354,7 @@ impl WebArena {
                     SpellId::Thunderwave => f.cube_squares(origin, p, 3),
                     SpellId::AcidSplash => f.squares_in_radius(p, 5, true),
                     SpellId::Shatter => f.squares_in_radius(p, 10, true),
+                    SpellId::FaerieFire => f.faerie_fire_squares(p),
                     _ => return None,
                 };
                 if sq.is_empty() {
@@ -1522,7 +1582,7 @@ impl WebArena {
                         && tgt.is_some_and(|t| self.concealed_from_heroes(t))
                         && !self.concealed_from_heroes(src);
                     let pretty_atk = if self.replay_version >= 7 && spell_style.is_some() {
-                        present_text::spell_display_name(spell_style.unwrap())
+                        self.spell_display_name(spell_style.unwrap())
                     } else { attack_name.replace('_', " ") };
                     let check = atk_roll_fmt.as_deref().map(|r| format!(" (attack {r})")).unwrap_or_default();
                     let current_text = self.replay_version >= 4;
@@ -1708,7 +1768,7 @@ impl WebArena {
                 WebEv::ConcentrationReplaced { caster, prior } => {
                     if !self.concealed_from_heroes(caster) {
                         let who = self.unit_display_name(caster);
-                        let old = present_text::spell_display_name(prior.key());
+                        let old = self.spell_display_name(prior.key());
                         self.push_log(&format!("{who}’s concentration on {old} ends."), "spell", round);
                     }
                 }
@@ -1733,14 +1793,14 @@ impl WebArena {
                 WebEv::ConcentrationEnded { target, spell } => {
                     if !(self.replay_version >= 19 && self.concealed_from_heroes(target)) {
                         let who = self.unit_display_name(target);
-                        let name = present_text::spell_display_name(spell.key());
+                        let name = self.spell_display_name(spell.key());
                         self.push_log(&format!("{who} loses concentration on {name} at 0 HP."), "status", round);
                     }
                 }
                 WebEv::ConcentrationSave { target, spell, roll, dc, passed } if self.replay_version >= 7 => {
                     if !(self.replay_version >= 19 && self.concealed_from_heroes(target)) {
                         let who = self.unit_display_name(target);
-                        let name = present_text::spell_display_name(spell.key());
+                        let name = self.spell_display_name(spell.key());
                         let outcome = if passed { "maintains" } else { "loses" };
                         self.push_log(&format!("{who} {outcome} concentration on {name} (CON save {roll} vs DC {dc})."), "status", round);
                     }
@@ -1964,7 +2024,231 @@ impl WebArena {
                     let uid = self.fight.as_ref().unwrap().units[u].id.clone();
                     moves.push(json!({"source_id": uid, "path": cells}));
                 }
+                WebEv::BardicInspirationGranted { src, tgt, src_pos, tgt_pos, die } => {
+                    let who = self.unit_display_name(src).to_string();
+                    let ally = self.unit_display_name(tgt).to_string();
+                    self.push_log(
+                        &format!("{who} grants {ally} Bardic Inspiration ({die}, 1 hour; auto-triggers on an attack or saving throw that misses by 1–6)."),
+                        "spell",
+                        round,
+                    );
+                    let (src_id, tgt_id) = {
+                        let f = self.fight.as_ref().unwrap();
+                        (f.units[src].id.clone(), f.units[tgt].id.clone())
+                    };
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("buff"));
+                    m.insert("variant".into(), json!("bardic_inspiration"));
+                    m.insert("source_id".into(), json!(src_id));
+                    m.insert("target_id".into(), json!(tgt_id));
+                    m.insert("outcome".into(), json!("hit"));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!(format!("INSPIRED ({die})")));
+                    m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    m.insert("target".into(), json!({"x": tgt_pos.0, "y": tgt_pos.1}));
+                    self.push_effect(m);
+                }
+                WebEv::BardicInspirationSpent { target, pos, roll, old_total, new_total, threshold, succeeded, roll_kind } => {
+                    let who = self.unit_display_name(target).to_string();
+                    let outcome = if succeeded { "turning the failure into a success" } else { "still falling short" };
+                    let gap = (threshold - old_total).max(1);
+                    self.push_log(
+                        &format!("{who} auto-triggers Bardic Inspiration on {roll_kind} (missed by {gap} ≤ 6): +1d6({roll}) raises {old_total} to {new_total} vs {threshold}, {outcome}."),
+                        "status",
+                        round,
+                    );
+                    let uid = self.fight.as_ref().unwrap().units[target].id.clone();
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("buff"));
+                    m.insert("variant".into(), json!("bardic_inspiration"));
+                    m.insert("source_id".into(), json!(uid));
+                    m.insert("target_id".into(), json!(uid));
+                    m.insert("outcome".into(), json!(if succeeded { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!(format!("INSPIRED +{roll}")));
+                    m.insert("source".into(), json!({"x": pos.0, "y": pos.1}));
+                    m.insert("target".into(), json!({"x": pos.0, "y": pos.1}));
+                    self.push_effect(m);
+                }
+                WebEv::CuttingWordsAttack { bard, attacker, target, bard_pos, attacker_pos, roll, old_total, new_total, ac, turned_miss } => {
+                    let bname = self.unit_display_name(bard).to_string();
+                    let aname = self.unit_display_name(attacker).to_string();
+                    let tname = self.unit_display_name(target).to_string();
+                    let outcome = if turned_miss { "turning the hit into a miss" } else { "the attack still hits" };
+                    let margin = (old_total - ac).max(0);
+                    self.push_log(
+                        &format!("{bname} auto-triggers Cutting Words reaction (non-crit hit beat AC by {margin} ≤ 5) against {aname}'s attack on {tname}: −1d6({roll}) lowers {old_total} to {new_total} vs AC {ac} ({outcome})."),
+                        "status",
+                        round,
+                    );
+                    let (bard_id, atk_id) = {
+                        let f = self.fight.as_ref().unwrap();
+                        (f.units[bard].id.clone(), f.units[attacker].id.clone())
+                    };
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("cutting_words"));
+                    m.insert("variant".into(), json!("cutting_words"));
+                    m.insert("source_id".into(), json!(bard_id));
+                    m.insert("target_id".into(), json!(atk_id));
+                    m.insert("outcome".into(), json!(if turned_miss { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("reaction".into(), json!(true));
+                    m.insert("text".into(), json!(if turned_miss { format!("CUTTING WORDS −{roll} (MISS)") } else { format!("CUTTING WORDS −{roll}") }));
+                    m.insert("source".into(), json!({"x": bard_pos.0, "y": bard_pos.1}));
+                    m.insert("target".into(), json!({"x": attacker_pos.0, "y": attacker_pos.1}));
+                    self.push_effect(m);
+                }
+                WebEv::CuttingWordsDamage { bard, attacker, target, bard_pos, target_pos, roll, old_damage, new_damage, shared_roll } => {
+                    let bname = self.unit_display_name(bard).to_string();
+                    let aname = self.unit_display_name(attacker).to_string();
+                    let tname = self.unit_display_name(target).to_string();
+                    let scope = if shared_roll {
+                        format!("{aname}'s damage roll")
+                    } else {
+                        format!("{aname}'s damage on {tname}")
+                    };
+                    self.push_log(
+                        &format!("{bname} auto-triggers Cutting Words reaction (lethal damage) against {scope}: −1d6({roll}) reduces {old_damage} to {new_damage} damage."),
+                        "status",
+                        round,
+                    );
+                    let (bard_id, tgt_id) = {
+                        let f = self.fight.as_ref().unwrap();
+                        (f.units[bard].id.clone(), f.units[target].id.clone())
+                    };
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("cutting_words"));
+                    m.insert("variant".into(), json!("cutting_words"));
+                    m.insert("source_id".into(), json!(bard_id));
+                    m.insert("target_id".into(), json!(tgt_id));
+                    m.insert("outcome".into(), json!("hit"));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("reaction".into(), json!(true));
+                    m.insert("text".into(), json!(format!("CUTTING WORDS −{roll} DMG")));
+                    m.insert("source".into(), json!({"x": bard_pos.0, "y": bard_pos.1}));
+                    m.insert("target".into(), json!({"x": target_pos.0, "y": target_pos.1}));
+                    self.push_effect(m);
+                }
+                WebEv::CuttingWordsCheck { bard, roller, bard_pos, roller_pos, roll, old_total, new_total, threshold, turned_fail, check_kind } => {
+                    let bname = self.unit_display_name(bard).to_string();
+                    let rname = self.unit_display_name(roller).to_string();
+                    let outcome = if turned_fail { "turning the success into a failure" } else { "the check still succeeds" };
+                    let margin = (old_total - threshold).max(0);
+                    self.push_log(
+                        &format!("{bname} auto-triggers Cutting Words reaction (check beat DC by {margin} ≤ 5) against {rname}'s {check_kind}: −1d6({roll}) lowers {old_total} to {new_total} vs DC {threshold} ({outcome})."),
+                        "status",
+                        round,
+                    );
+                    let (bard_id, roller_id) = {
+                        let f = self.fight.as_ref().unwrap();
+                        (f.units[bard].id.clone(), f.units[roller].id.clone())
+                    };
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("cutting_words"));
+                    m.insert("variant".into(), json!("cutting_words"));
+                    m.insert("source_id".into(), json!(bard_id));
+                    m.insert("target_id".into(), json!(roller_id));
+                    m.insert("outcome".into(), json!(if turned_fail { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("reaction".into(), json!(true));
+                    m.insert("text".into(), json!(if turned_fail { format!("CUTTING WORDS −{roll} (FAIL)") } else { format!("CUTTING WORDS −{roll}") }));
+                    m.insert("source".into(), json!({"x": bard_pos.0, "y": bard_pos.1}));
+                    m.insert("target".into(), json!({"x": roller_pos.0, "y": roller_pos.1}));
+                    self.push_effect(m);
+                }
+                WebEv::FaerieFireTarget { caster, target, src_pos, tgt_pos, dc, roll_fmt, outlined } => {
+                    if !outlined && self.concealed_from_heroes(target) {
+                        continue;
+                    }
+                    let cname = self.unit_display_name(caster).to_string();
+                    let tname = self.unit_display_name(target).to_string();
+                    if outlined {
+                        self.push_log(
+                            &format!("{tname} fails its DEX save against {cname}'s Faerie Fire ({roll_fmt} vs DC {dc}) and is outlined in dim light (no Invisible benefit; attacks against it have Advantage)."),
+                            "hit",
+                            round,
+                        );
+                    } else {
+                        self.push_log(
+                            &format!("{tname} succeeds on its DEX save against {cname}'s Faerie Fire ({roll_fmt} vs DC {dc})."),
+                            "miss",
+                            round,
+                        );
+                    }
+                    let (src_id, tgt_id) = {
+                        let f = self.fight.as_ref().unwrap();
+                        (f.units[caster].id.clone(), f.units[target].id.clone())
+                    };
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("faerie_fire"));
+                    m.insert("variant".into(), json!("faerie_fire"));
+                    m.insert("source_id".into(), json!(src_id));
+                    m.insert("target_id".into(), json!(tgt_id));
+                    m.insert("outcome".into(), json!(if outlined { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("save".into(), json!(if outlined { "failed" } else { "made" }));
+                    m.insert("text".into(), json!(if outlined { "FAERIE FIRE" } else { "RESISTS" }));
+                    m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    m.insert("target".into(), json!({"x": tgt_pos.0, "y": tgt_pos.1}));
+                    if !area_attached {
+                        if let Some((aim, ref cells)) = area_data {
+                            area_attached = true;
+                            m.insert("area".into(), json!({"aim": [aim.0, aim.1], "cells": cells}));
+                        }
+                    }
+                    self.push_effect(m);
+                }
+                WebEv::SeeInvisibilityCast { caster, pos } => {
+                    let cname = self.unit_display_name(caster).to_string();
+                    self.push_log(
+                        &format!("{cname} now sees Invisible creatures as if they were visible (1 hour, no concentration)."),
+                        "spell",
+                        round,
+                    );
+                    let cid = self.fight.as_ref().unwrap().units[caster].id.clone();
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("buff"));
+                    m.insert("variant".into(), json!("see_invisibility"));
+                    m.insert("source_id".into(), json!(cid));
+                    m.insert("target_id".into(), json!(cid));
+                    m.insert("outcome".into(), json!("hit"));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!("SEE INVISIBILITY"));
+                    m.insert("source".into(), json!({"x": pos.0, "y": pos.1}));
+                    m.insert("target".into(), json!({"x": pos.0, "y": pos.1}));
+                    self.push_effect(m);
+                }
                 _ => {}
+            }
+        }
+        if !area_attached {
+            if let (Act::Spell(c), Some((aim, ref cells))) = (act, &area_data) {
+                if c.spell == SpellId::FaerieFire {
+                    let (src_id, src_pos) = {
+                        let f = self.fight.as_ref().unwrap();
+                        (f.units[action_src].id.clone(), f.units[action_src].pos)
+                    };
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!("faerie_fire"));
+                    m.insert("variant".into(), json!("faerie_fire"));
+                    m.insert("source_id".into(), json!(src_id));
+                    m.insert("target_id".into(), json!(null));
+                    m.insert("outcome".into(), json!("miss"));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!("FAERIE FIRE"));
+                    m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    m.insert("target".into(), json!({"x": aim.0, "y": aim.1}));
+                    m.insert("area".into(), json!({"aim": [aim.0, aim.1], "cells": cells}));
+                    self.push_effect(m);
+                }
             }
         }
         (moves, blind_hit_target)
@@ -2562,6 +2846,7 @@ impl WebArena {
                 if f.units[actor].t.pc {
                     f.feature_candidates(actor, &mut non_spell);
                     f.barbarian_candidates(actor, &mut non_spell);
+                    non_spell.extend(f.bardic_inspiration_candidates(actor));
                 }
                 non_spell.retain(|a| !matches!(a, Act::DragonsBreathExhale));
             }
@@ -2735,7 +3020,7 @@ impl WebArena {
                         "None".into(),
                         "None".into(),
                     ),
-                    Act::FirstAid { target } | Act::EscapeGrapple { target } => (
+                    Act::FirstAid { target } | Act::EscapeGrapple { target } | Act::BardicInspiration { target } => (
                         vec![*target],
                         vec![f.units[*target].id.clone()],
                         None,
@@ -2866,7 +3151,8 @@ impl WebArena {
             "first_aid" => "First Aid".to_string(),
             "escape_grapple" => "Escape Grapple".to_string(),
             "break_free" => "Break Free".to_string(),
-            _ if spell_key.is_some() => present_text::spell_display_name(spell_key.unwrap()),
+            "bardic_inspiration" => "Bardic Inspiration".to_string(),
+            _ if spell_key.is_some() => self.spell_display_name(spell_key.unwrap()),
             "attack" => present_text::title_words(weapon),
             _ => present_text::title_words(kind),
         };
@@ -2948,6 +3234,7 @@ impl WebArena {
                 format!("{} ft of movement", speed / 2)
             }
             "create_spell_slot" | "disengage_bonus" | "hide_bonus" | "rage" | "extend_rage" => "bonus action".to_string(),
+            "bardic_inspiration" => "bonus action · Bardic Inspiration".to_string(),
             "convert_spell_slot" | "reckless_attack" | "cleave" => "free".to_string(),
             _ => {
                 let bonus = matches!(kind, "second_wind" | "spiritual_weapon_attack" | "spiritual_weapon_move" | "innate_sorcery")
@@ -2964,7 +3251,11 @@ impl WebArena {
                 };
                 if let Some(c) = spell_opt {
                     if self.replay_version >= 3 && c.free {
-                        text.push_str(" + Magic Initiate free cast");
+                        if self.replay_version >= 20 && c.spell == SpellId::RayOfSickness {
+                            text.push_str(" + Abyssal Legacy free cast");
+                        } else {
+                            text.push_str(" + Magic Initiate free cast");
+                        }
                     } else if c.at_level > 0 {
                         text.push_str(&format!(" + level {} slot", c.at_level));
                     }
@@ -3002,6 +3293,9 @@ impl WebArena {
         }
         if kind == "stand" {
             description = "Stand up from prone".to_string();
+        }
+        if kind == "bardic_inspiration" {
+            description.push_str(" (1d6 for 1h; auto-triggers when an attack or saving throw fails by 1–6)");
         }
 
         let is_thrown = match &cand.act {
@@ -3082,7 +3376,7 @@ impl WebArena {
                 view.insert("area".into(), json!(akey));
                 let f = self.fight.as_ref().unwrap();
                 let caught = if self.replay_version >= 3 {
-                    let exclude = if matches!(&cand.act, Act::Spell(c) if matches!(c.spell, SpellId::AcidSplash | SpellId::Shatter)) {
+                    let exclude = if matches!(&cand.act, Act::Spell(c) if matches!(c.spell, SpellId::AcidSplash | SpellId::Shatter | SpellId::FaerieFire)) {
                         None
                     } else {
                         Some(actor)
@@ -3123,7 +3417,9 @@ impl WebArena {
                     SpellId::AcidSplash => c.point,
                     SpellId::SpiritualWeapon => c.targets.first().map(|&t| f.force_attack_origin(actor, t, None)),
                     SpellId::BurningHands | SpellId::GuidingBolt | SpellId::RayOfFrost | SpellId::Firebolt
-                    | SpellId::SorcerousBurst | SpellId::ScorchingRay | SpellId::ChromaticOrb => Some(here),
+                    | SpellId::SorcerousBurst | SpellId::ScorchingRay | SpellId::ChromaticOrb
+                    | SpellId::StarryWisp | SpellId::PoisonSpray => Some(here),
+                    SpellId::RayOfSickness if self.replay_version >= 20 => Some(here),
                     _ => None,
                 },
                 _ => None,
@@ -3191,6 +3487,11 @@ impl WebArena {
                                 _ => None,
                             },
                             EffKey::HitPointMaxOverride => Some("aid"),
+                            EffKey::FaerieFire => Some("faerie_fire"),
+                            EffKey::SeeInvisibility => Some("see_invisibility"),
+                            EffKey::BardicInspiration => Some("bardic_inspiration"),
+                            EffKey::ViciousMockery => Some("vicious_mockery"),
+                            EffKey::StarryWisp => Some("starry_wisp"),
                             _ => None,
                         };
                         if let Some(n) = name {
@@ -3250,7 +3551,12 @@ impl WebArena {
             if self.replay_version >= 3 {
                 for &spell in &c.free_casts {
                     let text = spell.key().replace('_', " ");
-                    pools.push(json!({"label": format!("Magic Initiate ({text})"), "value": i32::from(unit.free_casts.contains(&spell)), "max": 1}));
+                    let src_label = if self.replay_version >= 20 && spell == SpellId::RayOfSickness {
+                        "Abyssal Legacy"
+                    } else {
+                        "Magic Initiate"
+                    };
+                    pools.push(json!({"label": format!("{src_label} ({text})"), "value": i32::from(unit.free_casts.contains(&spell)), "max": 1}));
                 }
             }
             for lvl in 1..=2 {
@@ -3287,6 +3593,13 @@ impl WebArena {
             if unit.reckless {
                 pools.push(json!({"label": "Reckless", "value": "active", "max": null}));
             }
+        }
+        if unit.t.bard {
+            pools.push(json!({
+                "label": "Bardic Inspiration (1d6)",
+                "value": unit.bardic_inspiration_count,
+                "max": unit.t.bardic_inspiration_uses,
+            }));
         }
         let mut resources = json!({
             "action": unit.action,

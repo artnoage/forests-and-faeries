@@ -182,6 +182,107 @@
      "measured": "2026-11-26"
     }
    }
+  },
+  {
+   "id": "vesper_sprite_ring",
+   "name": "Sprite Ring",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "Invisible sprites flit between mossy oaks with a blink dog — Vesper's Faerie Fire reveals them in violet light.",
+   "party": [
+    "guy_l1",
+    "elion_l1",
+    "vesper_l1"
+   ],
+   "roster": [
+    "sprite",
+    "sprite",
+    "sprite",
+    "blink_dog"
+   ],
+   "placements": {
+    "guy_l1": [
+     2,
+     4
+    ],
+    "elion_l1": [
+     2,
+     5
+    ],
+    "vesper_l1": [
+     2,
+     6
+    ],
+    "sprite-1": [
+     11,
+     3
+    ],
+    "sprite-2": [
+     12,
+     4
+    ],
+    "sprite-3": [
+     11,
+     7
+    ],
+    "blink_dog-1": [
+     12,
+     5
+    ]
+   }
+  },
+  {
+   "id": "vesper_glade_ambush",
+   "name": "Unseen Glade",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Sprites vanish under a dryad's canopy while a blink dog circles — outline the unseen before their arrows drop the party.",
+   "party": [
+    "guy_l2",
+    "curogana_l2",
+    "vesper_l2"
+   ],
+   "roster": [
+    "sprite",
+    "sprite",
+    "sprite",
+    "dryad",
+    "blink_dog"
+   ],
+   "placements": {
+    "guy_l2": [
+     2,
+     4
+    ],
+    "curogana_l2": [
+     2,
+     5
+    ],
+    "vesper_l2": [
+     2,
+     6
+    ],
+    "sprite-1": [
+     11,
+     3
+    ],
+    "sprite-2": [
+     12,
+     4
+    ],
+    "sprite-3": [
+     11,
+     7
+    ],
+    "dryad-1": [
+     12,
+     5
+    ],
+    "blink_dog-1": [
+     12,
+     6
+    ]
+   }
   }
  ]
 }

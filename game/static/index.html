@@ -47,6 +47,10 @@
       <linearGradient id="sea-skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a9d4c4"/><stop offset=".55" stop-color="#5d8f82"/><stop offset="1" stop-color="#284742"/></linearGradient>
       <linearGradient id="hag-green" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#86b86a"/><stop offset=".55" stop-color="#48733c"/><stop offset="1" stop-color="#1e381d"/></linearGradient>
       <radialGradient id="wisp-aura"><stop stop-color="#ffffff"/><stop offset=".26" stop-color="#a2f8ff" stop-opacity=".95"/><stop offset=".6" stop-color="#3cd8f5" stop-opacity=".5"/><stop offset="1" stop-color="#1fa2d6" stop-opacity="0"/></radialGradient>
+      <linearGradient id="tiefling-skin" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#c44b48"/><stop offset=".55" stop-color="#912a2b"/><stop offset="1" stop-color="#531619"/></linearGradient>
+      <linearGradient id="bard-coat" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#445c8c"/><stop offset=".55" stop-color="#27375b"/><stop offset="1" stop-color="#141e36"/></linearGradient>
+      <linearGradient id="bard-leather" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#7c5d42"/><stop offset=".55" stop-color="#573f2c"/><stop offset="1" stop-color="#352519"/></linearGradient>
+      <linearGradient id="ram-horn" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#69656c"/><stop offset=".5" stop-color="#3b3940"/><stop offset="1" stop-color="#1b1a1f"/></linearGradient>
 
       <symbol id="art-fighter" viewBox="-44 -104 88 112">
         <path d="M-18-67Q-39-43-31 0L-7-8 26 1Q33-32 15-68Z" fill="#192d32" stroke="#527170"/>
@@ -206,6 +210,39 @@
         <path d="M-11-82q0-15 11-15 12 0 11 15l-3 15-16 0Z" fill="url(#skin)" stroke="#38241d" stroke-width="1.8"/>
         <path d="M-12-84q1-15 12-15 12 0 12 15l-5-4-8-1-6 4Z" fill="#5e2a1d"/>
         <path d="m-6-79 4 1m6-1 4-1" stroke="#261914" stroke-width="2"/>
+      </symbol>
+
+      <symbol id="art-bard" viewBox="-44 -104 88 112">
+        <!-- Star-and-moon wooden lute angled behind shoulder -->
+        <path d="M22-60L33-92L39-89L27-57Z" fill="#6b4a33" stroke="#26180d" stroke-width="1.6"/>
+        <path d="M31-87l6 2M29-81l6 2" stroke="#e3c173" stroke-width="1.3"/>
+        <ellipse cx="22" cy="-24" rx="13" ry="17" transform="rotate(14 22 -24)" fill="#785238" stroke="#2c1b0f" stroke-width="2"/>
+        <circle cx="22" cy="-27" r="4.2" fill="#23140b" stroke="#dfb96d" stroke-width="1.2"/>
+        <path d="M18-16a4 4 0 0 0 6 1a3 3 0 0 1-6-1Z" fill="#efe2c2"/>
+        <!-- High-collared indigo-blue coat with gold trim -->
+        <path d="M-24-62Q-37-34-31 2L31 2Q37-34 24-62L16-74L-16-74Z" fill="url(#bard-coat)" stroke="#131b30" stroke-width="2"/>
+        <!-- Studded brown leather vest underneath open indigo coat -->
+        <path d="M-12-64L-10 2L10 2L12-64Z" fill="url(#bard-leather)" stroke="#2b1c12" stroke-width="1.6"/>
+        <path d="M-6-54h0M6-54h0M-6-43h0M6-43h0M-6-32h0M6-32h0M-6-21h0M6-21h0" stroke="#d8b56c" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M0-62V2" stroke="#362417" stroke-width="1.5"/>
+        <!-- Gold-trimmed upturned coat lapels & leather belt -->
+        <path d="M-16-73L-22-60L-11-44L-10 2M16-73L22-60L11-44L10 2" fill="none" stroke="url(#gold-trim)" stroke-width="2.2" stroke-linejoin="round"/>
+        <path d="M-21-22Q0-17 21-22L20-15Q0-10-20-15Z" fill="#5e3e27" stroke="#2a1a0f" stroke-width="1.4"/>
+        <rect x="-4" y="-21" width="8" height="7" rx="1.2" fill="none" stroke="#e4c274" stroke-width="1.8"/>
+        <!-- Sweeping curved dark-grey ram horns (out, back, and curving down around ears) -->
+        <path d="M-9-87C-17-102-36-99-38-82C-39-70-31-63-25-65C-22-66-22-70-25-71C-29-72-31-76-30-82C-28-91-18-92-12-83Z" fill="url(#ram-horn)" stroke="#16151a" stroke-width="1.8"/>
+        <path d="M9-87C17-102 36-99 38-82C39-70 31-63 25-65C22-66 22-70 25-71C29-72 31-76 30-82C28-91 18-92 12-83Z" fill="url(#ram-horn)" stroke="#16151a" stroke-width="1.8"/>
+        <path d="M-21-94l-2 6M-29-91l1 6M-34-83l5 2M21-94l2 6M29-91l-1 6M34-83l-5 2" stroke="#1c1b21" stroke-width="1.3" stroke-linecap="round"/>
+        <!-- Crimson tiefling pointed ears, neck & sculpted face -->
+        <path d="M-5-66h10v9H-5Z" fill="url(#tiefling-skin)"/>
+        <path d="M-12-78l-11-3 7 9M12-78l11-3-7 9" fill="url(#tiefling-skin)" stroke="#3e1215" stroke-width="1.4"/>
+        <path d="M-12-82q0-15 12-15 12 0 12 15l-3 15-9 5-9-5Z" fill="url(#tiefling-skin)" stroke="#3a1214" stroke-width="2"/>
+        <!-- Dark tousled hair between the horns -->
+        <path d="M-13-85q1-14 13-14 13 0 13 14l-5-4-4 2-4-4-4 4-4-2Z" fill="#1e1b22" stroke="#110f14" stroke-width="1.2"/>
+        <!-- Golden tiefling eyes, brows & confident smirk -->
+        <path d="M-9-82l6 1.5M9-82l-6 1.5" stroke="#241316" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M-8-78l5.5.8-4.8 2.2M8-78l-5.5.8 4.8 2.2" fill="#ffd966"/>
+        <path d="M-4.5-68q5 2.6 9.5-.8" fill="none" stroke="#3b1214" stroke-width="1.6" stroke-linecap="round"/>
       </symbol>
 
       <symbol id="art-violet_fungus" viewBox="-44 -104 88 112">
@@ -398,6 +435,10 @@
       <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-dash" viewBox="0 0 512 512"><path fill="currentColor" d="M169.53 16.344L259.345 88 337 92.28l-1.03 18.657-161.376-8.906-118.78-4.905 227.28 68.03-197.72 246.75-14.53-17.655-49.22 96.625 248.69-202.78 51.81 11.592-38.78 40.594L270.5 329.5l-57.28 84.125L444.843 273.47 328 241.06l100.22-81.718c1.132.46 2.3.898 3.5 1.22 23.324 6.248 49.764-16.835 59.06-51.533 9.298-34.695-2.08-67.874-25.405-74.124-23.325-6.25-49.765 16.802-59.063 51.5-1.467 5.476-2.403 10.918-2.875 16.22L169.53 16.343z" /></symbol>
       <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-second_wind" viewBox="0 0 512 512"><path fill="currentColor" d="M250.9 18.9c-23.9 2.99-45.3 30.65-45.3 66.99 0 19.91 6.8 37.41 16.8 49.61l12.2 14.5-18.7 3.5c-13 2.5-22.6 9.5-30.7 20.8-8.5 11.5-14.8 26.9-19.1 45.2-8 32.7-9.9 72.7-9.9 108.2h43.6l11.7 160.5c30.4 7 63.1 6.5 92.3 0l10.7-160.5H356c0-35.7-.5-76.4-7.8-109.7-3.9-17.9-10-33.7-18.2-45.1-8.2-11.1-18.5-17.8-33.3-20.1l-18.9-3 11.9-14.9c9.9-12.1 16.4-29.6 16.4-49.01 0-38.54-24-66.99-50.3-66.99h-4.9zm145 3.59v41.85h-41.8v50.16h41.8v41.6h49.9v-41.6h41.9V64.34h-41.9V22.49h-49.9zM52.92 62.89v30.58H22.39v36.63h30.53v30.4h36.4v-30.4h30.58V93.47H89.32V62.89h-36.4zM92.63 199.7v21.8H70.75v26.3h21.88v21.9h26.27v-21.9h21.8v-26.3h-21.8v-21.8H92.63zm355.07 62.4v21.8h-21.9v26.3h21.9v21.9H474v-21.9h21.8v-26.3H474v-21.8h-26.3zm-307.5 99.4v15h-15v18h15v15h18.1v-15h15v-18h-15v-15h-18.1zm230 45.8v15h-15v18h15v15h18v-15h15v-18h-15v-15h-18zM49.32 431.8v15h-15v18h15v15h18.01v-15h15v-18h-15v-15H49.32z" /></symbol>
       <!-- action-icons:end -->
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-bardic_inspiration" viewBox="0 0 512 512"><path fill="currentColor" d="M356 44 176 92v222c-16-8-36-10-56-4-40 12-66 48-56 80 10 32 50 48 90 36 34-10 58-38 58-68V180l112-30v124c-16-8-36-10-56-4-40 12-66 48-56 80 10 32 50 48 90 36 34-10 58-38 58-68V44h-4zm82 34-14 38-38 14 38 14 14 38 14-38 38-14-38-14-14-38z"/></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-faerie_fire" viewBox="0 0 512 512"><path fill="currentColor" d="M256 32l44 140 140 44-140 44-44 140-44-140-140-44 140-44 44-140zM108 312l20 62 62 20-62 20-20 62-20-62-62-20 62-20 20-62zm296-248l16 48 48 16-48 16-16 48-16-48-48-16 48-16 16-48zm0 272l14 42 42 14-42 14-14 42-14-42-42-14 42-14 14-42z"/></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-see_invisibility" viewBox="0 0 512 512"><path fill="currentColor" d="M256 112C136 112 42 208 24 256c18 48 112 144 232 144s214-96 232-144c-18-48-112-144-232-144zm0 236c-76 0-142-48-174-92 32-44 98-92 174-92s142 48 174 92c-32 44-98 92-174 92zm0-164a72 72 0 1 0 0 144 72 72 0 0 0 0-144zm0 108a36 36 0 1 1 0-72 36 36 0 0 1 0 72z"/></symbol>
+      <symbol xmlns="http://www.w3.org/2000/svg" id="action-art-vicious_mockery" viewBox="0 0 512 512"><path fill="currentColor" d="M96 96c-26 0-48 22-48 48v160c0 26 22 48 48 48h44l-24 88 106-88h194c26 0 48-22 48-48V144c0-26-22-48-48-48H96zm160 54 34 62 70-12-44 54 44 54-70-12-34 62-34-62-70 12 44-54-44-54 70 12 34-62z"/></symbol>
     </defs>
   </svg>
 
@@ -469,6 +510,15 @@
           </div>
 
           <div class="level-grid" id="level-grid"><p class="loading-label">Loading the levels…</p></div>
+
+          <div class="start-party-bar" id="start-party-bar">
+            <div class="start-theme-label">
+              <span class="eyebrow">PRACTICE PARTY</span>
+              <small id="start-party-note">Preset party — click any hero to swap Vesper or others in for Practice.</small>
+              <button type="button" class="mini-action-btn" id="start-party-reset" hidden>Reset to preset</button>
+            </div>
+            <div class="party-chip-row" id="start-party-chips" role="group" aria-label="Choose your Practice party"></div>
+          </div>
 
           <div class="start-theme-bar">
             <div class="start-theme-label">
@@ -722,7 +772,7 @@
       <li><b>What a card does, and the character sheet.</b> Hover a card, or reach it with <kbd>Tab</kbd>, to read what it does: its cost and uses left, range, area, save or attack roll and dice. On a touch screen, pick the card and press <b>About</b>. <b>Sheet</b> on a party card (or beside the acting figure, or in the inspector) opens the character sheet: AC, hit points, conditions, Dying or Stable with death saves, spell slots and uses left, and every feature, attack and spell. Monsters are in the same panel.</li>
       <li><b>Darts, rays and several targets.</b> <b>Magic Missile</b> (each dart strikes as its own damage instance) and multi-target spells (<b>Bless</b>, <b>Aid</b>, <b>Command</b> — currently Grovel/Halt chosen automatically) ask you to split targets first: click creatures (or use + and −) until the count is full, then press <b>Cast</b>. <b>Scorching Ray</b> is aimed <b>one ray at a time</b>: after each ray resolves, pick the target for the next ray (marked <b>Ray N/M</b>, part of the same cast). <b>Chromatic Orb</b> leaps automatically to another creature within 30 feet when two damage dice show the same number.</li>
       <li><b>Areas.</b> Area spells (Burning Hands, Thunderwave, Shatter…) are aimed in two steps: click the square to aim at, look at the highlighted area, then <b>Confirm</b>. A choice marked <b>⚠ ally</b> or <b>⚠ self</b> would also hit one of your figures.</li>
-      <li><b>Reactions are currently automatic.</b> In SRD 5.2.1, reactions are optional; this build currently resolves Opportunity Attacks, Shield and the Goblin Boss's Redirect Attack (on an attack roll against it) automatically when they apply.</li>
+      <li><b>Reactions are currently automatic (as are Bardic dice).</b> In SRD 5.2.1, reactions and Bardic Inspiration are optional; this build currently resolves Opportunity Attacks, Shield, Goblin Boss's Redirect Attack, Bardic Inspiration (when an inspired ally misses an attack or fails a saving throw by 1–6) and Cutting Words (when an enemy non-critical hit beats AC by 0–5, or when enemy damage would drop a standing ally and subtracting up to 6 can keep them standing, applied once to a shared area-spell roll before saves halve it) automatically when they apply.</li>
       <li><b>The monsters' turns</b> play by themselves. <b>Watch</b> lets the engine play your heroes too; <b>⏸</b> pauses, <b>⏭</b> plays one turn.</li>
       <li><b>Dice.</b> The dice tray shows the engine's own rolls for each step (advantage shows both dice). The log has every roll in words.</li>
       <li><b>No 3D?</b> If WebGL is missing or fails, a 2D map takes its place: click its squares and figures, or use the arrow keys and Enter. The 3D view comes back by itself after a lost context.</li>

@@ -130,7 +130,8 @@ impl Fight {
             Act::FirstAid { target }
             | Act::EscapeGrapple { target }
             | Act::BreakFree { target }
-            | Act::DropGrapple { target } => {
+            | Act::DropGrapple { target }
+            | Act::BardicInspiration { target } => {
                 k.ids = vec![self.units[*target].id.clone()];
             }
             Act::NpcAreaAbility { idx, target } => {
@@ -410,6 +411,7 @@ impl Fight {
         if self.units[u].t.pc {
             self.feature_candidates(u, &mut acts);
             self.barbarian_candidates(u, &mut acts);
+            acts.extend(self.bardic_inspiration_candidates(u));
         }
         // v16 general combat remedies (FirstAid [PC only], EscapeGrapple, BreakFree)
         if self.rule_version >= 16 {
@@ -1084,6 +1086,7 @@ impl Fight {
                         1.5
                     }
                 }
+                Act::BardicInspiration { target } => self.score_bardic_inspiration(u, *target),
                 Act::Spell(c) => self.spell_ai_value(u, c),
                 other => self.feature_ai_value(u, other),
             };

@@ -22,6 +22,9 @@
     guiding_bolt: 'Guiding Bolt', sacred_flame: 'Sacred Flame', sanctuary: 'Sanctuary',
     shield_of_faith: 'Shield of Faith', spiritual_weapon: 'Spiritual Weapon', command: 'Command',
     lesser_restoration: 'Lesser Restoration', protection_from_evil_and_good: 'Prot. Evil & Good',
+    faerie_fire: 'Faerie Fire', see_invisibility: 'See Invisibility', vicious_mockery: 'Vicious Mockery',
+    starry_wisp: 'Starry Wisp', poison_spray: 'Poison Spray', ray_of_sickness: 'Ray of Sickness',
+    bardic_inspiration: 'Bardic Inspiration', cutting_words: 'Cutting Words',
     empowered_spell: 'Empowered', heightened_spell: 'Heightened',
     will_o_wisp: "Will-o'-Wisp",
   };
@@ -57,6 +60,7 @@
     if (raw.includes('skeleton')) return 'skeleton';
     if (raw.includes('goblin')) return 'goblin';
     if (raw.includes('barbarian') || raw.includes('chruna')) return 'barbarian';
+    if (raw.includes('bard') || raw.includes('vesper')) return 'bard';
     if (raw.includes('cleric') || raw.includes('elion')) return 'cleric';
     if (raw.includes('sorcerer') || raw.includes('curogana')) return 'sorcerer';
     if (raw.includes('wizard') || raw.includes('ilyra')) return 'mage';
@@ -74,15 +78,20 @@
 
   function icon(kind, label) {
     const normalized = String(label || '').toLowerCase().replace(/[_-]/g, ' ');
-    const key = normalized.includes('fire') || normalized.includes('burning') || normalized.includes('scorching') || normalized.includes('sacred') ? 'fire'
-      : normalized.includes('missile') || normalized.includes('orb') || normalized.includes('guiding') || normalized.includes('burst') ? 'missile'
+    const key = kind === 'bardic_inspiration' || normalized.includes('bardic inspiration') ? 'bardic_inspiration'
+      : normalized.includes('faerie fire') ? 'faerie_fire'
+      : normalized.includes('see invisibility') ? 'see_invisibility'
+      : normalized.includes('vicious mockery') ? 'vicious_mockery'
+      : normalized.includes('fire') || normalized.includes('burning') || normalized.includes('scorching') || normalized.includes('sacred') ? 'fire'
+      : normalized.includes('missile') || normalized.includes('orb') || normalized.includes('guiding') || normalized.includes('burst') || normalized.includes('starry wisp') ? 'missile'
       : normalized.includes('cure') || normalized.includes('heal') || normalized.includes('preserve') || normalized.includes('wind') || normalized.includes('first aid') ? 'second_wind'
       : normalized.includes('escape grapple') || normalized.includes('break free') ? 'dodge'
       : kind === 'action_surge' ? 'dash'
       : kind === 'stand' ? 'move'
       : kind === 'feature' ? 'spell'
       : kind === 'attack' && normalized.includes('bow') ? 'bow' : kind;
-    const known = ['move', 'attack', 'bow', 'fire', 'missile', 'spell', 'dodge', 'dash', 'second_wind'];
+    const known = ['move', 'attack', 'bow', 'fire', 'missile', 'spell', 'dodge', 'dash', 'second_wind',
+      'bardic_inspiration', 'faerie_fire', 'see_invisibility', 'vicious_mockery'];
     const artwork = known.includes(key) ? key : 'spell';
     return `<svg class="action-icon" data-action-icon="${artwork}" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><use href="#action-art-${artwork}"></use></svg>`;
   }
@@ -269,6 +278,9 @@
   const IDLE_KEY = 'ff-idle-animation';
 
   let catalogue = [];            // [{id, name, blurb, private, presets: [level view]}]
+  let practiceHeroes = [];       // [{base_id, name, class_label, default_content}]
+  let customParty = null;        // null = preset party; string[] of base_ids when customized in Practice
+  let activeCustomParty = null;  // active game's custom party (preserved on Restart)
   let state = null;
   let busy = false, paused = false, watching = false, timer = null, playing = false;
   let selectedGroup = null, activeCatFilter = 'all', setupFigure = null, inspectedId = null;
@@ -397,14 +409,18 @@
     steam_mephit: { resistances: [], immunities: ['fire', 'poison'], vulnerabilities: [] },
     wight: { resistances: ['necrotic'], immunities: ['poison'], vulnerabilities: [] },
     will_o_wisp: { resistances: ['acid', 'bludgeoning', 'cold', 'fire', 'necrotic', 'piercing', 'slashing'], immunities: ['lightning', 'poison'], vulnerabilities: [] },
+    vesper: { resistances: ['poison'], immunities: [], vulnerabilities: [] },
+    vesper_l1: { resistances: ['poison'], immunities: [], vulnerabilities: [] },
+    vesper_l2: { resistances: ['poison'], immunities: [], vulnerabilities: [] },
     zombie: { resistances: [], immunities: ['poison'], vulnerabilities: [] },
   };
   const DAMAGE_TYPES = new Set(['acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder']);
   const SPELL_DAMAGE = {
     acid_splash: 'acid', firebolt: 'fire', fire_bolt: 'fire', burning_hands: 'fire', scorching_ray: 'fire',
-    shatter: 'thunder', thunderwave: 'thunder', sacred_flame: 'radiant', guiding_bolt: 'radiant',
+    shatter: 'thunder', thunderwave: 'thunder', sacred_flame: 'radiant', guiding_bolt: 'radiant', starry_wisp: 'radiant',
     magic_missile: 'force', spiritual_weapon: 'force', spiritual_weapon_attack: 'force',
     ray_of_frost: 'cold', shocking_grasp: 'lightning', toll_the_dead: 'necrotic', chill_touch: 'necrotic',
+    vicious_mockery: 'psychic', poison_spray: 'poison', ray_of_sickness: 'poison',
   };
   const WEAPON_DAMAGE = {
     warhammer: 'bludgeoning', mace: 'bludgeoning', club: 'bludgeoning', quarterstaff: 'bludgeoning', slam: 'bludgeoning',
@@ -441,7 +457,7 @@
     for (const id of ids) {
       const u = (state?.units || []).find(unit => unit.id === id);
       if (!u || u.team === actor.team) continue;
-      const d = DAMAGE_DEFENSES[u.content || u.kind || ''];
+      const d = DAMAGE_DEFENSES[u.base_id || ''] || DAMAGE_DEFENSES[u.content || u.kind || ''];
       if (!d) continue;
       if (d.vulnerabilities.includes(dtype)) out.push({ kind: 'vuln', text: `${solo ? 'takes double' : `${u.name} takes double`} ${dtype}` });
       else if (d.immunities.includes(dtype)) out.push({ kind: 'immune', text: `${solo ? 'immune to' : `${u.name} immune to`} ${dtype}` });
@@ -576,11 +592,17 @@
     return `${includeLevel && unit.level ? 'Lv ' + unit.level + ' · ' : ''}${sub ? sub.charAt(0).toUpperCase() + sub.slice(1) + ' ' : ''}${cls}`;
   }
   const isInvisibleHeard = u => Boolean(u && u.alive !== false && u.invisible_to_heroes);
-  const isInvisibleAny = u => Boolean(u && u.alive !== false && (u.invisible_to_heroes || (u.conditions || []).includes('invisible')));
+  const isInvisibleAny = u => {
+    if (!u || u.alive === false) return false;
+    if (u.team === 'monsters') return Boolean(u.invisible_to_heroes);
+    const marks = u.marks || [];
+    return Boolean(u.invisible_to_heroes || ((u.conditions || []).includes('invisible') && !marks.includes('faerie_fire') && !marks.includes('starry_wisp')));
+  };
   const invisibleTag = u => isInvisibleHeard(u) ? 'Invisible — heard here' : '';
   function conditionLabels(unit) {
     const conditions = (unit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c));
-    const list = [...new Set([...conditions, ...(unit.marks || [])].filter(Boolean))];
+    const prettyMark = m => NICE_NAMES[m] || String(m || '').replace(/_/g, ' ');
+    const list = [...new Set([...conditions, ...(unit.marks || []).map(prettyMark)].filter(Boolean))];
     if (isInvisibleHeard(unit)) {
       return ['Invisible — heard here', ...list.filter(c => c !== 'invisible')];
     }
@@ -1122,6 +1144,19 @@
       'Arcane Recovery': 'Recover some expended spell slots after a Short Rest, once per Long Rest (not used in a fight).',
       'Scholar': 'Expertise in one of Arcana, History, Investigation, Medicine, Nature or Religion.',
       'Wizard Subclass': 'Evoker.',
+      'Vicious Mockery': 'Cantrip. 60 ft, creature you can see or hear (works on invisible foes who aren’t hidden): WIS save or 1d6 psychic and Disadvantage on its next attack roll before the end of its next turn.',
+      'Starry Wisp': 'Cantrip. 60 ft ranged spell attack, 1d8 radiant; target sheds 10-ft Dim Light and can’t benefit from Invisible until the end of your next turn.',
+      'Poison Spray': 'Cantrip (Abyssal Legacy). 30 ft ranged spell attack, 1d12 poison.',
+      'Faerie Fire': 'Level 1, concentration. 20-ft cube within 60 ft: DEX save or outlined in dim light, can’t benefit from Invisible, and attacks against it have Advantage.',
+      'See Invisibility': 'Level 2 (1 hour, no concentration). You see Invisible creatures and objects as if they were visible.',
+      'Ray of Sickness': 'Level 1 (Abyssal Legacy, one free cast). 60 ft ranged spell attack, 2d8 poison and Poisoned until the end of your next turn.',
+      'Healing Word': 'Level 1, bonus action. Heal 2d4 + CHA at range.',
+      'Cure Wounds': 'Level 1. Touch: heal 2d8 + spellcasting modifier.',
+      'Bless': 'Level 1, concentration. Up to three creatures add 1d4 to attacks and saving throws.',
+      'Aid': 'Level 2. Up to three allies raise their maximum and current HP by 5.',
+      'Spare the Dying': 'Cantrip. Stabilise a dying creature.',
+      'Bardic Inspiration': 'Bonus Action (60 ft, 1 hour): grant an ally a 1d6 die. Auto-triggers when the ally misses an attack or fails a saving throw by 1–6.',
+      'Cutting Words': 'College of Lore Reaction (spends 1 Bardic Inspiration die): subtract 1d6 from an enemy within 60 ft. Auto-triggers when a non-critical enemy hit beats AC by 0–5 (turning it into a miss on a high enough roll) or when enemy damage would drop a standing ally and subtracting up to 6 can keep them standing (applied once to an area spell\'s shared roll before saves halve it).',
     };
     if (!text.trim() && blank[name]) text = blank[name];
     if (name === 'Command' && !/Halt/i.test(text)) {
@@ -1170,16 +1205,17 @@
     first_aid: 'Action: make a DC 10 Wisdom (Medicine) check on an adjacent Unconscious ally at 0 HP. On a success, the ally becomes Stable and no longer makes Death Saving Throws.',
     escape_grapple: 'Action: make a Strength (Athletics) or Dexterity (Acrobatics) check (using your higher modifier) against the grappler’s escape DC to end the Grappled condition.',
     break_free: 'Action: make a Strength (Athletics) check against the restraint’s escape DC to end the Restrained condition on yourself.',
+    bardic_inspiration: 'Bonus Action (60 ft, 1 hour): grant an ally a 1d6 Bardic Inspiration die. Auto-triggers when the ally misses an attack or fails a saving throw by 1–6.',
   };
   const UNARMED_INFO = 'Unarmed Strike: a melee attack roll with Strength plus your Proficiency Bonus; on a hit, Bludgeoning damage equal to 1 + your Strength modifier.';
   // Spell ranges (SRD 5.2.1), by spell key.
   const SPELL_RANGE = {
     acid_splash: '60 ft', aid: '30 ft', bless: '30 ft', blur: 'Self', burning_hands: 'Self', chromatic_orb: '90 ft',
-    command: '60 ft', cure_wounds: 'Touch', dragons_breath: 'Touch', fire_bolt: '120 ft', guiding_bolt: '120 ft',
-    healing_word: '60 ft', lesser_restoration: 'Touch', mage_armor: 'Touch', magic_missile: '120 ft',
-    protection_from_evil_and_good: 'Touch', ray_of_frost: '60 ft', sacred_flame: '60 ft', sanctuary: '30 ft',
-    scorching_ray: '120 ft', shatter: '60 ft', shield: 'Self', shield_of_faith: '60 ft', sorcerous_burst: '120 ft',
-    spare_the_dying: '15 ft', spiritual_weapon: '60 ft', thunderwave: 'Self',
+    command: '60 ft', cure_wounds: 'Touch', dragons_breath: 'Touch', faerie_fire: '60 ft', fire_bolt: '120 ft', guiding_bolt: '120 ft',
+    healing_word: '60 ft', lesser_restoration: 'Touch', mage_armor: 'Touch', magic_missile: '120 ft', poison_spray: '30 ft',
+    protection_from_evil_and_good: 'Touch', ray_of_frost: '60 ft', ray_of_sickness: '60 ft', sacred_flame: '60 ft', sanctuary: '30 ft',
+    scorching_ray: '120 ft', see_invisibility: 'Self', shatter: '60 ft', shield: 'Self', shield_of_faith: '60 ft', sorcerous_burst: '120 ft',
+    spare_the_dying: '15 ft', spiritual_weapon: '60 ft', starry_wisp: '60 ft', thunderwave: 'Self', vicious_mockery: '60 ft',
   };
   const THROWN_RANGE = { Dagger: '20/60 ft', Handaxe: '20/60 ft', Javelin: '30/120 ft', Spear: '20/60 ft', 'Light Hammer': '20/60 ft' };
 
@@ -1209,9 +1245,12 @@
     const list = Array.isArray(pools) ? pools : [];
     const find = test => list.find(p => test(String(p.label)) && typeof p.value === 'number');
     const out = [];
-    if (a.free_cast) out.push(find(l => nameKey(l) === nameKey(`Magic Initiate ${String(a.spell || '').replace(/_/g, ' ')}`)));
+    if (a.free_cast) {
+      const spKey = nameKey(String(a.spell || '').replace(/_/g, ' '));
+      out.push(find(l => nameKey(l) === nameKey(`Magic Initiate ${spKey}`) || nameKey(l) === nameKey(`Abyssal Legacy ${spKey}`)));
+    }
     else if (Number(a.at_level) > 0) out.push(find(l => l === `Level ${a.at_level} slots`));
-    const byKind = { second_wind: 'Second Wind', action_surge: 'Action Surge', divine_spark: 'Channel Divinity', channel_divinity_turn_undead: 'Channel Divinity', preserve_life: 'Channel Divinity', rage: 'Rage', innate_sorcery: 'Innate Sorcery', create_spell_slot: 'Sorcery points' };
+    const byKind = { second_wind: 'Second Wind', action_surge: 'Action Surge', divine_spark: 'Channel Divinity', channel_divinity_turn_undead: 'Channel Divinity', preserve_life: 'Channel Divinity', rage: 'Rage', innate_sorcery: 'Innate Sorcery', create_spell_slot: 'Sorcery points', bardic_inspiration: 'Bardic Inspiration (1d6)' };
     if (byKind[a.kind]) out.push(find(l => l === byKind[a.kind]));
     if (a.metamagic) out.push(find(l => l === 'Sorcery points'));
     return out.filter(Boolean);
@@ -1445,7 +1484,7 @@
         const rawCost = g.kind === 'move' ? 'Move' : (firstAct?.cost?.replace(/ \+ sorcery points$/, '') || 'Action');
         const shortCost = firstAct?.ray_count
           ? (firstAct.ray_number > 1 ? `Ray ${firstAct.ray_number}/${firstAct.ray_count} · same cast` : `Ray 1/${firstAct.ray_count}`)
-          : rawCost.replace('Magic Initiate free cast', 'Free cast').replace('level ', 'Lv').replace('bonus action', 'Bonus').replace('action', 'Action');
+          : rawCost.replace('Magic Initiate free cast', 'Free cast').replace('Abyssal Legacy free cast', 'Free cast').replace('bonus action · Bardic Inspiration', 'Bonus · BI').replace('level ', 'Lv').replace('bonus action', 'Bonus').replace('action', 'Action');
         const cardName = g.label
           .replace(/^Font of Magic: create level (\d+) spell slot \((\d+) sorcery points\)$/i, 'Create Lv$1 Slot ($2 SP)')
           .replace(/^Font of Magic: convert level (\d+) spell slot to sorcery points$/i, 'Lv$1 Slot → SP');
@@ -2453,11 +2492,56 @@
     }
     if ($('biome-select').value !== shownTheme) $('biome-select').value = shownTheme;
     const lv = selectedStart ? levelByKey(selectedStart.encounter, selectedStart.preset) : null;
+    renderPartyPicker(lv);
     $('start-theme-note').textContent = themeManualOverride
       ? `Your choice: ${themeInfo(selectedTheme).label}.`
       : lv ? `${lv.preset.name} comes with ${themeInfo(lv.preset.theme).label}.` : 'Each level comes with a theme.';
     $('start-quick-play').disabled = busy || !lv;
     $('start-custom-place').disabled = busy || !lv;
+  }
+
+  function presetPartyBases(lv) {
+    return (lv?.preset?.party || []).map(h => h.base_id || String(h.content || '').replace(/_l[1-3]$/, '')).filter(Boolean);
+  }
+  function effectivePartyBases(lv) {
+    return customParty && customParty.length ? customParty : presetPartyBases(lv);
+  }
+  function renderPartyPicker(lv) {
+    const row = $('start-party-chips');
+    const note = $('start-party-note');
+    const resetBtn = $('start-party-reset');
+    if (!row || !practiceHeroes.length) return;
+    const baseList = presetPartyBases(lv);
+    const chosen = effectivePartyBases(lv);
+    const isCustom = Boolean(customParty && customParty.length);
+    row.innerHTML = practiceHeroes.map(h => {
+      const on = chosen.includes(h.base_id);
+      return `<button type="button" class="party-chip ${on ? 'is-active' : ''}" data-party-hero="${escape(h.base_id)}" aria-pressed="${on}">${portrait({ team: 'heroes', base_id: h.base_id, content: h.default_content, name: h.name })}<span>${escape(h.name)}</span><small>${escape(h.class_label)}</small></button>`;
+    }).join('');
+    if (resetBtn) resetBtn.hidden = !isCustom;
+    if (note) {
+      const names = chosen.map(id => practiceHeroes.find(h => h.base_id === id)?.name || niceName(id)).join(', ');
+      note.textContent = isCustom
+        ? `Custom Practice party (${chosen.length}): ${names}.`
+        : lv ? `Preset party (${baseList.length}): ${names}. Click any hero to add or swap Vesper in.` : 'Click any hero to customize your Practice party.';
+    }
+  }
+  function togglePartyHero(baseId) {
+    const lv = selectedStart ? levelByKey(selectedStart.encounter, selectedStart.preset) : null;
+    if (!lv) return;
+    const baseList = presetPartyBases(lv);
+    const current = [...effectivePartyBases(lv)];
+    const idx = current.indexOf(baseId);
+    if (idx >= 0) {
+      if (current.length <= 1) return;
+      current.splice(idx, 1);
+    } else {
+      if (current.length >= 6) return;
+      current.push(baseId);
+    }
+    const sameAsPreset = current.length === baseList.length && current.every((v, i) => v === baseList[i]);
+    customParty = sameAsPreset ? null : current;
+    renderStartScreen();
   }
 
   function applyTheme(themeId, isManual = false) {
@@ -2510,6 +2594,7 @@
   function selectStartLevel(encounter, preset) {
     const lv = levelByKey(encounter, preset);
     if (!lv) return;
+    if (selectedStart?.encounter !== encounter || selectedStart?.preset !== preset) customParty = null;
     selectedStart = { encounter, preset };
     selectedDifficulty = bucketFor(lv.group, lv.preset);
     startStep = 'levels';
@@ -2540,10 +2625,13 @@
     schedule();
   }
 
-  function castKeysFor(level) {
+  function castKeysFor(level, partyOverride = null) {
     const resolve = window.EmberScene?.resolveCastKey;
     if (typeof resolve !== 'function' || !level) return [];
-    const units = [...level.party.map(h => ({ content: h.content, base_id: h.base_id, team: 'heroes' })), ...level.roster.map(r => ({ content: r.content, team: 'monsters' }))];
+    const heroes = partyOverride?.length
+      ? partyOverride.map(base => ({ content: base, base_id: base, team: 'heroes' }))
+      : level.party.map(h => ({ content: h.content, base_id: h.base_id, team: 'heroes' }));
+    const units = [...heroes, ...level.roster.map(r => ({ content: r.content, team: 'monsters' }))];
     return [...new Set(units.map(u => resolve(u)).filter(Boolean))];
   }
 
@@ -2554,6 +2642,7 @@
     const lv = levelByKey(wanted.encounter, wanted.preset);
     if (!lv) return false;
     const monsterControl = opts.story ? 'ai' : ($('start-monster-control').value || 'ai');
+    const partyOverride = opts.story ? null : (customParty && customParty.length ? [...customParty] : null);
     let launchedOk = false;
     clearTimer(); watching = false; paused = false;
     viewer?.cancelPlayback?.(); viewer?.clearHoverPreview?.();
@@ -2563,12 +2652,17 @@
     busy = true;
     renderStartScreen(); renderControls();
     // Only this encounter's figures are fetched (the rest stream in if ever needed).
-    window.EmberScene?.prepareAssets?.({ keys: castKeysFor(lv.preset) })?.catch?.(() => {});
+    window.EmberScene?.prepareAssets?.({ keys: castKeysFor(lv.preset, partyOverride) })?.catch?.(() => {});
     try {
       if (!state) state = await api('state');
       const heroLevel = opts.story ? Number(opts.story.hero_level) || 0 : Number($('start-hero-level').value);
       const seed = opts.story && Number.isInteger(opts.story.seed) ? opts.story.seed : null;
-      let fresh = await api('new', { encounter: lv.group.id, preset: lv.preset.id, ...(heroLevel && { hero_level: heroLevel }), ...(seed !== null && { seed }) });
+      let fresh = await api('new', {
+        encounter: lv.group.id, preset: lv.preset.id,
+        ...(heroLevel && { hero_level: heroLevel }),
+        ...(partyOverride && { party: partyOverride }),
+        ...(seed !== null && { seed }),
+      });
       lastActionId = 0;
       if (quickFight) {
         fresh = await apiWith(fresh, 'setup', { placements: fresh.setup?.suggested_placements || [], monster_control: monsterControl });
@@ -2579,6 +2673,7 @@
       startScreenOpen = false;
       launched = true;
       storyRun = opts.story ? { ...opts.story } : null;
+      activeCustomParty = opts.story ? null : (partyOverride ? [...partyOverride] : null);
       await presentState(fresh, true, false);
       viewer?.setBiome?.(themeFor());
       applyCameraPreset('tactical');
@@ -2663,6 +2758,14 @@
       next.scrollIntoView({ block: 'nearest' });
       selectStartLevel(next.dataset.encounter, next.dataset.preset);
     } else if (e.key === 'Enter') { e.preventDefault(); selectStartLevel(card.dataset.encounter, card.dataset.preset); launchSelectedLevel(true); }
+  });
+  $('start-party-chips')?.addEventListener('click', e => {
+    const chip = e.target.closest('[data-party-hero]');
+    if (chip) togglePartyHero(chip.dataset.partyHero);
+  });
+  $('start-party-reset')?.addEventListener('click', () => {
+    customParty = null;
+    renderStartScreen();
   });
   $('start-theme-swatches').addEventListener('click', e => {
     const sw = e.target.closest('[data-theme-id]');
@@ -2965,7 +3068,11 @@
   const newEncounter = () => {
     if (busy || !state?.level) return;
     watching = false; paused = true; clearTimer(); selectedGroup = null; choices = []; inspectedId = null;
-    request('new', { encounter: state.level.encounter, preset: state.level.id, ...(state.level.hero_level && { hero_level: state.level.hero_level }) }, true);
+    request('new', {
+      encounter: state.level.encounter, preset: state.level.id,
+      ...(state.level.hero_level && { hero_level: state.level.hero_level }),
+      ...(!storyRun && activeCustomParty && { party: activeCustomParty }),
+    }, true);
   };
   $('new-button').addEventListener('click', newEncounter);
   $('again-button').addEventListener('click', newEncounter);
@@ -3058,6 +3165,7 @@
     showDifficultyStep,
     showModeStep,
     selectStartLevel,
+    setCustomParty: bases => { customParty = Array.isArray(bases) && bases.length ? [...bases] : null; renderStartScreen(); },
     launchSelectedLevel,
     getStoryRun: () => storyRun,
   };
@@ -3086,6 +3194,15 @@
     try {
       const data = await api('encounters');
       catalogue = Array.isArray(data.encounters) ? data.encounters : [];
+      practiceHeroes = Array.isArray(data.heroes) && data.heroes.length ? data.heroes : [
+        { base_id: 'guy', name: 'Guy', class_label: 'Fighter', default_content: 'guy' },
+        { base_id: 'elion', name: 'Elion', class_label: 'Cleric', default_content: 'elion' },
+        { base_id: 'curogana', name: 'Curogana', class_label: 'Sorcerer', default_content: 'curogana' },
+        { base_id: 'chruna', name: 'Chruna', class_label: 'Barbarian', default_content: 'chruna' },
+        { base_id: 'mara', name: 'Mara', class_label: 'Fighter', default_content: 'mara' },
+        { base_id: 'ilyra', name: 'Ilyra', class_label: 'Wizard', default_content: 'ilyra' },
+        { base_id: 'vesper', name: 'Vesper', class_label: 'Bard', default_content: 'vesper' },
+      ];
     } catch (err) {
       showError(`The level list could not be loaded: ${err.message}`);
     }

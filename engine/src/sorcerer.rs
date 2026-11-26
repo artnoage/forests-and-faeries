@@ -34,15 +34,19 @@ pub struct RollObj {
     pub sides: i32,
     pub rolls: Vec<i32>,
     pub modifier: i32,
+    /// Pre-halving subtraction from Cutting Words (SRD 5.2.1 p. 16 & p. 35).
+    pub penalty: i32,
     pub halved: bool,
     /// `DieRoll.half()` records the roll it halves (`source_roll`).
     pub source: Option<usize>,
 }
 
 impl RollObj {
-    /// `DieRoll.result()`: the sum plus modifier, floored in half when halved.
+    /// `DieRoll.result()`: the sum plus modifier minus any Cutting Words
+    /// penalty (clamped at 0), then floored in half when halved.
     pub fn amount(&self) -> i32 {
-        let total: i32 = self.rolls.iter().sum::<i32>() + self.modifier;
+        let base: i32 = self.rolls.iter().sum::<i32>() + self.modifier;
+        let total = if self.penalty > 0 { (base - self.penalty).max(0) } else { base };
         if self.halved {
             total.div_euclid(2)
         } else {
@@ -141,9 +145,9 @@ impl Fight {
     }
 
     /// `combat_comms.can_hear(listener)`.
-    fn can_hear(&self, u: usize) -> bool {
+    pub(crate) fn can_hear(&self, u: usize) -> bool {
         let unit = &self.units[u];
-        !unit.dead() && !unit.unconscious()
+        !unit.dead() && !unit.unconscious() && !unit.has(St::Deafened)
     }
 
     // ------------------------------------------------------------------
@@ -541,6 +545,83 @@ impl Fight {
         best
     }
 
+    /// `Faerie Fire` 20-ft Cube (4x4 squares anchored at `origin`): non-wall
+    /// squares inside the cube with clear line of effect from `origin`.
+    pub(crate) fn faerie_fire_squares(&self, origin: Pos) -> Vec<Pos> {
+        let mut squares = Vec::with_capacity(16);
+        for dx in 0..4 {
+            for dy in 0..4 {
+                let p = (origin.0 + dx, origin.1 + dy);
+                if self.grid.in_bounds(p.0, p.1)
+                    && !self.grid.is_wall(p.0, p.1)
+                    && (p == origin || self.clear_effect(origin, p))
+                {
+                    squares.push(p);
+                }
+            }
+        }
+        squares
+    }
+
+    /// Optimal 20-ft Cube origin within 60 ft for `Faerie Fire`, strongly
+    /// prioritizing heard unseen invisible enemies without reading hidden foes
+    /// and strictly preferring ally-free placements whenever a positive one exists.
+    pub(crate) fn faerie_fire_target(&mut self, u: usize) -> Option<Pos> {
+        let cur = self.units[u].pos;
+        let sensed = self.sensed_foe_squares(u);
+        let mut best: Option<Pos> = None;
+        let mut best_key: Option<(bool, i32, i32)> = None;
+        for dx in -12..=12 {
+            for dy in -12..=12 {
+                let p = (cur.0 + dx, cur.1 + dy);
+                if !self.grid.in_bounds(p.0, p.1) || self.grid.is_wall(p.0, p.1) || !self.clear_effect(cur, p) {
+                    continue;
+                }
+                let squares = self.faerie_fire_squares(p);
+                if squares.is_empty() {
+                    continue;
+                }
+                let mut score: i32 = 0;
+                let mut allies_hit: i32 = 0;
+                for &sq in &squares {
+                    let ent = self.token_at(sq).filter(|&e| !self.units[e].dead());
+                    if sensed.contains(&sq) {
+                        let seen_or_ally = ent.is_some_and(|e| (self.opposing(u, e) && self.can_see(u, e)) || self.allies(u, e));
+                        if !seen_or_ally {
+                            // Unseen heard foe (e.g., invisible Sprite/Will-o'-Wisp): top priority!
+                            let already = ent.is_some_and(|e| self.has_effect(e, EffKey::FaerieFire));
+                            if !already {
+                                score += 10;
+                            }
+                            continue;
+                        }
+                    }
+                    let Some(e) = ent else { continue };
+                    if self.has_effect(e, EffKey::FaerieFire) {
+                        continue;
+                    }
+                    if self.opposing(u, e) {
+                        if self.can_see(u, e) && self.units[e].conscious() {
+                            score += 3;
+                        }
+                    } else if self.allies(u, e) {
+                        score -= 12;
+                        allies_hit += 1;
+                    }
+                }
+                if score <= 0 {
+                    continue;
+                }
+                let key = (allies_hit == 0, score, -allies_hit);
+                if best_key.map_or(true, |bk| key > bk) {
+                    best_key = Some(key);
+                    best = Some(p);
+                }
+            }
+        }
+        best
+    }
+
     /// `SaveCheck.make(creature, ability, dc)` for magical spells (respects Magic Resistance & Fey Ancestry).
     pub(crate) fn save_check_ex(
         &mut self,
@@ -556,7 +637,7 @@ impl Fight {
             return (false, false);
         }
         let cover = origin.map_or(0, |o| self.point_save_cover(o, c, ab));
-        (self.save_throw_ex(c, ab, disadvantage, cover, is_magical, is_charmed, false).0 >= dc, true)
+        (self.save_with_dc(c, ab, dc, disadvantage, cover, is_magical, is_charmed, false).0 >= dc, true)
     }
 
     // ------------------------------------------------------------------
@@ -661,7 +742,7 @@ impl Fight {
                     out.push((combo, true, None, None));
                 }
             }
-            Blur => out.push((vec![u], false, None, None)),
+            Blur | SeeInvisibility => out.push((vec![u], false, None, None)),
             DragonsBreath => {
                 let mut pool: Vec<usize> = (0..self.units.len())
                     .filter(|&t| !self.units[t].dead() && self.allies(u, t) && self.can_see(u, t) && self.feet(u, t) <= 5)
@@ -752,6 +833,35 @@ impl Fight {
                     }
                 }
             }
+            FaerieFire => {
+                let max_sq = 12;
+                for dx in -max_sq..=max_sq {
+                    for dy in -max_sq..=max_sq {
+                        let p = (origin.0 + dx, origin.1 + dy);
+                        if self.grid.in_bounds(p.0, p.1)
+                            && !self.grid.is_wall(p.0, p.1)
+                            && self.clear_effect(origin, p)
+                            && !self.faerie_fire_squares(p).is_empty()
+                        {
+                            out.push((Vec::new(), false, Some(p), None));
+                        }
+                    }
+                }
+            }
+            ViciousMockery => {
+                // SRD 5.2.1: "one creature you can see or hear within range" (60 ft)
+                // with an unobstructed path to the target (matching Natural20 `see_or_hear`
+                // + `clear_area_path`). Non-hidden invisible creatures within earshot can
+                // be heard; hidden creatures or targets behind total cover cannot.
+                for t in 0..self.units.len() {
+                    if t == u || self.units[t].dead() || !self.opposing(u, t) || self.feet(u, t) > 60 {
+                        continue;
+                    }
+                    if self.can_see_or_hear(u, t) && self.clear_effect(origin, self.units[t].pos) {
+                        out.push((vec![t], false, None, None));
+                    }
+                }
+            }
             _ => {}
         }
         out
@@ -789,7 +899,7 @@ impl Fight {
                     out.push((combo, true, None, None));
                 }
             }
-            Blur => out.push((vec![u], false, None, None)),
+            Blur | SeeInvisibility => out.push((vec![u], false, None, None)),
             DragonsBreath => {
                 let mut pool: Vec<usize> = (0..self.units.len())
                     .filter(|&t| !self.units[t].dead() && self.allies(u, t) && self.can_see(u, t) && self.feet(u, t) <= 5)
@@ -836,6 +946,22 @@ impl Fight {
                     out.push((Vec::new(), false, Some(p), None));
                 }
             }
+            FaerieFire => {
+                if let Some(p) = self.faerie_fire_target(u) {
+                    out.push((Vec::new(), false, Some(p), None));
+                }
+            }
+            ViciousMockery => {
+                let origin = self.units[u].pos;
+                for t in 0..self.units.len() {
+                    if t == u || self.units[t].dead() || !self.opposing(u, t) || self.feet(u, t) > 60 {
+                        continue;
+                    }
+                    if self.can_see_or_hear(u, t) && self.clear_effect(origin, self.units[t].pos) {
+                        out.push((vec![t], false, None, None));
+                    }
+                }
+            }
             Command => {
                 let (range, types, num, min) = (60, TargetTypes::Enemies, 1 + (at_level - 1).max(0), 1);
                 let pool = self.acquire_targets(u, range, types);
@@ -870,8 +996,10 @@ impl Fight {
         let sp = self.units[u].sorcery_points;
         // eligible: Empowered needs a YAML `damage_type`; Heightened a save
         let empowered = matches!(base.spell, AcidSplash | Firebolt | RayOfFrost | BurningHands | Thunderwave | Shatter
-            | ScorchingRay | MagicMissile | ChromaticOrb | SacredFlame | GuidingBolt);
-        let heightened = matches!(base.spell, AcidSplash | BurningHands | Thunderwave | Shatter | Command | SacredFlame);
+            | ScorchingRay | MagicMissile | ChromaticOrb | SacredFlame | GuidingBolt
+            | ViciousMockery | StarryWisp | PoisonSpray);
+        let heightened = matches!(base.spell, AcidSplash | BurningHands | Thunderwave | Shatter | Command | SacredFlame
+            | FaerieFire | ViciousMockery);
         if knows(Mm::Empowered) && sp >= Mm::Empowered.cost() && empowered {
             let mut v = base.clone();
             v.mm = Some(Mm::Empowered);
@@ -1088,7 +1216,7 @@ impl Fight {
 
     /// `attack_profiles(creature)`: (bonus, average damage, melee, reach ft);
     /// riders without a `condition` only (`additional_damage_entries(action)`).
-    pub(crate) fn attack_profiles(&self, c: usize) -> Vec<(i32, f64, bool, i32)> {
+    pub fn attack_profiles(&self, c: usize) -> Vec<(i32, f64, bool, i32)> {
         let unit = &self.units[c];
         let mut out = Vec::new();
         if !unit.t.pc {
@@ -1098,9 +1226,17 @@ impl Fight {
                 if a.save_attack.is_some() || a.thrown {
                     continue;
                 }
-                let mut dmg = 0.0 + a.damage.count as f64 * (a.damage.sides + 1) as f64 / 2.0 + a.damage.modifier as f64;
+                let mut dmg = if self.rule_version >= 18 {
+                    a.damage.average()
+                } else {
+                    0.0 + a.damage.count as f64 * (a.damage.sides + 1) as f64 / 2.0 + a.damage.modifier as f64
+                };
                 for (d, _) in &a.additional {
-                    dmg += d.count as f64 * (d.sides + 1) as f64 / 2.0 + d.modifier as f64;
+                    dmg += if self.rule_version >= 18 {
+                        d.average()
+                    } else {
+                        d.count as f64 * (d.sides + 1) as f64 / 2.0 + d.modifier as f64
+                    };
                 }
                 out.push((a.to_hit, dmg, !a.ranged, a.range_max));
             }
@@ -1412,7 +1548,7 @@ impl Fight {
 
     fn new_roll(&mut self, u: usize, tag: &str, n: i32, sides: i32, modifier: i32, rolls: &mut Vec<RollObj>) -> usize {
         let r = self.roll_dice(u, tag, n, sides);
-        rolls.push(RollObj { sides, rolls: r, modifier, halved: false, source: None });
+        rolls.push(RollObj { sides, rolls: r, modifier, penalty: 0, halved: false, source: None });
         rolls.len() - 1
     }
 
@@ -1545,7 +1681,7 @@ impl Fight {
                                     pending += 1;
                                 }
                             }
-                            rolls.push(RollObj { sides: 8, rolls: faces, modifier: 0, halved: false, source: None });
+                            rolls.push(RollObj { sides: 8, rolls: faces, modifier: 0, penalty: 0, halved: false, source: None });
                             let i = rolls.len() - 1;
                             items.push(Item::RDamage(DmgRef { t, dt, crit: nat20, dmg: if hit { i } else { Fight::half_of(rolls, i) }, droll: i, save: None, atk_roll_fmt: atk_fmt }));
                         }
@@ -1828,6 +1964,39 @@ impl Fight {
     // Features: Innate Sorcery, the exhale
     // ------------------------------------------------------------------
 
+    /// Canonical root index of `rolls[i]` (following `half_of` `source` links).
+    pub(crate) fn canonical_roll(rolls: &[RollObj], mut i: usize) -> usize {
+        while let Some(s) = rolls[i].source {
+            i = s;
+        }
+        i
+    }
+
+    /// Evaluate Cutting Words once against a canonical damage roll (`rolls[orig]`)
+    /// before halving, propagating any penalty to `orig` and every halved copy.
+    pub(crate) fn apply_roll_cutting_words(
+        &mut self,
+        u: usize,
+        orig: usize,
+        targets: &[(usize, bool)],
+        rolls: &mut [RollObj],
+    ) {
+        if self.rule_version < 18 || rolls[orig].sides <= 0 || rolls[orig].rolls.is_empty() {
+            return;
+        }
+        let raw = rolls[orig].amount();
+        if raw <= 0 {
+            return;
+        }
+        if let Some((_bard, cw_roll, _new_raw)) = self.try_cutting_words_damage_roll(u, raw, targets) {
+            for i in 0..rolls.len() {
+                if Self::canonical_roll(rolls, i) == orig {
+                    rolls[i].penalty += cw_roll;
+                }
+            }
+        }
+    }
+
     pub(crate) fn do_exhale_at(&mut self, u: usize, aim: Pos) {
         let Some(obj) = self.active_breath(u) else { return };
         let ObjKind::Breath { dt, dice, .. } = self.objs[obj as usize].kind else { return };
@@ -1843,16 +2012,18 @@ impl Fight {
             let dmg = if passed { Fight::half_of(&mut rolls, roll) } else { roll };
             hits.push((t, dmg, SaveOutcome::from_check(passed, rolled)));
         }
-        // commit: the action, then each damage item
+        // commit: the action, Cutting Words once on the shared roll, then each damage item
         self.units[u].action = (self.units[u].action - 1).max(0);
+        let cw_targets: Vec<(usize, bool)> = hits.iter().map(|&(t, dmg, _)| (t, rolls[dmg].halved)).collect();
+        self.apply_roll_cutting_words(u, roll, &cw_targets, &mut rolls);
         for (t, dmg, save) in hits {
             let r = &rolls[dmg];
             let amount = r.amount();
             let dmg_fmt = self.web_events.is_some().then(|| {
-                crate::web_events::fmt_dice_roll(r.sides, &r.rolls, r.modifier, r.halved, amount)
+                crate::web_events::fmt_dice_roll(r.sides, &r.rolls, r.modifier - r.penalty, r.halved, amount)
             });
             let mut hs = crate::engine::HitState::default();
-            self.spell_damage_with_web(u, t, amount, dt, false, true, Some(save), "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
+            self.spell_damage_with_web(u, t, amount, false, false, dt, false, true, Some(save), "dragons_breath", "dragons_breath", None, dmg_fmt, &mut hs);
         }
     }
 

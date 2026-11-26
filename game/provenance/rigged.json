@@ -1239,6 +1239,48 @@
    },
    "rigged_by": "Gemini, Blender 5.2, <repo-root>",
    "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "vesper",
+   "file": "game/static/models/vesper.glb",
+   "sha256": "f7dc20207b3cfe79b7642616612d0fe459b64b37952f540a7731cdbc374d2b44",
+   "bytes": 1254144,
+   "triangles": 18256,
+   "bones": 23,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "DaggerBrass",
+    "DaggerGrip",
+    "DaggerSteel",
+    "tripo_material_f273ade7-b7ef-41e6-be6b-8c09fc331003"
+   ],
+   "mesh_source": {
+    "group": "heroes",
+    "file": "<repo-root>/heroes/vesper/model.glb",
+    "sha256": "9dc1f7cb35b1b1d89dc71a4cc04b8516686c2550a1fe5870fd74d45860a22316",
+    "tripo": {
+     "task_id": "f273ade7-b7ef-41e6-be6b-8c09fc331003",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "9dc1f7cb35b1b1d89dc71a4cc04b8516686c2550a1fe5870fd74d45860a22316"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2.3 LTS, <repo-root>",
+   "rig_manifest_sha256_match": true
   }
  ]
 }

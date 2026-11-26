@@ -164,6 +164,8 @@ def scratch_like(env, n_slots: int, threads: int | None = None):
     extra = {'feature_version': env.feature_version} if hasattr(ember_rs, 'FEATURE_VERSIONS') else {}
     if getattr(env, 'moves', 'step') != 'step':     # a fork takes the target's move mode: rows must match the root's
         extra['moves'] = env.moves
+    if hasattr(env, 'rule_version') and 'rule_version' in (getattr(ember_rs.BatchEnv, '__text_signature__', None) or ''):
+        extra['rule_version'] = env.rule_version
     return ember_rs.BatchEnv(n_slots=n_slots, content=env.content, threads=threads or env.threads, scores=env.scores,
                              objective=env.objective, max_rounds=env.max_rounds, standing_weight=env.standing_weight,
                              max_steps=env.max_steps, **extra)

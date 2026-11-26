@@ -16,6 +16,8 @@ export const CAST_MODELS = Object.freeze({
   curogana:    Object.freeze({ file: 'models/curogana.glb',    height: 1.27, group: 'hero', walkSpeed: 0.9525, runSpeed: 2.0053 }),
   // Chruna (Barbarian): halberd swings play `slash`, Rage and Reckless Attack `cast` (a roar)
   chruna:      Object.freeze({ file: 'models/chruna.glb',      height: 1.30, group: 'hero', walkSpeed: 0.975,  runSpeed: 2.0526 }),
+  // Vesper (Tiefling College of Lore Bard): dagger swings play `slash`, spells & Bardic Inspiration `cast`
+  vesper:      Object.freeze({ file: 'models/vesper.glb',      height: 1.30, group: 'hero', walkSpeed: 0.975,  runSpeed: 2.0526 }),
   // Undead (all 8 project-original SRD 5.2.1 figures)
   skeleton:    Object.freeze({ file: 'models/skeleton.glb',    height: 1.25, group: 'undead' }),
   zombie:      Object.freeze({ file: 'models/zombie.glb',      height: 1.25, group: 'undead' }),
@@ -82,7 +84,7 @@ export function resolveCastKey(unit) {
     const hero = stripLevel(baseId || content || idBase);
     if (Object.hasOwn(CAST_MODELS, hero)) return hero;
     if (kind === 'mage' || unit.model?.base === 'mage') return hero === 'curogana' ? 'curogana' : 'ilyra';
-    return hero === 'guy' ? 'guy' : hero === 'elion' ? 'elion' : hero === 'chruna' ? 'chruna' : 'mara';
+    return hero === 'guy' ? 'guy' : hero === 'elion' ? 'elion' : hero === 'chruna' ? 'chruna' : hero === 'vesper' ? 'vesper' : 'mara';
   }
   if (kind === 'skeleton') return 'skeleton';
   if (kind === 'goblin') return 'goblin';
@@ -135,7 +137,7 @@ function disposeTemplate(scene) {
 
 const AREA_STYLES = new Set([
   'turn_undead', 'preserve_life', 'shatter', 'thunderwave', 'burning_hands',
-  'dragons_breath', 'acid_splash', 'dreadful_glare',
+  'dragons_breath', 'acid_splash', 'dreadful_glare', 'faerie_fire',
 ]);
 const MELEE_STYLES = new Set(['slash', 'slam', 'rotting_fist', 'draining_swipe', 'claw', 'bite']);
 

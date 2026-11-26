@@ -497,16 +497,23 @@ pub enum SpellId {
     RayOfSickness,
     CharmMonster,
     Entangle,
+    // bard & anti-invisibility spells (SRD 5.2.1)
+    FaerieFire,
+    SeeInvisibility,
+    ViciousMockery,
+    StarryWisp,
+    PoisonSpray,
 }
 
 impl SpellId {
-    pub const ALL: [SpellId; 31] = {
+    pub const ALL: [SpellId; 36] = {
         use SpellId::*;
         [
             SacredFlame, GuidingBolt, SpiritualWeapon, Bless, ShieldOfFaith, CureWounds, HealingWord, Aid, Command,
             ProtectionFromEvilAndGood, Sanctuary, SpareTheDying, LesserRestoration, SorcerousBurst, Firebolt,
             RayOfFrost, AcidSplash, ChromaticOrb, MagicMissile, BurningHands, Thunderwave, Shatter, ScorchingRay,
             DragonsBreath, Blur, Shield, MageArmor, Invisibility, RayOfSickness, CharmMonster, Entangle,
+            FaerieFire, SeeInvisibility, ViciousMockery, StarryWisp, PoisonSpray,
         ]
     };
 
@@ -689,6 +696,11 @@ pub struct Template {
     pub danger_sense: bool,
     /// Path of the Berserker: Frenzy.
     pub frenzy: bool,
+    // Bard (SRD 5.2.1, College of Lore; src/bard.rs)
+    pub bard: bool,
+    pub bardic_inspiration_uses: i32,
+    pub bardic_inspiration_die: Dice,
+    pub cutting_words: bool,
     // Fey campaign NPC traits & special actions (SRD 5.2.1)
     pub flyby: bool,
     pub magic_resistance: bool,
@@ -741,6 +753,8 @@ pub enum Feature {
     DangerSense,
     Frenzy,
     FeyAncestry,
+    BardicInspiration,
+    CuttingWords,
     Inert,
 }
 
@@ -766,13 +780,17 @@ impl Feature {
             "danger_sense" => DangerSense,
             "frenzy" => Frenzy,
             "fey_ancestry" => FeyAncestry,
+            "bardic_inspiration" => BardicInspiration,
+            "cutting_words" => CuttingWords,
             "remarkable_athlete" => RemarkableAthlete,
             "potent_cantrip" => PotentCantrip,
             "wizard_subclass" | "evocation_savant" | "martial_archetype" | "weapon_mastery" | "divine_order" | "divine_domain"
             | "draconic_resilience" | "sorcerer_subclass" | "draconic_spells" | "spellcasting" | "alert"
             | "magic_initiate_cleric" | "magic_initiate_wizard" | "resourceful" | "skillful" | "versatile"
             | "elven_lineage" | "keen_senses" | "trance" | "defense" | "ritual_adept"
-            | "arcane_recovery" | "scholar" | "unarmored_defense_barbarian" | "primal_path" | "primal_knowledge" => Inert,
+            | "arcane_recovery" | "scholar" | "unarmored_defense_barbarian" | "primal_path" | "primal_knowledge"
+            | "expertise" | "jack_of_all_trades" | "bard_subclass" | "bonus_proficiencies"
+            | "fiendish_legacy" | "otherworldly_presence" => Inert,
             _ => return None,
         })
     }
@@ -1352,6 +1370,10 @@ impl Template {
             reckless_attack: false,
             danger_sense: false,
             frenzy: false,
+            bard: false,
+            bardic_inspiration_uses: 0,
+            bardic_inspiration_die: Dice::new(0, 0, 0),
+            cutting_words: false,
             swap_retarget: None,
             inventory: Vec::new(),
             flyby: false,
@@ -1641,6 +1663,13 @@ impl Template {
                 Feature::DangerSense => t.danger_sense = true,
                 Feature::Frenzy => t.frenzy = true,
                 Feature::FeyAncestry => t.fey_ancestry = true,
+                Feature::BardicInspiration => {
+                    t.bard = true;
+                    t.bardic_inspiration_uses = param_i32(f, "uses")?;
+                    let die = f.params.get("die").and_then(|v| v.as_str()).unwrap_or("1d6");
+                    t.bardic_inspiration_die = Dice::parse(die)?;
+                }
+                Feature::CuttingWords => t.cutting_words = true,
                 Feature::FontOfMagic | Feature::Inert => {}
             }
         }
@@ -2574,11 +2603,13 @@ mod tests {
     #[test]
     fn global_pool_loads() {
         let pool = ContentPool::global();
-        assert_eq!(pool.templates.iter().filter(|t| t.pc).count(), 18);
+        assert_eq!(pool.templates.iter().filter(|t| t.pc).count(), 21);
         assert_eq!(pool.tid("guy_l3"), pool.tid("guy"));
         assert_eq!(pool.tid("ilyra_l2"), pool.tid("ilyra"));
+        assert_eq!(pool.tid("vesper_l3"), pool.tid("vesper"));
         for id in [
-            "guy", "elion", "curogana", "mara", "ilyra", "skeleton", "zombie", "ghoul", "ghast", "specter", "shadow", "wight",
+            "guy", "elion", "curogana", "mara", "ilyra", "vesper", "vesper_l1", "vesper_l2",
+            "skeleton", "zombie", "ghoul", "ghast", "specter", "shadow", "wight",
             "goblin_minion", "goblin_warrior", "goblin_boss", "mummy", "chruna",
             "violet_fungus", "giant_wasp", "satyr", "steam_mephit", "blink_dog", "sprite",
             "green_hag", "bugbear_warrior", "dryad", "harpy", "sea_hag", "will_o_wisp",

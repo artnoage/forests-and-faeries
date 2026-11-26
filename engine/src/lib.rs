@@ -10,6 +10,7 @@
 pub mod ai;
 pub mod balance;
 pub mod barbarian;
+pub mod bard;
 pub mod batch;
 pub mod catalog;
 pub mod content;

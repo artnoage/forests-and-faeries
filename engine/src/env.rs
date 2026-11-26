@@ -686,14 +686,19 @@ impl Env {
                 | ObjKind::Breath { target, .. }
                 | ObjKind::EntangleRestraint { target, .. }
                 | ObjKind::RaySickness { target, .. }
-                | ObjKind::SpeedPenalty { target, .. } => *target = m(*target),
+                | ObjKind::SpeedPenalty { target, .. }
+                | ObjKind::ViciousMockery { target }
+                | ObjKind::StarryWisp { target, .. }
+                | ObjKind::BardicInspiration { target, .. } => *target = m(*target),
                 ObjKind::Spell
                 | ObjKind::Force { .. }
                 | ObjKind::Blur
                 | ObjKind::Invisibility
                 | ObjKind::Vanish
                 | ObjKind::LuringSong { .. }
-                | ObjKind::Entangle { .. } => {}
+                | ObjKind::Entangle { .. }
+                | ObjKind::FaerieFire
+                | ObjKind::SeeInvisibility => {}
             }
         }
         f.move_cache = Default::default();
@@ -715,7 +720,8 @@ impl Env {
                     | Act::FirstAid { target }
                     | Act::EscapeGrapple { target }
                     | Act::BreakFree { target }
-                    | Act::DropGrapple { target } => *target = m(*target),
+                    | Act::DropGrapple { target }
+                    | Act::BardicInspiration { target } => *target = m(*target),
                     Act::Spell(c) => {
                         for t in c.targets.iter_mut() {
                             *t = m(*t);

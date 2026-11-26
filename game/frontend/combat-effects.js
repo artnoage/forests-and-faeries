@@ -3,14 +3,14 @@ import * as THREE from 'three';
 // Presentation only: native event positions and actual HP amounts are the sole
 // authority. In particular, never reconstruct an attack from snapshot HP deltas.
 const MAX_ACTIVE = 20, MAX_QUEUED = 36, MAX_QUEUE_AGE = 1800;
-const STYLES = new Set(['rotting_fist', 'dreadful_glare', 'necrotic', 'draining_swipe', 'healing_word', 'slash', 'arrow', 'firebolt', 'magic_missile', 'heal', 'generic', 'sorcerous_burst', 'life_drain', 'turn_undead', 'sacred_flame', 'guiding_bolt', 'divine_spark', 'cure_wounds', 'preserve_life', 'burning_hands', 'thunderwave', 'shatter', 'acid_splash', 'dragons_breath', 'chromatic_orb', 'ray_of_frost', 'scorching_ray', 'spiritual_weapon', 'buff', 'command', 'undead', 'touch']);
+const STYLES = new Set(['rotting_fist', 'dreadful_glare', 'necrotic', 'draining_swipe', 'healing_word', 'slash', 'arrow', 'firebolt', 'magic_missile', 'heal', 'generic', 'sorcerous_burst', 'life_drain', 'turn_undead', 'sacred_flame', 'guiding_bolt', 'divine_spark', 'cure_wounds', 'preserve_life', 'burning_hands', 'thunderwave', 'shatter', 'acid_splash', 'dragons_breath', 'chromatic_orb', 'ray_of_frost', 'scorching_ray', 'spiritual_weapon', 'buff', 'command', 'undead', 'touch', 'faerie_fire', 'see_invisibility', 'vicious_mockery', 'starry_wisp', 'poison_spray', 'ray_of_sickness', 'cutting_words']);
 // Styles with no projectile of their own: the impact burst (and, for some, an
 // extra build below) carries the effect.
-const NO_PROJECTILE = new Set(['rotting_fist', 'dreadful_glare', 'necrotic', 'draining_swipe', 'healing_word', 'generic', 'life_drain', 'turn_undead', 'sacred_flame', 'guiding_bolt', 'divine_spark', 'cure_wounds', 'preserve_life', 'burning_hands', 'thunderwave', 'shatter', 'acid_splash', 'dragons_breath', 'chromatic_orb', 'ray_of_frost', 'scorching_ray', 'spiritual_weapon', 'buff', 'command', 'undead', 'touch']);
+const NO_PROJECTILE = new Set(['rotting_fist', 'dreadful_glare', 'necrotic', 'draining_swipe', 'healing_word', 'generic', 'life_drain', 'turn_undead', 'sacred_flame', 'guiding_bolt', 'divine_spark', 'cure_wounds', 'preserve_life', 'burning_hands', 'thunderwave', 'shatter', 'acid_splash', 'dragons_breath', 'chromatic_orb', 'ray_of_frost', 'scorching_ray', 'spiritual_weapon', 'buff', 'command', 'undead', 'touch', 'faerie_fire', 'see_invisibility', 'vicious_mockery', 'starry_wisp', 'poison_spray', 'ray_of_sickness', 'cutting_words']);
 // Styles tinted by the native damage type of the event.
-const TYPED = new Set(['scorching_ray', 'ray_of_frost', 'chromatic_orb', 'dragons_breath', 'acid_splash', 'shatter', 'thunderwave', 'burning_hands', 'divine_spark', 'guiding_bolt', 'sacred_flame', 'generic', 'sorcerous_burst']);
+const TYPED = new Set(['scorching_ray', 'ray_of_frost', 'chromatic_orb', 'dragons_breath', 'acid_splash', 'shatter', 'thunderwave', 'burning_hands', 'divine_spark', 'guiding_bolt', 'sacred_flame', 'generic', 'sorcerous_burst', 'vicious_mockery', 'starry_wisp', 'poison_spray', 'ray_of_sickness']);
 // Styles whose use rolls against several creatures: play every target, not three.
-const MULTI = new Set(['dragons_breath', 'acid_splash', 'shatter', 'thunderwave', 'burning_hands', 'preserve_life', 'turn_undead', 'magic_missile', 'scorching_ray']);
+const MULTI = new Set(['dragons_breath', 'acid_splash', 'shatter', 'thunderwave', 'burning_hands', 'preserve_life', 'turn_undead', 'magic_missile', 'scorching_ray', 'faerie_fire']);
 // Per-style builders. A builder receives a context (scene group, impact group,
 // native coordinates, colour, helpers) and returns an update(age, info)
 // function, or null (reduced motion, or nothing extra to draw). The base burst,
@@ -18,7 +18,8 @@ const MULTI = new Set(['dragons_breath', 'acid_splash', 'shatter', 'thunderwave'
 const CUSTOM = {};
 const COLORS = { slash: '#fff0c1', arrow: '#f4dcb0', firebolt: '#ff842e', magic_missile: '#80eeff', heal: '#86f3ac', generic: '#e8e0c8',
   rotting_fist: '#d8b46a', dreadful_glare: '#ffbe3d',
-  sorcerous_burst: '#c9a0ff', life_drain: '#9be07a', turn_undead: '#ffe9a0', touch: '#ffffff', necrotic: '#7d3fb8', draining_swipe: '#c9b8e8', undead: '#9bbf5a', command: '#e8d9a8', buff: '#ffffff', spiritual_weapon: '#bfe0ff', scorching_ray: '#ff842e', ray_of_frost: '#9fdcff', chromatic_orb: '#c9a0ff', dragons_breath: '#ff9a3c', acid_splash: '#b6f06a', shatter: '#c7b6ff', thunderwave: '#c7b6ff', burning_hands: '#ff842e', preserve_life: '#ffe7a3', healing_word: '#c9ffd9', cure_wounds: '#bfffd0', divine_spark: '#ffe9a0', guiding_bolt: '#fff2a8', sacred_flame: '#fff2a8' };
+  sorcerous_burst: '#c9a0ff', life_drain: '#9be07a', turn_undead: '#ffe9a0', touch: '#ffffff', necrotic: '#7d3fb8', draining_swipe: '#c9b8e8', undead: '#9bbf5a', command: '#e8d9a8', buff: '#ffffff', spiritual_weapon: '#bfe0ff', scorching_ray: '#ff842e', ray_of_frost: '#9fdcff', chromatic_orb: '#c9a0ff', dragons_breath: '#ff9a3c', acid_splash: '#b6f06a', shatter: '#c7b6ff', thunderwave: '#c7b6ff', burning_hands: '#ff842e', preserve_life: '#ffe7a3', healing_word: '#c9ffd9', cure_wounds: '#bfffd0', divine_spark: '#ffe9a0', guiding_bolt: '#fff2a8', sacred_flame: '#fff2a8',
+  faerie_fire: '#cf80ff', see_invisibility: '#8cf5ff', vicious_mockery: '#ff7ec0', starry_wisp: '#fff2a8', poison_spray: '#8fd36a', ray_of_sickness: '#78d957', cutting_words: '#e496ff' };
 // Generic spell bursts take the colour of the native damage type.
 const DAMAGE_COLORS = { fire: '#ff842e', cold: '#9fdcff', lightning: '#fff08a', thunder: '#c7b6ff', acid: '#b6f06a',
   poison: '#8fd36a', necrotic: '#a07cd8', radiant: '#fff2a8', force: '#b9a4ff', psychic: '#ff9fe0',
@@ -253,6 +254,94 @@ function coneFire(c, o) {
 
 // Burning Hands: a 15-foot fan of fire from the caster's outstretched hands.
 CUSTOM.burning_hands = c => coneFire(c, { name: 'burning-flame', edge: '#ff8a2a', core: '#ffe27a', height: 0.95, width: 0.3, speed: 55, burn: 300 });
+
+// Faerie Fire: a 20-ft cube of shimmering violet-blue fairy light blankets the squares.
+CUSTOM.faerie_fire = c => {
+  const { group, mat, mesh, geo, area, releaseAt, own } = c;
+  if (!area) return null;
+  const shardGeo = own(new THREE.OctahedronGeometry(1));
+  const tiles = area.cells.map(([x, z], i) => {
+    const pad = mesh(group, geo.box, mat(i % 2 ? '#cf80ff' : '#80e8ff', 0.0, true), x, 0.08, z, 0.92, 0.05, 0.92);
+    pad.name = 'faerie-tile';
+    const mote = mesh(group, shardGeo, mat(i % 2 ? '#f0c4ff' : '#b8f8ff', 0.9, true), x, 0.25, z, 0.07, 0.13, 0.07);
+    mote.name = 'faerie-mote';
+    return { pad, mote, seed: (i * 1.37) % 6.28 };
+  });
+  return age => {
+    const t = clamp((age - releaseAt) / 760, 0, 1);
+    for (const item of tiles) {
+      item.pad.visible = item.mote.visible = t > 0 && t < 1;
+      item.pad.material.opacity = Math.sin(t * Math.PI) * 0.48;
+      item.mote.position.y = 0.2 + t * 1.2 + 0.08 * Math.sin(age * 0.02 + item.seed);
+      item.mote.rotation.y = age * 0.008 + item.seed;
+    }
+  };
+};
+
+// Vicious Mockery & Cutting Words: sonic-psychic rings ripple from the Bard to the target.
+const sonicWave = (tone, ringCount) => c => {
+  const { group, mat, mesh, source, target, releaseAt, impactAt, own } = c;
+  const ringGeo = own(new THREE.TorusGeometry(0.28, 0.03, 6, 28));
+  const rings = Array.from({ length: ringCount }, (_, i) => {
+    const r = mesh(group, ringGeo, mat(i % 2 ? '#ffffff' : tone, 0.9, true), source.x, source.y, source.z, 0.6);
+    r.userData.delay = i * 90;
+    return r;
+  });
+  const dir = target.clone().sub(source).normalize();
+  const q = new THREE.Quaternion().setFromUnitVectors(FORWARD, dir);
+  const pt = new THREE.Vector3();
+  return age => {
+    rings.forEach(r => {
+      const t = clamp((age - releaseAt - r.userData.delay) / Math.max(1, impactAt - releaseAt), 0, 1);
+      r.visible = t > 0 && t < 1;
+      pt.lerpVectors(source, target, t);
+      r.position.copy(pt);
+      r.quaternion.copy(q);
+      r.scale.setScalar(0.55 + t * 1.15);
+    });
+  };
+};
+CUSTOM.vicious_mockery = sonicWave('#ff7ec0', 4);
+CUSTOM.cutting_words = sonicWave('#e496ff', 3);
+
+// Starry Wisp: a radiant mote darts from caster to target, leaving starlight sparks.
+CUSTOM.starry_wisp = c => {
+  const { group, mat, mesh, geo, source, target, releaseAt, impactAt, own } = c;
+  const star = mesh(group, own(new THREE.OctahedronGeometry(1)), mat('#fff8c4', 0.95, true), source.x, source.y, source.z, 0.14);
+  const tail = Array.from({ length: 6 }, (_, i) => mesh(group, geo.sphere, mat(i % 2 ? '#b8f0ff' : '#ffe994', 0.8 - i * 0.1, true), 0, 0, 0, 0.08 - i * 0.01));
+  const at = t => { const p = new THREE.Vector3().lerpVectors(source, target, clamp(t, 0, 1)); p.y += Math.sin(clamp(t, 0, 1) * Math.PI) * 0.32; return p; };
+  return age => {
+    const t = (age - releaseAt) / Math.max(1, impactAt - releaseAt);
+    star.visible = t >= 0 && t < 1;
+    star.position.copy(at(t));
+    star.rotation.set(age * 0.015, age * 0.02, 0);
+    tail.forEach((m, i) => { m.visible = t >= 0 && t < 1.1; m.position.copy(at(t - (i + 1) * 0.05)); });
+  };
+};
+
+// Poison Spray / Ray of Sickness: toxic emerald stream to target.
+const toxicBolt = tone => c => {
+  const { group, mat, mesh, geo, source, target, releaseAt, impactAt } = c;
+  const puffs = Array.from({ length: 8 }, (_, i) => {
+    const p = mesh(group, geo.sphere, mat(i % 2 ? tone : '#c4ff9e', 0.78, true), source.x, source.y, source.z, 0.11);
+    p.userData.phase = i / 8;
+    return p;
+  });
+  const pt = new THREE.Vector3();
+  return age => {
+    const t = clamp((age - releaseAt) / Math.max(1, impactAt - releaseAt), 0, 1.2);
+    puffs.forEach(p => {
+      const s = clamp(t - p.userData.phase * 0.35, 0, 1);
+      p.visible = age >= releaseAt && s > 0 && s < 1;
+      pt.lerpVectors(source, target, s);
+      pt.y += Math.sin(s * Math.PI) * 0.25 + Math.cos(age * 0.02 + p.userData.phase * 10) * 0.07;
+      p.position.copy(pt);
+      p.scale.setScalar(0.09 + s * 0.12);
+    });
+  };
+};
+CUSTOM.poison_spray = toxicBolt('#8fd36a');
+CUSTOM.ray_of_sickness = toxicBolt('#70d94c');
 
 // Thunderwave: a thunderous wave sweeps the 15-foot cube from the caster, lighting
 // each square as it passes (drawn once per cast, from the footprint); every

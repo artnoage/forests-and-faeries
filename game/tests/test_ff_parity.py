@@ -306,7 +306,14 @@ def test_web_game_free_play_matches_batch_env_lockstep(encounter: str, preset: s
         'layout': {'rule': 'fixed'},
         'max_rounds': 10_000,
     }
-    env = ember_rs.BatchEnv(n_slots=1, catalog=[row], objective='native', max_rounds=10_000, threads=1)
+    env = ember_rs.BatchEnv(
+        n_slots=1,
+        catalog=[row],
+        objective='native',
+        max_rounds=10_000,
+        threads=1,
+        rule_version=ember_rs.CURRENT_RULE_VERSION,
+    )
 
     for seed in (1, 2, 3):
         game = FFArena(level, seed=seed)
@@ -482,3 +489,78 @@ def test_v19_hidden_monsters_never_leak_on_wire_across_all_levels():
 
     assert hidden_steps_checked > 0, 'sweep must exercise hidden-monster steps across levels'
     assert hidden_turns_checked > 0, 'sweep must exercise hidden-monster turns (Leak E)'
+
+
+def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: Path):
+    """BatchEnv defaults to rule 17 (r4 parity), supports explicit rule 18, accepts
+    the frozen rule-17 curogana.json pack for rule 17 only, and stamps each tape
+    header with the matching Natural20 commit."""
+    assert ember_rs.DEFAULT_BATCH_RULE_VERSION == 17
+    assert ember_rs.CURRENT_RULE_VERSION >= 18
+
+    row = {
+        'id': 'rule-version-smoke',
+        'tier': 'T0',
+        'split': 'test',
+        'spec': {
+            'version': 1,
+            'map': {'name': 'open', 'rows': ['........', '........', '........', '........']},
+            'heroes': [{'id': 'curogana', 'content': 'curogana', 'x': 1, 'y': 1}],
+            'monsters': [{'id': 'skeleton-1', 'content': 'skeleton', 'x': 5, 'y': 1}],
+        },
+        'layout': {'rule': 'fixed'},
+        'max_rounds': 30,
+    }
+    spec = [{'encounter': row['id'], 'map_seed': 0, 'layout_seed': 0, 'dice_seed': 1, 'offset_x': 0, 'offset_y': 0}]
+    ctrl = [{'heroes': 'native', 'monsters': 'native'}]
+
+    # Default BatchEnv runs rule 17 and stamps the r4 First Aid pin on recorded tapes.
+    env17 = ember_rs.BatchEnv(n_slots=1, catalog=[row], threads=1)
+    assert env17.rule_version == 17
+    env17.reset([0], spec, ctrl)
+    tape17 = tmp_path / 'r17.jsonl'
+    env17.record(0, str(tape17))
+    hdr17 = json.loads(tape17.read_text(encoding='utf-8').splitlines()[0])
+    assert hdr17['version'] == 17
+    assert hdr17['n20_commit'] == 'ef91112bf07b933734bff12a94d7e724ca8f3fee'
+
+    # Explicit rule 18 stamps the current Bard reference pin.
+    env18 = ember_rs.BatchEnv(n_slots=1, catalog=[row], threads=1, rule_version=18)
+    assert env18.rule_version == 18
+    env18.reset([0], spec, ctrl)
+    tape18 = tmp_path / 'r18.jsonl'
+    env18.record(0, str(tape18))
+    hdr18 = json.loads(tape18.read_text(encoding='utf-8').splitlines()[0])
+    assert hdr18['version'] == 18
+    assert hdr18['n20_commit'] == ember_rs.NATURAL20_COMMIT
+
+    # Rule-17 content/srd directory containing the 09bec740 curogana.json (burning_hands)
+    # loads cleanly for rule_version=17 and is rejected for rule_version=18.
+    srd_dir = tmp_path / 'content' / 'srd'
+    srd_dir.mkdir(parents=True)
+    repo_root = Path(__file__).resolve().parents[2]
+    cur_curo = json.loads((repo_root / 'engine' / 'content' / 'srd' / 'curogana.json').read_text(encoding='utf-8'))
+    cur_curo['provenance']['natural20_commit'] = '09bec740a7c0da50ab6618a233fd635eb1169334'
+    cur_curo['spellcasting']['spells'] = [
+        'burning_hands' if s == 'see_invisibility' else s for s in cur_curo['spellcasting']['spells']
+    ]
+    cur_curo['spellcasting']['spell_info'] = [
+        {
+            'id': 'burning_hands',
+            'name': 'Burning Hands',
+            'level': 1,
+            'casting_time': '1:action',
+            'concentration': False,
+            'sorcerer_spell': True,
+        }
+        if d.get('id') == 'see_invisibility'
+        else d
+        for d in cur_curo['spellcasting']['spell_info']
+    ]
+    (srd_dir / 'curogana.json').write_text(json.dumps(cur_curo, indent=1) + '\n', encoding='utf-8')
+    pool17 = ember_rs.ContentPool([str(srd_dir)])
+    assert pool17.max_rule_version == 17
+    env_from_17 = ember_rs.BatchEnv(n_slots=1, content=pool17, catalog=[row], threads=1)
+    assert env_from_17.rule_version == 17
+    with pytest.raises(ValueError, match='rule-18 content pack'):
+        ember_rs.BatchEnv(n_slots=1, content=pool17, catalog=[row], threads=1, rule_version=18)

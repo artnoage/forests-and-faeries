@@ -37,7 +37,7 @@ test('every hero and monster of the catalogue has a figure', () => {
     'dryad', 'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp']) {
     assert.equal(resolveCastKey({ content: fey, team: 'monsters', id: `${fey}-1` }), fey);
   }
-  for (const base of ['guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna']) {
+  for (const base of ['guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna', 'vesper']) {
     for (const lv of [1, 2, 3]) {
       assert.equal(resolveCastKey({ content: `${base}_l${lv}`, base_id: base, level: lv, team: 'heroes', id: `${base}_l${lv}` }), base);
       assert.equal(resolveCastKey({ content: `${base}_l${lv}`, team: 'heroes', id: `${base}_l${lv}` }), base);
@@ -113,8 +113,9 @@ test('the page has no inline styles or scripts and no private paths', () => {
   assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)[^>]*>\s*\S/i);
   assert.doesNotMatch(html, /\son[a-z]+\s*=\s*["']/i);
   for (const id of [
-    'difficulty-step', 'levels-step', 'difficulty-tabs', 'hero-level-tabs',
-    'art-armor', 'art-kobold', 'art-barbarian',
+    'difficulty-step', 'levels-step', 'difficulty-tabs', 'hero-level-tabs', 'start-party-bar',
+    'art-armor', 'art-kobold', 'art-barbarian', 'art-bard',
+    'action-art-bardic_inspiration', 'action-art-faerie_fire', 'action-art-see_invisibility', 'action-art-vicious_mockery',
     'art-violet_fungus', 'art-giant_wasp', 'art-satyr', 'art-steam_mephit',
     'art-blink_dog', 'art-sprite', 'art-dryad', 'art-bugbear_warrior',
     'art-harpy', 'art-sea_hag', 'art-green_hag', 'art-will_o_wisp',
@@ -231,7 +232,7 @@ test('catalogue blurbs list three heroes with commas', () => {
 
 test('every figure is rigged with the clips the scene plays', async () => {
   const { createHash } = await import('node:crypto');
-  const need = { mara: ['slash', 'cast', 'guard'], ilyra: ['cast', 'cast_area'], chruna: ['slash', 'cast', 'guard'], goblin: ['slash', 'arrow'],
+  const need = { mara: ['slash', 'cast', 'guard'], ilyra: ['cast', 'cast_area'], chruna: ['slash', 'cast', 'guard'], vesper: ['slash', 'cast', 'guard'], goblin: ['slash', 'arrow'],
     goblin_boss: ['slash', 'arrow'], animated_armor: ['slash', 'guard'], kobold_warrior: ['slash', 'arrow', 'guard'],
     guy: ['slash'], elion: ['cast'], curogana: ['cast'] };
   for (const [key, spec] of Object.entries(CAST_MODELS)) {
@@ -385,7 +386,7 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
   assert.match(shield.text, /start of your next turn/i);
   assert.match(shield.text, /Magic Missile/i);
 
-  // Promoted encounters keep the 4 ranked cards at 10 / 10 / 13 / 3 (with Crypt & Vault separated into Classic)
+  // Promoted encounters keep the 4 ranked cards at 11 / 11 / 14 / 3 (with Crypt & Vault separated into Classic; +3 Vesper fey Practice presets)
   const pubEncounters = encounterFiles('encounters');
   const legacyIds = new Set(['crypt', 'vault']);
   const rankedCounts = { Easy: 0, Medium: 0, Hard: 0, Unbeatable: 0 };
@@ -397,7 +398,7 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
       assert.doesNotMatch(p.name, /\(\+[12] monsters?\)/i, `${e.id}/${p.id} has no dev suffix`);
     }
   }
-  assert.deepEqual(rankedCounts, { Easy: 10, Medium: 10, Hard: 13, Unbeatable: 3 });
+  assert.deepEqual(rankedCounts, { Easy: 11, Medium: 11, Hard: 14, Unbeatable: 3 });
   assert.equal(classicCount, 11);
   assert.match(app, /LEGACY_ENCOUNTERS = new Set\(\['crypt', 'vault'\]\)/, 'app.js separates legacy Crypt & Vault into Classic');
   assert.match(app, /legacy \? 'Classic · ungraded' : p\.difficulty/, 'deployment preset dropdown marks legacy encounters as Classic · ungraded');

@@ -76,6 +76,34 @@ def hero_ids():
     return frozenset(_pool().heroes)
 
 
+PRACTICE_HERO_ORDER = ('guy', 'elion', 'curogana', 'chruna', 'mara', 'ilyra', 'vesper')
+PRACTICE_HERO_CLASSES = {
+    'guy': 'Fighter',
+    'elion': 'Cleric',
+    'curogana': 'Sorcerer',
+    'chruna': 'Barbarian',
+    'mara': 'Fighter',
+    'ilyra': 'Wizard',
+    'vesper': 'Bard',
+}
+
+
+def practice_heroes():
+    """Playable hero base sheets available to Practice party selection."""
+    available = hero_ids()
+    out = []
+    for base in PRACTICE_HERO_ORDER:
+        if base in available:
+            info = _hero_sheet(base)
+            out.append({
+                'base_id': info['base_id'],
+                'name': info['name'],
+                'class_label': PRACTICE_HERO_CLASSES.get(base, 'Hero'),
+                'default_content': info['content'],
+            })
+    return out
+
+
 def monster_ids():
     return frozenset(_pool().monsters)
 
@@ -163,6 +191,88 @@ class Level:
         for field in ('names', 'placements'):
             preset[field] = {keys.get(uid, uid): value for uid, value in self.preset.get(field, {}).items()}
         return Level(self.encounter, preset, self.rows, self.scene, self.map_name)
+
+    def with_party(self, party_bases, hero_level=None):
+        """Return a Practice variant using the requested hero base IDs (unique, 1..6)."""
+        if self.preset.get('story'):
+            raise ValueError('Story chapters use their fixed party.')
+        if not isinstance(party_bases, list) or not (1 <= len(party_bases) <= 6):
+            raise ValueError('party must be a list of 1 to 6 hero ids.')
+        if any(not isinstance(h, str) for h in party_bases):
+            raise ValueError('party entries must be hero id strings.')
+        valid_bases = {h['base_id'] for h in practice_heroes()}
+        seen = set()
+        bases = []
+        for raw in party_bases:
+            base = _hero_sheet(raw)['base_id'] if raw in hero_ids() else raw
+            if base not in valid_bases:
+                raise ValueError(f'Unknown hero {raw!r}.')
+            if base in seen:
+                raise ValueError(f'Duplicate hero {base!r} in party.')
+            seen.add(base)
+            bases.append(base)
+        if len(bases) + len(self.preset['roster']) > MAX_CREATURES:
+            raise ValueError(f'At most {MAX_CREATURES} creatures allowed.')
+        if hero_level is not None:
+            if type(hero_level) is not int or hero_level not in (1, 2, 3):
+                raise ValueError('Hero level must be 1, 2 or 3.')
+            chosen_level = hero_level
+        else:
+            preset_lvl = self.preset.get('hero_level')
+            chosen_level = int(preset_lvl) if preset_lvl in (1, 2, 3) else _hero_sheet(self.preset['party'][0])['level']
+        new_party = [_hero_sheet(f'{base}_l{chosen_level}')['content'] for base in bases]
+
+        orig_party = list(self.preset['party'])
+        orig_at = dict(self.preset.get('placements') or {})
+        new_placements = {uid: pos for uid, pos in orig_at.items() if uid not in orig_party}
+        occupied = {tuple(pos) for pos in new_placements.values() if pos is not None}
+
+        # Preserve squares of heroes that stayed in the party, reuse vacated hero slots first.
+        orig_by_base = {_hero_sheet(h)['base_id']: orig_at.get(h) for h in orig_party}
+        free_slots = [orig_at[h] for h in orig_party if h in orig_at and _hero_sheet(h)['base_id'] not in seen]
+        hero_coords = []
+        pending = []
+        for base, content in zip(bases, new_party):
+            pos = orig_by_base.get(base)
+            if pos is not None and tuple(pos) not in occupied:
+                new_placements[content] = list(pos)
+                occupied.add(tuple(pos))
+                hero_coords.append(tuple(pos))
+            else:
+                pending.append(content)
+        for content in pending:
+            if free_slots:
+                pos = free_slots.pop(0)
+                new_placements[content] = list(pos)
+                occupied.add(tuple(pos))
+                hero_coords.append(tuple(pos))
+            else:
+                # BFS from existing hero cluster for nearest open floor square.
+                h, w = len(self.rows), len(self.rows[0])
+                seeds = hero_coords or [(x, y) for y in range(h) for x in range(w) if self.rows[y][x] in '.dD'][:1]
+                q = deque(seeds)
+                vis = set(seeds)
+                found = None
+                while q and found is None:
+                    cx, cy = q.popleft()
+                    for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1), (-1, 1), (1, 1)):
+                        nx, ny = cx + dx, cy + dy
+                        if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in vis and self.rows[ny][nx] in '.dD':
+                            vis.add((nx, ny))
+                            if (nx, ny) not in occupied:
+                                found = (nx, ny)
+                                break
+                            q.append((nx, ny))
+                if found is None:
+                    raise ValueError('Not enough open floor squares for this party.')
+                new_placements[content] = [found[0], found[1]]
+                occupied.add(found)
+                hero_coords.append(found)
+
+        preset = dict(self.preset, party=new_party, hero_level=chosen_level, placements=new_placements)
+        out = Level(self.encounter, preset, self.rows, self.scene, self.map_name)
+        out.check()
+        return out
 
     def _monster_ids(self):
         counts, ids = {}, []

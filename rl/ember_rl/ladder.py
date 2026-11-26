@@ -658,6 +658,11 @@ def make_env(args, catalog, n_slots=None):
     import ember_rs
     if not hasattr(ember_rs, 'FEATURE_VERSIONS'):   # a wheel before ember-rs 596b2a6 serves ember-gen-v1 only
         kwargs.pop('feature_version', None)
+    rule_version = getattr(args, 'rule_version', 17)
+    if 'rule_version' in (getattr(ember_rs.BatchEnv, '__text_signature__', None) or ''):
+        kwargs['rule_version'] = rule_version
+    elif rule_version != 17:
+        raise SystemExit(f'--rule-version {rule_version}: this ember_rs wheel has no rule_version parameter')
     return ember_rs.BatchEnv(n_slots=n, content=ember_rs.ContentPool(['content/srd']), **kwargs)
 
 
@@ -1533,6 +1538,8 @@ def main(argv=None):
                             'of their learners in <run>/snapshots/ (Registry.discover_snapshots)')
         a.add_argument('--moves', choices=('step', 'dest'), default='step',
                        help='the move interface the policies were trained with (BatchEnv(moves=...))')
+        a.add_argument('--rule-version', type=int, default=17,
+                       help='engine rule version for BatchEnv (default: 17; pass 18 for Vesper / 2024 updates)')
 
     a = sub.add_parser('specs')
     a.add_argument('--root', required=True)

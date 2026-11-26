@@ -51,9 +51,15 @@ def play(args):
     mode = dict(heroes=args.heroes, monsters=args.monsters)
     paths = dict(p.split('=', 1) for p in args.policy)
     config = parse_search(args.search) if 'search' in mode.values() else None
+    extra = {}
+    rule_version = getattr(args, 'rule_version', 17)
+    if 'rule_version' in (getattr(ember_rs.BatchEnv, '__text_signature__', None) or ''):
+        extra['rule_version'] = rule_version
+    elif rule_version != 17:
+        raise SystemExit(f'--rule-version {rule_version}: this ember_rs wheel has no rule_version parameter')
     env = ember_rs.BatchEnv(n_slots=args.slots, content=ember_rs.ContentPool(['content/srd']), scores=False,
                             objective='health_score', max_rounds=args.max_rounds, standing_weight=args.standing_weight,
-                            max_steps=args.max_steps, threads=args.threads, catalog=args.catalog)
+                            max_steps=args.max_steps, threads=args.threads, catalog=args.catalog, **extra)
     models = {t: load_general(paths[t], 'cpu', env.feature_version, t).to(device).eval() for t in TEAMS if t in paths}
     for t in TEAMS:
         if mode[t] != 'native' and t not in models:
@@ -280,6 +286,8 @@ def main(argv=None):
     a.add_argument('--max-rounds', type=int, default=30)
     a.add_argument('--standing-weight', type=float, default=.5)
     a.add_argument('--max-steps', type=int, default=4096)
+    a.add_argument('--rule-version', type=int, default=17,
+                   help='engine rule version for BatchEnv (default: 17; pass 18 for Vesper / 2024 updates)')
     r = sub.add_parser('report')
     r.add_argument('dirs', nargs='+')
     r.add_argument('--write', default='')

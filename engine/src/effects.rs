@@ -45,6 +45,16 @@ pub enum EffKey {
     EscapableRestraint,
     /// Ray of Sickness 5e-2024 auto-Poisoned until end of caster's next turn.
     RayOfSickness,
+    /// Faerie Fire outline (SRD 5.2.1): 10-ft Dim Light, cancels Invisible, Advantage to visible attackers.
+    FaerieFire,
+    /// See Invisibility (SRD 5.2.1): 1 hour, no concentration; caster sees Invisible creatures normally.
+    SeeInvisibility,
+    /// Vicious Mockery (SRD 5.2.1): Disadvantage on next attack roll before end of target's next turn.
+    ViciousMockery,
+    /// Starry Wisp (SRD 5.2.1): 10-ft Dim Light & cancels Invisible until end of caster's next turn.
+    StarryWisp,
+    /// Bardic Inspiration die (SRD 5.2.1): 1 hour, spent after failing a D20 Test.
+    BardicInspiration,
 }
 
 impl EffKey {
@@ -65,6 +75,11 @@ impl EffKey {
             EffKey::RestrainedOverride => "restrained_override",
             EffKey::EscapableRestraint => "escapable_restraint",
             EffKey::RayOfSickness => "ray_of_sickness",
+            EffKey::FaerieFire => "faerie_fire",
+            EffKey::SeeInvisibility => "see_invisibility",
+            EffKey::ViciousMockery => "vicious_mockery",
+            EffKey::StarryWisp => "starry_wisp",
+            EffKey::BardicInspiration => "bardic_inspiration",
         }
     }
 }
@@ -109,6 +124,11 @@ pub enum HookKind {
     /// `SpeedPenaltyEffect.start_of_turn` / `end_of_turn` (on the source).
     SpeedPenaltyStart,
     SpeedPenaltyEnd,
+    /// `ViciousMockery` expires at the end of the target's next turn.
+    ViciousMockeryEnd,
+    /// `StarryWisp` lasts until the end of the caster's next turn.
+    StarryWispStart,
+    StarryWispEnd,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -153,6 +173,16 @@ pub enum ObjKind {
     RaySickness { target: usize, armed: bool, added_status: bool },
     /// `SpeedPenaltyEffect` (Steam Breath -10 ft speed until end of source's next turn).
     SpeedPenalty { target: usize, penalty: i32, armed: bool },
+    /// `FaerieFire` (Concentration on caster; outlines all failed targets in 20-ft Cube).
+    FaerieFire,
+    /// `SeeInvisibility` (Self, 1 hour, no concentration).
+    SeeInvisibility,
+    /// `ViciousMockery` (Disadvantage on next attack roll before end of target's next turn).
+    ViciousMockery { target: usize },
+    /// `StarryWisp` (10-ft Dim Light + cancels Invisible until end of caster's next turn).
+    StarryWisp { target: usize, armed: bool },
+    /// `BardicInspiration` die held by recipient (1 hour; SRD 5.2.1).
+    BardicInspiration { target: usize, die: crate::content::Dice },
 }
 
 #[derive(Clone, Debug)]
@@ -285,7 +315,7 @@ impl Fight {
         if self.units[u].concentration == Some(obj) {
             self.units[u].concentration = None;
         }
-        if matches!(self.objs[obj as usize].kind, ObjKind::Spell | ObjKind::Invisibility) {
+        if matches!(self.objs[obj as usize].kind, ObjKind::Spell | ObjKind::Invisibility | ObjKind::FaerieFire) {
             let targets = self.objs[obj as usize].targets.clone();
             for t in targets {
                 self.remove_effect(t, obj);
@@ -422,6 +452,48 @@ impl Fight {
                 self.remove_effect(source, obj);
                 self.units[source].hooks.retain(|h| h.obj != obj);
             }
+            ObjKind::FaerieFire => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                let source = self.objs[obj as usize].source;
+                let targets = self.objs[obj as usize].targets.clone();
+                for t in targets {
+                    self.remove_effect(t, obj);
+                }
+                if self.units[source].concentration == Some(obj) {
+                    self.units[source].concentration = None;
+                }
+            }
+            ObjKind::SeeInvisibility => {
+                self.objs[obj as usize].ended = true;
+            }
+            ObjKind::ViciousMockery { target } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                self.remove_effect(target, obj);
+                self.units[target].hooks.retain(|h| h.obj != obj);
+            }
+            ObjKind::StarryWisp { target, .. } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                let source = self.objs[obj as usize].source;
+                self.remove_effect(target, obj);
+                self.remove_effect(source, obj);
+                self.units[source].hooks.retain(|h| h.obj != obj);
+            }
+            ObjKind::BardicInspiration { target, .. } => {
+                if self.objs[obj as usize].ended {
+                    return;
+                }
+                self.objs[obj as usize].ended = true;
+                self.remove_effect(target, obj);
+            }
         }
     }
 
@@ -531,6 +603,19 @@ impl Fight {
                 HookKind::SpeedPenaltyEnd => {
                     if let ObjKind::SpeedPenalty { armed: true, .. } = self.objs[h.obj as usize].kind {
                         self.obj_dismiss(h.obj, u);
+                    }
+                }
+                HookKind::ViciousMockeryEnd => {
+                    self.dismiss_effect(u, h.obj);
+                }
+                HookKind::StarryWispStart => {
+                    if let ObjKind::StarryWisp { armed, .. } = &mut self.objs[h.obj as usize].kind {
+                        *armed = true;
+                    }
+                }
+                HookKind::StarryWispEnd => {
+                    if let ObjKind::StarryWisp { armed: true, .. } = self.objs[h.obj as usize].kind {
+                        self.dismiss_effect(u, h.obj);
                     }
                 }
             }

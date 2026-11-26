@@ -230,6 +230,61 @@ a:hover { color: var(--gold-bright); text-decoration: underline; }
   flex-shrink: 0;
 }
 
+/* Practice Party Selector Bar on Starting Screen */
+.start-party-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.36);
+  border: 1px solid var(--border-bronze);
+  flex-shrink: 0;
+}
+.party-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.party-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 5px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(24, 27, 34, 0.9);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.14s, background 0.14s, color 0.14s, transform 0.1s;
+}
+.party-chip:hover {
+  border-color: var(--gold);
+  color: var(--text-main);
+  transform: translateY(-1px);
+}
+.party-chip.is-active {
+  border-color: var(--gold-bright);
+  background: linear-gradient(180deg, rgba(217, 174, 102, 0.25), rgba(30, 28, 24, 0.95));
+  color: var(--gold-bright);
+  box-shadow: 0 0 12px rgba(217, 174, 102, 0.22);
+}
+.party-chip .portrait {
+  width: 22px;
+  height: 25px;
+  flex-shrink: 0;
+}
+.party-chip small {
+  font-size: 9.5px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
 /* Theme Swatch Selector Bar on Starting Screen */
 .start-theme-bar {
   display: flex;
@@ -1321,7 +1376,7 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 .level-map { font-size: 9.5px; color: var(--text-muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 118px; }
 .level-card-party { margin: 0; font-size: 10.5px; color: var(--hero); }
 .party-lv-tag { font-size: 9.5px; font-weight: 700; color: var(--gold-bright); opacity: 0.92; }
-.level-card:focus-visible, .difficulty-card:focus-visible, .difficulty-tab:focus-visible, .hero-level-tab:focus-visible, .theme-swatch:focus-visible, .button:focus-visible, .cam-btn:focus-visible,
+.level-card:focus-visible, .difficulty-card:focus-visible, .difficulty-tab:focus-visible, .hero-level-tab:focus-visible, .theme-swatch:focus-visible, .party-chip:focus-visible, .button:focus-visible, .cam-btn:focus-visible,
 .icon-btn:focus-visible, .ability-card:focus-visible, .target-chip:focus-visible, .mini-action-btn:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
 .start-credits { margin: 0; font-size: 10.5px; color: var(--text-muted); }
 .start-tribute { margin: 0 0 4px; font-size: 12px; color: var(--text-soft); }

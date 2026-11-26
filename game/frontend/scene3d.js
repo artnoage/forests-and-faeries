@@ -1430,7 +1430,12 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     return ck ? (ck === 'goblin' ? 1.38 : ck === 'goblin_boss' ? 1.48 : 1.66) : 1.56;
   }
 
-  const isInvisibleShimmer = u => Boolean(u && u.alive !== false && (u.invisible_to_heroes || (u.conditions || []).includes('invisible')));
+  const isInvisibleShimmer = u => {
+    if (!u || u.alive === false) return false;
+    if (u.team === 'monsters') return Boolean(u.invisible_to_heroes);
+    const marks = u.marks || [];
+    return Boolean(u.invisible_to_heroes || ((u.conditions || []).includes('invisible') && !marks.includes('faerie_fire') && !marks.includes('starry_wisp')));
+  };
 
   function label(unit, y = labelHeight(unit)) {
     const conditions = (unit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c));
@@ -1669,6 +1674,53 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         crystal.rotation.z = Math.cos(a) * 0.35; crystal.rotation.x = -Math.sin(a) * 0.35;
       }
       mesh(g, geometry('mark-flake', () => new THREE.OctahedronGeometry(1)), glow('#e6f7ff', 0.95), 0, 1.05 * (unit.model?.scale || 1) + 0.25, 0, 0.07, 0.07, 0.07);
+      return g;
+    },
+    faerie_fire: (root, unit) => {
+      const g = new THREE.Group(); g.name = 'mark-faerie_fire'; root.add(g);
+      const sc = unit.model?.scale || 1;
+      mesh(g, geometry('mark-ring', () => new THREE.TorusGeometry(0.46, 0.028, 6, 36)), glow('#cf80ff', 0.95), 0, 0.12, 0).rotation.x = -Math.PI / 2;
+      mesh(g, sphere, glow('#c478ff', 0.22), 0, 0.62 * sc, 0, 0.50, 0.72, 0.50);
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3;
+        mesh(g, geometry('mark-star', () => new THREE.OctahedronGeometry(1)), glow(i % 2 ? '#e6a8ff' : '#80f0ff', 0.95),
+          Math.cos(a) * 0.42, (0.32 + (i % 3) * 0.34) * sc, Math.sin(a) * 0.42, 0.055, 0.09, 0.055);
+      }
+      return g;
+    },
+    see_invisibility: (root, unit) => {
+      const g = new THREE.Group(); g.name = 'mark-see_invisibility'; root.add(g);
+      const sc = unit.model?.scale || 1;
+      mesh(g, geometry('mark-ward-sigil', () => new THREE.TorusGeometry(0.14, 0.022, 6, 24)), glow('#8cf5ff', 0.95), 0, 1.24 * sc + 0.34, 0);
+      mesh(g, geometry('mark-star', () => new THREE.OctahedronGeometry(1)), glow('#ffffff', 0.95), 0, 1.24 * sc + 0.34, 0, 0.05, 0.05, 0.05);
+      return g;
+    },
+    bardic_inspiration: (root, unit) => {
+      const g = new THREE.Group(); g.name = 'mark-bardic_inspiration'; root.add(g);
+      const sc = unit.model?.scale || 1;
+      mesh(g, geometry('mark-ring', () => new THREE.TorusGeometry(0.46, 0.028, 6, 36)), glow('#ffd573', 0.9), 0, 0.13, 0).rotation.x = -Math.PI / 2;
+      mesh(g, geometry('mark-star', () => new THREE.OctahedronGeometry(1)), glow('#ffe48f', 0.95), 0.24, 1.18 * sc + 0.26, 0, 0.06, 0.11, 0.06);
+      mesh(g, geometry('mark-star', () => new THREE.OctahedronGeometry(1)), glow('#d49eff', 0.9), -0.24, 1.12 * sc + 0.22, 0, 0.045, 0.085, 0.045);
+      return g;
+    },
+    vicious_mockery: (root, unit) => {
+      const g = new THREE.Group(); g.name = 'mark-vicious_mockery'; root.add(g);
+      mesh(g, geometry('mark-ring', () => new THREE.TorusGeometry(0.46, 0.028, 6, 36)), glow('#ff6ea8', 0.92), 0, 0.12, 0).rotation.x = -Math.PI / 2;
+      for (const x of [-0.15, 0.15]) {
+        const s = mesh(g, cone, glow('#ff9ec8', 0.92), x, 1.18 * (unit.model?.scale || 1) + 0.18, 0, 0.045, 0.18, 0.045);
+        s.rotation.z = Math.PI;
+      }
+      return g;
+    },
+    starry_wisp: (root, unit) => {
+      const g = new THREE.Group(); g.name = 'mark-starry_wisp'; root.add(g);
+      const sc = unit.model?.scale || 1;
+      mesh(g, geometry('mark-ring', () => new THREE.TorusGeometry(0.46, 0.028, 6, 36)), glow('#fff3b0', 0.92), 0, 0.12, 0).rotation.x = -Math.PI / 2;
+      for (let i = 0; i < 4; i++) {
+        const a = i * Math.PI / 2;
+        mesh(g, geometry('mark-star', () => new THREE.OctahedronGeometry(1)), glow(i % 2 ? '#ffffff' : '#b8eeff', 0.95),
+          Math.cos(a) * 0.36, (0.55 + (i % 2) * 0.35) * sc, Math.sin(a) * 0.36, 0.055, 0.095, 0.055);
+      }
       return g;
     },
   };

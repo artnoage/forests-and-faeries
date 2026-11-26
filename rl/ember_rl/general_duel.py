@@ -86,6 +86,11 @@ def make_batch_env(args, scores: bool):
                 raise SystemExit(f'--moves {moves}: this ember_rs wheel has no destination moves '
                                  '(install a wheel of ember-rs 9abcae2 or later)')
             kwargs['moves'] = moves
+        rule_version = getattr(args, 'rule_version', 17)
+        if 'rule_version' in (getattr(ember_rs.BatchEnv, '__text_signature__', None) or ''):
+            kwargs['rule_version'] = rule_version
+        elif rule_version != 17:
+            raise SystemExit(f'--rule-version {rule_version}: this ember_rs wheel has no rule_version parameter')
         if hasattr(ember_rs, 'FEATURE_VERSIONS'):       # ember-rs 596b2a6+: one wheel, several versions
             if version not in ember_rs.FEATURE_VERSIONS:
                 raise SystemExit(f'this ember_rs wheel has no feature version {version!r} '
@@ -102,6 +107,8 @@ def make_batch_env(args, scores: bool):
     check_env(env, scores, version)
     if getattr(env, 'moves', 'step') != getattr(args, 'moves', 'step'):
         raise SystemExit(f'the environment plays moves={getattr(env, "moves", "step")!r}, not {args.moves!r}')
+    if hasattr(env, 'rule_version') and env.rule_version != getattr(args, 'rule_version', 17):
+        raise SystemExit(f'the environment plays rule_version={env.rule_version}, not {args.rule_version}')
     return env
 
 
