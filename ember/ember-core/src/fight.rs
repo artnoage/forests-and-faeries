@@ -1,6 +1,7 @@
 //! Compact, zero-heap-allocation `FightState` and public `Fight` API.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -290,8 +291,7 @@ impl Fight {
             unit_names.push(tmpl.name.clone());
         }
 
-        // Deterministic fight_id derived from seed + unit count
-        let fight_id = seed ^ 0xA5A5_5A5A_1357_2468 ^ ((units.len() as u64) << 48);
+        let fight_id = compute_fight_id(spec, &grid, seed);
         let state = FightState {
             units,
             occ,
@@ -1821,6 +1821,43 @@ impl Fight {
             continuation,
         });
     }
+}
+
+static NEXT_FIGHT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+fn compute_fight_id(spec: &EncounterSpec, grid: &Grid, seed: u64) -> u64 {
+    let seq = NEXT_FIGHT_SEQ.fetch_add(1, Ordering::Relaxed);
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |bytes: &[u8]| {
+        for &b in bytes {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    mix(&seed.to_le_bytes());
+    mix(&seq.to_le_bytes());
+    mix(&spec.max_rounds.to_le_bytes());
+    mix(&(spec.units.len() as u64).to_le_bytes());
+    for uid in &spec.units {
+        mix(uid.as_bytes());
+        mix(&[0xff]);
+    }
+    for pl in &spec.placements {
+        mix(pl.id.as_bytes());
+        mix(&pl.x.to_le_bytes());
+        mix(&pl.y.to_le_bytes());
+    }
+    mix(&(grid.w as u16).to_le_bytes());
+    mix(&(grid.h as u16).to_le_bytes());
+    for row in &grid.rows {
+        mix(row.as_bytes());
+        mix(&[0xfe]);
+    }
+    h ^= h >> 30;
+    h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    h ^= h >> 27;
+    h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
+    h ^ (h >> 31)
 }
 
 fn payload_kind(payload: &ActionPayload) -> &'static str {

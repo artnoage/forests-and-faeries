@@ -523,3 +523,69 @@ fn oa_options_preserves_multi_target_enumeration_multiplicity() {
         );
     }
 }
+
+#[test]
+fn foreign_encounter_action_and_reaction_ids_rejected_untouched() {
+    let db = build_test_db();
+    let first_spec = oa_spec();
+    let mut other_spec = oa_spec();
+    for p in &mut other_spec.placements {
+        p.x += 1;
+    }
+    let seed = 0xFEDC_BA98_7654_3210u64;
+
+    let mut a = Fight::new(db.clone(), &first_spec, seed).unwrap();
+    let mut b = Fight::new(db.clone(), &other_spec, seed).unwrap();
+    let a_clone_spec = Fight::new(db.clone(), &first_spec, seed).unwrap();
+    assert_ne!(a.meta.fight_id, b.meta.fight_id);
+    assert_ne!(a.meta.fight_id, a_clone_spec.meta.fight_id);
+
+    a.set_reaction_mode(ReactionMode::Interactive);
+    b.set_reaction_mode(ReactionMode::Interactive);
+    let mut sink = NoopSink;
+    a.start(&mut sink).unwrap();
+    b.start(&mut sink).unwrap();
+
+    // 1. Foreign ActionId rejected with state, RNG, draws, and event_cursor untouched
+    let a_move = a
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|m| m.action_key == "move:3,3;2,3")
+        .unwrap();
+    let b_before = b.state.clone();
+    let err = b.apply(a_move.id, &mut sink).unwrap_err();
+    assert!(matches!(err, CoreError::StaleActionId { .. }));
+    assert_eq!(b.state, b_before);
+
+    // 2. Foreign reaction prompt_id rejected even after save/load; own restored prompt_id works!
+    let b_retreat = b
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|m| m.action_key == "move:4,3;3,3")
+        .unwrap();
+    let FightPhase::AwaitingReaction { prompt_id: aid, .. } =
+        a.apply(a_move.id, &mut sink).unwrap().phase
+    else {
+        panic!("expected A reaction prompt");
+    };
+    let FightPhase::AwaitingReaction { prompt_id: bid, .. } =
+        b.apply(b_retreat.id, &mut sink).unwrap().phase
+    else {
+        panic!("expected B reaction prompt");
+    };
+    assert_ne!(aid, bid);
+
+    let b_bytes = b.save_bytes().unwrap();
+    let mut b_restored = Fight::load_bytes(db, &b_bytes).unwrap();
+    let b_snap = b_restored.state.clone();
+    let foreign_rx = b_restored
+        .respond_reaction(ReactionChoice { prompt_id: aid, choice_index: Some(0) }, &mut sink)
+        .unwrap_err();
+    assert!(matches!(foreign_rx, CoreError::StaleActionId { .. }));
+    assert_eq!(b_restored.state, b_snap);
+
+    // Own restored prompt_id still resolves cleanly!
+    b_restored
+        .respond_reaction(ReactionChoice { prompt_id: bid, choice_index: Some(0) }, &mut sink)
+        .unwrap();
+}
