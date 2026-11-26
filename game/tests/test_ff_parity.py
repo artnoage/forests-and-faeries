@@ -151,6 +151,42 @@ def test_current_web_replay_preserves_selected_hero_level():
     assert replay.remaining_replay_draws() == 0
 
 
+def test_v19_hidden_monster_game_replays_from_recorded_draws():
+    """Verify reed_lock/l3_the_final_passage_v3 (seed 5, where Goblin Minion 1 hides)
+    redacts hidden-monster turns on the wire and replays verbatim from recorded_draws."""
+    level = _all_levels()[('reed_lock', 'l3_the_final_passage_v3')]
+    live = FFArena(level, seed=5)
+    initial = live.wire(live.state())
+    steps = [('start', live.wire(live.start()))]
+    saw_hidden_turn = False
+    all_goblins = {p['id'] for p in level.suggested_placements() if p['id'].startswith('goblin')}
+    for _ in range(60):
+        if live.finished:
+            break
+        w = live.wire(live.advance(autoplay=True))
+        steps.append(('advance', w))
+        # Whenever a goblin is hidden during the battle, verify its unit id is absent from wire.
+        if not live.finished:
+            visible_ids = {u['id'] for u in w['units']}
+            hidden_ids = all_goblins - visible_ids
+            if hidden_ids:
+                saw_hidden_turn = True
+                wire_text = json.dumps(w)
+                for hid in hidden_ids:
+                    assert hid not in wire_text, f'hidden id {hid} leaked into wire'
+                for rec in w['timeline']:
+                    assert all(d.get('who') not in hidden_ids and d.get('who') != '' for d in rec.get('draws', []))
+    assert saw_hidden_turn, 'expected at least one hidden-monster step in reed_lock seed 5'
+
+    draws = live.recorded_draws
+    replay = FFArena(level, replay_draws=draws, replay_version=ember_rs.WEB_REPLAY_VERSION)
+    assert_full_wire_parity('setup', replay.wire(replay.state()), initial)
+    for idx, (op, expected) in enumerate(steps):
+        got = replay.wire(replay.start() if op == 'start' else replay.advance(autoplay=True))
+        assert_full_wire_parity(f'step[{idx}]({op})', got, expected)
+    assert replay.remaining_replay_draws() == 0
+
+
 def test_replay_difficulty_comes_from_the_recorded_spec():
     live = _all_levels()[('crypt', 'ghoul_pack')]
     current = live.preset['difficulty']
@@ -274,19 +310,10 @@ def test_web_game_free_play_matches_batch_env_lockstep(encounter: str, preset: s
 
     for seed in (1, 2, 3):
         game = FFArena(level, seed=seed)
-        st = game.start()
-        web_draws = [_draw_tuple(d) for d in st['initiative_draws']]
-        seen_rec_ids: set[int] = set()
-
-        def harvest(state_dict: dict) -> None:
-            for rec in state_dict['timeline']:
-                if rec['id'] not in seen_rec_ids:
-                    seen_rec_ids.add(rec['id'])
-                    web_draws.extend(_draw_tuple(d) for d in rec['draws'])
-
-        harvest(st)
+        game.start()
         while not game.finished:
-            harvest(game.advance(autoplay=True))
+            game.advance(autoplay=True)
+        web_draws = [_draw_tuple(d) for d in game.recorded_draws]
         final_state = game.state()
         web_hp = {u['id']: u['hp'] for u in final_state['units']}
 
@@ -321,3 +348,137 @@ def test_web_game_free_play_matches_batch_env_lockstep(encounter: str, preset: s
         assert final_state['round'] + 1 == int(info['round'][0]), (
             encounter, preset, seed, final_state['round'], int(info['round'][0])
         )
+
+
+def _token_mentioned(text: str, needle: str, visible_needles: list[str]) -> bool:
+    if not needle:
+        return False
+    tok = lambda ch: ch.isalnum() or ch in ('_', '-')
+    pos = 0
+    while True:
+        idx = text.find(needle, pos)
+        if idx < 0:
+            return False
+        end = idx + len(needle)
+        left_ok = idx == 0 or not tok(text[idx - 1])
+        right_ok = end == len(text) or not tok(text[end])
+        if left_ok and right_ok:
+            shadowed = False
+            for vis in visible_needles:
+                if len(vis) <= len(needle) or needle not in vis:
+                    continue
+                vpos = 0
+                while True:
+                    vidx = text.find(vis, vpos)
+                    if vidx < 0:
+                        break
+                    vend = vidx + len(vis)
+                    if vidx <= idx and end <= vend:
+                        vl = vidx == 0 or not tok(text[vidx - 1])
+                        vr = vend == len(text) or not tok(text[vend])
+                        if vl and vr:
+                            shadowed = True
+                            break
+                    vpos = vidx + 1
+                if shadowed:
+                    break
+            if not shadowed:
+                return True
+        pos = idx + 1
+
+
+def test_v19_hidden_monsters_never_leak_on_wire_across_all_levels():
+    """Play hidden-monster games across every public level (including bell_court seed 23
+    and split_kiln/l3_the_shattered_glaze_v3 seed 10) and grep the wire for any hidden
+    unit's id or display name, plus verify hidden turns send blank menu/resources."""
+    levels = catalogue.load(include_private=False)
+    hiding_contents = {'goblin_minion', 'goblin_warrior', 'goblin_boss', 'shadow'}
+    targeted_seeds: dict[tuple[str, str], list[int]] = {
+        ('bell_court', 'l1_the_side_gate_v3'): [23, 5],
+        ('split_kiln', 'l3_the_shattered_glaze_v3'): [10, 5],
+        ('reed_lock', 'l3_the_final_passage_v3'): [5, 1],
+    }
+    cases: list[tuple[tuple[str, str], list[int]]] = []
+    for key, level in sorted(levels.items()):
+        roster = set(level.preset.get('roster') or [])
+        if key in targeted_seeds:
+            cases.append((key, targeted_seeds[key]))
+        elif roster & hiding_contents:
+            cases.append((key, [1, 5, 10]))
+        else:
+            cases.append((key, [1]))
+
+    blank_res = {'action': 0, 'bonus_action': 0, 'reaction': 0, 'movement': 0}
+    hidden_steps_checked = 0
+    hidden_turns_checked = 0
+
+    for key, seeds in cases:
+        level = levels[key]
+        for seed in seeds:
+            game = FFArena(level, seed=seed)
+            init_wire = game.wire(game.state())
+            roster_monsters = {
+                u['id']: u['name']
+                for u in init_wire['setup']['roster']
+                if u['team'] != 'heroes'
+            }
+            w = game.wire(game.start())
+            prev_hidden: set[str] = set()
+            prev_log_id = max((e['id'] for e in w['log']), default=0)
+
+            for step in range(80):
+                if w.get('phase') == 'finished' or game.finished:
+                    break
+                visible_ids = {u['id'] for u in w['units'] if u['team'] != 'heroes'}
+                hidden_now = set(roster_monsters) - visible_ids
+                visible_names = [u['name'] for u in w['units']] + [u['id'] for u in w['units']]
+
+                if hidden_now:
+                    hidden_steps_checked += 1
+                    # Leak E: whenever turn_id is null on a live turn, menu & resources must be blank.
+                    if w['turn_id'] is None:
+                        hidden_turns_checked += 1
+                        assert w['actions'] == [], f'{key} s{seed} step {step}: hidden turn leaked actions'
+                        assert w['action_defs'] == [], f'{key} s{seed} step {step}: hidden turn leaked action_defs'
+                        assert w['resources'] == blank_res, f'{key} s{seed} step {step}: hidden turn leaked resources={w["resources"]}'
+
+                    # Dynamic wire payload (everything except historical `log` and static
+                    # catalogue `level` metadata) must contain NO hidden id or display name.
+                    non_log = {k: v for k, v in w.items() if k not in ('log', 'level')}
+                    body_str = json.dumps(non_log, sort_keys=True)
+                    new_logs = [e['text'] for e in w['log'] if e['id'] > prev_log_id]
+                    for hid in sorted(hidden_now):
+                        hname = roster_monsters[hid]
+                        assert hid not in body_str, f'{key} s{seed} step {step}: hidden id {hid} leaked in wire'
+                        assert not _token_mentioned(body_str, hname, visible_names), (
+                            f'{key} s{seed} step {step}: hidden name {hname!r} leaked in wire'
+                        )
+                        if hid in prev_hidden:
+                            for line in new_logs:
+                                assert hid not in line, f'{key} s{seed} step {step}: hidden id {hid} leaked in log: {line}'
+                                assert not _token_mentioned(line, hname, visible_names), (
+                                    f'{key} s{seed} step {step}: hidden name {hname!r} leaked in log: {line}'
+                                )
+                        else:
+                            # Monster transitioned visible -> hidden during this turn: once it
+                            # slips out of sight, no subsequent line on this turn may name it,
+                            # and its Stealth roll total ("vs DC 15") must never appear.
+                            slipped = False
+                            for line in new_logs:
+                                if _token_mentioned(line, hname, visible_names):
+                                    assert 'vs DC 15' not in line, (
+                                        f'{key} s{seed} step {step}: Hide leaked Stealth roll for {hname!r}: {line}'
+                                    )
+                                    if slipped:
+                                        raise AssertionError(
+                                            f'{key} s{seed} step {step}: {hname!r} named after slipping out of sight: {line}'
+                                        )
+                                    if 'slips out of sight.' in line:
+                                        slipped = True
+
+                prev_hidden = hidden_now
+                prev_log_id = max((e['id'] for e in w['log']), default=prev_log_id)
+                w = game.wire(game.advance(autoplay=True))
+
+    assert hidden_steps_checked > 0, 'sweep must exercise hidden-monster steps across levels'
+    assert hidden_turns_checked > 0, 'sweep must exercise hidden-monster turns (Leak E)'

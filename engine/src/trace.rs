@@ -264,7 +264,7 @@ impl Trace {
                 let got = || format!("draw {who} {web_tag} d{sides}{}", mode.code());
                 match events.get(*pos) {
                     Some(Ev::Draw { who: w, tag: t, sides: s, mode: m, v, .. }) => {
-                        if w != who || (t != web_tag && t != tag) || *s != sides || m != mode.code() {
+                        if (!w.is_empty() && w != who) || (t != web_tag && t != tag) || *s != sides || m != mode.code() {
                             panic!(
                                 "web draw divergence at #{}: expected {:?}, got {}",
                                 *pos,

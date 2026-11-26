@@ -63,6 +63,10 @@ class FFArena:
     def initiative_draws(self):
         return self.state()['initiative_draws']
 
+    @property
+    def recorded_draws(self):
+        return self._game.recorded_draws()
+
     def remaining_replay_draws(self):
         return self._game.remaining_replay_draws()
 

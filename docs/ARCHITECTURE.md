@@ -119,3 +119,12 @@ All seven mausoleum room layouts (`mausoleum-{hall,rotunda,chapel,forecourt,cryp
 
 3. **Disagreement Protocol:**
    - `natural20` remains the sole rules authority. If any seeded encounter or off-policy trace diverges between `ember-rs` and `FFArena` (including the in-progress *Command* scoring edge case), we **do not alter rules unilaterally** — we log the exact encounter, seed, step index, and diff in `communication.md` for Claude's review.
+
+---
+
+## 5. Listed Deviations from Natural20 (SRD 5.2.1)
+
+1. **Web v19+ human empty-square attacks spend Sap and fire `AttackResolved` (SRD 5.2.1):**
+   - **Rule & SRD citation:** Under SRD 5.2.1 (*Making an Attack*, *Sap*, *Invisibility*, *Sanctuary*), attacking a guessed square still makes an attack roll, so it spends an active *Sap* Disadvantage mark and ends *Invisibility* / *Sanctuary* just as an attack against an unseen occupant does.
+   - **Departure from Natural20:** Natural20's `AttackAction._resolve_blind_attack` only clears *Sap* and triggers `attack_resolved` on an occupied square, which would leak occupancy on the wire when an invisible, Sanctuary-warded, or sapped hero attacks a square. The dice roll itself stays unchanged (exact Natural20 `1d20` Disadvantage draw); square-attack misses omit the roll and dice from the wire altogether so target-side modifiers stay faithful without leaking.
+   - **Scope & replay-check treatment:** Gated strictly to `Fight::web_human_blind_attack`, which defaults to `false` and is enabled only transiently inside `WebArena::perform` for `replay_version >= 19`. Batch environments (`BatchEnv`), built-in AI turns (`WebArena::advance`), old web recordings (`replay_version <= 18`), and the Natural20 oracle replay check (`oracle/`) all run with `web_human_blind_attack = false`, preserving exact Natural20 parity.

@@ -1203,6 +1203,11 @@ impl WebGame {
         self.with_game(|g| Ok(g.remaining_replay_draws()))
     }
 
+    fn recorded_draws<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let val = self.with_game(|g| Ok(serde_json::Value::Array(g.recorded_draws())))?;
+        json_to_py(py, &val)
+    }
+
     fn state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let val = self.with_game(|g| Ok(g.state()))?;
         json_to_py(py, &val)

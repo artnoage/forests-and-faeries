@@ -140,6 +140,7 @@ pub enum WebEv {
         tgt_pos: Pos,
         dmg: i32,
         dt: Dmg,
+        unseen: bool,
     },
     SecondWind {
         u: usize,

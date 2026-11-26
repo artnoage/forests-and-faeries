@@ -659,6 +659,11 @@ pub struct Fight {
     pub notes: Notes,
     /// Optional presentation event sink (`Some` only in `present::WebArena`).
     pub web_events: Option<Vec<crate::web_events::WebEv>>,
+    /// Web replay v19+ human square-attack flag (set transiently around a
+    /// human-chosen action in `WebArena::perform` only). Keeps batch trainer,
+    /// built-in AI, autoplay parity, and old recordings (<= 18) identical to
+    /// Natural20.
+    pub(crate) web_human_blind_attack: bool,
 }
 
 pub fn team_name(team: u8) -> &'static str {
@@ -818,6 +823,7 @@ impl Fight {
             move_cache: Default::default(),
             notes: Notes::default(),
             web_events: None,
+            web_human_blind_attack: false,
         })
     }
 
@@ -2159,6 +2165,27 @@ impl Fight {
         (flags, note)
     }
 
+    /// Emit `WebEv::BlindMiss` from one shared function for both empty-square
+    /// misses and missed attacks against an unseen occupant, guaranteeing the
+    /// same weapon display name without leaking occupancy or roll details.
+    fn emit_blind_miss(&mut self, src: usize, atk: usize, square: Pos) {
+        if self.web_events.is_none() {
+            return;
+        }
+        let t = self.units[src].t;
+        let def: &'static AttackDef = &t.attacks[atk];
+        let attack_name = crate::web_events::pc_or_npc_attack_name(t.pc, def.name);
+        let sp = self.units[src].pos;
+        self.emit_web(crate::web_events::WebEv::BlindMiss {
+            src,
+            src_pos: sp,
+            square,
+            attack_name,
+            ranged_weapon: def.ranged,
+            atk_roll_fmt: None,
+        });
+    }
+
     fn attack_modifiers(&self, src: usize, tgt: usize, wk: WeaponKind, mut on_adv: impl FnMut(&'static str),
                         mut on_dis: impl FnMut(&'static str)) -> (bool, bool) {
         let (mut advantageous, mut disadvantageous) = (false, false);
@@ -2438,7 +2465,6 @@ impl Fight {
         let mut force_miss = false;
         let mut shield_cast = None;
         let mut atk_roll_fmt: Option<String> = None;
-        let mut atk_roll_fmt_blind: Option<String> = None;
         // the roll had Advantage and no Disadvantage (`advantage_mod > 0`):
         // `condition: advantage` riders apply
         let mut had_adv = false;
@@ -2516,7 +2542,8 @@ impl Fight {
             count = dmg.count;
             base = if dmg.sides > 0 { self.roll_dice(src, "damage", count, dmg.sides) } else { vec![dmg.count] };
         } else {
-            let ((adv, dis), reasons) = self.attack_roll_modifiers(src, tgt, self.weapon_kind(src, def));
+            let wk = self.weapon_kind(src, def);
+            let ((adv, dis), reasons) = self.attack_roll_modifiers(src, tgt, wk);
             had_adv = adv && !dis;
             // the real attack roll spends a Sap marker (`consume_sap_disadvantage`)
             if self.units[src].sap.is_some() {
@@ -2557,7 +2584,6 @@ impl Fight {
                 force_miss = blocks;
                 shield_cast = Some((at_level, total, ac));
             }
-            atk_roll_fmt_blind = if blind_occupant == Some(tgt) { atk_roll_fmt.clone() } else { None };
             self.describe_attack_cover(&mut atk_roll_fmt, tgt, ac, shield_cast.is_some());
             let mut c = nat20 || (t.improved_critical && face >= 19);
             let critical_roll = c;
@@ -2620,16 +2646,8 @@ impl Fight {
                     dmg_roll_fmt: None,
                 });
             } else {
-                let sp = self.units[src].pos;
                 let tp = self.units[tgt].pos;
-                self.emit_web(crate::web_events::WebEv::BlindMiss {
-                    src,
-                    src_pos: sp,
-                    square: tp,
-                    attack_name: atk_name,
-                    ranged_weapon: def.ranged,
-                    atk_roll_fmt: atk_roll_fmt_blind,
-                });
+                self.emit_blind_miss(src, atk, tp);
             }
             self.spend_attack(src, atk, reaction, cleave);
             if let Some(m) = graze {
@@ -2641,8 +2659,15 @@ impl Fight {
                     let applied = self.take_damage(tgt, m, def.damage_type, false, None, None).unwrap_or(0).max(0);
                     if let (Some(i), Some(events)) = (index, &mut self.web_events) {
                         let current = self.rule_version >= 6;
-                        let effect = crate::web_events::WebEv::Graze { src, tgt, src_pos: sp2, tgt_pos: tp2,
-                            dmg: if current { applied } else { m }, dt: def.damage_type };
+                        let effect = crate::web_events::WebEv::Graze {
+                            src,
+                            tgt,
+                            src_pos: sp2,
+                            tgt_pos: tp2,
+                            dmg: if current { applied } else { m },
+                            dt: def.damage_type,
+                            unseen: blind_occupant == Some(tgt),
+                        };
                         if current { events.insert(i, effect); } else { events.push(effect); }
                     }
                 }
@@ -2984,8 +3009,14 @@ impl Fight {
     /// `AttackAction._resolve_blind_attack` + commit: a creature at the
     /// square that the attacker can't see is attacked normally (the unseen
     /// target gives Disadvantage); otherwise the attack automatically misses
-    /// after its roll (Disadvantage, no Bless, no Sap spent) and is committed
-    /// as a `blind_miss` (`consume_resource`).
+    /// after its roll and is committed as a `blind_miss` (`consume_resource`).
+    ///
+    /// On web v19+ human square attacks (`web_human_blind_attack`, enabled only
+    /// transiently inside `WebArena::perform`), an empty-square attack also
+    /// spends Sap and fires `HookEv::AttackResolved` (Invisibility / Sanctuary
+    /// break) without changing the Natural20 `1d20` Disadvantage draw, so
+    /// invisible, Sanctuary-warded, and sapped heroes get identical post-state
+    /// on occupied and empty squares.
     fn do_blind_attack(&mut self, src: usize, atk: usize, square: Pos) {
         self.notes.blind_attacks += 1;
         let occupant = (0..self.units.len())
@@ -2994,30 +3025,17 @@ impl Fight {
             self.do_attack_inner(src, atk, o, false, false, Some(o));
             return;
         }
-        let (_face, dv) = self.roll_d20_raw(src, "attack", RollMode::Disadvantage);
-        // the `blind_miss` item has the attack roll and no target
         let def: &'static AttackDef = &self.units[src].t.attacks[atk];
-        if self.web_events.is_some() {
-            let (to_hit, _, _) = self.attack_numbers(src, atk);
-            let mod_val = plus_string_modifier(to_hit);
-            let sp = self.units[src].pos;
-            let mut reasons = String::from(" [Disadvantage from unseen target");
-            if (def.ranged || def.thrown) && self.square_distance(sp, square) * 5 > def.range {
-                reasons.push_str(", long range");
-            }
-            reasons.push(']');
-            let atk_roll_fmt = Some(
-                crate::web_events::fmt_d20_roll(dv, RollMode::Disadvantage, mod_val, None) + &reasons,
-            );
-            self.emit_web(crate::web_events::WebEv::BlindMiss {
-                src,
-                src_pos: sp,
-                square,
-                attack_name: def.name,
-                ranged_weapon: def.ranged,
-                atk_roll_fmt,
-            });
+        if self.web_human_blind_attack && self.units[src].sap.is_some() {
+            self.units[src].sap = None;
+            self.notes.sap_spent += 1;
         }
+        let (_face, _dv) = self.roll_d20_raw(src, "attack", RollMode::Disadvantage);
+        if self.web_human_blind_attack {
+            self.resolve_trigger(src, HookEv::AttackResolved);
+        }
+        // the `blind_miss` item has the attack roll and no target
+        self.emit_blind_miss(src, atk, square);
         self.note_attack_roll(src, None, def, false);
         self.consume_attack(src, atk, false);
     }
