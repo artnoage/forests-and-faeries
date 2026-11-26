@@ -88,7 +88,7 @@
    "party": [
     "guy_l2",
     "elion_l2",
-    "curogana_l2"
+    "vesper_l2"
    ],
    "roster": [
     "dryad",
@@ -106,7 +106,7 @@
      1,
      5
     ],
-    "curogana_l2": [
+    "vesper_l2": [
      1,
      6
     ],
@@ -270,7 +270,7 @@
    "party": [
     "guy",
     "elion",
-    "curogana"
+    "vesper"
    ],
    "roster": [
     "will_o_wisp",
@@ -288,7 +288,7 @@
      1,
      5
     ],
-    "curogana": [
+    "vesper": [
      1,
      6
     ],

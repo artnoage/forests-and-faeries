@@ -15,7 +15,7 @@
    "party": [
     "guy_l2",
     "elion_l2",
-    "curogana_l2"
+    "vesper_l2"
    ],
    "roster": [
     "harpy",
@@ -34,7 +34,7 @@
      4,
      5
     ],
-    "curogana_l2": [
+    "vesper_l2": [
      2,
      7
     ],
@@ -111,7 +111,7 @@
    "party": [
     "chruna",
     "elion",
-    "curogana"
+    "vesper"
    ],
    "roster": [
     "green_hag",
@@ -130,7 +130,7 @@
      4,
      5
     ],
-    "curogana": [
+    "vesper": [
      2,
      7
     ],

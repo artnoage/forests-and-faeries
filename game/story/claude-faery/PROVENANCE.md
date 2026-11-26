@@ -4,6 +4,12 @@ Every image, voice, music and video file in `media/` was generated for this stor
 
 Story, script and narration text: written by Claude for this game (original setting; monsters and heroes are the game's own SRD 5.2.1 content). Scene stills that show the recurring cast were painted with reference sheets of the cast generated the same way (listed at the end); clips are image-to-video from the scene's own still.
 
+## Revisions
+
+- 2026-11-26: Vesper, the bard, takes the place of Curogana, the sorcerer. The six narration lines that named her were rewritten for him and only those were re-recorded (`media/voice/c1b.mp3`, `c3b.mp3`, `c6b.mp3`, `c7b.mp3`, `c7c.mp3`, `c8b.mp3`), with the same model (gemini-3.8-flash-tts), narrator voice (Schedar) and style text as every other line, re-encoded the same way; 7 calls (one lost to a connection reset), 0.027 EUR. Every other file is unchanged. The stills and clips were not regenerated, so the pictures of the party (p2, p3, c1b, c3b, c4a, c4b, c6b, c6c, c7b, c7c, c8b, e2) still show Curogana; their prompts below are the ones they were made with.
+
+## Files
+
 | File | Service | Model | Settings | Date | SHA-256 (first 16) |
 |---|---|---|---|---|---|
 | `media/clips/c1a.mp4` | Google Gemini API | gemini-omni-1.2-flash | 8 s, 720p, image-to-video from still c1a | 2026-11-25 | `74fe6bf6b86820d8` |
@@ -71,13 +77,13 @@ Story, script and narration text: written by Claude for this game (original sett
 | `media/stills/p2.webp` | OpenAI API | gpt-image-2 | 1536x1024, quality medium, cast sheets: ada, guy, elion, curogana, mara, chruna | 2026-11-25 | `4fbf8c4136120c21` |
 | `media/stills/p3.webp` | OpenAI API | gpt-image-2 | 1536x1024, quality medium, cast sheets: guy, elion, curogana, mara, chruna | 2026-11-25 | `a4b9337e74658428` |
 | `media/voice/c1a.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `a85ab4c3550f1a04` |
-| `media/voice/c1b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `9bcf82ea7768487c` |
+| `media/voice/c1b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-26 | `e06a91292dbc87a3` |
 | `media/voice/c1c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `635cbf1dfed217f8` |
 | `media/voice/c2a.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `6079198c7cd15dc3` |
 | `media/voice/c2b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `18cc9bef60de8e91` |
 | `media/voice/c2c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `02c0fefb3083885a` |
 | `media/voice/c3a.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `6067d828ae5e008e` |
-| `media/voice/c3b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `a698075b1e4a0ab3` |
+| `media/voice/c3b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-26 | `f1f06ba5fbf411e3` |
 | `media/voice/c3c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `e8c3cf028f14d8cc` |
 | `media/voice/c4a.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `bd68c0c1ecfdd96e` |
 | `media/voice/c4b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `00b8421359c765d4` |
@@ -86,13 +92,13 @@ Story, script and narration text: written by Claude for this game (original sett
 | `media/voice/c5b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `c0f6fcf94fa44fbf` |
 | `media/voice/c5c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `b69ef2aeac0dcc16` |
 | `media/voice/c6a.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `0ebc0c0dbccff678` |
-| `media/voice/c6b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `205682f3545d7e52` |
+| `media/voice/c6b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-26 | `1ad61163eece4279` |
 | `media/voice/c6c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `a247bf1bca25324d` |
 | `media/voice/c7a.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `0354a20e52d1dd28` |
-| `media/voice/c7b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `bb2cee2fdcbda6c5` |
-| `media/voice/c7c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `9b9542609f9bf2ef` |
+| `media/voice/c7b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-26 | `89c07f6d835a48b7` |
+| `media/voice/c7c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-26 | `b627f2935e5b94ae` |
 | `media/voice/c8a.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `3f6f5b549a786d45` |
-| `media/voice/c8b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `284f55f9fe178968` |
+| `media/voice/c8b.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-26 | `61044a49b7c57942` |
 | `media/voice/c8c.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `bf744019515bd872` |
 | `media/voice/e1.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `6462074c8df3cc99` |
 | `media/voice/e2.mp3` | Google Gemini API | gemini-3.8-flash-tts | voice Schedar | 2026-11-25 | `b132aa8000063350` |
@@ -372,7 +378,7 @@ Text: Day one. The stream led us to a ring of violet mushrooms taller than a man
 
 Style: calm, warm and unhurried: a grey-haired healer reading his own account of a strange journey aloud by candlelight, gentle, with quiet wonder and a little dry humour, never theatrical
 
-Text: “No one crosses the ring without a gift,” they said. Guy offered bread. They answered with arrows. Guy, Curogana and I drew.
+Text: “No one crosses the ring without a gift,” they said. Guy offered bread, and Vesper a song. They answered with arrows. Guy, Vesper and I drew.
 
 ### `media/voice/c1c.mp3`
 
@@ -408,7 +414,7 @@ Text: Day four. In a glade with a broken maypole the satyrs were dancing, and ha
 
 Style: calm, warm and unhurried: a grey-haired healer reading his own account of a strange journey aloud by candlelight, gentle, with quiet wonder and a little dry humour, never theatrical
 
-Text: When they saw us they changed the tune, and the giant wasps woke in the maypole. Guy, Curogana and I stood back to back.
+Text: When they saw us they changed the tune, and the giant wasps woke in the maypole. Guy, Vesper and I stood back to back, Vesper playing against their tune.
 
 ### `media/voice/c3c.mp3`
 
@@ -462,7 +468,7 @@ Text: Day eleven. The fen begins where the trees drown. Over the hot pools, harp
 
 Style: calm, warm and unhurried: a grey-haired healer reading his own account of a strange journey aloud by candlelight, gentle, with quiet wonder and a little dry humour, never theatrical
 
-Text: It was the Elder Oak's song, Tansy said, sung wrong. Hear it and you want to walk into the water. Guy, Curogana and I stopped our ears as best we could.
+Text: It was the Elder Oak's song, Tansy said, sung wrong. Hear it and you want to walk into the water. Guy and I stopped our ears; Vesper sang over it, loudly and badly, on purpose.
 
 ### `media/voice/c6c.mp3`
 
@@ -480,13 +486,13 @@ Text: Day thirteen. Every traveller who follows the lights of the mire is lost. 
 
 Style: calm, warm and unhurried: a grey-haired healer reading his own account of a strange journey aloud by candlelight, gentle, with quiet wonder and a little dry humour, never theatrical
 
-Text: The wisps feed on the dying. Tansy hid in my hood. I told Guy and Curogana to keep close to me and keep standing, whatever happened.
+Text: The wisps feed on the dying. Tansy hid in my hood. I told Guy and Vesper to keep close to me and keep standing, whatever happened.
 
 ### `media/voice/c7c.mp3`
 
 Style: calm, warm and unhurried: a grey-haired healer reading his own account of a strange journey aloud by candlelight, gentle, with quiet wonder and a little dry humour, never theatrical
 
-Text: Behind the lights they had chained a dryad in black thorn, to feed the sisters' fire. Curogana burned the thorns away. The dryad showed us the last path.
+Text: Behind the lights they had chained a dryad in black thorn, to feed the sisters' fire. Vesper sang one high, ringing note, and the thorns shattered. The dryad showed us the last path.
 
 ### `media/voice/c8a.mp3`
 
@@ -498,7 +504,7 @@ Text: Day fourteen. The Elder Oak stands in black water at the heart of the fen.
 
 Style: calm, warm and unhurried: a grey-haired healer reading his own account of a strange journey aloud by candlelight, gentle, with quiet wonder and a little dry humour, never theatrical
 
-Text: The green one smiled at us. The sea sisters only looked, and their look alone can stop a heart. Chruna, Curogana and I went in together.
+Text: The green one smiled at us. The sea sisters only looked, and their look alone can stop a heart. Vesper laughed in their faces, and Chruna, Vesper and I went in together.
 
 ### `media/voice/c8c.mp3`
 
