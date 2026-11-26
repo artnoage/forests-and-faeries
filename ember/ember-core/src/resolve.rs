@@ -4,6 +4,8 @@
 //! executes through one unified [`Step`] interpreter, preserving exact rule-18
 //! dice order without version switches.
 
+use std::sync::Arc;
+
 use smallvec::SmallVec;
 
 use crate::effect::{EffectExpiry, EffectKind};
@@ -15,13 +17,21 @@ use crate::interrupt::{
 use crate::rng::DiceSource;
 use crate::step::{
     AttackKind, BranchPredicate, DcExpr, MoveMode, ReactionWindowKind, ResourceKind, SpecialKind,
-    Step,
+    Step, TargetMode,
 };
 use crate::types::{
     ability_mod, Ability, AbilityId, CoreError, Dice, Dmg, FightOutcome, Metamagic, Pos,
     ReactionMode, RollMode, SpellPayment, UnitFlags, UnitId,
 };
 use crate::view::ActionPayload;
+
+#[inline]
+fn first_target(ctx: &ResolutionCtx) -> Result<UnitId, CoreError> {
+    ctx.targets
+        .first()
+        .copied()
+        .ok_or_else(|| CoreError::UnknownAction("action requires at least one target".into()))
+}
 
 /// Per-action scratchpad threaded through the canonical [`Step`] interpreter.
 #[derive(Clone, Debug, Default)]
@@ -266,13 +276,19 @@ impl Fight {
             }
         }
         for (src, dc) in sources {
-            let bit = 1u32 << src.0;
-            if self.unit(u).stench_immune_mask & bit != 0 {
+            if self.state.effects.has_kind_from(u, src, EffectKind::StenchImmunity) {
                 continue;
             }
             let total = self.save_throw(u, Ability::Con, false, 0, false, dice, sink)?;
             if total >= dc as i32 {
-                self.unit_mut(u).stench_immune_mask |= bit;
+                self.state.effects.add(
+                    u,
+                    src,
+                    EffectKind::StenchImmunity,
+                    EffectExpiry::Manual,
+                    false,
+                    None,
+                );
             } else {
                 self.state.effects.add(
                     u,
@@ -312,6 +328,7 @@ impl Fight {
         unit.movement = speed;
         unit.champion_movement = 0;
         unit.action_surge_used = false;
+        unit.slot_spent_this_turn = false;
         unit.two_weapon = false;
         unit.ma_started = false;
         unit.ma_combo_used = [0; 8];
@@ -458,8 +475,8 @@ impl Fight {
         dice: &mut D,
         sink: &mut S,
     ) -> Result<(), CoreError> {
-        let steps = self.db.ability(ab_id).steps.clone();
-        self.run_steps(&steps, ctx, dice, sink)
+        let db = Arc::clone(&self.db);
+        self.run_steps(&db.ability(ab_id).steps, ctx, dice, sink)
     }
 
     fn run_steps<D: DiceSource, S: EventSink>(
@@ -479,7 +496,7 @@ impl Fight {
                     }
                 }
                 Step::AttackRoll { kind, range_ft, melee_type, bonus_override, tag } => {
-                    let target = ctx.targets[0];
+                    let target = first_target(ctx)?;
                     self.step_attack_roll(
                         ctx,
                         target,
@@ -533,7 +550,7 @@ impl Fight {
                             ctx.saved_per_target.push(passed);
                         }
                     } else {
-                        let tgt = ctx.targets[0];
+                        let tgt = first_target(ctx)?;
                         let cover = if *ability == Ability::Dex {
                             self.cover_bonus_from(self.unit(ctx.actor).pos, tgt)
                         } else {
@@ -624,7 +641,7 @@ impl Fight {
                     if *graze_ability_mod {
                         if let Some(m) = ctx.weapon_graze_mod {
                             if m > 0 {
-                                let tgt = ctx.targets[0];
+                                let tgt = first_target(ctx)?;
                                 let dt = ctx
                                     .damage_slots
                                     .first()
@@ -653,7 +670,7 @@ impl Fight {
                             self.take_damage(tgt, amt, dt, false, Some(&mut hs), Some(ctx.actor), dice, sink)?;
                         }
                     } else {
-                        let tgt = ctx.targets[0];
+                        let tgt = first_target(ctx)?;
                         let has_combined = ctx.damage_slots.iter().skip(1).any(|s| s.combine_with_base);
                         let mut hs = HitState { kill_at_zero: *kill_at_zero, ..Default::default() };
                         if *slot == 0 && has_combined {
@@ -680,7 +697,7 @@ impl Fight {
                     unless_immune_poisoned,
                     unless_immune_paralyzed,
                 } => {
-                    let tgt = if *to_self { ctx.actor } else { ctx.targets[0] };
+                    let tgt = if *to_self { ctx.actor } else { first_target(ctx)? };
                     if self.unit(tgt).flags.is_dead() {
                         continue;
                     }
@@ -727,7 +744,7 @@ impl Fight {
                     }
                 }
                 Step::RemoveEffect { kind, to_self } => {
-                    let tgt = if *to_self { ctx.actor } else { ctx.targets[0] };
+                    let tgt = if *to_self { ctx.actor } else { first_target(ctx)? };
                     self.state.effects.remove_kind(tgt, *kind);
                     self.refresh_flags(tgt);
                 }
@@ -795,10 +812,10 @@ impl Fight {
                         BranchPredicate::Hit => ctx.hit,
                         BranchPredicate::Miss => !ctx.hit,
                         BranchPredicate::TargetNotUndead => {
-                            !self.template_of(ctx.targets[0]).undead
+                            !self.template_of(first_target(ctx)?).undead
                         }
                         BranchPredicate::TargetNotUndeadAndNotElf => {
-                            let t = self.template_of(ctx.targets[0]);
+                            let t = self.template_of(first_target(ctx)?);
                             !t.undead && !t.elf
                         }
                         BranchPredicate::SaveFailed => ctx.last_save_failed,
@@ -853,9 +870,10 @@ impl Fight {
             ..Default::default()
         };
 
-        // Run compiled step program: AttackRoll -> RollDamage(base) -> Branch(Hit -> riders/saves/damage, Miss -> Graze)
-        let steps = self.db.ability(ab_id).steps.clone();
-        // Execute prefix steps (AttackRoll + base RollDamage)
+        // Run compiled step program without cloning `Vec<Step>`:
+        // AttackRoll -> RollDamage(base) -> Branch(Hit -> riders/saves/damage, Miss -> Graze)
+        let db = Arc::clone(&self.db);
+        let steps = &db.ability(ab_id).steps;
         let mut idx = 0;
         while idx < steps.len() {
             if matches!(steps[idx], Step::Branch { predicate: BranchPredicate::Hit, .. }) {
@@ -863,23 +881,6 @@ impl Fight {
             }
             self.run_steps(&steps[idx..idx + 1], &mut ctx, dice, sink)?;
             idx += 1;
-        }
-
-        // reaction_scan (sets pools_init on conscious PC casters with reaction on hit)
-        if ctx.hit {
-            for j in 0..self.state.units.len() {
-                let u = UnitId(j as u8);
-                if u == src || u == tgt {
-                    continue;
-                }
-                if self.template_of(u).pc
-                    && self.template_of(u).caster.is_some()
-                    && self.unit(u).flags.is_conscious()
-                    && self.unit(u).has_reaction()
-                {
-                    self.unit_mut(u).pools_init = true;
-                }
-            }
         }
 
         if !ctx.hit {
@@ -1138,19 +1139,10 @@ impl Fight {
         sink: &mut S,
     ) -> Result<(), CoreError> {
         let ab_id = self.require_ability(spell_key)?;
-        if self.template_of(src).caster.is_some() {
-            self.unit_mut(src).pools_init = true;
-        }
-        // `run_counterspell_window`: marks every other caster's pools_init = true.
-        for o_idx in 0..self.state.units.len() {
-            let o = UnitId(o_idx as u8);
-            if o != src && self.template_of(o).caster.is_some() {
-                self.unit_mut(o).pools_init = true;
-            }
-        }
+        let db = Arc::clone(&self.db);
+        let ab = db.ability(ab_id);
 
         let (base_level, is_sorc, free_pool_idx) = {
-            let ab = self.db.ability(ab_id);
             let grant = self
                 .template_of(src)
                 .caster
@@ -1174,15 +1166,22 @@ impl Fight {
             self.state.heightened = Some((src, false));
         }
 
-        // Resolve spell via compiled steps
-        if spell_key == "magic_missile" {
-            let steps = self.db.ability(ab_id).steps.clone();
-            // Roll all darts first (collecting damage per dart), then apply in order (matches N20)
-            let mut dart_rolls: SmallVec<[(UnitId, i32); 8]> = SmallVec::new();
+        // Data-driven dispatch on `TargetMode` (zero hardcoded spell-name branches!)
+        if matches!(ab.targeting, TargetMode::MultiDart { .. }) {
+            if targets.is_empty() {
+                self.state.heightened = None;
+                return Err(CoreError::UnknownAction(format!(
+                    "multi-dart spell {spell_key} requires at least one target"
+                )));
+            }
+            let steps = &ab.steps;
+            let split_at = steps
+                .iter()
+                .position(|s| matches!(s, Step::ApplyDamage { .. }))
+                .unwrap_or(steps.len());
+            // Roll all dart steps first, then spend cost, then apply dart damage in order.
+            let mut dart_rolls: SmallVec<[(UnitId, i32, Dmg); 8]> = SmallVec::new();
             for &t in targets {
-                if self.template_of(t).pc {
-                    self.unit_mut(t).pools_init = true;
-                }
                 if self.unit(t).flags.contains(UnitFlags::SHIELDED) {
                     continue;
                 }
@@ -1195,27 +1194,34 @@ impl Fight {
                     is_sorcerer_spell: is_sorc,
                     ..Default::default()
                 };
-                // Step 0 is RollDamage(1d4+1 Force, "spells.magic_missile")
-                self.run_steps(&steps[..1], &mut ctx, dice, sink)?;
-                dart_rolls.push((t, ctx.damage_slots[0].total()));
+                self.run_steps(&steps[..split_at], &mut ctx, dice, sink)?;
+                if let Some(ds) = ctx.damage_slots.first() {
+                    dart_rolls.push((t, ds.total(), ds.dmg_type));
+                }
             }
             self.spend_spell_cost(src, at_level, free, free_pool_idx, metamagic);
-            for (t, amt) in dart_rolls {
+            for (t, amt, dt) in dart_rolls {
                 let mut hs = HitState::default();
-                self.take_damage(t, amt, Dmg::Force, false, Some(&mut hs), Some(src), dice, sink)?;
+                self.take_damage(t, amt, dt, false, Some(&mut hs), Some(src), dice, sink)?;
             }
             self.state.heightened = None;
             return Ok(());
         }
 
         let resolved_targets: SmallVec<[UnitId; 8]> = if let Some(p) = point {
-            let radius = match self.db.ability(ab_id).targeting {
-                crate::step::TargetMode::PointRadius { radius_ft, .. } => radius_ft as i32,
+            let radius = match ab.targeting {
+                TargetMode::PointRadius { radius_ft, .. } => radius_ft as i32,
                 _ => 10,
             };
             let sqs = self.squares_in_radius(p, radius, true);
             self.creatures_in_squares(&sqs, None)
         } else {
+            if targets.is_empty() && !matches!(ab.targeting, TargetMode::SelfOnly) {
+                self.state.heightened = None;
+                return Err(CoreError::UnknownAction(format!(
+                    "spell {spell_key} requires at least one target"
+                )));
+            }
             targets.iter().copied().collect()
         };
 
@@ -1232,7 +1238,7 @@ impl Fight {
 
         // Run resolve steps (rolls + saves), clear Heightened BEFORE commit/Undead Fortitude,
         // spend spell slot/sorcery cost, then run ApplyDamage steps!
-        let steps = self.db.ability(ab_id).steps.clone();
+        let steps = &ab.steps;
         let split_at = steps
             .iter()
             .position(|s| matches!(s, Step::ApplyDamage { .. }))
@@ -1264,6 +1270,7 @@ impl Fight {
         } else if at_level > 0 && (at_level as usize) < u.slots.len() {
             let l = at_level as usize;
             u.slots[l] = u.slots[l].saturating_sub(1);
+            u.slot_spent_this_turn = true;
         }
         if let Some(mm) = metamagic {
             let cost = mm.sorcery_cost() as u8;
@@ -1338,10 +1345,6 @@ impl Fight {
             0
         };
         let total = face + bonus;
-
-        if !is_spell && self.template_of(tgt).pc {
-            self.unit_mut(tgt).pools_init = true;
-        }
 
         let ac = self.attack_ac(self.unit(src).pos, tgt);
         let nat20 = face == 20;
@@ -1762,14 +1765,6 @@ impl Fight {
             total -= absorbed;
             self.unit_mut(u).temp_hp -= absorbed as i16;
         }
-        if total > 0
-            && self.template_of(u).pc
-            && self.unit(u).flags.is_conscious()
-            && attacker.is_some_and(|a| a != u)
-            && self.unit(u).has_reaction()
-        {
-            self.unit_mut(u).pools_init = true;
-        }
         let already_down = self.unit(u).flags.is_unconscious() || self.unit(u).flags.is_dead();
         let kill_at_zero = !already_down && hit_state.as_deref().is_some_and(|h| h.kill_at_zero);
         let new_hp = self.unit(u).hp as i32 - total;
@@ -1982,7 +1977,7 @@ impl Fight {
     // Area Geometry (`squares_in_radius`, `creatures_in_squares`)
     // ------------------------------------------------------------------
 
-    fn squares_in_radius(&self, center: Pos, radius_ft: i32, require_los: bool) -> Vec<Pos> {
+    pub(crate) fn squares_in_radius(&self, center: Pos, radius_ft: i32, require_los: bool) -> Vec<Pos> {
         let r = (radius_ft / 5).max(0) as i16;
         let mut out = Vec::new();
         for x in (center.x - r)..=(center.x + r) {

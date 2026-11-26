@@ -1,11 +1,8 @@
-# SRD 5.2.1 creatures permitted in ember/content/creatures/
-# Every entry must carry CC-BY-4.0 SRD 5.2.1 attribution and pass ember-content validation.
-curogana
+# SRD 5.2.1 monsters permitted in ember/content/creatures/
+# Original player characters (mara, ilyra, guy, curogana) are labelled
+# `"source": "original-srd-5.2.1"` and excluded from this SRD monster allowlist.
 ghast
 ghoul
-guy
-ilyra
-mara
 skeleton
 wight
 zombie

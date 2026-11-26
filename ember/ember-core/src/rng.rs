@@ -16,33 +16,80 @@ pub enum DrawVal {
 
 impl DrawVal {
     #[inline]
-    pub fn one(self) -> i32 {
+    pub fn try_one(self, cursor: usize) -> Result<i32, CoreError> {
         match self {
-            DrawVal::One(v) => v,
-            DrawVal::Two(_) => panic!("expected single die draw, got pair"),
+            DrawVal::One(v) => Ok(v),
+            DrawVal::Two(pair) => Err(CoreError::DrawMismatch {
+                cursor,
+                expected: "single die value".into(),
+                got: format!("pair {pair:?}"),
+            }),
         }
     }
 
     #[inline]
-    pub fn pair(self) -> [i32; 2] {
+    pub fn try_pair(self, cursor: usize) -> Result<[i32; 2], CoreError> {
         match self {
-            DrawVal::Two(v) => v,
-            DrawVal::One(_) => panic!("expected pair draw, got single die"),
+            DrawVal::Two(v) => Ok(v),
+            DrawVal::One(v) => Err(CoreError::DrawMismatch {
+                cursor,
+                expected: "pair of die values".into(),
+                got: format!("single {v}"),
+            }),
+        }
+    }
+
+    /// Validate that `self` matches `mode` (`One` for normal, `Two` for adv/dis)
+    /// and that every rolled face is within `1..=sides`.
+    pub fn validate(self, sides: i32, mode: RollMode, cursor: usize) -> Result<(), CoreError> {
+        match (mode, self) {
+            (RollMode::Normal, DrawVal::One(v)) => {
+                if v < 1 || v > sides {
+                    return Err(CoreError::DrawMismatch {
+                        cursor,
+                        expected: format!("face in 1..={sides}"),
+                        got: format!("{v}"),
+                    });
+                }
+                Ok(())
+            }
+            (RollMode::Advantage | RollMode::Disadvantage, DrawVal::Two([a, b])) => {
+                if a < 1 || a > sides || b < 1 || b > sides {
+                    return Err(CoreError::DrawMismatch {
+                        cursor,
+                        expected: format!("faces in 1..={sides}"),
+                        got: format!("[{a}, {b}]"),
+                    });
+                }
+                Ok(())
+            }
+            (RollMode::Normal, DrawVal::Two(p)) => Err(CoreError::DrawMismatch {
+                cursor,
+                expected: "single die value for mode n".into(),
+                got: format!("pair {p:?}"),
+            }),
+            (RollMode::Advantage | RollMode::Disadvantage, DrawVal::One(v)) => {
+                Err(CoreError::DrawMismatch {
+                    cursor,
+                    expected: format!("pair of die values for mode {}", mode.code()),
+                    got: format!("single {v}"),
+                })
+            }
         }
     }
 
     /// Selected face under `mode` (`max` for advantage, `min` for disadvantage).
     #[inline]
-    pub fn selected(self, mode: RollMode) -> i32 {
+    pub fn try_selected(self, mode: RollMode, cursor: usize) -> Result<i32, CoreError> {
         match mode {
-            RollMode::Normal => self.one(),
+            RollMode::Normal => self.try_one(cursor),
             RollMode::Advantage => {
-                let [a, b] = self.pair();
-                a.max(b)
+                let [a, b] = self.try_pair(cursor)?;
+                Ok(a.max(b))
             }
             RollMode::Disadvantage => {
-                let [a, b] = self.pair();
-                a.min(b)
+                let [a, b] = self.try_pair(cursor)?;
+                Ok(a.min(b))
             }
         }
     }
@@ -204,6 +251,7 @@ impl DiceSource for SuppliedDraws {
                 got,
             });
         }
+        exp.val.validate(sides, mode, self.cursor)?;
         self.cursor += 1;
         Ok(exp.val)
     }

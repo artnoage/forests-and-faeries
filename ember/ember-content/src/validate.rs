@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use ember_core::types::{Ability, Dice, Dmg, Size};
 
 use crate::schema::{
-    AbilityFile, CreatureFile, EffectFile, StepJson, TargetModeJson, REQUIRED_LICENCE,
-    REQUIRED_SOURCE,
+    AbilityFile, CreatureFile, EffectFile, StepJson, TargetModeJson, ORIGINAL_HERO_SOURCE,
+    REQUIRED_LICENCE, REQUIRED_SOURCE,
 };
 use crate::ContentError;
 
@@ -36,15 +36,16 @@ pub fn parse_allowlist(text: &str) -> Result<HashSet<String>, ContentError> {
     Ok(set)
 }
 
-pub fn validate_srd_header(
+pub fn validate_srd_header_with_source(
     ctx: &str,
     source: &str,
+    expected_source: &str,
     licence: &str,
     attribution: &str,
 ) -> Result<(), ContentError> {
-    if source != REQUIRED_SOURCE {
+    if source != expected_source {
         return Err(ContentError::Validation(format!(
-            "{ctx}: source must be {REQUIRED_SOURCE:?}, got {source:?}"
+            "{ctx}: source must be {expected_source:?}, got {source:?}"
         )));
     }
     if licence != REQUIRED_LICENCE {
@@ -60,6 +61,15 @@ pub fn validate_srd_header(
         )));
     }
     Ok(())
+}
+
+pub fn validate_srd_header(
+    ctx: &str,
+    source: &str,
+    licence: &str,
+    attribution: &str,
+) -> Result<(), ContentError> {
+    validate_srd_header_with_source(ctx, source, REQUIRED_SOURCE, licence, attribution)
 }
 
 pub fn validate_effect(ef: &EffectFile, filename_stem: &str) -> Result<(), ContentError> {
@@ -359,13 +369,29 @@ pub fn validate_creature(
             c.id
         )));
     }
-    if !allowlist.contains(&c.id) {
-        return Err(ContentError::Validation(format!(
-            "{ctx}: creature {:?} is not listed in SRD_ALLOWLIST",
-            c.id
-        )));
+    if c.pc {
+        if allowlist.contains(&c.id) {
+            return Err(ContentError::Validation(format!(
+                "{ctx}: original player character {:?} must not be listed in SRD_ALLOWLIST",
+                c.id
+            )));
+        }
+        validate_srd_header_with_source(
+            &ctx,
+            &c.source,
+            ORIGINAL_HERO_SOURCE,
+            &c.licence,
+            &c.attribution,
+        )?;
+    } else {
+        if !allowlist.contains(&c.id) {
+            return Err(ContentError::Validation(format!(
+                "{ctx}: SRD monster {:?} is not listed in SRD_ALLOWLIST",
+                c.id
+            )));
+        }
+        validate_srd_header(&ctx, &c.source, &c.licence, &c.attribution)?;
     }
-    validate_srd_header(&ctx, &c.source, &c.licence, &c.attribution)?;
     if !matches!(c.side.as_str(), "heroes" | "monsters") {
         return Err(ContentError::Validation(format!(
             "{ctx}: invalid side {:?}",

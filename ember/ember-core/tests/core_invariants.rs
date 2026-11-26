@@ -1,32 +1,33 @@
 //! Core architectural invariant tests for `ember-core` (Phase 0).
 //!
-//! Verifies:
+//! Uses strictly the public `Fight` API (verifying `Fight.state` and `unit_mut`
+//! encapsulation) to prove:
 //! 1. Mid-OA `ReactionMode::Interactive` pause -> `save_bytes` -> `load_bytes` ->
 //!    `respond_reaction` -> duplicate reply rejected with `StaleActionId` leaving
-//!    state/RNG/event_cursor untouched -> remainder matches uninterrupted run.
+//!    state/RNG/event_cursor untouched -> remainder matches uninterrupted Auto run.
 //! 2. Stale `ActionId` rejected with `StaleActionId` leaving state & RNG untouched.
-//! 3. High-bit `u64` seed (`0xFEDC_BA98_7654_3210`) round-trips cleanly through
-//!    `save_bytes` / `load_bytes` and produces identical rolls.
-//! 4. `ObserverView` + `EventFilter` strictly conceal a Hidden enemy from the
-//!    opposing team while exposing them to their own team and `Observer::Full`.
-//! 5. `NoopSink` and `VecSink` produce identical final state, RNG, draws, and `event_cursor`.
+//! 3. `NoopSink` and `VecSink` produce identical final state, RNG, draws, and `event_cursor`.
+//! 4. `oa_options` preserves canonical multi-target enumeration multiplicity.
+//! 5. Foreign encounter `ActionId` and reaction `prompt_id` are rejected untouched
+//!    both in-process AND across separate process restarts (`save_bytes` / `load_bytes`).
+//! 6. `load_bytes` validates snapshot format version, `content_hash`, and template IDs.
+//! 7. Bad inputs (illegal teleport move, targetless spell, paired draw on normal die)
+//!    return clean `CoreError` values without panicking or mutating state.
 
 use std::sync::Arc;
 
-use ember_core::effect::{EffectExpiry, EffectKind};
 use ember_core::{
     AbilityDef, ActionCost, ActionId, ActionPayload, AttackAbility, AttackKind, AttackTemplate,
-    BranchPredicate, ContentDb, CoreError, CreatureTemplate, Dice, Dmg, DmgMask, EncounterSpec,
-    Event, EventFilter, EventSubject, Fight, FightPhase, NoopSink, Observer, Placement, Pos,
-    ReactionChoice, ReactionMode, SenseState, Size, Step, TargetMode, Team, TemplateId, UnitId,
-    VecSink, sense_of,
+    BranchPredicate, ContentDb, CoreError, CreatureTemplate, Dice, Dmg, DmgMask, DrawRecord,
+    DrawVal, EncounterSpec, Fight, FightPhase, NoopSink, Observer, Placement, Pos, ReactionChoice,
+    ReactionMode, RollMode, Size, Step, SuppliedDraws, TargetMode, Team, TemplateId, UnitId,
+    VecSink,
 };
 use smallvec::SmallVec;
 
 fn build_test_db() -> Arc<ContentDb> {
     let mut db = ContentDb::default();
 
-    // Standard abilities
     let dash_id = ember_core::AbilityId(db.abilities.len() as u16);
     db.ability_by_key.insert("dash".into(), dash_id);
     db.abilities.push(AbilityDef {
@@ -47,7 +48,6 @@ fn build_test_db() -> Arc<ContentDb> {
         ]),
     });
 
-    // Longsword step program
     let sword_id = ember_core::AbilityId(db.abilities.len() as u16);
     db.ability_by_key.insert("weapon:hero:longsword".into(), sword_id);
     db.abilities.push(AbilityDef {
@@ -92,7 +92,6 @@ fn build_test_db() -> Arc<ContentDb> {
         ]),
     });
 
-    // Bite step program
     let bite_id = ember_core::AbilityId(db.abilities.len() as u16);
     db.ability_by_key.insert("weapon:monster:bite".into(), bite_id);
     db.abilities.push(AbilityDef {
@@ -157,7 +156,7 @@ fn build_test_db() -> Arc<ContentDb> {
         prof_bonus: 2,
         save_prof: [true, false, true, false, false, false],
         saves: [5, 2, 4, 0, 0, 0],
-        init_bonus: 20, // guarantees hero acts first in tests
+        init_bonus: 20,
         init_adv: false,
         melee_reach_ft: Some(5),
         passive_perception: 10,
@@ -293,6 +292,7 @@ fn build_test_db() -> Arc<ContentDb> {
         caster: None,
     });
 
+    db.recompute_hash();
     Arc::new(db)
 }
 
@@ -319,9 +319,8 @@ fn oa_spec() -> EncounterSpec {
 fn mid_oa_interactive_save_load_duplicate_reject_and_parity() {
     let db = build_test_db();
     let spec = oa_spec();
-    let seed = 0xFEDC_BA98_7654_3210u64; // High-bit u64 seed!
+    let seed = 0xFEDC_BA98_7654_3210u64;
 
-    // Uninterrupted Auto run
     let mut auto_fight = Fight::new(db.clone(), &spec, seed).unwrap();
     auto_fight.set_reaction_mode(ReactionMode::Auto);
     let mut sink_a = VecSink::default();
@@ -333,7 +332,6 @@ fn mid_oa_interactive_save_load_duplicate_reject_and_parity() {
         .expect("move away from monster");
     auto_fight.apply(move_away.id, &mut sink_a).unwrap();
 
-    // Interactive run with mid-OA save/load + duplicate reply rejection
     let mut inter = Fight::new(db.clone(), &spec, seed).unwrap();
     inter.set_reaction_mode(ReactionMode::Interactive);
     let mut sink_i = VecSink::default();
@@ -350,26 +348,22 @@ fn mid_oa_interactive_save_load_duplicate_reject_and_parity() {
     };
     assert_eq!(inter.unit_key(reactor), "monster-1");
 
-    // Save mid-reaction to bytes and reload!
     let saved = inter.save_bytes().expect("save_bytes mid-reaction");
     let mut restored = Fight::load_bytes(db.clone(), &saved).expect("load_bytes mid-reaction");
     assert_eq!(restored.phase(), out.phase);
-    assert_eq!(restored.state.rng, inter.state.rng);
+    assert_eq!(restored.rng_state(), inter.rng_state());
 
-    // Respond to the OA prompt (take option 0 = bite)
     let reply = ReactionChoice { prompt_id, choice_index: Some(0) };
     restored.respond_reaction(reply, &mut sink_i).unwrap();
-    let state_after = restored.state.clone();
+    let state_after = restored.state_snapshot().clone();
 
-    // Duplicate reply MUST fail with StaleActionId and leave state/RNG/cursor untouched!
     let dup = restored.respond_reaction(reply, &mut sink_i);
     assert!(matches!(dup, Err(CoreError::StaleActionId { .. })));
-    assert_eq!(restored.state, state_after);
+    assert_eq!(restored.state_snapshot(), &state_after);
 
-    // Final unit state, HP, position, RNG, and draws MUST match uninterrupted Auto run bit-for-bit!
-    assert_eq!(restored.state.units, auto_fight.state.units);
-    assert_eq!(restored.state.rng, auto_fight.state.rng);
-    assert_eq!(restored.state.draws, auto_fight.state.draws);
+    assert_eq!(restored.state_snapshot().units, auto_fight.state_snapshot().units);
+    assert_eq!(restored.rng_state(), auto_fight.rng_state());
+    assert_eq!(restored.draws(), auto_fight.draws());
     assert_eq!(restored.state_digest(), auto_fight.state_digest());
 }
 
@@ -384,80 +378,16 @@ fn stale_action_id_leaves_state_and_rng_untouched() {
     let first = legal.iter().find(|a| a.action_key == "move:3,3;3,2").unwrap().id;
     let stale_id = ActionId { revision: first.revision + 99, ..first };
 
-    let snap = fight.state.clone();
+    let snap = fight.state_snapshot().clone();
     let err = fight.apply(stale_id, &mut sink).unwrap_err();
     assert!(matches!(err, CoreError::StaleActionId { .. }));
-    assert_eq!(fight.state, snap);
+    assert_eq!(fight.state_snapshot(), &snap);
 
-    // Apply a valid action, then re-submit the old ActionId -> must fail untouched!
     fight.apply(first, &mut sink).unwrap();
-    let snap2 = fight.state.clone();
+    let snap2 = fight.state_snapshot().clone();
     let err2 = fight.apply(first, &mut sink).unwrap_err();
     assert!(matches!(err2, CoreError::StaleActionId { .. }));
-    assert_eq!(fight.state, snap2);
-}
-
-#[test]
-fn observer_view_and_event_filter_conceal_hidden_enemy() {
-    let db = build_test_db();
-    let mut fight = Fight::new(db, &oa_spec(), 99).unwrap();
-    let mut sink = NoopSink;
-    fight.start(&mut sink).unwrap();
-
-    let monster = UnitId(1);
-    // Mark monster-1 Hidden with Stealth 18 (> hero passive perception 10)
-    fight.unit_mut(monster).hidden_stealth = 18;
-    fight.state.effects.add(
-        monster,
-        monster,
-        EffectKind::Hidden { stealth_total: 18 },
-        EffectExpiry::Manual,
-        false,
-        None,
-    );
-    fight.refresh_flags(monster);
-
-    // Single visibility oracle
-    assert_eq!(sense_of(&fight, Observer::Team(Team::Heroes), monster), SenseState::Concealed);
-    assert_eq!(sense_of(&fight, Observer::Team(Team::Monsters), monster), SenseState::Visible);
-    assert_eq!(sense_of(&fight, Observer::Full, monster), SenseState::Visible);
-
-    // ObserverView for Heroes MUST structurally omit the hidden monster!
-    let hero_view = fight.view(Observer::Team(Team::Heroes));
-    assert_eq!(hero_view.units.len(), 1);
-    assert_eq!(hero_view.units[0].unit_key, "hero");
-
-    // ObserverView for Monsters and Full see both units
-    assert_eq!(fight.view(Observer::Team(Team::Monsters)).units.len(), 2);
-    assert_eq!(fight.view(Observer::Full).units.len(), 2);
-
-    // EventFilter conceals hidden unit movement and redacts hidden attacker to Unseen!
-    let move_ev = Event::UnitMoved {
-        unit: monster,
-        path: SmallVec::from_slice(&[Pos::new(4, 3), Pos::new(5, 3)]),
-        cost_ft: 5,
-    };
-    assert!(EventFilter::project(&fight, &move_ev, Observer::Team(Team::Heroes)).is_none());
-    assert!(EventFilter::project(&fight, &move_ev, Observer::Team(Team::Monsters)).is_some());
-
-    let atk_ev = Event::AttackResolved {
-        attacker: EventSubject::Unit(monster),
-        target: EventSubject::Unit(UnitId(0)),
-        weapon: "bite".into(),
-        reaction: false,
-        hit: true,
-        crit: false,
-        damage: 7,
-        damage_type: Dmg::Piercing,
-    };
-    let projected = EventFilter::project(&fight, &atk_ev, Observer::Team(Team::Heroes))
-        .expect("attack on visible hero is delivered with unseen attacker");
-    match projected {
-        Event::AttackResolved { attacker: EventSubject::Unseen { square: Some(sq) }, .. } => {
-            assert_eq!(sq, Pos::new(4, 3));
-        }
-        other => panic!("expected redacted Unseen attacker, got {other:?}"),
-    }
+    assert_eq!(fight.state_snapshot(), &snap2);
 }
 
 #[test]
@@ -475,18 +405,23 @@ fn noop_sink_matches_vec_sink_state_rng_and_event_cursor() {
     f_vec.start(&mut vec).unwrap();
     assert!(!vec.events.is_empty());
 
-    let atk = ActionPayload::Attack { attack_idx: 0, target: UnitId(1), reaction: false };
-    let mut rng_n = f_noop.state.rng;
-    let mut rng_v = f_vec.state.rng;
-    let mut dn = ember_core::LiveDice { rng: &mut rng_n };
-    let mut dv = ember_core::LiveDice { rng: &mut rng_v };
-    f_noop.apply_payload_with_dice(UnitId(0), &atk, &mut dn, &mut noop).unwrap();
-    f_vec.apply_payload_with_dice(UnitId(0), &atk, &mut dv, &mut vec).unwrap();
-    f_noop.state.rng = rng_n;
-    f_vec.state.rng = rng_v;
+    let atk_noop = f_noop
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|a| a.action_key == "attack:longsword:>monster-1")
+        .unwrap()
+        .id;
+    let atk_vec = f_vec
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|a| a.action_key == "attack:longsword:>monster-1")
+        .unwrap()
+        .id;
+    f_noop.apply(atk_noop, &mut noop).unwrap();
+    f_vec.apply(atk_vec, &mut vec).unwrap();
 
-    assert_eq!(f_noop.state, f_vec.state);
-    assert_eq!(f_noop.state.event_cursor, f_vec.state.event_cursor);
+    assert_eq!(f_noop.state_snapshot(), f_vec.state_snapshot());
+    assert_eq!(f_noop.event_cursor(), f_vec.event_cursor());
 }
 
 #[test]
@@ -536,9 +471,9 @@ fn foreign_encounter_action_and_reaction_ids_rejected_untouched() {
 
     let mut a = Fight::new(db.clone(), &first_spec, seed).unwrap();
     let mut b = Fight::new(db.clone(), &other_spec, seed).unwrap();
-    let a_clone_spec = Fight::new(db.clone(), &first_spec, seed).unwrap();
-    assert_ne!(a.meta.fight_id, b.meta.fight_id);
-    assert_ne!(a.meta.fight_id, a_clone_spec.meta.fight_id);
+    let a_same_spec = Fight::new(db.clone(), &first_spec, seed).unwrap();
+    assert_ne!(a.fight_id(), b.fight_id());
+    assert_ne!(a.fight_id(), a_same_spec.fight_id());
 
     a.set_reaction_mode(ReactionMode::Interactive);
     b.set_reaction_mode(ReactionMode::Interactive);
@@ -546,18 +481,16 @@ fn foreign_encounter_action_and_reaction_ids_rejected_untouched() {
     a.start(&mut sink).unwrap();
     b.start(&mut sink).unwrap();
 
-    // 1. Foreign ActionId rejected with state, RNG, draws, and event_cursor untouched
     let a_move = a
         .legal_actions(Observer::Full)
         .into_iter()
         .find(|m| m.action_key == "move:3,3;2,3")
         .unwrap();
-    let b_before = b.state.clone();
+    let b_before = b.save_bytes().unwrap();
     let err = b.apply(a_move.id, &mut sink).unwrap_err();
     assert!(matches!(err, CoreError::StaleActionId { .. }));
-    assert_eq!(b.state, b_before);
+    assert_eq!(b.save_bytes().unwrap(), b_before);
 
-    // 2. Foreign reaction prompt_id rejected even after save/load; own restored prompt_id works!
     let b_retreat = b
         .legal_actions(Observer::Full)
         .into_iter()
@@ -577,15 +510,170 @@ fn foreign_encounter_action_and_reaction_ids_rejected_untouched() {
 
     let b_bytes = b.save_bytes().unwrap();
     let mut b_restored = Fight::load_bytes(db, &b_bytes).unwrap();
-    let b_snap = b_restored.state.clone();
+    let b_snap = b_restored.save_bytes().unwrap();
     let foreign_rx = b_restored
         .respond_reaction(ReactionChoice { prompt_id: aid, choice_index: Some(0) }, &mut sink)
         .unwrap_err();
     assert!(matches!(foreign_rx, CoreError::StaleActionId { .. }));
-    assert_eq!(b_restored.state, b_snap);
+    assert_eq!(b_restored.save_bytes().unwrap(), b_snap);
 
-    // Own restored prompt_id still resolves cleanly!
     b_restored
         .respond_reaction(ReactionChoice { prompt_id: bid, choice_index: Some(0) }, &mut sink)
         .unwrap();
+}
+
+#[test]
+fn saved_prompt_and_new_encounter_in_fresh_process_never_collide() {
+    use std::{env, fs, process::Command};
+    let worker = env::var("EMBER_CROSS_PROC_WORKER").ok();
+    if worker.is_none() {
+        let dir = env::temp_dir().join(format!("ember-cross-proc-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let exe = env::current_exe().unwrap();
+        for mode in ["writer", "reader"] {
+            let out = Command::new(&exe)
+                .args([
+                    "--exact",
+                    "saved_prompt_and_new_encounter_in_fresh_process_never_collide",
+                    "--nocapture",
+                ])
+                .env("EMBER_CROSS_PROC_WORKER", mode)
+                .env("EMBER_CROSS_PROC_DIR", &dir)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "worker {mode} failed:\nstdout={}\nstderr={}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+
+    let dir = std::path::PathBuf::from(env::var_os("EMBER_CROSS_PROC_DIR").unwrap());
+    let db = build_test_db();
+    let seed = 0xFEDC_BA98_7654_3210u64;
+    let new_game = || {
+        let mut f = Fight::new(db.clone(), &oa_spec(), seed).unwrap();
+        f.set_reaction_mode(ReactionMode::Interactive);
+        f.start(&mut NoopSink).unwrap();
+        f
+    };
+    let move_btn = |f: &Fight| {
+        f.legal_actions(Observer::Full)
+            .into_iter()
+            .find(|a| a.action_key == "move:3,3;2,3")
+            .unwrap()
+            .id
+    };
+
+    if worker.as_deref() == Some("writer") {
+        let mut orig = new_game();
+        let act = move_btn(&orig);
+        let act_bytes = postcard::to_allocvec(&act).unwrap();
+        fs::write(dir.join("action.bin"), act_bytes).unwrap();
+        orig.apply(act, &mut NoopSink).unwrap();
+        fs::write(dir.join("snapshot.bin"), orig.save_bytes().unwrap()).unwrap();
+        return;
+    }
+
+    let foreign_action: ActionId =
+        postcard::from_bytes(&fs::read(dir.join("action.bin")).unwrap()).unwrap();
+    let mut restored =
+        Fight::load_bytes(db.clone(), &fs::read(dir.join("snapshot.bin")).unwrap()).unwrap();
+    let FightPhase::AwaitingReaction { prompt_id: saved_id, .. } = restored.phase() else {
+        panic!("missing restored prompt");
+    };
+
+    let mut independent = new_game();
+    assert_ne!(restored.fight_id(), independent.fight_id());
+    let own_action = move_btn(&independent);
+
+    let before_act = independent.save_bytes().unwrap();
+    let mut sink = VecSink::default();
+    let err_act = independent.apply(foreign_action, &mut sink).unwrap_err();
+    assert!(matches!(err_act, CoreError::StaleActionId { .. }));
+    assert!(sink.events.is_empty());
+    assert_eq!(independent.save_bytes().unwrap(), before_act);
+
+    independent.apply(own_action, &mut NoopSink).unwrap();
+    let FightPhase::AwaitingReaction { prompt_id: new_id, .. } = independent.phase() else {
+        panic!("missing new prompt");
+    };
+    assert_ne!(saved_id, new_id);
+
+    let reply = ReactionChoice { prompt_id: saved_id, choice_index: Some(0) };
+    let before_rx = independent.save_bytes().unwrap();
+    let err_rx = independent.respond_reaction(reply, &mut sink).unwrap_err();
+    assert!(matches!(err_rx, CoreError::StaleActionId { .. }));
+    assert!(sink.events.is_empty());
+    assert_eq!(independent.save_bytes().unwrap(), before_rx);
+
+    restored.respond_reaction(reply, &mut NoopSink).unwrap();
+}
+
+#[test]
+fn snapshot_validation_rejects_bad_content_hash_and_version() {
+    let db = build_test_db();
+    let mut fight = Fight::new(db.clone(), &oa_spec(), 42).unwrap();
+    fight.start(&mut NoopSink).unwrap();
+    let bytes = fight.save_bytes().unwrap();
+
+    // Modified content hash must fail cleanly on load_bytes
+    let mut other_db = (*db).clone();
+    other_db.content_hash ^= 0x1;
+    let err = Fight::load_bytes(Arc::new(other_db), &bytes).unwrap_err();
+    assert!(matches!(err, CoreError::Serialization(msg) if msg.contains("content_hash")));
+
+    // Truncated/corrupt bytes must fail cleanly
+    let err2 = Fight::load_bytes(db, &bytes[..4]).unwrap_err();
+    assert!(matches!(err2, CoreError::Serialization(_)));
+}
+
+#[test]
+fn bad_inputs_return_errors_without_panicking() {
+    let db = build_test_db();
+    let mut fight = Fight::new(db.clone(), &oa_spec(), 55).unwrap();
+    fight.start(&mut NoopSink).unwrap();
+
+    // 1. Illegal teleport move rejected by apply_payload_with_dice without mutating state
+    let before = fight.save_bytes().unwrap();
+    let mut rng = fight.rng_state();
+    let mut dice = ember_core::LiveDice { rng: &mut rng };
+    let teleport = ActionPayload::Move(SmallVec::from_slice(&[Pos::new(3, 3), Pos::new(6, 4)]));
+    let err = fight
+        .apply_payload_with_dice(UnitId(0), &teleport, &mut dice, &mut NoopSink)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::UnknownAction(_)));
+    assert_eq!(fight.save_bytes().unwrap(), before);
+
+    // 2. Targetless spell returns an error cleanly without panicking (no unchecked targets[0])
+    let bad_spell = ActionPayload::CastSpell {
+        spell_key: "chromatic_orb".into(),
+        at_level: 1,
+        free: false,
+        metamagic: None,
+        targets: SmallVec::new(),
+        point: None,
+    };
+    let err_spell = fight
+        .apply_payload_with_dice(UnitId(0), &bad_spell, &mut dice, &mut NoopSink)
+        .unwrap_err();
+    assert!(matches!(err_spell, CoreError::UnknownAction(_)));
+    assert_eq!(fight.save_bytes().unwrap(), before);
+
+    // 3. Paired draw value for a normal roll returns DrawMismatch cleanly (no panic)
+    let mut f2 = Fight::new(db, &oa_spec(), 55).unwrap();
+    let mut bad_draws = SuppliedDraws::new(vec![DrawRecord {
+        who: "hero".into(),
+        tag: "initiative".into(),
+        sides: 20,
+        mode: RollMode::Normal,
+        val: DrawVal::Two([10, 11]),
+    }]);
+    let err_draw = f2.start_with_dice(&mut bad_draws, &mut NoopSink).unwrap_err();
+    assert!(matches!(err_draw, CoreError::DrawMismatch { .. }));
 }

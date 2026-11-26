@@ -192,9 +192,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unlisted_creature_and_bad_attribution() {
+    fn rejects_unlisted_monster_and_bad_attribution_and_pc_source() {
         let mut allow = HashSet::new();
-        allow.insert("mara".to_string());
+        allow.insert("zombie".to_string());
         let path = default_content_dir().join("creatures/ghast.json");
         let mut ghast: CreatureFile = read_json(&path).expect("ghast json");
         let err = validate_creature(&ghast, "ghast", &allow).unwrap_err();
@@ -204,6 +204,14 @@ mod tests {
         ghast.attribution = "incomplete attribution".into();
         let err2 = validate_creature(&ghast, "ghast", &allow).unwrap_err();
         assert!(err2.to_string().contains("attribution"));
+
+        // Original PC must carry original-srd-5.2.1 and must not be in SRD_ALLOWLIST
+        let mara_path = default_content_dir().join("creatures/mara.json");
+        let mut mara: CreatureFile = read_json(&mara_path).expect("mara json");
+        assert!(validate_creature(&mara, "mara", &allow).is_ok());
+        mara.source = "srd-5.2.1".into();
+        let err3 = validate_creature(&mara, "mara", &allow).unwrap_err();
+        assert!(err3.to_string().contains("original-srd-5.2.1"));
     }
 
     #[test]

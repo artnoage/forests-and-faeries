@@ -247,6 +247,34 @@ pub struct AbilityDef {
     pub steps: SmallVec<[Step; 8]>,
 }
 
+impl AbilityDef {
+    /// True if any step in this ability's compiled program rolls empowerable damage dice.
+    pub fn is_empowerable(&self) -> bool {
+        steps_any(&self.steps, &|s| {
+            matches!(s, Step::RollDamage { empowerable: true, .. })
+        })
+    }
+
+    /// True if any step in this ability's compiled program forces a saving throw.
+    pub fn has_saving_throw(&self) -> bool {
+        steps_any(&self.steps, &|s| matches!(s, Step::SavingThrow { .. }))
+    }
+}
+
+fn steps_any(steps: &[Step], pred: &dyn Fn(&Step) -> bool) -> bool {
+    for s in steps {
+        if pred(s) {
+            return true;
+        }
+        if let Step::Branch { then_steps, else_steps, .. } = s {
+            if steps_any(then_steps, pred) || steps_any(else_steps, pred) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Compiled data-driven effect definition (`content/effects/*.json`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EffectDef {
@@ -308,6 +336,9 @@ pub struct CasterTemplate {
     /// Spell slots for levels `[0, 1, 2]`.
     pub slots: [u8; 3],
     pub grants: Vec<SpellGrant>,
+    /// Spells declared on this creature's sheet whose step programs are deferred to
+    /// later phases (used by Phase-0 menu verification; never executable in Phase 0).
+    pub deferred_spells: Vec<String>,
     pub free_cast_pools: Vec<String>,
     pub sorcery_points: u8,
     pub innate_sorcery_uses: u8,
@@ -382,9 +413,61 @@ pub struct ContentDb {
     pub ability_by_key: HashMap<String, AbilityId>,
     pub effects: Vec<EffectDef>,
     pub effect_by_key: HashMap<String, EffectDefId>,
+    /// Deterministic 64-bit digest of compiled templates, abilities, and effects
+    /// embedded in [`crate::fight::Fight::save_bytes`] and verified on load.
+    pub content_hash: u64,
 }
 
 impl ContentDb {
+    /// Recompute [`ContentDb::content_hash`] deterministically over all compiled content.
+    pub fn recompute_hash(&mut self) {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut mix = |bytes: &[u8]| {
+            for &b in bytes {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        };
+        mix(&(self.effects.len() as u64).to_le_bytes());
+        for ef in &self.effects {
+            mix(ef.key.as_bytes());
+            mix(&[0x01]);
+            mix(ef.mark_label.as_bytes());
+            mix(&[0x02]);
+        }
+        mix(&(self.abilities.len() as u64).to_le_bytes());
+        for ab in &self.abilities {
+            mix(ab.key.as_bytes());
+            mix(&[ab.base_level, u8::from(ab.is_spell), u8::from(ab.concentration)]);
+            if let Ok(bytes) = postcard::to_allocvec(&ab.steps) {
+                mix(&bytes);
+            }
+            mix(&[0x03]);
+        }
+        mix(&(self.templates.len() as u64).to_le_bytes());
+        for t in &self.templates {
+            mix(t.key.as_bytes());
+            mix(&t.ac.to_le_bytes());
+            mix(&t.max_hp.to_le_bytes());
+            mix(&t.speed.to_le_bytes());
+            for &a in &t.abilities {
+                mix(&a.to_le_bytes());
+            }
+            mix(&t.init_bonus.to_le_bytes());
+            mix(&(t.attacks.len() as u64).to_le_bytes());
+            for atk in &t.attacks {
+                mix(atk.name.as_bytes());
+                mix(&atk.ability_id.0.to_le_bytes());
+            }
+            mix(&[0x04]);
+        }
+        h ^= h >> 30;
+        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        h ^= h >> 27;
+        h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
+        self.content_hash = h ^ (h >> 31);
+    }
+
     pub fn template(&self, id: TemplateId) -> &CreatureTemplate {
         &self.templates[id.0 as usize]
     }

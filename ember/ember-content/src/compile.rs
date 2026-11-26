@@ -67,6 +67,7 @@ pub fn compile_bundle(
         db.templates.push(tmpl);
     }
 
+    db.recompute_hash();
     Ok(db)
 }
 
@@ -247,10 +248,12 @@ fn compile_creature(
             }
         }
         let mut grants = Vec::new();
+        let mut deferred_spells = Vec::new();
         for info in &sc.spell_info {
             let Some(&ab_id) = db.ability_by_key.get(&info.id) else {
-                // Spells not yet compiled in Phase 0 are skipped cleanly; Phase 0 only
-                // exercises magic_missile, shatter, and chromatic_orb.
+                // Spells declared on the sheet whose step programs are deferred to
+                // later phases are tracked explicitly for menu verification.
+                deferred_spells.push(info.id.clone());
                 continue;
             };
             // Slot grant
@@ -287,6 +290,7 @@ fn compile_creature(
             spell_dc: sc.dc,
             slots,
             grants,
+            deferred_spells,
             free_cast_pools,
             sorcery_points: sc.resources.sorcery_points.unwrap_or(0),
             innate_sorcery_uses: sc.resources.innate_sorcery.unwrap_or(0),

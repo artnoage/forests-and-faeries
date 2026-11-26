@@ -1,11 +1,13 @@
-//! `FightState::clone()` and `Fight::fork()` micro-benchmarks.
+//! `FightState::clone()`, `Fight::fork()`, and `legal_actions()` micro-benchmarks.
 
 use std::hint::black_box;
 use std::mem::size_of;
 use std::sync::Arc;
 use std::time::Instant;
 
-use ember_core::{ContentDb, EncounterSpec, Fight, FightState, NoopSink, Placement, UnitState};
+use ember_core::{
+    ContentDb, EncounterSpec, Fight, FightState, NoopSink, Observer, Placement, UnitState,
+};
 
 const ROOM_12X10: [&str; 10] = [
     "HHHHHHHHHHHH",
@@ -105,9 +107,8 @@ pub fn run_bench(db: Arc<ContentDb>, iters: usize) {
         let mut sink = NoopSink;
         fight.start(&mut sink).expect("bench fight start");
 
-        // Warmup
         for _ in 0..2000 {
-            let s = black_box(fight.state.clone());
+            let s = black_box(fight.state_snapshot().clone());
             black_box(s);
             let f = black_box(fight.fork(None));
             black_box(f);
@@ -115,7 +116,7 @@ pub fn run_bench(db: Arc<ContentDb>, iters: usize) {
 
         let t0 = Instant::now();
         for _ in 0..iters {
-            let s = black_box(fight.state.clone());
+            let s = black_box(fight.state_snapshot().clone());
             black_box(s);
         }
         let dt_state = t0.elapsed();
@@ -131,14 +132,66 @@ pub fn run_bench(db: Arc<ContentDb>, iters: usize) {
         let us_fork = dt_fork.as_secs_f64() * 1e6 / iters as f64;
         let rate_fork = iters as f64 / dt_fork.as_secs_f64();
 
+        let menu_iters = (iters / 20).max(2000);
+        let menu_len = fight.legal_actions(Observer::Full).len();
+        let t2 = Instant::now();
+        for _ in 0..menu_iters {
+            let m = black_box(fight.legal_actions(Observer::Full));
+            black_box(m);
+        }
+        let dt_menu = t2.elapsed();
+        let us_menu = dt_menu.as_secs_f64() * 1e6 / menu_iters as f64;
+
         println!(
-            "  {:<36} units={} | FightState::clone {:.3} us ({:.0}/s) | Fight::fork {:.3} us ({:.0}/s)",
+            "  {:<36} units={} | clone {:.3} us ({:.0}/s) | fork {:.3} us ({:.0}/s) | menu({} acts) {:.3} us",
             c.name,
             c.units.len(),
             us_state,
             rate_state,
             us_fork,
             rate_fork,
+            menu_len,
+            us_menu,
         );
+    }
+
+    // Dedicated sorcerer large-menu benchmark (Curogana with 2 visible enemies: Magic Missile multisets + Shatter AoE + Chromatic Orb + Metamagic)
+    let curo_spec = EncounterSpec {
+        units: vec![
+            "curogana".into(),
+            "wight-1".into(),
+            "zombie-1".into(),
+            "zombie-2".into(),
+            "zombie-3".into(),
+        ],
+        placements: vec![
+            Placement { id: "curogana".into(), x: 2, y: 1 },
+            Placement { id: "wight-1".into(), x: 7, y: 4 },
+            Placement { id: "zombie-1".into(), x: 8, y: 4 },
+            Placement { id: "zombie-2".into(), x: 3, y: 10 },
+            Placement { id: "zombie-3".into(), x: 6, y: 3 },
+        ],
+        map_rows: None,
+        max_rounds: 50,
+    };
+    // Pick a seed where curogana acts first to time Curogana's full caster menu directly
+    for seed in 1u64..200 {
+        let mut f = Fight::new(db.clone(), &curo_spec, seed).expect("curo bench");
+        f.start(&mut NoopSink).expect("curo start");
+        if f.unit_key(f.current()) == "curogana" {
+            let n_acts = f.legal_actions(Observer::Full).len();
+            let menu_iters = (iters / 40).max(1000);
+            let t = Instant::now();
+            for _ in 0..menu_iters {
+                let m = black_box(f.legal_actions(Observer::Full));
+                black_box(m);
+            }
+            let us_menu = t.elapsed().as_secs_f64() * 1e6 / menu_iters as f64;
+            println!(
+                "  {:<36} caster=curogana | legal_actions({} acts) {:.3} us",
+                "curogana_caster_menu_bench", n_acts, us_menu
+            );
+            break;
+        }
     }
 }

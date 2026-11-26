@@ -1,10 +1,19 @@
 //! Strict supplied-draw rule-18 JSONL tape verifier.
 //!
-//! Checks every `hdr`, `start`, `draw` (who/tag/sides/mode/v), `turn`, `dec`
-//! (canonical ordering + stable descending score tie-break + reaction options),
-//! `act`, `state` (full `StateDigest`), `endturn`, and `end` record.
-//! On any mismatch, returns a structured [`ReplayDiff`] pointing to the exact
-//! 1-based JSONL line number and decision index.
+//! Checks every `hdr`, `start`, `draw` (who/tag/sides/mode/v + face range),
+//! `turn` (strict FIFO `Event::TurnStarted` alignment), `dec` (bidirectional
+//! canonical menu parity against `ember-core::legal_actions`, reaction option
+//! multiplicity & order, structural score invariants, and binding to the
+//! executed `act`/`endturn`), `act` (executed through `ember-core`'s own
+//! legality-checked apply path), `state` (full `StateDigest` with old-engine
+//! lazy-pool normalization isolated strictly to this verifier), `endturn`, and
+//! terminal `end` record.
+//!
+//! Note on AI scoring in Phase 0: native AI heuristic scores are not ported
+//! until Phase 5. In Phase 0, `scores` / `order` / `adj` are verified for
+//! structural self-consistency (`scores.len() == cands.len()`, `order.len() == adj.len()`,
+//! non-increasing `adj`, stable canonical tie-break on equal `adj`, and
+//! `chosen == cands[order[0]]`).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -12,9 +21,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use ember_core::{
-    ContentDb, CoreError, DiceSource, DrawRecord, DrawVal, EncounterSpec, Fight, FightPhase,
+    ContentDb, CoreError, DiceSource, DrawRecord, DrawVal, EncounterSpec, Event, Fight, FightPhase,
     Observer, OracleSink, Placement, ReactionChoice, ReactionMode, RollMode, StateDigest,
-    UnitDigest, UnitFlags,
+    UnitDigest, UnitFlags, UnitId,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -29,6 +38,7 @@ pub struct ReplayReport {
     pub states_checked: usize,
     pub draws_in_range: usize,
     pub draws_consumed: usize,
+    pub deferred_menu_entries_skipped: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -51,6 +61,8 @@ struct HeaderRec {
     placements: Vec<Placement>,
     seed: u64,
     max_rounds: i32,
+    #[serde(default)]
+    prefer: Vec<String>,
     #[serde(default)]
     map: Option<Vec<String>>,
     #[serde(default)]
@@ -132,9 +144,12 @@ struct EndJson {
     round: i32,
     #[serde(default)]
     finished: bool,
+    #[serde(default)]
+    decisions: usize,
 }
 
-/// Tape-backed `DiceSource` that tracks exact 1-based JSONL line numbers for every draw.
+/// Tape-backed `DiceSource` that tracks exact 1-based JSONL line numbers and
+/// validates die shape/range without ever panicking.
 struct TapeDice {
     draws: Vec<(usize, DrawRecord)>,
     cursor: usize,
@@ -185,10 +200,106 @@ impl DiceSource for TapeDice {
                 got: format!("({who}, {tag}, d{sides}, {})", mode.code()),
             });
         }
+        if let Err(e) = expected.val.validate(sides, mode, self.cursor) {
+            self.last_error_line = Some(*line_no);
+            return Err(e);
+        }
         let val = expected.val;
         self.cursor += 1;
         Ok(val)
     }
+}
+
+/// Returns `true` ONLY for an unchosen Phase 1–3 candidate that legitimately
+/// belongs to `actor`'s own compiled character sheet (and is explicitly
+/// deferred out of Phase 0):
+/// - spells listed in `actor`'s `CasterTemplate.deferred_spells`
+/// - Sorcerer Font of Magic slot/point conversion on Sorcerers
+/// - `first_aid:><ally>` when `actor` is a PC adjacent to an unconscious unstable ally
+///
+/// Any unknown or foreign candidate (such as `"spell:wish:L9:>ghast-1"`) returns `false`
+/// and fails bidirectional menu equality immediately.
+fn is_sheet_deferred_phase0_candidate(fight: &Fight, actor: UnitId, cand: &str) -> bool {
+    let tmpl = fight.template_of(actor);
+    if let Some(rest) = cand.strip_prefix("spell:") {
+        let spell_key = rest.split(':').next().unwrap_or("");
+        return tmpl
+            .caster
+            .as_ref()
+            .is_some_and(|c| c.deferred_spells.iter().any(|s| s == spell_key));
+    }
+    if tmpl.sorcerer
+        && matches!(
+            cand,
+            "create_spell_slot:L1"
+                | "create_spell_slot:L2"
+                | "convert_spell_slot:L1"
+                | "convert_spell_slot:L2"
+        )
+    {
+        return true;
+    }
+    if tmpl.pc {
+        if let Some(target_key) = cand.strip_prefix("first_aid:>") {
+            if let Some(t) = fight.unit_by_key(target_key) {
+                let tu = fight.unit(t);
+                return fight.allies(actor, t)
+                    && tu.flags.is_unconscious()
+                    && !tu.flags.contains(UnitFlags::STABLE)
+                    && fight.unit(actor).pos.feet_to(tu.pos) <= 5
+                    && fight.unit(actor).action > 0;
+            }
+        }
+    }
+    false
+}
+
+/// Compare `expected` (from legacy rule-18 tape) against `got` (`ember-core::state_digest`),
+/// normalizing ONLY the legacy engine's lazy-pool omission quirk (where an unspent
+/// `{"pool": 1}` map was omitted until the first `prepared_spells()` call).
+fn digests_match_with_lazy_pool_norm(expected: &StateDigest, got: &StateDigest) -> bool {
+    if expected.round != got.round
+        || expected.cur != got.cur
+        || expected.units.len() != got.units.len()
+    {
+        return false;
+    }
+    for (e, g) in expected.units.iter().zip(&got.units) {
+        if e.id != g.id
+            || e.pos != g.pos
+            || e.hp != g.hp
+            || e.mhp != g.mhp
+            || e.thp != g.thp
+            || e.st != g.st
+            || e.fx != g.fx
+            || e.bst != g.bst
+            || e.res != g.res
+            || e.ds != g.ds
+            || e.strength != g.strength
+            || e.sl != g.sl
+            || e.conc != g.conc
+            || e.cd != g.cd
+            || e.sp != g.sp
+            || e.isc != g.isc
+            || e.isu != g.isu
+            || e.sw != g.sw
+            || e.action_surge != g.action_surge
+            || e.asu != g.asu
+            || e.rg != g.rg
+            || e.cv != g.cv
+        {
+            return false;
+        }
+        let pools_ok = match (&e.pools, &g.pools) {
+            (a, b) if a == b => true,
+            (None, Some(gm)) if !gm.is_empty() && gm.values().all(|&v| v == 1) => true,
+            _ => false,
+        };
+        if !pools_ok {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn verify_tape(
@@ -223,7 +334,6 @@ pub fn verify_tape(
         preceding_state: None,
     })?;
 
-    // Parse all lines up to stop_line (1-based inclusive)
     let mut events: Vec<(usize, String, serde_json::Value)> = Vec::new();
     let mut tape_draws: Vec<(usize, DrawRecord)> = Vec::new();
     for (idx, line) in text.lines().enumerate() {
@@ -328,6 +438,34 @@ pub fn verify_tape(
             preceding_state: None,
         });
     }
+    for pref in &hdr.prefer {
+        let Some((lhs, rhs)) = pref.split_once(':') else {
+            return Err(ReplayDiff {
+                kind: "hdr_prefer_invalid".into(),
+                first_diff_decision: 0,
+                event_index: 0,
+                jsonl_line: events[0].0,
+                seed: hdr.seed,
+                tape_sha256,
+                expected: "prefer entries of form <who>:<rule>".into(),
+                got: pref.clone(),
+                preceding_state: None,
+            });
+        };
+        if lhs.is_empty() || rhs.is_empty() {
+            return Err(ReplayDiff {
+                kind: "hdr_prefer_invalid".into(),
+                first_diff_decision: 0,
+                event_index: 0,
+                jsonl_line: events[0].0,
+                seed: hdr.seed,
+                tape_sha256,
+                expected: "non-empty <who>:<rule>".into(),
+                got: pref.clone(),
+                preceding_state: None,
+            });
+        }
+    }
 
     let spec = EncounterSpec {
         units: hdr.units.clone(),
@@ -335,7 +473,7 @@ pub fn verify_tape(
         map_rows: hdr.map.clone(),
         max_rounds: hdr.max_rounds,
     };
-    let mut fight = Fight::new(db.clone(), &spec, hdr.seed).map_err(|e| ReplayDiff {
+    let mut fight = Fight::new(db, &spec, hdr.seed).map_err(|e| ReplayDiff {
         kind: "setup".into(),
         first_diff_decision: 0,
         event_index: 0,
@@ -346,11 +484,8 @@ pub fn verify_tape(
         got: e.to_string(),
         preceding_state: None,
     })?;
-    // Interactive reaction mode guarantees every OA reaction decision in the tape
-    // is explicitly checked and executed through `Fight::respond_reaction_with_dice`!
     fight.set_reaction_mode(ReactionMode::Interactive);
 
-    // Cross-check header stats against compiled ContentDb sheets
     for (uid, st) in &hdr.stats {
         let Some(u) = fight.unit_by_key(uid) else {
             return Err(ReplayDiff {
@@ -406,8 +541,11 @@ pub fn verify_tape(
     let mut actions_checked = 0usize;
     let mut states_checked = 0usize;
     let mut draws_seen_in_stream = 0usize;
-    let mut pending_turn_check: Option<(usize, usize, TurnJson)> = None;
+    let mut deferred_menu_entries_skipped = 0usize;
+    let mut turn_ev_cursor = 0usize;
     let mut pending_turn_dec: Option<(usize, String, String)> = None;
+    let mut last_turn_actor: Option<String> = None;
+    let mut closing_endturn_seen = false;
     let mut seen_start = false;
     let mut seen_end = false;
     let last_line_seen = events.last().map_or(0, |(ln, _, _)| *ln);
@@ -432,15 +570,21 @@ pub fn verify_tape(
 
     for (ev_idx, (line_no, tag, val)) in events.iter().enumerate().skip(1) {
         let line_no = *line_no;
+        if seen_end {
+            return Err(make_diff(
+                "trailing_event_after_end",
+                decisions_checked,
+                ev_idx,
+                line_no,
+                "EOF after end record".into(),
+                format!("unexpected event {tag:?} after end"),
+                last_state,
+            ));
+        }
         match tag.as_str() {
             "draw" => {
                 draws_seen_in_stream += 1;
                 if dice.cursor < draws_seen_in_stream {
-                    // Draw appeared in tape without engine requesting it before next event
-                    // (wait until the next non-draw event if a preceding action was not yet run?
-                    // No: in tape format, draws ALWAYS follow the action/start/turn that triggered them,
-                    // EXCEPT turn-start draws (Stench / Death Save) which follow `turn` and were ALREADY
-                    // consumed during `start` or `endturn`!)
                     return Err(make_diff(
                         "unconsumed_draw",
                         decisions_checked,
@@ -492,6 +636,17 @@ pub fn verify_tape(
                         last_state,
                     ));
                 }
+                if fight.finished() {
+                    return Err(make_diff(
+                        "turn_after_combat_ended",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        "no turn events after combat ends".into(),
+                        val.to_string(),
+                        last_state,
+                    ));
+                }
                 let tj: TurnJson = serde_json::from_value(val.clone()).map_err(|e| {
                     make_diff(
                         "turn_parse",
@@ -503,40 +658,45 @@ pub fn verify_tape(
                         last_state.clone(),
                     )
                 })?;
-                // Check against current turn (note: if the actor died or stayed unconscious on
-                // start-of-turn death save, engine auto-advances in open_turn; verify match!)
-                if !fight.state.finished && !fight.state.order.is_empty() {
-                    let cur_key = fight.unit_key(fight.current()).to_string();
-                    if cur_key == tj.who && fight.state.round == tj.round {
-                        pending_turn_check = None;
-                    } else {
-                        // Record in case start_turn skipped an unconscious turn before the
-                        // active turn; verify against sink events!
-                        let matched_sink = sink.events.iter().any(|ev| {
-                            matches!(
-                                ev,
-                                ember_core::Event::TurnStarted { unit, round }
-                                    if fight.unit_key(*unit) == tj.who && *round == tj.round
-                            )
-                        });
-                        if !matched_sink {
-                            return Err(make_diff(
-                                "turn_mismatch",
-                                decisions_checked,
-                                ev_idx,
-                                line_no,
-                                format!("turn who={} round={}", tj.who, tj.round),
-                                format!("engine cur={cur_key} round={}", fight.state.round),
-                                last_state,
-                            ));
-                        }
-                        pending_turn_check = Some((ev_idx, line_no, tj));
+                // Strictly consume the next FIFO `Event::TurnStarted` emitted by the core!
+                let mut matched = None;
+                while turn_ev_cursor < sink.events.len() {
+                    let ev = &sink.events[turn_ev_cursor];
+                    turn_ev_cursor += 1;
+                    if let Event::TurnStarted { unit, round } = ev {
+                        matched = Some((fight.unit_key(*unit).to_string(), *round));
+                        break;
                     }
                 }
-                let _ = &pending_turn_check;
+                match matched {
+                    Some((who, round)) if who == tj.who && round == tj.round => {
+                        last_turn_actor = Some(who);
+                    }
+                    Some((who, round)) => {
+                        return Err(make_diff(
+                            "turn_mismatch",
+                            decisions_checked,
+                            ev_idx,
+                            line_no,
+                            format!("turn who={} round={}", tj.who, tj.round),
+                            format!("next core TurnStarted who={who} round={round}"),
+                            last_state,
+                        ));
+                    }
+                    None => {
+                        return Err(make_diff(
+                            "unexpected_turn_event",
+                            decisions_checked,
+                            ev_idx,
+                            line_no,
+                            format!("turn who={} round={}", tj.who, tj.round),
+                            "core emitted no matching TurnStarted event".into(),
+                            last_state,
+                        ));
+                    }
+                }
             }
             "state" => {
-                // Ensure draw cursor aligns exactly with stream draws seen up to this state
                 if dice.cursor != draws_seen_in_stream {
                     return Err(make_diff(
                         "draw_count_mismatch",
@@ -565,7 +725,7 @@ pub fn verify_tape(
                     units: sj.units,
                 };
                 let got = fight.state_digest();
-                if got != expected {
+                if !digests_match_with_lazy_pool_norm(&expected, &got) {
                     return Err(make_diff(
                         "state_mismatch",
                         decisions_checked,
@@ -593,341 +753,377 @@ pub fn verify_tape(
                 })?;
                 decisions_checked += 1;
 
-                // 0. Validate scores length matches candidates length
-                if dj.scores.len() != dj.cands.len() {
-                    return Err(make_diff(
-                        "dec_scores_len",
-                        decisions_checked,
-                        ev_idx,
-                        line_no,
-                        format!("scores.len() == cands.len() ({})", dj.cands.len()),
-                        format!("scores.len() == {}", dj.scores.len()),
-                        last_state,
-                    ));
-                }
-
-                // 1. Validate strict stable descending sort of `order` / `adj`
-                //    (catches reordered ties at exact JSONL line!)
-                if dj.order.len() != dj.adj.len() {
-                    return Err(make_diff(
-                        "dec_order_len",
-                        decisions_checked,
-                        ev_idx,
-                        line_no,
-                        format!("order.len() == adj.len() ({})", dj.adj.len()),
-                        format!("order.len() == {}", dj.order.len()),
-                        last_state,
-                    ));
-                }
-                let mut seen_idx = vec![false; dj.cands.len()];
-                for w in 0..dj.order.len() {
-                    let oi = dj.order[w];
-                    if oi >= dj.cands.len() {
+                let validate_scores_and_order = |dj: &DecJson| -> Result<(), ReplayDiff> {
+                    if dj.scores.len() != dj.cands.len() {
                         return Err(make_diff(
-                            "dec_order_oob",
+                            "dec_scores_len",
                             decisions_checked,
                             ev_idx,
                             line_no,
-                            format!("order index < {}", dj.cands.len()),
-                            format!("order[{w}] = {oi}"),
-                            last_state,
+                            format!("scores.len() == cands.len() ({})", dj.cands.len()),
+                            format!("scores.len() == {}", dj.scores.len()),
+                            last_state.clone(),
                         ));
                     }
-                    if seen_idx[oi] {
+                    // Structural score/order validation (native AI scoring is Phase 5)
+                    if dj.order.len() != dj.adj.len() {
                         return Err(make_diff(
-                            "dec_order_dup",
+                            "dec_order_len",
                             decisions_checked,
                             ev_idx,
                             line_no,
-                            "unique candidate indices in order".into(),
-                            format!("duplicate candidate index {oi}"),
-                            last_state,
+                            format!("order.len() == adj.len() ({})", dj.adj.len()),
+                            format!("order.len() == {}", dj.order.len()),
+                            last_state.clone(),
                         ));
                     }
-                    seen_idx[oi] = true;
-                    if w > 0 {
-                        let prev_adj = dj.adj[w - 1];
-                        let cur_adj = dj.adj[w];
-                        let prev_idx = dj.order[w - 1];
-                        if cur_adj > prev_adj {
+                    let mut seen_idx = vec![false; dj.cands.len()];
+                    for w in 0..dj.order.len() {
+                        let oi = dj.order[w];
+                        if oi >= dj.cands.len() {
                             return Err(make_diff(
-                                "dec_order_not_descending",
+                                "dec_order_oob",
                                 decisions_checked,
                                 ev_idx,
                                 line_no,
-                                format!("adj[{w}] <= adj[{}] ({prev_adj})", w - 1),
-                                format!("adj[{w}] = {cur_adj}"),
-                                last_state,
+                                format!("order index < {}", dj.cands.len()),
+                                format!("order[{w}] = {oi}"),
+                                last_state.clone(),
                             ));
                         }
-                        if (cur_adj - prev_adj).abs() == 0.0 && oi < prev_idx {
+                        if seen_idx[oi] {
                             return Err(make_diff(
-                                "dec_tie_order_violation",
+                                "dec_order_dup",
                                 decisions_checked,
                                 ev_idx,
                                 line_no,
-                                format!(
-                                    "stable canonical tie-break: order[{}] ({prev_idx}) < order[{w}] ({oi}) for tied adj={cur_adj}",
-                                    w - 1
-                                ),
-                                format!(
-                                    "swapped tied candidates [{prev_idx}, {oi}] ({:?}, {:?}) at adj={cur_adj}",
-                                    dj.cands[prev_idx], dj.cands[oi]
-                                ),
-                                last_state,
+                                "unique candidate indices in order".into(),
+                                format!("duplicate candidate index {oi}"),
+                                last_state.clone(),
                             ));
                         }
-                    }
-                }
-                if !dj.order.is_empty() && dj.chosen != "none" && dj.chosen != "stand" {
-                    let top_cand = &dj.cands[dj.order[0]];
-                    if top_cand != &dj.chosen {
-                        return Err(make_diff(
-                            "dec_chosen_mismatch",
-                            decisions_checked,
-                            ev_idx,
-                            line_no,
-                            format!("chosen == cands[order[0]] ({top_cand:?})"),
-                            format!("chosen == {:?}", dj.chosen),
-                            last_state,
-                        ));
-                    }
-                }
-
-                // 2. Check context-specific engine invariants & execute reactions interactively!
-                if dj.ctx == "reaction" {
-                    let FightPhase::AwaitingReaction { prompt_id, reactor } = fight.phase() else {
-                        return Err(make_diff(
-                            "reaction_phase_mismatch",
-                            decisions_checked,
-                            ev_idx,
-                            line_no,
-                            format!("AwaitingReaction for {}", dj.who),
-                            format!("{:?}", fight.phase()),
-                            last_state,
-                        ));
-                    };
-                    if fight.unit_key(reactor) != dj.who {
-                        return Err(make_diff(
-                            "reaction_who_mismatch",
-                            decisions_checked,
-                            ev_idx,
-                            line_no,
-                            format!("reactor == {}", dj.who),
-                            format!("reactor == {}", fight.unit_key(reactor)),
-                            last_state,
-                        ));
-                    }
-                    let frame = fight.state.interrupts.top().expect("pending frame");
-                    let core_opts: Vec<String> = frame
-                        .options
-                        .iter()
-                        .map(|opt| match opt {
-                            ember_core::ReactionOption::OpportunityAttack {
-                                attack_idx,
-                                target,
-                            } => fight.describe_payload(
-                                reactor,
-                                &ember_core::ActionPayload::Attack {
-                                    attack_idx: *attack_idx,
-                                    target: *target,
-                                    reaction: true,
-                                },
-                            ),
-                            ember_core::ReactionOption::Decline => "none".into(),
-                        })
-                        .collect();
-                    // Verify canonical ordering AND exact multiplicity of core_opts vs tape cands
-                    if core_opts != dj.cands {
-                        return Err(make_diff(
-                            "reaction_cands_mismatch",
-                            decisions_checked,
-                            ev_idx,
-                            line_no,
-                            format!("{:?}", dj.cands),
-                            format!("{core_opts:?}"),
-                            last_state,
-                        ));
-                    }
-                    let choice_index = if dj.chosen == "none" {
-                        None
-                    } else {
-                        let idx = core_opts.iter().position(|s| s == &dj.chosen).ok_or_else(|| {
-                            make_diff(
-                                "reaction_chosen_missing",
-                                decisions_checked,
-                                ev_idx,
-                                line_no,
-                                format!("option {:?}", dj.chosen),
-                                format!("core options {core_opts:?}"),
-                                last_state.clone(),
-                            )
-                        })?;
-                        Some(idx as u16)
-                    };
-                    fight
-                        .respond_reaction_with_dice(
-                            ReactionChoice { prompt_id, choice_index },
-                            &mut dice,
-                            &mut sink,
-                        )
-                        .map_err(|e| {
-                            let err_ln = dice.last_error_line.unwrap_or(line_no);
-                            make_diff(
-                                "reaction_exec_error",
-                                decisions_checked,
-                                ev_idx,
-                                err_ln,
-                                "clean reaction resolution".into(),
-                                e.to_string(),
-                                last_state.clone(),
-                            )
-                        })?;
-                } else if dj.ctx == "turn" {
-                    if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
-                        return Err(make_diff(
-                            "unexecuted_turn_decision",
-                            decisions_checked,
-                            ev_idx,
-                            line_no,
-                            "previous turn decision executed before next dec".into(),
-                            format!(
-                                "unexecuted decision at line {dec_ln} ({dec_who} -> {dec_chosen:?})"
-                            ),
-                            last_state,
-                        ));
-                    }
-                    let FightPhase::AwaitingAction(cur) = fight.phase() else {
-                        return Err(make_diff(
-                            "turn_phase_mismatch",
-                            decisions_checked,
-                            ev_idx,
-                            line_no,
-                            format!("AwaitingAction({})", dj.who),
-                            format!("{:?}", fight.phase()),
-                            last_state,
-                        ));
-                    };
-                    if fight.unit_key(cur) != dj.who {
-                        return Err(make_diff(
-                            "dec_who_mismatch",
-                            decisions_checked,
-                            ev_idx,
-                            line_no,
-                            format!("who == {}", dj.who),
-                            format!("cur == {}", fight.unit_key(cur)),
-                            last_state,
-                        ));
-                    }
-                    let core_all = fight.legal_actions(Observer::Full);
-                    let core_can_stand = core_all.iter().any(|a| a.action_key == "stand");
-                    let core_legal: Vec<String> = core_all
-                        .into_iter()
-                        .filter(|a| a.action_key != "end_turn" && a.action_key != "stand")
-                        .map(|a| a.action_key)
-                        .collect();
-
-                    if dj.cands.is_empty() {
-                        if dj.chosen == "stand" {
-                            if !fight.unit(cur).flags.contains(UnitFlags::PRONE) || !core_can_stand
-                            {
+                        seen_idx[oi] = true;
+                        if w > 0 {
+                            let prev_adj = dj.adj[w - 1];
+                            let cur_adj = dj.adj[w];
+                            let prev_idx = dj.order[w - 1];
+                            if cur_adj > prev_adj {
                                 return Err(make_diff(
-                                    "illegal_forced_stand",
+                                    "dec_order_not_descending",
                                     decisions_checked,
                                     ev_idx,
                                     line_no,
-                                    "prone unit with enough movement to stand".into(),
-                                    format!(
-                                        "{} prone={} can_stand={core_can_stand}",
-                                        dj.who,
-                                        fight.unit(cur).flags.contains(UnitFlags::PRONE)
-                                    ),
-                                    last_state,
+                                    format!("adj[{w}] <= adj[{}] ({prev_adj})", w - 1),
+                                    format!("adj[{w}] = {cur_adj}"),
+                                    last_state.clone(),
                                 ));
                             }
-                        } else if dj.chosen == "none" {
-                            if !core_legal.is_empty() || core_can_stand {
+                            if (cur_adj - prev_adj).abs() == 0.0 && oi < prev_idx {
                                 return Err(make_diff(
-                                    "empty_turn_cands",
+                                    "dec_tie_order_violation",
                                     decisions_checked,
                                     ev_idx,
                                     line_no,
                                     format!(
-                                        "non-empty candidate menu (core has {} legal actions, can_stand={core_can_stand})",
-                                        core_legal.len()
+                                        "stable canonical tie-break: order[{}] ({prev_idx}) < order[{w}] ({oi}) for tied adj={cur_adj}",
+                                        w - 1
                                     ),
-                                    "cands=[] chosen=\"none\"".into(),
+                                    format!(
+                                        "swapped tied candidates [{prev_idx}, {oi}] ({:?}, {:?}) at adj={cur_adj}",
+                                        dj.cands[prev_idx], dj.cands[oi]
+                                    ),
+                                    last_state.clone(),
+                                ));
+                            }
+                        }
+                    }
+                    if !dj.order.is_empty() && dj.chosen != "none" && dj.chosen != "stand" {
+                        let top_cand = &dj.cands[dj.order[0]];
+                        if top_cand != &dj.chosen {
+                            return Err(make_diff(
+                                "dec_chosen_mismatch",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("chosen == cands[order[0]] ({top_cand:?})"),
+                                format!("chosen == {:?}", dj.chosen),
+                                last_state.clone(),
+                            ));
+                        }
+                    }
+                    Ok(())
+                };
+
+                match dj.ctx.as_str() {
+                    "reaction" => {
+                        validate_scores_and_order(&dj)?;
+                        let FightPhase::AwaitingReaction { prompt_id, reactor } = fight.phase()
+                        else {
+                            return Err(make_diff(
+                                "reaction_phase_mismatch",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("AwaitingReaction for {}", dj.who),
+                                format!("{:?}", fight.phase()),
+                                last_state,
+                            ));
+                        };
+                        if fight.unit_key(reactor) != dj.who {
+                            return Err(make_diff(
+                                "reaction_who_mismatch",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("reactor == {}", dj.who),
+                                format!("reactor == {}", fight.unit_key(reactor)),
+                                last_state,
+                            ));
+                        }
+                        let frame = fight.pending_interrupt().expect("pending frame");
+                        let core_opts: Vec<String> = frame
+                            .options
+                            .iter()
+                            .map(|opt| match opt {
+                                ember_core::ReactionOption::OpportunityAttack {
+                                    attack_idx,
+                                    target,
+                                } => fight.describe_payload(
+                                    reactor,
+                                    &ember_core::ActionPayload::Attack {
+                                        attack_idx: *attack_idx,
+                                        target: *target,
+                                        reaction: true,
+                                    },
+                                ),
+                                ember_core::ReactionOption::Decline => "none".into(),
+                            })
+                            .collect();
+                        if core_opts != dj.cands {
+                            return Err(make_diff(
+                                "reaction_cands_mismatch",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("{:?}", dj.cands),
+                                format!("{core_opts:?}"),
+                                last_state,
+                            ));
+                        }
+                        let choice_index = if dj.chosen == "none" {
+                            None
+                        } else {
+                            let idx = core_opts.iter().position(|s| s == &dj.chosen).ok_or_else(
+                                || {
+                                    make_diff(
+                                        "reaction_chosen_missing",
+                                        decisions_checked,
+                                        ev_idx,
+                                        line_no,
+                                        format!("option {:?}", dj.chosen),
+                                        format!("core options {core_opts:?}"),
+                                        last_state.clone(),
+                                    )
+                                },
+                            )?;
+                            Some(idx as u16)
+                        };
+                        fight
+                            .respond_reaction_with_dice(
+                                ReactionChoice { prompt_id, choice_index },
+                                &mut dice,
+                                &mut sink,
+                            )
+                            .map_err(|e| {
+                                let err_ln = dice.last_error_line.unwrap_or(line_no);
+                                make_diff(
+                                    "reaction_exec_error",
+                                    decisions_checked,
+                                    ev_idx,
+                                    err_ln,
+                                    "clean reaction resolution".into(),
+                                    e.to_string(),
+                                    last_state.clone(),
+                                )
+                            })?;
+                    }
+                    "select_reaction" => {
+                        return Err(make_diff(
+                            "unsupported_reaction_window",
+                            decisions_checked,
+                            ev_idx,
+                            line_no,
+                            "Phase 0 stop before select_reaction (Shield/Counterspell deferred to Phase 2)".into(),
+                            format!("select_reaction for {} chosen={:?}", dj.who, dj.chosen),
+                            last_state,
+                        ));
+                    }
+                    "turn" => {
+                        if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
+                            return Err(make_diff(
+                                "unexecuted_turn_decision",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                "previous turn decision executed before next dec".into(),
+                                format!(
+                                    "unexecuted decision at line {dec_ln} ({dec_who} -> {dec_chosen:?})"
+                                ),
+                                last_state,
+                            ));
+                        }
+                        let FightPhase::AwaitingAction(cur) = fight.phase() else {
+                            return Err(make_diff(
+                                "turn_phase_mismatch",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("AwaitingAction({})", dj.who),
+                                format!("{:?}", fight.phase()),
+                                last_state,
+                            ));
+                        };
+                        if fight.unit_key(cur) != dj.who {
+                            return Err(make_diff(
+                                "dec_who_mismatch",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("who == {}", dj.who),
+                                format!("cur == {}", fight.unit_key(cur)),
+                                last_state,
+                            ));
+                        }
+                        let core_all = fight.legal_actions(Observer::Full);
+                        let core_can_stand = core_all.iter().any(|a| a.action_key == "stand");
+                        let core_legal: Vec<String> = core_all
+                            .into_iter()
+                            .filter(|a| a.action_key != "end_turn" && a.action_key != "stand")
+                            .map(|a| a.action_key)
+                            .collect();
+
+                        if dj.cands.is_empty() {
+                            if dj.chosen == "stand" {
+                                if !fight.unit(cur).flags.contains(UnitFlags::PRONE)
+                                    || !core_can_stand
+                                {
+                                    return Err(make_diff(
+                                        "illegal_forced_stand",
+                                        decisions_checked,
+                                        ev_idx,
+                                        line_no,
+                                        "prone unit with enough movement to stand".into(),
+                                        format!(
+                                            "{} prone={} can_stand={core_can_stand}",
+                                            dj.who,
+                                            fight.unit(cur).flags.contains(UnitFlags::PRONE)
+                                        ),
+                                        last_state,
+                                    ));
+                                }
+                            } else if dj.chosen == "none" {
+                                if !core_legal.is_empty() || core_can_stand {
+                                    return Err(make_diff(
+                                        "empty_turn_cands",
+                                        decisions_checked,
+                                        ev_idx,
+                                        line_no,
+                                        format!(
+                                            "non-empty candidate menu (core has {} legal actions, can_stand={core_can_stand})",
+                                            core_legal.len()
+                                        ),
+                                        "cands=[] chosen=\"none\"".into(),
+                                        last_state,
+                                    ));
+                                }
+                            } else {
+                                return Err(make_diff(
+                                    "empty_cands_chosen",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    "chosen in {stand, none} when cands is empty".into(),
+                                    format!("chosen={:?}", dj.chosen),
                                     last_state,
                                 ));
                             }
                         } else {
-                            return Err(make_diff(
-                                "empty_cands_chosen",
-                                decisions_checked,
-                                ev_idx,
-                                line_no,
-                                "chosen in {stand, none} when cands is empty".into(),
-                                format!("chosen={:?}", dj.chosen),
-                                last_state,
-                            ));
-                        }
-                    } else {
-                        if dj.chosen != "none" && !dj.cands.contains(&dj.chosen) {
-                            return Err(make_diff(
-                                "chosen_not_in_cands",
-                                decisions_checked,
-                                ev_idx,
-                                line_no,
-                                format!("chosen {:?} present in cands", dj.chosen),
-                                format!("cands={:?}", dj.cands),
-                                last_state,
-                            ));
-                        }
-                        // Every core-enumerated action must appear in `dj.cands` in the exact same
-                        // relative canonical order!
-                        let mut last_pos: Option<usize> = None;
-                        for ck in &core_legal {
-                            let Some(pos) = dj.cands.iter().position(|c| c == ck) else {
+                            if dj.chosen != "none" && !dj.cands.contains(&dj.chosen) {
                                 return Err(make_diff(
-                                    "legal_action_missing_from_tape",
+                                    "chosen_not_in_cands",
                                     decisions_checked,
                                     ev_idx,
                                     line_no,
-                                    format!("tape cands containing {ck:?}"),
+                                    format!("chosen {:?} present in cands", dj.chosen),
                                     format!("cands={:?}", dj.cands),
                                     last_state,
                                 ));
-                            };
-                            if let Some(prev) = last_pos {
-                                if pos <= prev {
-                                    return Err(make_diff(
-                                        "canon_order_mismatch",
-                                        decisions_checked,
-                                        ev_idx,
-                                        line_no,
-                                        format!("strictly ascending canonical position for {ck:?}"),
-                                        format!("pos={pos} <= prev={prev}"),
-                                        last_state,
-                                    ));
+                            }
+                            if dj.chosen != "none"
+                                && is_sheet_deferred_phase0_candidate(&fight, cur, &dj.chosen)
+                            {
+                                return Err(make_diff(
+                                    "deferred_action_chosen",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    "Phase 0 in-scope chosen action".into(),
+                                    format!("deferred candidate {:?} chosen", dj.chosen),
+                                    last_state,
+                                ));
+                            }
+
+                            // STRICT BIDIRECTIONAL EQUALITY: filter out ONLY sheet-declared
+                            // deferred Phase 1-3 entries; every remaining candidate MUST match
+                            // `core_legal` in exact set and canonical order (both ways)!
+                            let mut tape_in_scope: Vec<String> = Vec::with_capacity(dj.cands.len());
+                            for cand in &dj.cands {
+                                if is_sheet_deferred_phase0_candidate(&fight, cur, cand) {
+                                    deferred_menu_entries_skipped += 1;
+                                } else {
+                                    tape_in_scope.push(cand.clone());
                                 }
                             }
-                            last_pos = Some(pos);
+                            if tape_in_scope != core_legal {
+                                let extra_in_tape: Vec<&String> = tape_in_scope
+                                    .iter()
+                                    .filter(|c| !core_legal.contains(c))
+                                    .collect();
+                                let missing_in_tape: Vec<&String> = core_legal
+                                    .iter()
+                                    .filter(|c| !tape_in_scope.contains(c))
+                                    .collect();
+                                return Err(make_diff(
+                                    "turn_menu_mismatch",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    format!(
+                                        "exact bidirectional menu match (extra_in_tape={extra_in_tape:?}, missing_in_tape={missing_in_tape:?})"
+                                    ),
+                                    format!(
+                                        "tape_in_scope({}): {tape_in_scope:?} vs core_legal({}): {core_legal:?}",
+                                        tape_in_scope.len(),
+                                        core_legal.len()
+                                    ),
+                                    last_state,
+                                ));
+                            }
                         }
+                        validate_scores_and_order(&dj)?;
+                        pending_turn_dec = Some((line_no, dj.who, dj.chosen));
                     }
-                    if fight.template_of(cur).caster.is_some() {
-                        fight.unit_mut(cur).pools_init = true;
+                    other => {
+                        return Err(make_diff(
+                            "unknown_dec_ctx",
+                            decisions_checked,
+                            ev_idx,
+                            line_no,
+                            "dec.ctx in {\"turn\", \"reaction\", \"select_reaction\"}".into(),
+                            format!("dec.ctx == {other:?}"),
+                            last_state,
+                        ));
                     }
-                    pending_turn_dec = Some((line_no, dj.who, dj.chosen));
-                } else {
-                    return Err(make_diff(
-                        "unknown_dec_ctx",
-                        decisions_checked,
-                        ev_idx,
-                        line_no,
-                        "dec.ctx in {\"turn\", \"reaction\"}".into(),
-                        format!("dec.ctx == {:?}", dj.ctx),
-                        last_state,
-                    ));
                 }
             }
             "act" => {
@@ -986,6 +1182,37 @@ pub fn verify_tape(
                         last_state.clone(),
                     )
                 })?;
+                // Detect deferred attack-reaction windows (Shield/Counterspell) inside this
+                // action's event span before consuming draws so all three Shield tapes fail
+                // cleanly at the exact `select_reaction` line.
+                for (scan_idx, (scan_ln, scan_tag, scan_val)) in
+                    events.iter().enumerate().skip(ev_idx + 1)
+                {
+                    if matches!(scan_tag.as_str(), "state" | "endturn" | "act" | "turn" | "end") {
+                        break;
+                    }
+                    if scan_tag == "dec"
+                        && scan_val.get("ctx").and_then(|v| v.as_str()) == Some("select_reaction")
+                    {
+                        let who = scan_val
+                            .get("who")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?");
+                        let chosen = scan_val
+                            .get("chosen")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?");
+                        return Err(make_diff(
+                            "unsupported_reaction_window",
+                            decisions_checked + 1,
+                            scan_idx,
+                            *scan_ln,
+                            "Phase 0 stop before select_reaction (Shield/Counterspell deferred to Phase 2)".into(),
+                            format!("select_reaction for {who} chosen={chosen:?}"),
+                            last_state,
+                        ));
+                    }
+                }
                 fight
                     .apply_payload_with_dice(actor, &payload, &mut dice, &mut sink)
                     .map_err(|e| {
@@ -995,7 +1222,7 @@ pub fn verify_tape(
                             decisions_checked,
                             ev_idx,
                             err_ln,
-                            format!("clean execution of {:?}", aj.a),
+                            format!("clean legal execution of {:?}", aj.a),
                             e.to_string(),
                             last_state.clone(),
                         )
@@ -1021,14 +1248,30 @@ pub fn verify_tape(
                             decisions_checked,
                             ev_idx,
                             line_no,
-                            format!("endturn matching dec at line {dec_ln} ({dec_who} -> \"none\")"),
+                            format!(
+                                "endturn matching dec at line {dec_ln} ({dec_who} -> \"none\")"
+                            ),
                             format!("endturn {} after {dec_who} -> {dec_chosen:?}", ej.who),
                             last_state,
                         ));
                     }
                 }
-                // Note: if fight already ended on the last action before endturn, skip.
-                if !fight.state.finished {
+                if fight.finished() {
+                    if closing_endturn_seen
+                        || last_turn_actor.as_deref() != Some(ej.who.as_str())
+                    {
+                        return Err(make_diff(
+                            "endturn_after_combat_ended",
+                            decisions_checked,
+                            ev_idx,
+                            line_no,
+                            format!("at most one closing endturn for {:?}", last_turn_actor),
+                            format!("endturn {} (already_seen={closing_endturn_seen})", ej.who),
+                            last_state,
+                        ));
+                    }
+                    closing_endturn_seen = true;
+                } else {
                     let cur = fight.current();
                     if fight.unit_key(cur) != ej.who {
                         return Err(make_diff(
@@ -1079,10 +1322,11 @@ pub fn verify_tape(
                         last_state.clone(),
                     )
                 })?;
-                let got_winner = fight.state.winner.map(|t| t.name().to_string());
+                let got_winner = fight.winner().map(|t| t.name().to_string());
                 if got_winner != endj.winner
-                    || fight.state.round != endj.round
-                    || fight.state.finished != endj.finished
+                    || fight.round() != endj.round
+                    || fight.finished() != endj.finished
+                    || (endj.decisions > 0 && endj.decisions != decisions_checked)
                 {
                     return Err(make_diff(
                         "end_mismatch",
@@ -1090,12 +1334,13 @@ pub fn verify_tape(
                         ev_idx,
                         line_no,
                         format!(
-                            "winner={:?} round={} finished={}",
-                            endj.winner, endj.round, endj.finished
+                            "winner={:?} round={} finished={} decisions={}",
+                            endj.winner, endj.round, endj.finished, endj.decisions
                         ),
                         format!(
-                            "winner={got_winner:?} round={} finished={}",
-                            fight.state.round, fight.state.finished
+                            "winner={got_winner:?} round={} finished={} decisions={decisions_checked}",
+                            fight.round(),
+                            fight.finished()
                         ),
                         last_state,
                     ));
@@ -1183,5 +1428,6 @@ pub fn verify_tape(
         states_checked,
         draws_in_range,
         draws_consumed: dice.cursor,
+        deferred_menu_entries_skipped,
     })
 }

@@ -261,3 +261,152 @@ impl EventFilter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::effect::{EffectExpiry, EffectKind};
+    use crate::event::NoopSink;
+    use crate::step::{ContentDb, CreatureTemplate};
+    use crate::types::{Dice, Dmg, DmgMask, EncounterSpec, Placement, Size, TemplateId};
+
+    fn hidden_test_db() -> Arc<ContentDb> {
+        let mut db = ContentDb::default();
+        for (i, (key, team, pc)) in [("hero", Team::Heroes, true), ("monster", Team::Monsters, false)]
+            .into_iter()
+            .enumerate()
+        {
+            let tid = TemplateId(i as u16);
+            db.template_by_key.insert(key.into(), tid);
+            db.templates.push(CreatureTemplate {
+                id: tid,
+                key: key.into(),
+                name: key.into(),
+                team,
+                pc,
+                size: Size::Medium,
+                undead: false,
+                elf: false,
+                construct: false,
+                ac: 14,
+                max_hp: 20,
+                speed: 30,
+                fly: false,
+                abilities: [14, 14, 14, 10, 10, 10],
+                prof_bonus: 2,
+                save_prof: [false; 6],
+                saves: [2, 2, 2, 0, 0, 0],
+                init_bonus: if pc { 20 } else { 0 },
+                init_adv: false,
+                melee_reach_ft: Some(5),
+                passive_perception: 10,
+                darkvision: 60,
+                blindsight: 0,
+                truesight: 0,
+                dmg_resist: DmgMask::empty(),
+                dmg_immune: DmgMask::empty(),
+                dmg_vuln: DmgMask::empty(),
+                immune_poisoned: false,
+                immune_paralyzed: false,
+                immune_prone: false,
+                immune_charmed: false,
+                immune_frightened: false,
+                immune_grappled: false,
+                gear: vec![],
+                spares: vec![],
+                attacks: vec![],
+                multiattack: vec![],
+                fighter: false,
+                fighter_level: 0,
+                second_wind_uses: 0,
+                second_wind_die: Dice::default(),
+                action_surge_uses: 0,
+                savage_attacker: false,
+                great_weapon_fighting: false,
+                improved_critical: false,
+                remarkable_athlete: false,
+                sorcerer: false,
+                stench_dc: None,
+                undead_fortitude: None,
+                caster: None,
+            });
+        }
+        db.recompute_hash();
+        Arc::new(db)
+    }
+
+    #[test]
+    fn observer_view_and_event_filter_conceal_hidden_enemy() {
+        let db = hidden_test_db();
+        let spec = EncounterSpec {
+            units: vec!["hero".into(), "monster-1".into()],
+            placements: vec![
+                Placement { id: "hero".into(), x: 3, y: 3 },
+                Placement { id: "monster-1".into(), x: 4, y: 3 },
+            ],
+            map_rows: Some(vec![
+                "HHHHHHHH".into(),
+                "H......H".into(),
+                "H......H".into(),
+                "H......H".into(),
+                "H......H".into(),
+                "HHHHHHHH".into(),
+            ]),
+            max_rounds: 20,
+        };
+        let mut fight = Fight::new(db, &spec, 99).unwrap();
+        let mut sink = NoopSink;
+        fight.start(&mut sink).unwrap();
+
+        let monster = UnitId(1);
+        fight.unit_mut(monster).hidden_stealth = 18;
+        fight.state.effects.add(
+            monster,
+            monster,
+            EffectKind::Hidden { stealth_total: 18 },
+            EffectExpiry::Manual,
+            false,
+            None,
+        );
+        fight.refresh_flags(monster);
+
+        assert_eq!(sense_of(&fight, Observer::Team(Team::Heroes), monster), SenseState::Concealed);
+        assert_eq!(sense_of(&fight, Observer::Team(Team::Monsters), monster), SenseState::Visible);
+        assert_eq!(sense_of(&fight, Observer::Full, monster), SenseState::Visible);
+
+        let hero_view = fight.view(Observer::Team(Team::Heroes));
+        assert_eq!(hero_view.units.len(), 1);
+        assert_eq!(hero_view.units[0].unit_key, "hero");
+        assert_eq!(fight.view(Observer::Team(Team::Monsters)).units.len(), 2);
+        assert_eq!(fight.view(Observer::Full).units.len(), 2);
+
+        let move_ev = Event::UnitMoved {
+            unit: monster,
+            path: SmallVec::from_slice(&[Pos::new(4, 3), Pos::new(5, 3)]),
+            cost_ft: 5,
+        };
+        assert!(EventFilter::project(&fight, &move_ev, Observer::Team(Team::Heroes)).is_none());
+        assert!(EventFilter::project(&fight, &move_ev, Observer::Team(Team::Monsters)).is_some());
+
+        let atk_ev = Event::AttackResolved {
+            attacker: EventSubject::Unit(monster),
+            target: EventSubject::Unit(UnitId(0)),
+            weapon: "bite".into(),
+            reaction: false,
+            hit: true,
+            crit: false,
+            damage: 7,
+            damage_type: Dmg::Piercing,
+        };
+        let projected = EventFilter::project(&fight, &atk_ev, Observer::Team(Team::Heroes))
+            .expect("attack on visible hero is delivered with unseen attacker");
+        match projected {
+            Event::AttackResolved { attacker: EventSubject::Unseen { square: Some(sq) }, .. } => {
+                assert_eq!(sq, Pos::new(4, 3));
+            }
+            other => panic!("expected redacted Unseen attacker, got {other:?}"),
+        }
+    }
+}

@@ -109,7 +109,7 @@ fn main() -> ExitCode {
             match tape::verify_tape(db, &tape_path, stop_line) {
                 Ok(rep) => {
                     println!(
-                        "REPLAY OK: {} (sha256={}, lines={}, decisions={}, actions={}, states={}, draws={}/{}, stop_line={:?})",
+                        "REPLAY OK: {} (sha256={}, lines={}, decisions={}, actions={}, states={}, draws={}/{}, deferred_menu_entries={}, stop_line={:?})",
                         tape_path.display(),
                         &rep.tape_sha256[..16],
                         rep.lines_checked,
@@ -118,6 +118,7 @@ fn main() -> ExitCode {
                         rep.states_checked,
                         rep.draws_consumed,
                         rep.draws_in_range,
+                        rep.deferred_menu_entries_skipped,
                         stop_line,
                     );
                     ExitCode::SUCCESS

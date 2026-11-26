@@ -7,6 +7,8 @@ use serde::Deserialize;
 
 /// Required SRD 5.2.1 licence and provenance identifiers.
 pub const REQUIRED_SOURCE: &str = "srd-5.2.1";
+/// Source identifier for original player characters built on SRD 5.2.1 mechanics.
+pub const ORIGINAL_HERO_SOURCE: &str = "original-srd-5.2.1";
 pub const REQUIRED_LICENCE: &str = "CC-BY-4.0";
 
 // ---------------------------------------------------------------------------

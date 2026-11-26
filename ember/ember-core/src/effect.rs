@@ -29,6 +29,8 @@ pub enum EffectKind {
     // Source-linked / timed combat effects
     /// Ghast Stench poison: Poisoned until the start of the bearer's next turn.
     StenchPoison,
+    /// Immunity to a specific creature's Stench after succeeding on its save.
+    StenchImmunity,
     /// Weapon Mastery Sap: Disadvantage on next attack roll until start of wielder's next turn.
     Sap,
     /// Dodge action active until start of bearer's next turn (or until speed == 0 / incapacitated).
@@ -97,7 +99,7 @@ impl ActiveEffect {
             EffectKind::Dodge => UnitFlags::DODGING,
             EffectKind::Disengage => UnitFlags::DISENGAGED,
             EffectKind::InnateSorcery => UnitFlags::INNATE_SORCERY,
-            EffectKind::DataEffect { .. } => UnitFlags::empty(),
+            EffectKind::StenchImmunity | EffectKind::DataEffect { .. } => UnitFlags::empty(),
         }
     }
 }
@@ -165,6 +167,12 @@ impl EffectSlab {
 
     pub fn has_kind(&self, target: UnitId, kind: EffectKind) -> bool {
         self.entries.iter().any(|e| e.target == target && e.kind == kind)
+    }
+
+    pub fn has_kind_from(&self, target: UnitId, source: UnitId, kind: EffectKind) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.target == target && e.source == source && e.kind == kind)
     }
 
     pub fn count_kind(&self, target: UnitId, pred: impl Fn(&EffectKind) -> bool) -> usize {

@@ -1,8 +1,10 @@
 //! Compact, zero-heap-allocation `FightState` and public `Fight` API.
 
-use std::collections::BTreeMap;
+use std::collections::hash_map::RandomState;
+use std::collections::{BTreeMap, HashSet};
+use std::hash::BuildHasher;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -15,13 +17,16 @@ use crate::interrupt::{
     ReactionOption,
 };
 use crate::rng::{DiceSource, DrawRecord, DrawVal, FastRng, LiveDice};
-use crate::step::{AttackAbility, AttackTemplate, ContentDb, CreatureTemplate};
+use crate::step::{AttackAbility, AttackTemplate, ContentDb, CreatureTemplate, TargetMode};
 use crate::types::{
     ability_mod, Ability, ActionId, CoreError, Dice, EncounterSpec, FightOutcome, FightPhase,
     Metamagic, Observer, Pos, ReactionMode, RollMode, SenseState, Size, SpellPayment, StateDigest,
     StepOutcome, Team, TemplateId, UnitDigest, UnitFlags, UnitId,
 };
 use crate::view::{sense_of, ActionPayload, CanonKey, LegalAction, ObserverView, UnitView};
+
+/// Current binary snapshot wire version written by [`Fight::save_bytes`].
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 1;
 
 /// Static per-fight metadata shared across `fork()` / `clone()` via `Arc`.
 #[derive(Clone, Debug)]
@@ -63,7 +68,7 @@ pub struct UnitState {
     pub slots: [u8; 3],
     /// Bitmask of available free-cast pool slots (bit `i` = 1 means unused).
     pub free_cast_mask: u8,
-    pub pools_init: bool,
+    pub slot_spent_this_turn: bool,
     pub sorcery_points: u8,
     pub innate_sorcery_left: u8,
     pub innate_until: i32,
@@ -71,8 +76,6 @@ pub struct UnitState {
     pub str_drain: i8,
     pub gear_off: u32,
     pub spares: [u8; 4],
-    /// Bitmask of source units whose Stench this unit has saved against.
-    pub stench_immune_mask: u32,
     // Multiattack inline state (up to 8 combos, up to 4 attacks per combo)
     pub ma_started: bool,
     pub ma_combo_mask: u8,
@@ -88,22 +91,20 @@ impl UnitState {
         for (i, &(_, cnt)) in t.spares.iter().take(4).enumerate() {
             spares[i] = cnt;
         }
-        let (slots, free_cast_mask, sorcery_points, innate_sorcery_left, pools_init) =
-            match &t.caster {
-                Some(c) => {
-                    let mut mask = 0u8;
-                    for g in &c.grants {
-                        if let SpellPayment::FreePerLongRest { pool_index, .. } = g.payment {
-                            if pool_index < 8 {
-                                mask |= 1u8 << pool_index;
-                            }
+        let (slots, free_cast_mask, sorcery_points, innate_sorcery_left) = match &t.caster {
+            Some(c) => {
+                let mut mask = 0u8;
+                for g in &c.grants {
+                    if let SpellPayment::FreePerLongRest { pool_index, .. } = g.payment {
+                        if pool_index < 8 {
+                            mask |= 1u8 << pool_index;
                         }
                     }
-                    let init = !t.pc && !c.free_cast_pools.is_empty();
-                    (c.slots, mask, c.sorcery_points, c.innate_sorcery_uses, init)
                 }
-                None => ([0; 3], 0, 0, 0, false),
-            };
+                (c.slots, mask, c.sorcery_points, c.innate_sorcery_uses)
+            }
+            None => ([0; 3], 0, 0, 0),
+        };
         Self {
             template_id: tid,
             team: t.team,
@@ -128,14 +129,13 @@ impl UnitState {
             first_turn_taken: false,
             slots,
             free_cast_mask,
-            pools_init,
+            slot_spent_this_turn: false,
             sorcery_points,
             innate_sorcery_left,
             innate_until: -1,
             str_drain: 0,
             gear_off: 0,
             spares,
-            stench_immune_mask: 0,
             ma_started: false,
             ma_combo_mask: 0,
             ma_combo_used: [0; 8],
@@ -225,6 +225,8 @@ pub struct FightState {
 /// Binary snapshot format serialized by [`Fight::save_bytes`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct FightSnapshot {
+    format_version: u32,
+    content_hash: u64,
     fight_id: u64,
     max_rounds: i32,
     unit_keys: Vec<String>,
@@ -237,10 +239,10 @@ struct FightSnapshot {
 /// immutable [`Grid`], [`ContentDb`], and [`FightMeta`].
 #[derive(Clone, Debug)]
 pub struct Fight {
-    pub db: Arc<ContentDb>,
-    pub grid: Arc<Grid>,
-    pub meta: Arc<FightMeta>,
-    pub state: FightState,
+    pub(crate) db: Arc<ContentDb>,
+    pub(crate) grid: Arc<Grid>,
+    pub(crate) meta: Arc<FightMeta>,
+    pub(crate) state: FightState,
 }
 
 impl Fight {
@@ -324,6 +326,83 @@ impl Fight {
     }
 
     #[inline]
+    pub fn fight_id(&self) -> u64 {
+        self.meta.fight_id
+    }
+
+    #[inline]
+    pub fn max_rounds(&self) -> i32 {
+        self.meta.max_rounds
+    }
+
+    #[inline]
+    pub fn unit_count(&self) -> usize {
+        self.state.units.len()
+    }
+
+    #[inline]
+    pub fn unit_keys(&self) -> &[String] {
+        &self.meta.unit_keys
+    }
+
+    #[inline]
+    pub fn round(&self) -> i32 {
+        self.state.round
+    }
+
+    #[inline]
+    pub fn started(&self) -> bool {
+        self.state.started
+    }
+
+    #[inline]
+    pub fn finished(&self) -> bool {
+        self.state.finished
+    }
+
+    #[inline]
+    pub fn winner(&self) -> Option<Team> {
+        self.state.winner
+    }
+
+    #[inline]
+    pub fn draws(&self) -> u64 {
+        self.state.draws
+    }
+
+    #[inline]
+    pub fn event_cursor(&self) -> u64 {
+        self.state.event_cursor
+    }
+
+    #[inline]
+    pub fn rng_state(&self) -> FastRng {
+        self.state.rng
+    }
+
+    /// Read-only view of the contiguous [`FightState`] (for benchmarks & assertions).
+    #[inline]
+    pub fn state_snapshot(&self) -> &FightState {
+        &self.state
+    }
+
+    /// Read-only reference to the top pending interrupt, if awaiting a reaction.
+    #[inline]
+    pub fn pending_interrupt(&self) -> Option<&InterruptFrame> {
+        self.state.interrupts.top()
+    }
+
+    #[inline]
+    pub fn db(&self) -> &ContentDb {
+        &self.db
+    }
+
+    #[inline]
+    pub fn grid(&self) -> &Grid {
+        &self.grid
+    }
+
+    #[inline]
     pub fn revision(&self) -> u64 {
         self.state.revision
     }
@@ -339,7 +418,7 @@ impl Fight {
     }
 
     #[inline]
-    pub fn unit_mut(&mut self, u: UnitId) -> &mut UnitState {
+    pub(crate) fn unit_mut(&mut self, u: UnitId) -> &mut UnitState {
         &mut self.state.units[u.idx()]
     }
 
@@ -411,10 +490,13 @@ impl Fight {
         copy
     }
 
-    /// Serialize complete fight state (including RNG, nested pending interrupts,
-    /// active effects, revision, and event cursor) to compact binary bytes.
+    /// Serialize complete fight state (including format version, content hash,
+    /// RNG, nested pending interrupts, active effects, revision, and event cursor)
+    /// to compact binary bytes.
     pub fn save_bytes(&self) -> Result<Vec<u8>, CoreError> {
         let snap = FightSnapshot {
+            format_version: SNAPSHOT_FORMAT_VERSION,
+            content_hash: self.db.content_hash,
             fight_id: self.meta.fight_id,
             max_rounds: self.meta.max_rounds,
             unit_keys: self.meta.unit_keys.clone(),
@@ -425,11 +507,80 @@ impl Fight {
         postcard::to_allocvec(&snap).map_err(|e| CoreError::Serialization(e.to_string()))
     }
 
-    /// Restore a fight from bytes produced by [`Fight::save_bytes`].
+    /// Restore a fight from bytes produced by [`Fight::save_bytes`], validating
+    /// snapshot format version, content hash, template IDs, and structural invariants.
     pub fn load_bytes(db: Arc<ContentDb>, bytes: &[u8]) -> Result<Self, CoreError> {
         let snap: FightSnapshot =
             postcard::from_bytes(bytes).map_err(|e| CoreError::Serialization(e.to_string()))?;
-        let grid = Arc::new(Grid::from_rows(&snap.map_rows).map_err(CoreError::Setup)?);
+        if snap.format_version != SNAPSHOT_FORMAT_VERSION {
+            return Err(CoreError::Serialization(format!(
+                "unsupported snapshot format_version {} (expected {SNAPSHOT_FORMAT_VERSION})",
+                snap.format_version
+            )));
+        }
+        if snap.content_hash != db.content_hash {
+            return Err(CoreError::Serialization(format!(
+                "snapshot content_hash mismatch (snapshot={:#018x}, db={:#018x})",
+                snap.content_hash, db.content_hash
+            )));
+        }
+        let n = snap.state.units.len();
+        if n > 24 || snap.unit_keys.len() != n || snap.unit_names.len() != n {
+            return Err(CoreError::Serialization(format!(
+                "invalid unit metadata lengths (units={n}, keys={}, names={})",
+                snap.unit_keys.len(),
+                snap.unit_names.len()
+            )));
+        }
+        let grid = Arc::new(Grid::from_rows(&snap.map_rows).map_err(CoreError::Serialization)?);
+        for (i, u) in snap.state.units.iter().enumerate() {
+            if (u.template_id.0 as usize) >= db.templates.len() {
+                return Err(CoreError::Serialization(format!(
+                    "unit {} template_id {} out of range (templates={})",
+                    snap.unit_keys[i],
+                    u.template_id.0,
+                    db.templates.len()
+                )));
+            }
+            if db.template_for_unit_id(&snap.unit_keys[i]) != Some(u.template_id) {
+                return Err(CoreError::Serialization(format!(
+                    "unit {} template_id {:?} does not match content db",
+                    snap.unit_keys[i], u.template_id
+                )));
+            }
+            if !grid.in_bounds(u.pos) {
+                return Err(CoreError::Serialization(format!(
+                    "unit {} pos ({},{}) out of map bounds",
+                    snap.unit_keys[i], u.pos.x, u.pos.y
+                )));
+            }
+        }
+        for &uid in &snap.state.order {
+            if uid.idx() >= n {
+                return Err(CoreError::Serialization(format!(
+                    "turn order unit id {} out of range ({n})",
+                    uid.0
+                )));
+            }
+        }
+        if snap.state.started
+            && !snap.state.order.is_empty()
+            && (snap.state.turn_idx as usize) >= snap.state.order.len()
+        {
+            return Err(CoreError::Serialization(format!(
+                "turn_idx {} out of range (order len {})",
+                snap.state.turn_idx,
+                snap.state.order.len()
+            )));
+        }
+        for frame in &snap.state.interrupts.frames {
+            if frame.reactor.idx() >= n || frame.trigger_actor.idx() >= n {
+                return Err(CoreError::Serialization(
+                    "pending interrupt unit id out of range".into(),
+                ));
+            }
+        }
+        remember_restored_fight_id(snap.fight_id);
         let meta = Arc::new(FightMeta {
             fight_id: snap.fight_id,
             max_rounds: snap.max_rounds,
@@ -955,29 +1106,16 @@ impl Fight {
         if !allowed {
             return Vec::new();
         }
-        let mut raw = self.enumerate_turn_actions(actor);
-        let mut keyed: Vec<(CanonKey, ActionPayload)> = raw
-            .drain(..)
-            .map(|p| (self.canon_key(actor, &p), p))
-            .collect();
-        keyed.sort_by(|a, b| a.0.cmp(&b.0));
-
-        // Deduplicate equal semantic keys while preserving first canonical entry
-        let mut out = Vec::with_capacity(keyed.len() + 1);
-        let mut prev_key: Option<String> = None;
-        for (_, payload) in keyed {
+        let payloads = self.canonical_turn_payloads(actor);
+        let mut out = Vec::with_capacity(payloads.len() + 1);
+        for (i, payload) in payloads.into_iter().enumerate() {
             let action_key = self.describe_payload(actor, &payload);
-            if prev_key.as_deref() == Some(action_key.as_str()) {
-                continue;
-            }
-            let idx = out.len() as u16;
             let kind = payload_kind(&payload).to_string();
-            prev_key = Some(action_key.clone());
             out.push(LegalAction {
                 id: ActionId {
                     fight_id: self.meta.fight_id,
                     revision: self.state.revision,
-                    index: idx,
+                    index: i as u16,
                 },
                 action_key,
                 kind,
@@ -995,6 +1133,27 @@ impl Fight {
             kind: "end_turn".to_string(),
             payload: ActionPayload::EndTurn,
         });
+        out
+    }
+
+    /// Canonical, deduplicated turn action payloads without allocating display strings.
+    fn canonical_turn_payloads(&self, actor: UnitId) -> Vec<ActionPayload> {
+        let mut raw = self.enumerate_turn_actions(actor);
+        let mut keyed: Vec<(CanonKey, ActionPayload)> = raw
+            .drain(..)
+            .map(|p| (self.canon_key(actor, &p), p))
+            .collect();
+        keyed.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut out = Vec::with_capacity(keyed.len());
+        let mut prev_key: Option<CanonKey> = None;
+        for (k, payload) in keyed {
+            if prev_key.as_ref() == Some(&k) {
+                continue;
+            }
+            prev_key = Some(k);
+            out.push(payload);
+        }
         out
     }
 
@@ -1055,6 +1214,9 @@ impl Fight {
             out.push(ActionPayload::InnateSorcery);
         }
 
+        // Data-driven granted spells
+        self.enumerate_spell_actions(u, &mut out);
+
         // 1-step movement candidates
         if unit.available_movement() > 0 {
             let budget = (unit.available_movement() as i32).div_euclid(5);
@@ -1074,7 +1236,7 @@ impl Fight {
                     }
                 }
             }
-            // NPC multi-square occupied-crossing moves (rule 18)
+            // NPC multi-square occupied-crossing moves
             if !tmpl.pc {
                 for path in self.crossing_move_paths(u) {
                     out.push(ActionPayload::Move(path));
@@ -1092,6 +1254,250 @@ impl Fight {
         }
 
         out
+    }
+
+    fn enumerate_spell_actions(&self, u: UnitId, out: &mut Vec<ActionPayload>) {
+        let Some(caster) = self.template_of(u).caster.as_ref() else {
+            return;
+        };
+        let unit = self.unit(u);
+        let mut seen_spells: SmallVec<[&str; 16]> = SmallVec::new();
+        for grant in &caster.grants {
+            if seen_spells.contains(&grant.spell_key.as_str()) {
+                continue;
+            }
+            seen_spells.push(grant.spell_key.as_str());
+            let ab = self.db.ability(grant.ability_id);
+            let has_cost = match ab.cost {
+                crate::step::ActionCost::Action => unit.action > 0,
+                crate::step::ActionCost::BonusAction => unit.bonus > 0,
+                _ => false,
+            };
+            if !has_cost {
+                continue;
+            }
+            // Collect legal (at_level, free) payments for this spell
+            let mut payments: SmallVec<[(u8, bool); 4]> = SmallVec::new();
+            if ab.base_level == 0 {
+                payments.push((0, false));
+            } else {
+                for g2 in caster.grants.iter().filter(|g| g.spell_key == grant.spell_key) {
+                    match g2.payment {
+                        SpellPayment::AtWill { cast_level } => {
+                            if !payments.contains(&(cast_level, true)) {
+                                payments.push((cast_level, true));
+                            }
+                        }
+                        SpellPayment::FreePerLongRest { cast_level, pool_index, .. } => {
+                            if (unit.free_cast_mask & (1u8 << pool_index)) != 0
+                                && !payments.contains(&(cast_level, true))
+                            {
+                                payments.push((cast_level, true));
+                            }
+                        }
+                        SpellPayment::Slot => {}
+                    }
+                }
+                if !unit.slot_spent_this_turn {
+                    for lvl in (ab.base_level as usize)..unit.slots.len() {
+                        if unit.slots[lvl] > 0 {
+                            payments.push((lvl as u8, false));
+                        }
+                    }
+                }
+            }
+            let can_emp = caster.has_empowered && unit.sorcery_points >= 1 && ab.is_empowerable();
+            let can_hgt = caster.has_heightened && unit.sorcery_points >= 2 && ab.has_saving_throw();
+
+            let push_with_mm = |out: &mut Vec<ActionPayload>, base: ActionPayload| {
+                if can_emp {
+                    if let ActionPayload::CastSpell {
+                        ref spell_key,
+                        at_level,
+                        free,
+                        ref targets,
+                        point,
+                        ..
+                    } = base
+                    {
+                        out.push(ActionPayload::CastSpell {
+                            spell_key: spell_key.clone(),
+                            at_level,
+                            free,
+                            metamagic: Some(Metamagic::EmpoweredSpell),
+                            targets: targets.clone(),
+                            point,
+                        });
+                    }
+                }
+                if can_hgt {
+                    if let ActionPayload::CastSpell {
+                        ref spell_key,
+                        at_level,
+                        free,
+                        ref targets,
+                        point,
+                        ..
+                    } = base
+                    {
+                        out.push(ActionPayload::CastSpell {
+                            spell_key: spell_key.clone(),
+                            at_level,
+                            free,
+                            metamagic: Some(Metamagic::HeightenedSpell),
+                            targets: targets.clone(),
+                            point,
+                        });
+                    }
+                }
+                out.push(base);
+            };
+
+            for (at_level, free) in payments {
+                match ab.targeting {
+                    TargetMode::SelfOnly => {
+                        push_with_mm(
+                            out,
+                            ActionPayload::CastSpell {
+                                spell_key: grant.spell_key.clone(),
+                                at_level,
+                                free,
+                                metamagic: None,
+                                targets: SmallVec::from_slice(&[u]),
+                                point: None,
+                            },
+                        );
+                    }
+                    TargetMode::SingleCreature { range_ft, .. } => {
+                        for ti in 0..self.state.units.len() {
+                            let t = UnitId(ti as u8);
+                            if t == u
+                                || !self.opposing(u, t)
+                                || self.unit(t).flags.is_dead()
+                                || !self.can_see(u, t)
+                                || unit.pos.feet_to(self.unit(t).pos) > range_ft as i32
+                            {
+                                continue;
+                            }
+                            push_with_mm(
+                                out,
+                                ActionPayload::CastSpell {
+                                    spell_key: grant.spell_key.clone(),
+                                    at_level,
+                                    free,
+                                    metamagic: None,
+                                    targets: SmallVec::from_slice(&[t]),
+                                    point: None,
+                                },
+                            );
+                        }
+                    }
+                    TargetMode::MultiDart { base_darts, range_ft } => {
+                        let n_darts = (base_darts as usize)
+                            + (at_level.saturating_sub(ab.base_level) as usize);
+                        let mut pool: SmallVec<[UnitId; 8]> = SmallVec::new();
+                        for ti in 0..self.state.units.len() {
+                            let t = UnitId(ti as u8);
+                            if t != u
+                                && self.opposing(u, t)
+                                && !self.unit(t).flags.is_dead()
+                                && self.can_see(u, t)
+                                && unit.pos.feet_to(self.unit(t).pos) <= range_ft as i32
+                            {
+                                pool.push(t);
+                            }
+                        }
+                        if !pool.is_empty() && n_darts > 0 {
+                            for mut combo in multisets_max_distinct(&pool, n_darts, 2) {
+                                combo.sort_by(|&a, &b| self.unit_key(a).cmp(self.unit_key(b)));
+                                push_with_mm(
+                                    out,
+                                    ActionPayload::CastSpell {
+                                        spell_key: grant.spell_key.clone(),
+                                        at_level,
+                                        free,
+                                        metamagic: None,
+                                        targets: combo,
+                                        point: None,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    TargetMode::PointRadius { radius_ft, range_ft } => {
+                        if let Some(pt) =
+                            self.best_radius_target(u, range_ft as i32, radius_ft as i32)
+                        {
+                            push_with_mm(
+                                out,
+                                ActionPayload::CastSpell {
+                                    spell_key: grant.spell_key.clone(),
+                                    at_level,
+                                    free,
+                                    metamagic: None,
+                                    targets: SmallVec::new(),
+                                    point: Some(pt),
+                                },
+                            );
+                        }
+                    }
+                    TargetMode::MovePath => {}
+                }
+            }
+        }
+    }
+
+    fn best_radius_target(&self, u: UnitId, range_ft: i32, radius_ft: i32) -> Option<Pos> {
+        let cur = self.unit(u).pos;
+        let max_sq = (range_ft / 5).max(0) as i16;
+        // Sensed (audible but unseen) non-hidden opposing units via our single visibility oracle
+        let mut sensed: SmallVec<[Pos; 8]> = SmallVec::new();
+        for i in 0..self.state.units.len() {
+            let e = UnitId(i as u8);
+            if self.unit(e).flags.is_dead() || !self.opposing(u, e) {
+                continue;
+            }
+            if let SenseState::HeardAt(pos) = sense_of(self, Observer::Unit(u), e) {
+                sensed.push(pos);
+            }
+        }
+        let mut best: Option<Pos> = None;
+        let mut best_score = 1.0f64;
+        for dx in -max_sq..=max_sq {
+            for dy in -max_sq..=max_sq {
+                let p = Pos::new(cur.x + dx, cur.y + dy);
+                if !self.grid.in_bounds(p) || !self.grid.clear_effect(cur, p) {
+                    continue;
+                }
+                let squares = self.squares_in_radius(p, radius_ft, true);
+                let mut score = 0.0f64;
+                for &sq in &squares {
+                    let ent = self.token_at(sq).filter(|&e| !self.unit(e).flags.is_dead());
+                    if sensed.contains(&sq) {
+                        let seen_or_ally = ent.is_some_and(|e| {
+                            (self.opposing(u, e) && self.can_see(u, e)) || self.allies(u, e)
+                        });
+                        if !seen_or_ally {
+                            score += 1.0;
+                            continue;
+                        }
+                    }
+                    let Some(e) = ent else { continue };
+                    if self.opposing(u, e) {
+                        if self.can_see(u, e) {
+                            score += if self.unit(e).flags.is_conscious() { 1.0 } else { 0.5 };
+                        }
+                    } else if self.allies(u, e) {
+                        score -= 1.0;
+                    }
+                }
+                if score >= best_score {
+                    best_score = score;
+                    best = Some(p);
+                }
+            }
+        }
+        best
     }
 
     /// Generate multi-square crossing paths through passable occupied squares to the
@@ -1440,12 +1846,6 @@ impl Fight {
         self.emit_ev(sink, Event::CombatStarted);
         self.roll_initiative(dice, sink)?;
         self.open_turn(dice, sink)?;
-        if !self.state.finished && !self.state.order.is_empty() {
-            let cur = self.current();
-            if self.template_of(cur).caster.is_some() && !self.unit(cur).flags.is_incapacitated() {
-                self.unit_mut(cur).pools_init = true;
-            }
-        }
         self.state.revision += 1;
         Ok(StepOutcome {
             phase: self.phase(),
@@ -1486,16 +1886,22 @@ impl Fight {
         let FightPhase::AwaitingAction(actor) = self.phase() else {
             return Err(CoreError::InvalidPhase("not awaiting a turn action".into()));
         };
-        let legal = self.legal_actions(Observer::Full);
-        let chosen = legal
-            .into_iter()
-            .find(|a| a.id == action_id)
-            .ok_or_else(|| CoreError::UnknownAction(format!("index {}", action_id.index)))?;
-        self.apply_payload_with_dice(actor, &chosen.payload, dice, sink)
+        let payloads = self.canonical_turn_payloads(actor);
+        let idx = action_id.index as usize;
+        let chosen = if idx == payloads.len() {
+            ActionPayload::EndTurn
+        } else {
+            payloads
+                .into_iter()
+                .nth(idx)
+                .ok_or_else(|| CoreError::UnknownAction(format!("index {}", action_id.index)))?
+        };
+        self.apply_checked_payload_with_dice(actor, &chosen, dice, sink)
     }
 
-    /// Apply an explicit [`ActionPayload`] for the active unit (used by replay drivers
-    /// and internal callers after validation).
+    /// Apply an explicit [`ActionPayload`] for the active unit, enforcing that the
+    /// payload is present in the actor's current legal action menu (leaving state
+    /// and RNG untouched on rejection).
     pub fn apply_payload_with_dice<D: DiceSource, S: EventSink>(
         &mut self,
         actor: UnitId,
@@ -1513,10 +1919,27 @@ impl Fight {
                 self.unit_key(cur)
             )));
         }
-        let draws_before = self.state.draws;
-        if self.template_of(actor).caster.is_some() {
-            self.unit_mut(actor).pools_init = true;
+        if !matches!(payload, ActionPayload::EndTurn) {
+            let legal = self.canonical_turn_payloads(actor);
+            if !legal.iter().any(|p| p == payload) {
+                return Err(CoreError::UnknownAction(format!(
+                    "action {} is not in {}'s current legal menu",
+                    self.describe_payload(actor, payload),
+                    self.unit_key(actor)
+                )));
+            }
         }
+        self.apply_checked_payload_with_dice(actor, payload, dice, sink)
+    }
+
+    fn apply_checked_payload_with_dice<D: DiceSource, S: EventSink>(
+        &mut self,
+        actor: UnitId,
+        payload: &ActionPayload,
+        dice: &mut D,
+        sink: &mut S,
+    ) -> Result<StepOutcome, CoreError> {
+        let draws_before = self.state.draws;
         if matches!(payload, ActionPayload::EndTurn) {
             self.arena_end_turn(dice, sink)?;
         } else {
@@ -1652,13 +2075,13 @@ impl Fight {
         dice: &mut D,
         sink: &mut S,
     ) -> Result<DrawVal, CoreError> {
-        let who_key = self.meta.unit_keys[who.idx()].clone();
-        let val = dice.draw(&who_key, tag, sides, mode)?;
+        let val = dice.draw(&self.meta.unit_keys[who.idx()], tag, sides, mode)?;
+        val.validate(sides, mode, self.state.draws as usize)?;
         self.state.draws += 1;
         self.state.event_cursor += 1;
         if S::ACTIVE {
             sink.emit(Event::Draw(DrawRecord {
-                who: who_key,
+                who: self.meta.unit_keys[who.idx()].clone(),
                 tag: tag.to_string(),
                 sides,
                 mode,
@@ -1679,7 +2102,10 @@ impl Fight {
     ) -> Result<SmallVec<[i32; 8]>, CoreError> {
         let mut out = SmallVec::new();
         for _ in 0..count.max(0) {
-            let v = self.draw_primitive(who, tag, sides, RollMode::Normal, dice, sink)?.one();
+            let cursor = self.state.draws as usize;
+            let v = self
+                .draw_primitive(who, tag, sides, RollMode::Normal, dice, sink)?
+                .try_one(cursor)?;
             out.push(v);
         }
         Ok(out)
@@ -1693,8 +2119,9 @@ impl Fight {
         dice: &mut D,
         sink: &mut S,
     ) -> Result<i32, CoreError> {
+        let cursor = self.state.draws as usize;
         let v = self.draw_primitive(who, tag, 20, mode, dice, sink)?;
-        Ok(v.selected(mode))
+        v.try_selected(mode, cursor)
     }
 
     /// Build canonical [`StateDigest`] matching rule-18 tape `state` records verbatim.
@@ -1743,7 +2170,7 @@ impl Fight {
                 }
                 fx.sort();
 
-                let pools = t.caster.as_ref().filter(|_| u.pools_init).and_then(|c| {
+                let pools = t.caster.as_ref().and_then(|c| {
                     let mut m = BTreeMap::new();
                     for (pi, pname) in c.free_cast_pools.iter().enumerate() {
                         let avail = i32::from((u.free_cast_mask & (1u8 << pi)) != 0);
@@ -1824,40 +2251,130 @@ impl Fight {
 }
 
 static NEXT_FIGHT_SEQ: AtomicU64 = AtomicU64::new(1);
+static PROCESS_SALT: OnceLock<u64> = OnceLock::new();
+static RESTORED_FIGHT_IDS: OnceLock<Mutex<HashSet<u64>>> = OnceLock::new();
+
+fn restored_ids() -> &'static Mutex<HashSet<u64>> {
+    RESTORED_FIGHT_IDS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn remember_restored_fight_id(id: u64) {
+    if let Ok(mut guard) = restored_ids().lock() {
+        guard.insert(id);
+    }
+}
+
+fn is_restored_fight_id(id: u64) -> bool {
+    restored_ids().lock().map_or(false, |guard| guard.contains(&id))
+}
+
+fn process_salt() -> u64 {
+    *PROCESS_SALT.get_or_init(|| {
+        let rs1 = RandomState::new();
+        let rs2 = RandomState::new();
+        let mut h = rs1.hash_one(0xA1B2_C3D4_E5F6_0718u64)
+            ^ rs2.hash_one(0x9E37_79B9_7F4A_7C15u64).rotate_left(17);
+        let boxed = Box::new(0u64);
+        let addr = (&*boxed as *const u64) as usize as u64;
+        h ^= addr.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let pid = std::process::id() as u64;
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos() as u64);
+            h ^= pid.rotate_left(31) ^ nanos;
+        }
+        h ^= h >> 30;
+        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        h ^= h >> 27;
+        h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
+        h ^ (h >> 31)
+    })
+}
 
 fn compute_fight_id(spec: &EncounterSpec, grid: &Grid, seed: u64) -> u64 {
-    let seq = NEXT_FIGHT_SEQ.fetch_add(1, Ordering::Relaxed);
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    let mut mix = |bytes: &[u8]| {
-        for &b in bytes {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    let salt = process_salt();
+    loop {
+        let seq = NEXT_FIGHT_SEQ.fetch_add(1, Ordering::Relaxed);
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ salt;
+        let mut mix = |bytes: &[u8]| {
+            for &b in bytes {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        };
+        mix(&seed.to_le_bytes());
+        mix(&seq.to_le_bytes());
+        mix(&spec.max_rounds.to_le_bytes());
+        mix(&(spec.units.len() as u64).to_le_bytes());
+        for uid in &spec.units {
+            mix(uid.as_bytes());
+            mix(&[0xff]);
         }
-    };
-    mix(&seed.to_le_bytes());
-    mix(&seq.to_le_bytes());
-    mix(&spec.max_rounds.to_le_bytes());
-    mix(&(spec.units.len() as u64).to_le_bytes());
-    for uid in &spec.units {
-        mix(uid.as_bytes());
-        mix(&[0xff]);
+        for pl in &spec.placements {
+            mix(pl.id.as_bytes());
+            mix(&pl.x.to_le_bytes());
+            mix(&pl.y.to_le_bytes());
+        }
+        mix(&(grid.w as u16).to_le_bytes());
+        mix(&(grid.h as u16).to_le_bytes());
+        for row in &grid.rows {
+            mix(row.as_bytes());
+            mix(&[0xfe]);
+        }
+        h ^= h >> 30;
+        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        h ^= h >> 27;
+        h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
+        let id = h ^ (h >> 31);
+        if id != 0 && !is_restored_fight_id(id) {
+            return id;
+        }
     }
-    for pl in &spec.placements {
-        mix(pl.id.as_bytes());
-        mix(&pl.x.to_le_bytes());
-        mix(&pl.y.to_le_bytes());
+}
+
+fn multisets_max_distinct(
+    pool: &[UnitId],
+    n: usize,
+    max_distinct: usize,
+) -> Vec<SmallVec<[UnitId; 4]>> {
+    let mut out = Vec::new();
+    if pool.is_empty() || n == 0 {
+        return out;
     }
-    mix(&(grid.w as u16).to_le_bytes());
-    mix(&(grid.h as u16).to_le_bytes());
-    for row in &grid.rows {
-        mix(row.as_bytes());
-        mix(&[0xfe]);
+    let mut idx = vec![0usize; n];
+    loop {
+        let mut combo: SmallVec<[UnitId; 4]> = SmallVec::with_capacity(n);
+        let mut distinct = 0usize;
+        let mut prev: Option<usize> = None;
+        for &i in &idx {
+            if prev != Some(i) {
+                distinct += 1;
+                prev = Some(i);
+            }
+            combo.push(pool[i]);
+        }
+        if distinct <= max_distinct {
+            out.push(combo);
+        }
+        let mut pos = n;
+        let mut adv = false;
+        while pos > 0 {
+            pos -= 1;
+            if idx[pos] + 1 < pool.len() {
+                let v = idx[pos] + 1;
+                for slot in &mut idx[pos..] {
+                    *slot = v;
+                }
+                adv = true;
+                break;
+            }
+        }
+        if !adv {
+            return out;
+        }
     }
-    h ^= h >> 30;
-    h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    h ^= h >> 27;
-    h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
-    h ^ (h >> 31)
 }
 
 fn payload_kind(payload: &ActionPayload) -> &'static str {
