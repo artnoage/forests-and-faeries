@@ -165,6 +165,50 @@ impl Fight {
             let ok = (self.incorporeal(u) || self.reachable(upos, opos)) && upos != opos;
             enemies.push((o, opos, ok));
         }
+        if self.rule_version >= 17 {
+            let existing: Vec<(usize, Pos)> = self.units[u].mem.known.clone();
+            let mut drop_known: Vec<usize> = Vec::new();
+            let mut drop_inv: Vec<Pos> = Vec::new();
+            let mut add_inv: Vec<Pos> = Vec::new();
+            for (k, last_loc) in existing {
+                if enemies.iter().any(|(e, _, _)| *e == k) {
+                    continue;
+                }
+                let gone = self.units[k].dead() || (!self.units[k].conscious() && self.can_see(u, k));
+                if gone || self.sees_lit_square(u, last_loc) {
+                    drop_known.push(k);
+                    drop_inv.push(last_loc);
+                } else {
+                    add_inv.push(last_loc);
+                }
+            }
+            let visible_inv: Vec<Pos> = self.units[u]
+                .mem
+                .investigate
+                .iter()
+                .map(|(p, _)| *p)
+                .filter(|&p| self.sees_lit_square(u, p))
+                .collect();
+            let mem = &mut self.units[u].mem;
+            for &(e, loc, _) in &enemies {
+                if let Some(entry) = mem.known.iter_mut().find(|(k, _)| *k == e) {
+                    entry.1 = loc;
+                } else {
+                    mem.known.push((e, loc));
+                }
+                if let Some(i) = mem.investigate.iter().position(|(p, _)| *p == loc) {
+                    mem.investigate.remove(i);
+                }
+            }
+            mem.known.retain(|(k, _)| !drop_known.contains(k));
+            mem.investigate.retain(|(p, _)| !drop_inv.contains(p) && !visible_inv.contains(p));
+            for loc in add_inv {
+                if !mem.investigate.iter().any(|(p, _)| *p == loc) {
+                    mem.investigate.push((loc, 0));
+                }
+            }
+            return Observed { enemies };
+        }
         let mem = &mut self.units[u].mem;
         for &(e, loc, _) in &enemies {
             if let Some(entry) = mem.known.iter_mut().find(|(k, _)| *k == e) {
@@ -389,8 +433,12 @@ impl Fight {
                         acts.push(Act::EscapeGrapple { target: g });
                     }
                 }
-                if self.units[u].conscious() && !self.active_effects(u, crate::effects::EffKey::EscapableRestraint).is_empty() {
-                    acts.push(Act::BreakFree { target: u });
+                if self.units[u].conscious() {
+                    let n = self.active_effects(u, crate::effects::EffKey::EscapableRestraint).len();
+                    let count = if self.rule_version >= 17 { n } else { usize::from(n > 0) };
+                    for _ in 0..count {
+                        acts.push(Act::BreakFree { target: u });
+                    }
                 }
             }
         }
@@ -898,8 +946,11 @@ impl Fight {
                 Act::FirstAid { target } => {
                     if !self.allies(u, *target) {
                         -2.0
-                    } else if self.units[*target].unconscious() && !self.units[*target].has(crate::engine::St::Stable) {
-                        5.0
+                    } else if !self.units[*target].dead()
+                        && self.units[*target].unconscious()
+                        && !self.units[*target].has(crate::engine::St::Stable)
+                    {
+                        if self.rule_version >= 17 { 0.0 } else { 5.0 }
                     } else {
                         -0.5
                     }
@@ -916,7 +967,13 @@ impl Fight {
                             .and_then(|&(_, d)| d)
                             .unwrap_or(12);
                         let p = ((21 - (dc - m)) as f64 / 20.0).clamp(0.05, 0.95);
-                        if !self.enemy_in_melee_range(u) { 4.5 * p } else { 1.5 * p }
+                        if self.rule_version >= 17 {
+                            if !self.enemy_in_melee_range(u) { 3.0 * p } else { 1.0 * p }
+                        } else if !self.enemy_in_melee_range(u) {
+                            4.5 * p
+                        } else {
+                            1.5 * p
+                        }
                     }
                 }
                 Act::BreakFree { target } => {
@@ -1033,6 +1090,75 @@ impl Fight {
             scores.push(s);
         }
         self.move_cache = cache;
+        // Weigh FirstAid against actual combat alternatives (N20-115, rules v17).
+        if self.rule_version >= 17 && cands.iter().any(|a| matches!(a, Act::FirstAid { .. })) {
+            let med_mod = self.units[u].medicine_mod();
+            let p_med = ((21 - (10 - med_mod)) as f64 / 20.0).clamp(0.05, 0.95);
+            let best_other = cands
+                .iter()
+                .zip(&scores)
+                .filter(|(a, _)| {
+                    !matches!(
+                        a,
+                        Act::FirstAid { .. }
+                            | Act::Dodge
+                            | Act::Disengage
+                            | Act::DisengageBonus
+                            | Act::Dash
+                            | Act::HideBonus
+                            | Act::SecondWind
+                    )
+                })
+                .map(|(_, &s)| s)
+                .fold(SKIP_NATIVE, f64::max);
+            let can_chase = !self.enemy_in_melee_range(u)
+                && !targets.is_empty()
+                && self.speed_of(u) > 0
+                && cands.iter().zip(&scores).any(|(a, &s)| matches!(a, Act::Dash) && s >= 0.1);
+            for (i, act) in cands.iter().enumerate() {
+                let Act::FirstAid { target } = *act else { continue };
+                if !self.allies(u, target) {
+                    scores[i] = -2.0;
+                } else if self.units[target].dead()
+                    || !self.units[target].unconscious()
+                    || self.units[target].has(crate::engine::St::Stable)
+                {
+                    scores[i] = -0.5;
+                } else {
+                    let cursed = self.units[target].cursed;
+                    let has_better_aid = cands.iter().zip(&scores).any(|(other, &other_val)| {
+                        if other_val <= 0.1 {
+                            return false;
+                        }
+                        match other {
+                            Act::Spell(c) => {
+                                if c.spell == crate::content::SpellId::SpareTheDying && c.targets.contains(&target) {
+                                    return true;
+                                }
+                                !cursed
+                                    && matches!(
+                                        c.spell,
+                                        crate::content::SpellId::CureWounds
+                                            | crate::content::SpellId::HealingWord
+                                            | crate::content::SpellId::Aid
+                                    )
+                                    && c.targets.contains(&target)
+                            }
+                            Act::DivineSpark { target: t, heal: true, .. } => !cursed && *t == target,
+                            Act::PreserveLife(alloc) => !cursed && alloc.iter().any(|&(t, hp)| t == target && hp > 0),
+                            _ => false,
+                        }
+                    });
+                    scores[i] = if has_better_aid {
+                        -0.5
+                    } else if best_other > 0.1 || can_chase {
+                        0.05 * p_med
+                    } else {
+                        0.35 + 0.35 * p_med
+                    };
+                }
+            }
+        }
         if self.rule_version >= 6 && cands.iter().any(|a| matches!(a, Act::Disengage | Act::DisengageBonus)) {
             let mut intended = None;
             for (i, action) in cands.iter().enumerate() {

@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 16;
+pub const CURRENT_RULE_VERSION: i32 = 17;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3378,6 +3378,13 @@ impl Fight {
         }
         // `SourceTurnExpiry.died`: the fear this creature caused ends now
         self.end_source_fear_of(u);
+        if self.rule_version >= 17 {
+            for tgt in 0..self.units.len() {
+                if self.units[tgt].charmed_by.iter().any(|c| c.source == u) {
+                    self.end_charm(tgt, u);
+                }
+            }
+        }
         self.emit_web(crate::web_events::WebEv::Died { u, pos, monster });
     }
 
@@ -4030,8 +4037,9 @@ impl Fight {
         }
     }
 
-    /// Roll a skill check with Natural20's `skill_check_terms` advantage/disadvantage.
-    fn roll_skill_check(&mut self, u: usize, skill: &str, modifier: i32, tag: &str) -> i32 {
+    /// Roll a skill check with Natural20's `skill_check_terms` advantage/disadvantage,
+    /// returning `(total, formatted_roll)` using the exact same RNG draw as `roll_d20`.
+    fn roll_skill_check_fmt(&mut self, u: usize, skill: &str, modifier: i32, tag: &str) -> (i32, String) {
         let gt = self.gt();
         let unit = &self.units[u];
         let mut adv = false;
@@ -4048,19 +4056,40 @@ impl Fight {
             adv = true;
         }
         let mode = Fight::mode_of(adv, dis);
-        let face = self.roll_d20(u, tag, mode);
-        face + plus_string_modifier(modifier)
+        let (face, dv) = self.roll_d20_raw(u, tag, mode);
+        let eff_mod = plus_string_modifier(modifier);
+        let total = face + eff_mod;
+        let fmt = if self.web_events.is_some() {
+            crate::web_events::fmt_d20_roll(dv, mode, eff_mod, None)
+        } else {
+            String::new()
+        };
+        (total, fmt)
     }
 
     /// `FirstAidAction`: Medicine DC 10 to stabilize an adjacent unconscious dying creature.
     fn do_first_aid(&mut self, src: usize, tgt: usize) {
         let med_mod = self.units[src].medicine_mod();
-        let total = self.roll_skill_check(src, "medicine", med_mod, "dice roll for medicine");
-        if total >= 10 && !self.units[tgt].dead() && self.units[tgt].unconscious() && !self.units[tgt].has(St::Stable) {
+        let (total, roll_fmt) = self.roll_skill_check_fmt(src, "medicine", med_mod, "dice roll for medicine");
+        let success = total >= 10 && !self.units[tgt].dead() && self.units[tgt].unconscious() && !self.units[tgt].has(St::Stable);
+        if success {
             let unit = &mut self.units[tgt];
             unit.add_status(St::Stable);
             unit.death_saves = 0;
             unit.death_fails = 0;
+        }
+        let src_pos = self.units[src].pos;
+        let tgt_pos = self.units[tgt].pos;
+        if let Some(ev) = &mut self.web_events {
+            ev.push(crate::web_events::WebEv::FirstAid {
+                src,
+                tgt,
+                src_pos,
+                tgt_pos,
+                roll_fmt,
+                dc: 10,
+                success,
+            });
         }
         let u = &mut self.units[src];
         u.action = (u.action - 1).max(0);
@@ -4070,22 +4099,36 @@ impl Fight {
     fn do_escape_grapple(&mut self, src: usize, grappler: usize) {
         let ath = self.units[src].athletics_mod();
         let acr = self.units[src].acrobatics_mod();
-        let total = if ath > acr {
-            self.roll_skill_check(src, "athletics", ath, "dice roll for athletics")
+        let (skill, (total, roll_fmt)) = if ath > acr {
+            ("Athletics", self.roll_skill_check_fmt(src, "athletics", ath, "dice roll for athletics"))
         } else {
-            self.roll_skill_check(src, "acrobatics", acr, "dice roll for acrobatics")
+            ("Acrobatics", self.roll_skill_check_fmt(src, "acrobatics", acr, "dice roll for acrobatics"))
         };
         let escape_dc = self.units[src].grappled_by.iter().find(|&&(g, _)| g == grappler).and_then(|&(_, dc)| dc);
-        let escaped = match escape_dc {
-            Some(dc) => total >= dc,
+        let (escaped, dc_text) = match escape_dc {
+            Some(dc) => (total >= dc, format!("DC {dc}")),
             None => {
                 let g_ath = self.units[grappler].athletics_mod();
-                let g_total = self.roll_skill_check(grappler, "athletics", g_ath, "dice roll for athletics");
-                total > g_total
+                let (g_total, g_fmt) = self.roll_skill_check_fmt(grappler, "athletics", g_ath, "dice roll for athletics");
+                (total > g_total, format!("Athletics {g_fmt}"))
             }
         };
         if escaped {
             self.release_grapple(grappler, src);
+        }
+        let src_pos = self.units[src].pos;
+        let grappler_pos = self.units[grappler].pos;
+        if let Some(ev) = &mut self.web_events {
+            ev.push(crate::web_events::WebEv::EscapeGrapple {
+                src,
+                grappler,
+                src_pos,
+                grappler_pos,
+                skill,
+                roll_fmt,
+                dc_text,
+                success: escaped,
+            });
         }
         let u = &mut self.units[src];
         u.action = (u.action - 1).max(0);
@@ -4100,10 +4143,21 @@ impl Fight {
             _ => return,
         };
         let ath = self.units[src].athletics_mod();
-        let total = self.roll_skill_check(src, "athletics", ath, "athletics");
+        let (total, roll_fmt) = self.roll_skill_check_fmt(src, "athletics", ath, "athletics");
+        let success = total >= dc;
         self.units[src].action = (self.units[src].action - 1).max(0);
-        if total >= dc {
+        if success {
             self.dismiss_entangle_restraint(obj);
+        }
+        let src_pos = self.units[src].pos;
+        if let Some(ev) = &mut self.web_events {
+            ev.push(crate::web_events::WebEv::BreakFree {
+                src,
+                src_pos,
+                roll_fmt,
+                dc,
+                success,
+            });
         }
     }
 

@@ -565,6 +565,9 @@ test('ability info: the sheet text (with its corrections), cost, uses, range, ro
   assert.match(abilityInfo('Move', [{ category: 'move', kind: 'move', label: 'Move', cost: '10 ft' }], barb, []).text, /up to your Speed/);
   assert.match(abilityInfo('Unarmed Attack', [{ category: 'attack', kind: 'attack', label: 'Unarmed Attack', cost: 'action' }], barb, []).text, /1 \+ your Strength modifier/);
   assert.match(abilityInfo('Stand', [{ category: 'stand', kind: 'stand', label: 'Stand', cost: 'movement' }], barb, []).text, /half your Speed/);
+  assert.match(abilityInfo('First Aid', [{ category: 'feature', kind: 'first_aid', label: 'First Aid', cost: 'action' }], barb, []).text, /DC 10 Wisdom \(Medicine\).*Stable/);
+  assert.match(abilityInfo('Escape Grapple', [{ category: 'feature', kind: 'escape_grapple', label: 'Escape Grapple', cost: 'action' }], barb, []).text, /Athletics.*Acrobatics.*Grappled/);
+  assert.match(abilityInfo('Break Free', [{ category: 'feature', kind: 'break_free', label: 'Break Free', cost: 'action' }], barb, []).text, /Athletics.*Restrained/);
 });
 
 test('the character sheet and the ability info are wired into the page', () => {

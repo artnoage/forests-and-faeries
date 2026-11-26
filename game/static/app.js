@@ -61,7 +61,8 @@
     const normalized = String(label || '').toLowerCase().replace(/[_-]/g, ' ');
     const key = normalized.includes('fire') || normalized.includes('burning') || normalized.includes('scorching') || normalized.includes('sacred') ? 'fire'
       : normalized.includes('missile') || normalized.includes('orb') || normalized.includes('guiding') || normalized.includes('burst') ? 'missile'
-      : normalized.includes('cure') || normalized.includes('heal') || normalized.includes('preserve') || normalized.includes('wind') ? 'second_wind'
+      : normalized.includes('cure') || normalized.includes('heal') || normalized.includes('preserve') || normalized.includes('wind') || normalized.includes('first aid') ? 'second_wind'
+      : normalized.includes('escape grapple') || normalized.includes('break free') ? 'dodge'
       : kind === 'action_surge' ? 'dash'
       : kind === 'stand' ? 'move'
       : kind === 'feature' ? 'spell'
@@ -940,7 +941,7 @@
     if (t.startsWith('spells.')) return `${niceName(t.slice(7))} damage`;
     if (/saving_throw/.test(t)) return `${t.split('_')[0].toUpperCase().slice(0, 3)} save`;
     if (t.startsWith('fn:')) return 'roll';
-    return t.replace(/_/g, ' ').replace(/^Melee Spell Attack: |^Ranged Spell Attack: /, 'attack · ');
+    return t.replace(/^dice roll for /i, '').replace(/_/g, ' ').replace(/^Melee Spell Attack: |^Ranged Spell Attack: /, 'attack · ');
   }
   function renderDiceDraws(draws = [], contextText = '', forceSpin = false) {
     $('dice-context').textContent = contextText || 'Dice';
@@ -1142,6 +1143,9 @@
     dragons_breath_exhale: 'Action: exhale a 15-ft cone; each creature in it makes a DEX save, taking 3d6 damage of the chosen type, half on a success.',
     create_spell_slot: 'Bonus Action: turn sorcery points into one spell slot (2 points for a level 1 slot, 3 for a level 2 slot).',
     convert_spell_slot: 'No action: expend a spell slot to gain sorcery points equal to its level.',
+    first_aid: 'Action: make a DC 10 Wisdom (Medicine) check on an adjacent Unconscious ally at 0 HP. On a success, the ally becomes Stable and no longer makes Death Saving Throws.',
+    escape_grapple: 'Action: make a Strength (Athletics) or Dexterity (Acrobatics) check (using your higher modifier) against the grappler’s escape DC to end the Grappled condition.',
+    break_free: 'Action: make a Strength (Athletics) check against the restraint’s escape DC to end the Restrained condition on yourself.',
   };
   const UNARMED_INFO = 'Unarmed Strike: a melee attack roll with Strength plus your Proficiency Bonus; on a hit, Bludgeoning damage equal to 1 + your Strength modifier.';
   // Spell ranges (SRD 5.2.1), by spell key.
@@ -1399,7 +1403,11 @@
     $('cat-tabs').innerHTML = cats.map(([id, lbl]) => `<button class="cat-tab ${activeCatFilter === id ? 'is-on' : ''}" data-cat-filter="${id}" aria-pressed="${activeCatFilter === id}">${lbl}</button>`).join('');
     const matchesFilter = g => {
       if (activeCatFilter === 'all') return true;
-      if (activeCatFilter === 'defense') return ['dodge', 'dash', 'stand', 'disengage', 'disengage_bonus', 'hide', 'hide_bonus'].includes(g.kind);
+      const actKind = g.actions[0]?.kind;
+      if (activeCatFilter === 'defense') {
+        return ['dodge', 'dash', 'stand', 'disengage', 'disengage_bonus', 'hide', 'hide_bonus', 'escape_grapple', 'break_free'].includes(g.kind)
+          || ['disengage', 'disengage_bonus', 'hide', 'hide_bonus', 'escape_grapple', 'break_free'].includes(actKind);
+      }
       if (activeCatFilter === 'feature') return ['feature', 'second_wind', 'action_surge'].includes(g.kind);
       return g.kind === activeCatFilter;
     };

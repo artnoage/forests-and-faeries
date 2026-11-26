@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 17;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 18;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -706,18 +706,36 @@ impl WebArena {
 
     fn finish_if_needed(&mut self) -> bool {
         let was_finished = self.finished;
-        let done = self.fight.as_mut().unwrap().finish_if_needed();
+        let mut done = self.fight.as_mut().unwrap().finish_if_needed();
+        let mut round_cap = false;
+        if !done && self.replay_version >= 18 {
+            let f = self.fight.as_mut().unwrap();
+            if f.max_rounds > 0 && f.round >= f.max_rounds {
+                f.finished = true;
+                done = true;
+                round_cap = true;
+            }
+        }
         if done && !was_finished {
             self.finished = true;
-            let winner_team = self.fight.as_ref().unwrap().winner.map(|t| if t == 0 { "heroes" } else { "monsters" });
+            let winner_team = if round_cap {
+                None
+            } else {
+                self.fight.as_ref().unwrap().winner.map(|t| if t == 0 { "heroes" } else { "monsters" })
+            };
             self.winner = winner_team.map(str::to_string);
-            let text = match winner_team {
-                Some("heroes") => "The heroes are victorious.",
-                Some("monsters") => "The monsters are victorious.",
-                _ => "No one is left standing.",
+            let text = if round_cap {
+                let lim = self.fight.as_ref().unwrap().max_rounds;
+                format!("The battle ends after {lim} rounds with no winner.")
+            } else {
+                match winner_team {
+                    Some("heroes") => "The heroes are victorious.".to_string(),
+                    Some("monsters") => "The monsters are victorious.".to_string(),
+                    _ => "No one is left standing.".to_string(),
+                }
             };
             let r = self.current_round();
-            self.push_log(text, "end", r);
+            self.push_log(&text, "end", r);
         }
         done
     }
@@ -1240,6 +1258,74 @@ impl WebArena {
                     let caster = self.unit_display_name(src);
                     let name = self.unit_display_name(target);
                     self.push_log(&format!("{caster}'s next Scorching Ray strikes {name}, who is already dead."), "info", round);
+                }
+                WebEv::FirstAid { src, tgt, src_pos, tgt_pos, roll_fmt, dc, success } => {
+                    let who = self.unit_display_name(src).to_string();
+                    let ally = self.unit_display_name(tgt).to_string();
+                    let (src_id, tgt_id) = {
+                        let f = self.fight.as_ref().unwrap();
+                        (f.units[src].id.clone(), f.units[tgt].id.clone())
+                    };
+                    if success {
+                        self.push_log(&format!("{who} stabilizes {ally} with First Aid (Medicine {roll_fmt} vs DC {dc})."), "status", round);
+                    } else {
+                        self.push_log(&format!("{who} fails to stabilize {ally} with First Aid (Medicine {roll_fmt} vs DC {dc})."), "miss", round);
+                    }
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!(if success { "heal" } else { "touch" }));
+                    m.insert("variant".into(), json!("first_aid"));
+                    m.insert("source_id".into(), json!(src_id));
+                    m.insert("target_id".into(), json!(tgt_id));
+                    m.insert("outcome".into(), json!(if success { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!(if success { "STABILIZED" } else { "FIRST AID FAILED" }));
+                    m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    m.insert("target".into(), json!({"x": tgt_pos.0, "y": tgt_pos.1}));
+                    self.push_effect(m);
+                }
+                WebEv::EscapeGrapple { src, grappler, src_pos, grappler_pos: _, skill, roll_fmt, dc_text, success } => {
+                    let who = self.unit_display_name(src).to_string();
+                    let foe = self.unit_display_name(grappler).to_string();
+                    let src_id = self.fight.as_ref().unwrap().units[src].id.clone();
+                    if success {
+                        self.push_log(&format!("{who} escapes {foe}'s grapple ({skill} {roll_fmt} vs {dc_text})."), "status", round);
+                    } else {
+                        self.push_log(&format!("{who} fails to escape {foe}'s grapple ({skill} {roll_fmt} vs {dc_text})."), "miss", round);
+                    }
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!(if success { "buff" } else { "touch" }));
+                    m.insert("variant".into(), json!("escape_grapple"));
+                    m.insert("source_id".into(), json!(src_id));
+                    m.insert("target_id".into(), json!(src_id));
+                    m.insert("outcome".into(), json!(if success { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!(if success { "ESCAPED" } else { "GRAPPLED" }));
+                    m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    m.insert("target".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    self.push_effect(m);
+                }
+                WebEv::BreakFree { src, src_pos, roll_fmt, dc, success } => {
+                    let who = self.unit_display_name(src).to_string();
+                    let src_id = self.fight.as_ref().unwrap().units[src].id.clone();
+                    if success {
+                        self.push_log(&format!("{who} breaks free from restraint (Athletics {roll_fmt} vs DC {dc})."), "status", round);
+                    } else {
+                        self.push_log(&format!("{who} fails to break free from restraint (Athletics {roll_fmt} vs DC {dc})."), "miss", round);
+                    }
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("style".into(), json!(if success { "buff" } else { "touch" }));
+                    m.insert("variant".into(), json!("break_free"));
+                    m.insert("source_id".into(), json!(src_id));
+                    m.insert("target_id".into(), json!(src_id));
+                    m.insert("outcome".into(), json!(if success { "hit" } else { "miss" }));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!(if success { "BROKE FREE" } else { "RESTRAINED" }));
+                    m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    m.insert("target".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    self.push_effect(m);
                 }
                 WebEv::AttackOutcome {
                     src,
@@ -2158,6 +2244,31 @@ impl WebArena {
                     non_spell.push(Act::Dodge);
                     non_spell.push(Act::Dash);
                     if f.rule_version() >= 6 { non_spell.push(Act::Disengage); }
+                    if f.rule_version() >= 16 {
+                        if f.units[actor].t.pc {
+                            for t in 0..f.units.len() {
+                                if t != actor
+                                    && f.allies(actor, t)
+                                    && !f.units[t].dead()
+                                    && f.units[t].unconscious()
+                                    && !f.units[t].has(St::Stable)
+                                    && f.dist(actor, t) == 1
+                                    && f.can_see(actor, t)
+                                {
+                                    non_spell.push(Act::FirstAid { target: t });
+                                }
+                            }
+                        }
+                        if f.units[actor].is_grappled() {
+                            let grapplers: Vec<usize> = f.units[actor].grappled_by.iter().map(|&(g, _)| g).collect();
+                            for g in grapplers {
+                                non_spell.push(Act::EscapeGrapple { target: g });
+                            }
+                        }
+                        if f.units[actor].conscious() && !f.active_effects(actor, EffKey::EscapableRestraint).is_empty() {
+                            non_spell.push(Act::BreakFree { target: actor });
+                        }
+                    }
                 }
                 if unit.t.second_wind_uses > 0 && unit.bonus > 0 && unit.second_wind_count > 0 && unit.hp < f.max_hp_of(actor) {
                     non_spell.push(Act::SecondWind);
@@ -2344,6 +2455,32 @@ impl WebArena {
                         "None".into(),
                         "None".into(),
                     ),
+                    Act::FirstAid { target } | Act::EscapeGrapple { target } => (
+                        vec![*target],
+                        vec![f.units[*target].id.clone()],
+                        None,
+                        "",
+                        None,
+                        None,
+                        "None".into(),
+                        "None".into(),
+                        "None".into(),
+                        "None".into(),
+                        "None".into(),
+                    ),
+                    Act::BreakFree { .. } => (
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                        "",
+                        None,
+                        None,
+                        "None".into(),
+                        "None".into(),
+                        "None".into(),
+                        "None".into(),
+                        "None".into(),
+                    ),
                     _ => (Vec::new(), Vec::new(), None, "", None, None, "None".into(), "None".into(), "None".into(), "None".into(), "None".into()),
                 }
             };
@@ -2446,6 +2583,9 @@ impl WebArena {
             "extend_rage" => "Extend Rage".to_string(),
             "reckless_attack" => "Reckless Attack".to_string(),
             "cleave" => "Cleave".to_string(),
+            "first_aid" => "First Aid".to_string(),
+            "escape_grapple" => "Escape Grapple".to_string(),
+            "break_free" => "Break Free".to_string(),
             _ if spell_key.is_some() => present_text::spell_display_name(spell_key.unwrap()),
             "attack" => present_text::title_words(weapon),
             _ => present_text::title_words(kind),
@@ -2981,6 +3121,7 @@ impl WebArena {
         let controlled_by = if self.human_controlled_fight(u) { "human" } else { "ai" };
         let mut conds: Vec<&str> = unit.statuses.iter().map(|s| s.name()).collect();
         if self.replay_version >= 9 && unit.poisoned() && !conds.contains(&"poisoned") { conds.push("poisoned"); }
+        if self.replay_version >= 18 && f.is_restrained(u) && !conds.contains(&"restrained") { conds.push("restrained"); }
         conds.sort_unstable();
 
         let mut m = Map::new();
@@ -3264,5 +3405,175 @@ mod tests {
         assert_eq!(f.units[actor].pos, (5, 5));
         assert_eq!(f.token_at((4, 4)), Some(goblin));
         assert_eq!(f.units[actor].movement, 15);
+    }
+
+    #[test]
+    fn web_arena_enforces_max_rounds_cap() {
+        let level = LevelInput {
+            encounter_id: "cap".into(), preset_id: "test".into(), theme: "ossuary".into(),
+            map_name: "room".into(), rows: ["......", "......", "......"].into_iter().map(String::from).collect(),
+            scene: json!({}), level_view: json!({}),
+            heroes: vec!["guy".into()],
+            monsters: vec![("skeleton-1".into(), "skeleton".into(), "Skeleton".into())],
+            suggested_placements: vec![Placement { id: "guy".into(), x: 1, y: 1 },
+                                       Placement { id: "skeleton-1".into(), x: 4, y: 1 }],
+        };
+        let mut game = WebArena::new(level, 1, 0, "csrf".into(), "enc".into()).unwrap();
+        game.start().unwrap();
+        assert!(!game.finished);
+        game.fight.as_mut().unwrap().round = crate::engine::MAX_ROUNDS;
+        assert!(game.finish_if_needed());
+        assert!(game.finished);
+        assert_eq!(game.winner, None);
+        assert!(game.log.iter().any(|e| e.get("text").and_then(Value::as_str)
+            .is_some_and(|t| t.contains("50 rounds with no winner"))));
+    }
+
+    #[test]
+    fn human_action_bar_and_events_for_first_aid_escape_grapple_and_break_free() {
+        let level = LevelInput {
+            encounter_id: "remedies".into(), preset_id: "test".into(), theme: "woodland".into(),
+            map_name: "glade".into(), rows: ["........", "........", "........", "........"].into_iter().map(String::from).collect(),
+            scene: json!({}), level_view: json!({}),
+            heroes: vec!["guy".into(), "ilyra".into()],
+            monsters: vec![
+                ("bugbear_warrior-1".into(), "bugbear_warrior".into(), "Bugbear Warrior".into()),
+                ("dryad-1".into(), "dryad".into(), "Dryad".into()),
+            ],
+            suggested_placements: vec![
+                Placement { id: "guy".into(), x: 2, y: 2 },
+                Placement { id: "ilyra".into(), x: 2, y: 1 },
+                Placement { id: "bugbear_warrior-1".into(), x: 3, y: 2 },
+                Placement { id: "dryad-1".into(), x: 5, y: 2 },
+            ],
+        };
+        let mut game = WebArena::new(level, 7, 0, "csrf".into(), "enc".into()).unwrap();
+        game.start().unwrap();
+        let f = game.fight.as_mut().unwrap();
+        let guy = f.units.iter().position(|u| u.id == "guy").unwrap();
+        let ilyra = f.units.iter().position(|u| u.id == "ilyra").unwrap();
+        let bugbear = f.units.iter().position(|u| u.id == "bugbear_warrior-1").unwrap();
+        let dryad = f.units.iter().position(|u| u.id == "dryad-1").unwrap();
+        f.turn_idx = f.order.iter().position(|&u| u == guy).unwrap();
+        f.units[guy].action = 3;
+        // 1) Adjacent dying ally -> First Aid
+        f.units[ilyra].hp = 0;
+        f.units[ilyra].statuses.push(St::Unconscious);
+        // 2) Grappled by Bugbear -> Escape Grapple
+        f.apply_grapple(bugbear, guy, Some(12));
+        // 3) Restrained by Dryad Entangle -> Break Free
+        let zone_obj = f.new_obj(
+            SpellId::Entangle,
+            ObjKind::Entangle { squares: vec![(2, 2)], dc: 12, restraints: Vec::new(), expires_at: 99 },
+            dryad,
+            Vec::new(),
+            true,
+        );
+        let r_obj = f.new_obj(
+            SpellId::Entangle,
+            ObjKind::EntangleRestraint { target: guy, dc: 12, zone: zone_obj },
+            dryad,
+            vec![guy],
+            true,
+        );
+        f.register_effect(guy, EffKey::RestrainedOverride, r_obj, Some(10));
+        f.register_effect(guy, EffKey::EscapableRestraint, r_obj, Some(10));
+
+        game.cache_revision = None;
+        let state = game.state();
+        let acts = state.get("actions").and_then(Value::as_array).unwrap();
+        let fa_id = acts.iter()
+            .find(|a| a.get("kind").and_then(Value::as_str) == Some("first_aid")
+                && a.get("target_id").and_then(Value::as_str) == Some("ilyra"))
+            .and_then(|a| a.get("id").and_then(Value::as_str))
+            .expect("First Aid offered for adjacent dying ally")
+            .to_string();
+        let eg_id = acts.iter()
+            .find(|a| a.get("kind").and_then(Value::as_str) == Some("escape_grapple")
+                && a.get("target_id").and_then(Value::as_str) == Some("bugbear_warrior-1"))
+            .and_then(|a| a.get("id").and_then(Value::as_str))
+            .expect("Escape Grapple offered for grappler")
+            .to_string();
+        let bf_id = acts.iter()
+            .find(|a| a.get("kind").and_then(Value::as_str) == Some("break_free")
+                && a.get("target_id").is_none())
+            .and_then(|a| a.get("id").and_then(Value::as_str))
+            .expect("Break Free offered as self action")
+            .to_string();
+
+        // Execute First Aid and confirm chronicle log + 3D cue emitted
+        let after_fa = game.perform(&fa_id).unwrap();
+        let logs = after_fa.get("log").and_then(Value::as_array).unwrap();
+        assert!(logs.iter().any(|e| e.get("text").and_then(Value::as_str).is_some_and(|t| t.contains("First Aid (Medicine"))));
+        let effects = after_fa.get("effects").and_then(Value::as_array).unwrap();
+        assert!(effects.iter().any(|e| e.get("variant").and_then(Value::as_str) == Some("first_aid")));
+
+        // Execute Escape Grapple
+        let st2 = game.state();
+        let eg_id2 = st2.get("actions").and_then(Value::as_array).unwrap().iter()
+            .find(|a| a.get("kind").and_then(Value::as_str) == Some("escape_grapple"))
+            .and_then(|a| a.get("id").and_then(Value::as_str))
+            .unwrap().to_string();
+        let _ = eg_id;
+        let after_eg = game.perform(&eg_id2).unwrap();
+        assert!(after_eg.get("log").and_then(Value::as_array).unwrap().iter()
+            .any(|e| e.get("text").and_then(Value::as_str).is_some_and(|t| t.contains("grapple ("))));
+        assert!(after_eg.get("effects").and_then(Value::as_array).unwrap().iter()
+            .any(|e| e.get("variant").and_then(Value::as_str) == Some("escape_grapple")));
+
+        // Execute Break Free
+        let st3 = game.state();
+        let bf_id2 = st3.get("actions").and_then(Value::as_array).unwrap().iter()
+            .find(|a| a.get("kind").and_then(Value::as_str) == Some("break_free"))
+            .and_then(|a| a.get("id").and_then(Value::as_str))
+            .unwrap().to_string();
+        let _ = bf_id;
+        let after_bf = game.perform(&bf_id2).unwrap();
+        assert!(after_bf.get("log").and_then(Value::as_array).unwrap().iter()
+            .any(|e| e.get("text").and_then(Value::as_str).is_some_and(|t| t.contains("break free from restraint") || t.contains("breaks free from restraint"))));
+        assert!(after_bf.get("effects").and_then(Value::as_array).unwrap().iter()
+            .any(|e| e.get("variant").and_then(Value::as_str) == Some("break_free")));
+    }
+
+    #[test]
+    fn ai_v17_first_aid_scoring_and_corpse_investigate_pruning() {
+        let level = LevelInput {
+            encounter_id: "ai17".into(), preset_id: "test".into(), theme: "ossuary".into(),
+            map_name: "room".into(), rows: ["........", "........", "........", "........"].into_iter().map(String::from).collect(),
+            scene: json!({}), level_view: json!({}),
+            heroes: vec!["elion".into(), "guy".into()],
+            monsters: vec![("ghast-1".into(), "ghast".into(), "Ghast".into())],
+            suggested_placements: vec![
+                Placement { id: "elion".into(), x: 2, y: 2 },
+                Placement { id: "guy".into(), x: 2, y: 1 },
+                Placement { id: "ghast-1".into(), x: 3, y: 2 },
+            ],
+        };
+        let mut game = WebArena::new(level, 3, 0, "csrf".into(), "enc".into()).unwrap();
+        game.start().unwrap();
+        let f = game.fight.as_mut().unwrap();
+        let elion = f.units.iter().position(|u| u.id == "elion").unwrap();
+        let guy = f.units.iter().position(|u| u.id == "guy").unwrap();
+        let ghast = f.units.iter().position(|u| u.id == "ghast-1").unwrap();
+        // 1) Adjacent dying ally with heal spell available -> FirstAid scored -0.5
+        f.units[guy].hp = 0;
+        f.units[guy].statuses.push(St::Unconscious);
+        f.units[elion].action = 1;
+        f.units[elion].bonus = 1;
+        let cands = f.available_moves(elion);
+        let (scores, _) = f.sort_with_scores(elion, &cands, None);
+        let fa_idx = cands.iter().position(|a| matches!(a, Act::FirstAid { target } if *target == guy)).unwrap();
+        assert_eq!(scores[fa_idx], -0.5);
+
+        // 2) Ghast sees Guy, then Guy dies -> Ghast must prune Guy's corpse from known & investigate
+        f.units[guy].hp = 10;
+        f.units[guy].statuses.retain(|s| *s != St::Unconscious);
+        let _ = f.observe_enemies(ghast);
+        assert!(f.units[ghast].mem.known.iter().any(|(k, _)| *k == guy));
+        f.units[guy].hp = 0;
+        f.units[guy].statuses.push(St::Dead);
+        let _ = f.observe_enemies(ghast);
+        assert!(!f.units[ghast].mem.known.iter().any(|(k, _)| *k == guy));
+        assert!(!f.units[ghast].mem.investigate.iter().any(|(p, _)| *p == (2, 1)));
     }
 }
