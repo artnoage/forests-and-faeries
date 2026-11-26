@@ -15,6 +15,7 @@
   const STORIES = [
     { id: 'claude', label: 'Story — Claude' },
     { id: 'gemini', label: 'Story — Gemini' },
+    { id: 'claude-faery', label: 'Faery tale — Claude' },
   ];
   const CHAPTERS = 8;
   const SOUND_KEY = 'ff-story-sound';

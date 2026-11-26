@@ -1,0 +1,187 @@
+{
+ "id": "whispering_glade",
+ "name": "Whispering Glade",
+ "order": 20,
+ "map": "whispering_glade",
+ "theme": "woodland",
+ "blurb": "A bright clearing ringed by old oaks and mossy boulders.",
+ "presets": [
+  {
+   "id": "l1_spore_ring",
+   "name": "The Spore Ring",
+   "difficulty": "Easy",
+   "hero_level": 1,
+   "blurb": "A ring of violet mushrooms, and sprites who want a gift before anyone crosses.",
+   "party": [
+    "guy_l1",
+    "elion_l1",
+    "curogana_l1"
+   ],
+   "roster": [
+    "violet_fungus",
+    "violet_fungus",
+    "violet_fungus",
+    "sprite",
+    "sprite"
+   ],
+   "placements": {
+    "guy_l1": [
+     2,
+     4
+    ],
+    "elion_l1": [
+     2,
+     5
+    ],
+    "curogana_l1": [
+     2,
+     6
+    ],
+    "violet_fungus-1": [
+     12,
+     4
+    ],
+    "violet_fungus-2": [
+     12,
+     5
+    ],
+    "violet_fungus-3": [
+     12,
+     6
+    ],
+    "sprite-1": [
+     11,
+     3
+    ],
+    "sprite-2": [
+     11,
+     7
+    ]
+   },
+   "variant_of": "whispering_glade/l1_spore_ring",
+   "story": "claude-faery",
+   "balance": {
+    "graded": {
+     "games": 500,
+     "native": {
+      "hero_win_rate": 0.902,
+      "ci95": [
+       0.8728,
+       0.9251
+      ],
+      "wins": 451,
+      "losses": 49,
+      "draws": 0,
+      "horizon": 0,
+      "truncations": 0,
+      "mean_rounds": 4.54,
+      "mean_heroes_down": 0.68,
+      "mean_heroes_dead": 0.16,
+      "native_band": "Easy (>=60%)"
+     }
+    },
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.91,
+     "native_wins": 182,
+     "monster_wins": 18,
+     "no_winner_at_round_cap": 0,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 3.62,
+     "max_round_seen": 10,
+     "mean_heroes_down": 0.65,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  },
+  {
+   "id": "l1_pipes_and_stingers",
+   "name": "Pipes and Stingers",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "Satyrs who cannot stop dancing, and the wasps their pipes wake.",
+   "party": [
+    "guy_l1",
+    "elion_l1",
+    "curogana_l1"
+   ],
+   "roster": [
+    "satyr",
+    "satyr",
+    "giant_wasp",
+    "giant_wasp"
+   ],
+   "placements": {
+    "guy_l1": [
+     2,
+     4
+    ],
+    "elion_l1": [
+     2,
+     5
+    ],
+    "curogana_l1": [
+     2,
+     6
+    ],
+    "satyr-1": [
+     12,
+     4
+    ],
+    "satyr-2": [
+     12,
+     5
+    ],
+    "giant_wasp-1": [
+     12,
+     6
+    ],
+    "giant_wasp-2": [
+     11,
+     3
+    ]
+   },
+   "variant_of": "whispering_glade/l1_pipes_and_stingers",
+   "story": "claude-faery",
+   "balance": {
+    "graded": {
+     "games": 500,
+     "native": {
+      "hero_win_rate": 0.374,
+      "ci95": [
+       0.3327,
+       0.4172
+      ],
+      "wins": 187,
+      "losses": 313,
+      "draws": 0,
+      "horizon": 0,
+      "truncations": 0,
+      "mean_rounds": 6.8,
+      "mean_heroes_down": 2.31,
+      "mean_heroes_dead": 0.58,
+      "native_band": "Medium (30-59%)"
+     }
+    },
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.395,
+     "native_wins": 79,
+     "monster_wins": 121,
+     "no_winner_at_round_cap": 0,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 5.34,
+     "max_round_seen": 16,
+     "mean_heroes_down": 2.19,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  }
+ ]
+}

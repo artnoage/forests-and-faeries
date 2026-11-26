@@ -1,0 +1,356 @@
+{
+ "id": "bramble_hollow",
+ "name": "Bramble Hollow",
+ "order": 21,
+ "map": "bramble_hollow",
+ "theme": "woodland",
+ "blurb": "A twilit hollow between two fallen trunks, walled in by evergreens.",
+ "presets": [
+  {
+   "id": "l1_thorn_skirmish",
+   "name": "The Thorn Path",
+   "difficulty": "Medium",
+   "hero_level": 1,
+   "blurb": "A tunnel of thorns, and the old court's hounds flickering in the shadows.",
+   "party": [
+    "guy_l1",
+    "elion_l1",
+    "mara_l1"
+   ],
+   "roster": [
+    "blink_dog",
+    "blink_dog",
+    "blink_dog",
+    "sprite",
+    "sprite"
+   ],
+   "placements": {
+    "guy_l1": [
+     2,
+     4
+    ],
+    "elion_l1": [
+     1,
+     5
+    ],
+    "mara_l1": [
+     1,
+     6
+    ],
+    "blink_dog-1": [
+     13,
+     4
+    ],
+    "blink_dog-2": [
+     14,
+     5
+    ],
+    "blink_dog-3": [
+     14,
+     6
+    ],
+    "sprite-1": [
+     13,
+     7
+    ],
+    "sprite-2": [
+     12,
+     3
+    ]
+   },
+   "variant_of": "bramble_hollow/l1_thorn_skirmish",
+   "story": "claude-faery",
+   "balance": {
+    "note": "roster of the f08a751 catalog row (3 blink dogs, 2 sprites); the 4d591d8 row with 4 blink dogs and 1 sprite is graded 49.8% (rules v17); no catalog grading exists for this roster",
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.65,
+     "native_wins": 130,
+     "monster_wins": 70,
+     "no_winner_at_round_cap": 0,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 5.98,
+     "max_round_seen": 13,
+     "mean_heroes_down": 1.47,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  },
+  {
+   "id": "l2_bark_and_briar",
+   "name": "Bark and Briar",
+   "difficulty": "Easy",
+   "hero_level": 2,
+   "blurb": "Two oaks grown into one gate, and the dryads who will not let the wood be woken.",
+   "party": [
+    "guy_l2",
+    "elion_l2",
+    "curogana_l2"
+   ],
+   "roster": [
+    "dryad",
+    "dryad",
+    "blink_dog",
+    "blink_dog",
+    "sprite"
+   ],
+   "placements": {
+    "guy_l2": [
+     2,
+     4
+    ],
+    "elion_l2": [
+     1,
+     5
+    ],
+    "curogana_l2": [
+     1,
+     6
+    ],
+    "dryad-1": [
+     13,
+     4
+    ],
+    "dryad-2": [
+     14,
+     5
+    ],
+    "blink_dog-1": [
+     14,
+     6
+    ],
+    "blink_dog-2": [
+     13,
+     7
+    ],
+    "sprite-1": [
+     12,
+     3
+    ]
+   },
+   "variant_of": "bramble_hollow/l2_bark_and_briar",
+   "story": "claude-faery",
+   "balance": {
+    "graded": {
+     "games": 500,
+     "native": {
+      "hero_win_rate": 0.708,
+      "ci95": [
+       0.6667,
+       0.7461
+      ],
+      "wins": 354,
+      "losses": 145,
+      "draws": 0,
+      "horizon": 1,
+      "truncations": 1,
+      "mean_rounds": 8.73,
+      "mean_heroes_down": 1.26,
+      "mean_heroes_dead": 0.09,
+      "native_band": "Easy (>=60%)"
+     }
+    },
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.725,
+     "native_wins": 145,
+     "monster_wins": 55,
+     "no_winner_at_round_cap": 0,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 7.4,
+     "max_round_seen": 19,
+     "mean_heroes_down": 1.23,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  },
+  {
+   "id": "l2_ambush_in_the_brush",
+   "name": "Ambush in the Brush",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Bugbears out of the hills, paid in the sisters' coin.",
+   "party": [
+    "chruna_l2",
+    "elion_l2",
+    "mara"
+   ],
+   "roster": [
+    "bugbear_warrior",
+    "bugbear_warrior",
+    "bugbear_warrior",
+    "satyr",
+    "satyr"
+   ],
+   "placements": {
+    "chruna_l2": [
+     2,
+     4
+    ],
+    "elion_l2": [
+     1,
+     5
+    ],
+    "mara": [
+     1,
+     6
+    ],
+    "bugbear_warrior-1": [
+     13,
+     4
+    ],
+    "bugbear_warrior-2": [
+     14,
+     5
+    ],
+    "bugbear_warrior-3": [
+     14,
+     6
+    ],
+    "satyr-1": [
+     13,
+     7
+    ],
+    "satyr-2": [
+     12,
+     3
+    ]
+   },
+   "variant_of": "bramble_hollow/l2_ambush_in_the_brush",
+   "story": "claude-faery",
+   "balance": {
+    "graded": {
+     "games": 500,
+     "native": {
+      "hero_win_rate": 0.506,
+      "ci95": [
+       0.4623,
+       0.5496
+      ],
+      "wins": 253,
+      "losses": 238,
+      "draws": 0,
+      "horizon": 9,
+      "truncations": 9,
+      "mean_rounds": 12.62,
+      "mean_heroes_down": 1.82,
+      "mean_heroes_dead": 0.36,
+      "native_band": "Medium (30-59%)"
+     }
+    },
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.495,
+     "native_wins": 99,
+     "monster_wins": 101,
+     "no_winner_at_round_cap": 0,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 11.02,
+     "max_round_seen": 30,
+     "mean_heroes_down": 1.84,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  },
+  {
+   "id": "l3_lanterns_healer",
+   "name": "Lanterns in the Mire",
+   "difficulty": "Medium",
+   "hero_level": 3,
+   "blurb": "Lights that lead travellers astray, and a dryad chained in black thorn.",
+   "party": [
+    "guy",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "will_o_wisp",
+    "will_o_wisp",
+    "bugbear_warrior",
+    "bugbear_warrior",
+    "dryad"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "elion": [
+     1,
+     5
+    ],
+    "curogana": [
+     1,
+     6
+    ],
+    "will_o_wisp-1": [
+     13,
+     4
+    ],
+    "will_o_wisp-2": [
+     14,
+     5
+    ],
+    "bugbear_warrior-1": [
+     14,
+     6
+    ],
+    "bugbear_warrior-2": [
+     13,
+     7
+    ],
+    "dryad-1": [
+     12,
+     3
+    ]
+   },
+   "variant_of": "bramble_hollow/l3_lanterns_healer",
+   "story": "claude-faery",
+   "balance": {
+    "graded": {
+     "games": 500,
+     "native": {
+      "hero_win_rate": 0.498,
+      "ci95": [
+       0.4544,
+       0.5417
+      ],
+      "wins": 249,
+      "losses": 248,
+      "draws": 0,
+      "horizon": 3,
+      "truncations": 3,
+      "mean_rounds": 13.13,
+      "mean_heroes_down": 1.73,
+      "mean_heroes_dead": 0.62,
+      "native_band": "Medium (30-59%)"
+     }
+    },
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.515,
+     "native_wins": 103,
+     "monster_wins": 97,
+     "no_winner_at_round_cap": 0,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 11.51,
+     "max_round_seen": 29,
+     "mean_heroes_down": 1.62,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  }
+ ]
+}

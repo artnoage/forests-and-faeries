@@ -128,11 +128,12 @@ def test_every_committed_story_manifest_passes():
 
 def test_the_page_offers_practice_and_both_stories():
     html = (STATIC / 'index.html').read_text(encoding='utf-8')
-    for marker in ('id="mode-step"', 'data-mode="practice"', 'data-story="claude"', 'data-story="gemini"',
+    for marker in ('id="mode-step"', 'data-mode="practice"', 'data-story="claude"', 'data-story="gemini"', 'data-story="claude-faery"',
                    'id="story-layer"', 'id="story-result-actions"', 'id="practice-result-actions"', 'src="./story.js?v='):
         assert marker in html, marker
     assert html.index('src="./app.js') < html.index('src="./story.js')
     shell = (STATIC / 'story.js').read_text(encoding='utf-8')
     assert "{ id: 'claude', label: 'Story — Claude' }" in shell and "{ id: 'gemini', label: 'Story — Gemini' }" in shell
+    assert "{ id: 'claude-faery', label: 'Faery tale — Claude' }" in shell
     assert 'localStorage' in shell and 'try {' in shell
     assert 'story.js' in assets.PAGE_FILES

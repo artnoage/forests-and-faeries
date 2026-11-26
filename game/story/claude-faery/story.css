@@ -1,0 +1,32 @@
+/* The Unsung Wood (Story mode, Claude's faery tale): moss, birch and lantern light over the shared story shell. */
+.story-layer[data-story="claude-faery"] {
+  background: radial-gradient(circle at 50% 18%, #1f3324 0%, #0d1810 72%);
+}
+.story-layer[data-story="claude-faery"] .story-head { border-bottom-color: rgba(176, 214, 150, 0.25); }
+.story-layer[data-story="claude-faery"] .story-head h1 { color: #e6f2c8; letter-spacing: 0.03em; }
+.story-layer[data-story="claude-faery"] .story-head p { color: #b9d0a2; font-style: italic; }
+.story-layer[data-story="claude-faery"] .story-map { border: 2px solid #3f5a2e; box-shadow: 0 22px 60px rgba(0, 0, 0, 0.75), inset 0 0 40px rgba(30, 50, 20, 0.35); background: #dcd2a8; }
+.story-layer[data-story="claude-faery"] .story-route polyline { stroke: rgba(70, 40, 110, 0.72); stroke-width: 3; stroke-dasharray: 2 9; }
+.story-layer[data-story="claude-faery"] .story-node { font-family: var(--font-display); background: #eef0d2; border-color: #2f4a22; color: #22341a; }
+.story-layer[data-story="claude-faery"] .story-node.is-open { background: #f4dc7a; border-color: #5b3a8a; }
+.story-layer[data-story="claude-faery"] .story-node.is-done { background: #bfe0a8; border-color: #2f5a2e; }
+.story-layer[data-story="claude-faery"] .story-node.is-locked { background: #b8b896; border-color: #5d6146; color: #484b35; }
+.story-layer[data-story="claude-faery"] .story-node-label { color: #22341a; text-shadow: 0 0 3px #f1f0d6, 0 0 6px #f1f0d6, 0 0 9px #f1f0d6; }
+.story-layer[data-story="claude-faery"] .story-marker { background: #5b3a8a; box-shadow: 0 0 10px rgba(240, 230, 150, 0.9); }
+.story-layer[data-story="claude-faery"] .story-panel {
+  background: linear-gradient(180deg, #eef0d6, #dfe3bd); color: #22301a; border: 1px solid #5d7a44;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+.story-layer[data-story="claude-faery"] .story-panel .eyebrow { color: #5b3a8a; }
+.story-layer[data-story="claude-faery"] .story-panel h2 { color: #22341a; }
+.story-layer[data-story="claude-faery"] .story-place { color: #4d6b2a; }
+.story-layer[data-story="claude-faery"] .story-blurb { color: #33402a; }
+.story-layer[data-story="claude-faery"] .story-party { color: #2f5a4a; }
+.story-layer[data-story="claude-faery"] .story-the-end { color: #5b3a8a; }
+.story-layer[data-story="claude-faery"] .story-panel-foot { border-top-color: rgba(47, 74, 34, 0.3); }
+.story-layer[data-story="claude-faery"] .story-panel .button.quiet { background: rgba(250, 255, 235, 0.55); color: #22301a; border-color: rgba(47, 74, 34, 0.45); }
+.story-layer[data-story="claude-faery"] .story-panel .button.danger { color: #8a2b1b; }
+.story-layer[data-story="claude-faery"] .scene-caption { background: linear-gradient(180deg, rgba(8, 16, 8, 0) 0%, rgba(8, 16, 8, 0.74) 40%, rgba(6, 12, 6, 0.9) 100%); }
+.story-layer[data-story="claude-faery"] .scene-title { color: #e6f2c8; letter-spacing: 0.04em; }
+.story-layer[data-story="claude-faery"] .scene-label { color: #c8b6f0; }
+.story-layer[data-story="claude-faery"] .scene-text { color: #f2f6e4; font-size: clamp(16px, 1.8vw, 20px); }

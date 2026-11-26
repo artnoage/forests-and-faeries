@@ -1,0 +1,202 @@
+{
+ "id": "mire_crossing",
+ "name": "Mire Crossing",
+ "order": 22,
+ "map": "mire_crossing",
+ "theme": "woodland",
+ "blurb": "Twin crossings over a dim marsh, split by an islet of cypresses.",
+ "presets": [
+  {
+   "id": "l2_song_over_the_fen",
+   "name": "Song over the Fen",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Harpies singing the stolen song over the hot pools.",
+   "party": [
+    "guy_l2",
+    "elion_l2",
+    "curogana_l2"
+   ],
+   "roster": [
+    "harpy",
+    "harpy",
+    "harpy",
+    "steam_mephit",
+    "steam_mephit",
+    "giant_wasp"
+   ],
+   "placements": {
+    "guy_l2": [
+     2,
+     3
+    ],
+    "elion_l2": [
+     4,
+     5
+    ],
+    "curogana_l2": [
+     2,
+     7
+    ],
+    "harpy-1": [
+     13,
+     3
+    ],
+    "harpy-2": [
+     11,
+     5
+    ],
+    "harpy-3": [
+     13,
+     7
+    ],
+    "steam_mephit-1": [
+     12,
+     5
+    ],
+    "steam_mephit-2": [
+     12,
+     3
+    ],
+    "giant_wasp-1": [
+     12,
+     7
+    ]
+   },
+   "variant_of": "mire_crossing/l2_song_over_the_fen",
+   "story": "claude-faery",
+   "balance": {
+    "graded": {
+     "games": 500,
+     "native": {
+      "hero_win_rate": 0.406,
+      "ci95": [
+       0.3638,
+       0.4496
+      ],
+      "wins": 203,
+      "losses": 279,
+      "draws": 18,
+      "horizon": 0,
+      "truncations": 0,
+      "mean_rounds": 8.6,
+      "mean_heroes_down": 2.11,
+      "mean_heroes_dead": 0.45,
+      "native_band": "Medium (30-59%)"
+     }
+    },
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.425,
+     "native_wins": 85,
+     "monster_wins": 111,
+     "no_winner_at_round_cap": 4,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 7.53,
+     "max_round_seen": 20,
+     "mean_heroes_down": 2.08,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  },
+  {
+   "id": "l3_coven_and_wisps",
+   "name": "The Elder Oak",
+   "difficulty": "Hard",
+   "hero_level": 3,
+   "blurb": "Three sisters, their fires in the roots of the Elder Oak, and the song in a cage.",
+   "party": [
+    "chruna",
+    "elion",
+    "curogana"
+   ],
+   "roster": [
+    "green_hag",
+    "sea_hag",
+    "sea_hag",
+    "will_o_wisp",
+    "harpy",
+    "bugbear_warrior"
+   ],
+   "placements": {
+    "chruna": [
+     2,
+     3
+    ],
+    "elion": [
+     4,
+     5
+    ],
+    "curogana": [
+     2,
+     7
+    ],
+    "green_hag-1": [
+     13,
+     3
+    ],
+    "sea_hag-1": [
+     11,
+     5
+    ],
+    "sea_hag-2": [
+     13,
+     7
+    ],
+    "will_o_wisp-1": [
+     12,
+     5
+    ],
+    "harpy-1": [
+     12,
+     3
+    ],
+    "bugbear_warrior-1": [
+     12,
+     7
+    ]
+   },
+   "variant_of": "mire_crossing/l3_coven_and_wisps",
+   "story": "claude-faery",
+   "balance": {
+    "graded": {
+     "games": 500,
+     "native": {
+      "hero_win_rate": 0.266,
+      "ci95": [
+       0.2292,
+       0.3064
+      ],
+      "wins": 133,
+      "losses": 355,
+      "draws": 0,
+      "horizon": 12,
+      "truncations": 12,
+      "mean_rounds": 12.75,
+      "mean_heroes_down": 2.36,
+      "mean_heroes_dead": 0.91,
+      "native_band": "Hard (8-29%)"
+     }
+    },
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.26,
+     "native_wins": 52,
+     "monster_wins": 147,
+     "no_winner_at_round_cap": 1,
+     "unfinished": 0,
+     "errors": 0,
+     "mean_rounds": 12.12,
+     "max_round_seen": 50,
+     "mean_heroes_down": 2.43,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4d591d8 (rules v17, Natural20 02570506)",
+     "measured": "2026-11-26"
+    }
+   }
+  }
+ ]
+}

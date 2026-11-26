@@ -1,0 +1,490 @@
+{
+ "version": 1,
+ "id": "claude-faery",
+ "title": "The Unsung Wood",
+ "subtitle": "The old wood has stopped singing, and the millstream runs backwards into the trees. Follow it.",
+ "tagline": "A stolen song, a sprite called Tansy, and three sisters in the fen. Eight chapters.",
+ "style": "story.css",
+ "map": {
+  "image": "media/map.webp",
+  "width": 1536,
+  "height": 1024,
+  "alt": "A hand-drawn map of the Ellerwold: the mill, the spore ring, the thorn path, the maypole glade, the Bark Gate, the thickets, the fen, the mire and the Elder Oak",
+  "route": [
+   [
+    0.11,
+    0.37
+   ],
+   [
+    0.265,
+    0.34
+   ],
+   [
+    0.41,
+    0.345
+   ],
+   [
+    0.54,
+    0.36
+   ],
+   [
+    0.725,
+    0.31
+   ],
+   [
+    0.7,
+    0.42
+   ],
+   [
+    0.62,
+    0.5
+   ],
+   [
+    0.52,
+    0.62
+   ],
+   [
+    0.38,
+    0.7
+   ],
+   [
+    0.27,
+    0.72
+   ],
+   [
+    0.465,
+    0.74
+   ],
+   [
+    0.61,
+    0.74
+   ],
+   [
+    0.76,
+    0.77
+   ],
+   [
+    0.87,
+    0.7
+   ]
+  ]
+ },
+ "prologue": "prologue",
+ "epilogue": "epilogue",
+ "ending_note": "The wood sings again. Every chapter stays open: play any of them again.",
+ "chapters": [
+  {
+   "id": "c1",
+   "title": "The Spore Ring",
+   "place": "The Sunny Ring",
+   "encounter": "whispering_glade",
+   "preset": "l1_spore_ring",
+   "blurb": "A ring of violet mushrooms, and sprites who want a gift before anyone crosses.",
+   "node": [
+    0.265,
+    0.34
+   ],
+   "before": "c1-before",
+   "after": "c1-after"
+  },
+  {
+   "id": "c2",
+   "title": "The Thorn Path",
+   "place": "The Bramble Tunnel",
+   "encounter": "bramble_hollow",
+   "preset": "l1_thorn_skirmish",
+   "blurb": "A tunnel of thorns, and the old court's hounds flickering in the shadows.",
+   "node": [
+    0.41,
+    0.345
+   ],
+   "before": "c2-before",
+   "after": "c2-after"
+  },
+  {
+   "id": "c3",
+   "title": "Pipes and Stingers",
+   "place": "The Maypole Glade",
+   "encounter": "whispering_glade",
+   "preset": "l1_pipes_and_stingers",
+   "blurb": "Satyrs who cannot stop dancing, and the wasps their pipes wake.",
+   "node": [
+    0.54,
+    0.36
+   ],
+   "before": "c3-before",
+   "after": "c3-after"
+  },
+  {
+   "id": "c4",
+   "title": "Bark and Briar",
+   "place": "The Bark Gate",
+   "encounter": "bramble_hollow",
+   "preset": "l2_bark_and_briar",
+   "blurb": "Two oaks grown into one gate, and the dryads who will not let the wood be woken.",
+   "node": [
+    0.725,
+    0.31
+   ],
+   "before": "c4-before",
+   "after": "c4-after"
+  },
+  {
+   "id": "c5",
+   "title": "Ambush in the Brush",
+   "place": "The Hazel Thickets",
+   "encounter": "bramble_hollow",
+   "preset": "l2_ambush_in_the_brush",
+   "blurb": "Bugbears out of the hills, paid in the sisters' coin.",
+   "node": [
+    0.27,
+    0.72
+   ],
+   "before": "c5-before",
+   "after": "c5-after"
+  },
+  {
+   "id": "c6",
+   "title": "Song over the Fen",
+   "place": "The Steaming Fen",
+   "encounter": "mire_crossing",
+   "preset": "l2_song_over_the_fen",
+   "blurb": "Harpies singing the stolen song over the hot pools.",
+   "node": [
+    0.465,
+    0.74
+   ],
+   "before": "c6-before",
+   "after": "c6-after"
+  },
+  {
+   "id": "c7",
+   "title": "Lanterns in the Mire",
+   "place": "The Lantern Mire",
+   "encounter": "bramble_hollow",
+   "preset": "l3_lanterns_healer",
+   "blurb": "Lights that lead travellers astray, and a dryad chained in black thorn.",
+   "node": [
+    0.61,
+    0.74
+   ],
+   "before": "c7-before",
+   "after": "c7-after"
+  },
+  {
+   "id": "c8",
+   "title": "The Elder Oak",
+   "place": "The Heart of the Fen",
+   "encounter": "mire_crossing",
+   "preset": "l3_coven_and_wisps",
+   "blurb": "Three sisters, their fires in the roots of the Elder Oak, and the song in a cage.",
+   "node": [
+    0.87,
+    0.7
+   ],
+   "before": "c8-before",
+   "after": "c8-after"
+  }
+ ],
+ "scenes": {
+  "prologue": {
+   "shots": [
+    {
+     "title": "The Unsung Wood",
+     "video": "media/clips/p1.mp4",
+     "poster": "media/stills/p1.webp",
+     "text": "In Thistlemere they say the old wood sings: a hum in the leaves, a note in the stream. This summer the singing stopped, and the millstream began to run backwards, into the trees.",
+     "audio": "media/voice/p1.mp3",
+     "motion": "zoom-in"
+    },
+    {
+     "video": "media/clips/p2.mp4",
+     "poster": "media/stills/p2.webp",
+     "text": "Ada the miller asked us to follow the water and see where it went. Five of us went. I am Elion, and this is my account.",
+     "audio": "media/voice/p2.mp3"
+    },
+    {
+     "video": "media/clips/p3.mp4",
+     "poster": "media/stills/p3.webp",
+     "text": "We walked into the Ellerwold at first light, beside a stream that flowed the wrong way, and the trees closed behind us without a sound.",
+     "audio": "media/voice/p3.mp3"
+    }
+   ],
+   "music": "media/music/wood.mp3",
+   "music_volume": 0.22
+  },
+  "c1-before": {
+   "shots": [
+    {
+     "title": "Chapter 1 · The Spore Ring",
+     "video": "media/clips/c1a.mp4",
+     "poster": "media/stills/c1a.webp",
+     "text": "Day one. The stream led us to a ring of violet mushrooms taller than a man. Sprites danced above it, and they were not glad to see us.",
+     "audio": "media/voice/c1a.mp3"
+    },
+    {
+     "video": "media/clips/c1b.mp4",
+     "poster": "media/stills/c1b.webp",
+     "text": "“No one crosses the ring without a gift,” they said. Guy offered bread. They answered with arrows. Guy, Curogana and I drew.",
+     "audio": "media/voice/c1b.mp3"
+    }
+   ],
+   "music": "media/music/mischief.mp3",
+   "music_volume": 0.2
+  },
+  "c1-after": {
+   "shots": [
+    {
+     "video": "media/clips/c1c.mp4",
+     "poster": "media/stills/c1c.webp",
+     "text": "One sprite stayed when the others fled. Her name was Tansy. “They took the song,” she said, “and now we all dance to theirs.” She would not say who.",
+     "audio": "media/voice/c1c.mp3"
+    }
+   ],
+   "music": "media/music/wood.mp3",
+   "music_volume": 0.22
+  },
+  "c2-before": {
+   "shots": [
+    {
+     "title": "Chapter 2 · The Thorn Path",
+     "video": "media/clips/c2a.mp4",
+     "poster": "media/stills/c2a.webp",
+     "text": "Day two. Tansy led us into a tunnel of brambles as old as the wood. Mara walked at the front with Guy and me, where the thorns were thickest.",
+     "audio": "media/voice/c2a.mp3"
+    },
+    {
+     "video": "media/clips/c2b.mp4",
+     "poster": "media/stills/c2b.webp",
+     "text": "Then came the blink dogs, the old court's hounds, flickering from shadow to shadow like candle flames. Whatever held the sprites held them too.",
+     "audio": "media/voice/c2b.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c2-after": {
+   "shots": [
+    {
+     "video": "media/clips/c2c.mp4",
+     "poster": "media/stills/c2c.webp",
+     "text": "The last hound did not run. It sniffed Mara's hand, looked at Tansy, and vanished. “It remembers,” Tansy said. “Under the tune, they all remember.”",
+     "audio": "media/voice/c2c.mp3"
+    }
+   ],
+   "music": "media/music/wood.mp3",
+   "music_volume": 0.22
+  },
+  "c3-before": {
+   "shots": [
+    {
+     "title": "Chapter 3 · Pipes and Stingers",
+     "video": "media/clips/c3a.mp4",
+     "poster": "media/stills/c3a.webp",
+     "text": "Day four. In a glade with a broken maypole the satyrs were dancing, and had been, Tansy said, since midsummer. Their hooves were bleeding. They could not stop.",
+     "audio": "media/voice/c3a.mp3"
+    },
+    {
+     "video": "media/clips/c3b.mp4",
+     "poster": "media/stills/c3b.webp",
+     "text": "When they saw us they changed the tune, and the giant wasps woke in the maypole. Guy, Curogana and I stood back to back.",
+     "audio": "media/voice/c3b.mp3"
+    }
+   ],
+   "music": "media/music/mischief.mp3",
+   "music_volume": 0.2
+  },
+  "c3-after": {
+   "shots": [
+    {
+     "video": "media/clips/c3c.mp4",
+     "poster": "media/stills/c3c.webp",
+     "text": "When the pipes broke, the satyrs fell asleep where they stood. One woke long enough to whisper: “The fen. They sing it from the fen.”",
+     "audio": "media/voice/c3c.mp3"
+    }
+   ],
+   "music": "media/music/wood.mp3",
+   "music_volume": 0.22
+  },
+  "c4-before": {
+   "shots": [
+    {
+     "title": "Chapter 4 · Bark and Briar",
+     "video": "media/clips/c4a.mp4",
+     "poster": "media/stills/c4a.webp",
+     "text": "Day seven. The way to the deep wood runs through the Bark Gate, two oaks grown into one. We had grown stronger on the road. So had the wood.",
+     "audio": "media/voice/c4a.mp3"
+    },
+    {
+     "video": "media/clips/c4b.mp4",
+     "poster": "media/stills/c4b.webp",
+     "text": "“You walk with a sprite who broke the dance,” the dryads said. “The wood is not yours to wake.” Then the roots began to move.",
+     "audio": "media/voice/c4b.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c4-after": {
+   "shots": [
+    {
+     "video": "media/clips/c4c.mp4",
+     "poster": "media/stills/c4c.webp",
+     "text": "Beaten, the eldest dryad spoke plainly. Three sisters live in the fen, she said, a green one and two from the sea. They stole the Elder Oak's song, and they sing the wood to sleep with it.",
+     "audio": "media/voice/c4c.mp3"
+    }
+   ],
+   "music": "media/music/wood.mp3",
+   "music_volume": 0.22
+  },
+  "c5-before": {
+   "shots": [
+    {
+     "title": "Chapter 5 · Ambush in the Brush",
+     "video": "media/clips/c5a.mp4",
+     "poster": "media/stills/c5a.webp",
+     "text": "Day nine. Chruna and Mara walked with me through the thickets. Tansy smelled them first: bugbears, hired out of the hills and paid in the sisters' coin.",
+     "audio": "media/voice/c5a.mp3"
+    },
+    {
+     "video": "media/clips/c5b.mp4",
+     "poster": "media/stills/c5b.webp",
+     "text": "They are quiet, for such big creatures. The first we knew of them was a hammer on Mara's shield.",
+     "audio": "media/voice/c5b.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c5-after": {
+   "shots": [
+    {
+     "video": "media/clips/c5c.mp4",
+     "poster": "media/stills/c5c.webp",
+     "text": "Their pay spilled from a bugbear's pouch: bright gold coins that turned to dead leaves in Chruna's hand. Hags' money. It never lasts.",
+     "audio": "media/voice/c5c.mp3"
+    }
+   ],
+   "music": "media/music/wood.mp3",
+   "music_volume": 0.22
+  },
+  "c6-before": {
+   "shots": [
+    {
+     "title": "Chapter 6 · Song over the Fen",
+     "video": "media/clips/c6a.mp4",
+     "poster": "media/stills/c6a.webp",
+     "text": "Day eleven. The fen begins where the trees drown. Over the hot pools, harpies perched in the dead trees, singing a song that was not theirs.",
+     "audio": "media/voice/c6a.mp3"
+    },
+    {
+     "video": "media/clips/c6b.mp4",
+     "poster": "media/stills/c6b.webp",
+     "text": "It was the Elder Oak's song, Tansy said, sung wrong. Hear it and you want to walk into the water. Guy, Curogana and I stopped our ears as best we could.",
+     "audio": "media/voice/c6b.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c6-after": {
+   "shots": [
+    {
+     "video": "media/clips/c6c.mp4",
+     "poster": "media/stills/c6c.webp",
+     "text": "Then the fen went quiet. Ahead of us, over the marsh, small pale lights came on one by one, as if someone were lighting lamps for guests.",
+     "audio": "media/voice/c6c.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c7-before": {
+   "shots": [
+    {
+     "title": "Chapter 7 · Lanterns in the Mire",
+     "video": "media/clips/c7a.mp4",
+     "poster": "media/stills/c7a.webp",
+     "text": "Day thirteen. Every traveller who follows the lights of the mire is lost. We were warned, and we followed them anyway: they were the only way in.",
+     "audio": "media/voice/c7a.mp3"
+    },
+    {
+     "video": "media/clips/c7b.mp4",
+     "poster": "media/stills/c7b.webp",
+     "text": "The wisps feed on the dying. Tansy hid in my hood. I told Guy and Curogana to keep close to me and keep standing, whatever happened.",
+     "audio": "media/voice/c7b.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c7-after": {
+   "shots": [
+    {
+     "video": "media/clips/c7c.mp4",
+     "poster": "media/stills/c7c.webp",
+     "text": "Behind the lights they had chained a dryad in black thorn, to feed the sisters' fire. Curogana burned the thorns away. The dryad showed us the last path.",
+     "audio": "media/voice/c7c.mp3"
+    }
+   ],
+   "music": "media/music/wood.mp3",
+   "music_volume": 0.22
+  },
+  "c8-before": {
+   "shots": [
+    {
+     "title": "Chapter 8 · The Elder Oak",
+     "video": "media/clips/c8a.mp4",
+     "poster": "media/stills/c8a.webp",
+     "text": "Day fourteen. The Elder Oak stands in black water at the heart of the fen. The sisters had lit their fires in its roots, and the song hung above them in a cage of reeds.",
+     "audio": "media/voice/c8a.mp3"
+    },
+    {
+     "video": "media/clips/c8b.mp4",
+     "poster": "media/stills/c8b.webp",
+     "text": "The green one smiled at us. The sea sisters only looked, and their look alone can stop a heart. Chruna, Curogana and I went in together.",
+     "audio": "media/voice/c8b.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c8-after": {
+   "shots": [
+    {
+     "video": "media/clips/c8c.mp4",
+     "poster": "media/stills/c8c.webp",
+     "text": "When the last sister fell, Chruna broke the cage. The light went up into the branches, and the whole wood drew a breath.",
+     "audio": "media/voice/c8c.mp3"
+    }
+   ],
+   "music": "media/music/ending.mp3",
+   "music_volume": 0.24
+  },
+  "epilogue": {
+   "shots": [
+    {
+     "video": "media/clips/e1.mp4",
+     "poster": "media/stills/e1.webp",
+     "text": "The song came back through the trees like a wind. The satyrs slept for a week. The blink dogs went back to their old games.",
+     "audio": "media/voice/e1.mp3"
+    },
+    {
+     "video": "media/clips/e2.mp4",
+     "poster": "media/stills/e2.webp",
+     "text": "The millstream turns the right way again. Tansy came with us as far as the last tree, and no further. Sprites do not leave the wood.",
+     "audio": "media/voice/e2.mp3"
+    },
+    {
+     "title": "The Unsung Wood",
+     "image": "media/stills/e3.webp",
+     "text": "The end.",
+     "motion": "zoom-in",
+     "duration": 6
+    }
+   ],
+   "music": "media/music/ending.mp3",
+   "music_volume": 0.24
+  }
+ }
+}
