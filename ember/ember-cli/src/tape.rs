@@ -14,7 +14,7 @@ use std::sync::Arc;
 use ember_core::{
     ContentDb, CoreError, DiceSource, DrawRecord, DrawVal, EncounterSpec, Fight, FightPhase,
     Observer, OracleSink, Placement, ReactionChoice, ReactionMode, RollMode, StateDigest,
-    UnitDigest,
+    UnitDigest, UnitFlags,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -102,6 +102,7 @@ struct DecJson {
     ctx: String,
     who: String,
     cands: Vec<String>,
+    scores: Vec<f64>,
     order: Vec<usize>,
     adj: Vec<f64>,
     chosen: String,
@@ -406,6 +407,10 @@ pub fn verify_tape(
     let mut states_checked = 0usize;
     let mut draws_seen_in_stream = 0usize;
     let mut pending_turn_check: Option<(usize, usize, TurnJson)> = None;
+    let mut pending_turn_dec: Option<(usize, String, String)> = None;
+    let mut seen_start = false;
+    let mut seen_end = false;
+    let last_line_seen = events.last().map_or(0, |(ln, _, _)| *ln);
 
     let make_diff = |kind: &str,
                      dec_idx: usize,
@@ -448,6 +453,18 @@ pub fn verify_tape(
                 }
             }
             "start" => {
+                if seen_start {
+                    return Err(make_diff(
+                        "duplicate_start",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        "single start event".into(),
+                        "duplicate start event".into(),
+                        last_state,
+                    ));
+                }
+                seen_start = true;
                 fight.start_with_dice(&mut dice, &mut sink).map_err(|e| {
                     let err_ln = dice.last_error_line.unwrap_or(line_no);
                     make_diff(
@@ -462,6 +479,19 @@ pub fn verify_tape(
                 })?;
             }
             "turn" => {
+                if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
+                    return Err(make_diff(
+                        "unexecuted_turn_decision",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        "no pending turn decision across turn boundary".into(),
+                        format!(
+                            "decision at line {dec_ln} ({dec_who} -> {dec_chosen:?}) was never executed"
+                        ),
+                        last_state,
+                    ));
+                }
                 let tj: TurnJson = serde_json::from_value(val.clone()).map_err(|e| {
                     make_diff(
                         "turn_parse",
@@ -562,6 +592,19 @@ pub fn verify_tape(
                     )
                 })?;
                 decisions_checked += 1;
+
+                // 0. Validate scores length matches candidates length
+                if dj.scores.len() != dj.cands.len() {
+                    return Err(make_diff(
+                        "dec_scores_len",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        format!("scores.len() == cands.len() ({})", dj.cands.len()),
+                        format!("scores.len() == {}", dj.scores.len()),
+                        last_state,
+                    ));
+                }
 
                 // 1. Validate strict stable descending sort of `order` / `adj`
                 //    (catches reordered ties at exact JSONL line!)
@@ -694,17 +737,15 @@ pub fn verify_tape(
                             ember_core::ReactionOption::Decline => "none".into(),
                         })
                         .collect();
-                    // Verify canonical ordering of core_opts vs tape cands
-                    let mut sorted_core = core_opts.clone();
-                    sorted_core.sort();
-                    if sorted_core != dj.cands {
+                    // Verify canonical ordering AND exact multiplicity of core_opts vs tape cands
+                    if core_opts != dj.cands {
                         return Err(make_diff(
                             "reaction_cands_mismatch",
                             decisions_checked,
                             ev_idx,
                             line_no,
                             format!("{:?}", dj.cands),
-                            format!("{sorted_core:?}"),
+                            format!("{core_opts:?}"),
                             last_state,
                         ));
                     }
@@ -743,6 +784,19 @@ pub fn verify_tape(
                             )
                         })?;
                 } else if dj.ctx == "turn" {
+                    if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
+                        return Err(make_diff(
+                            "unexecuted_turn_decision",
+                            decisions_checked,
+                            ev_idx,
+                            line_no,
+                            "previous turn decision executed before next dec".into(),
+                            format!(
+                                "unexecuted decision at line {dec_ln} ({dec_who} -> {dec_chosen:?})"
+                            ),
+                            last_state,
+                        ));
+                    }
                     let FightPhase::AwaitingAction(cur) = fight.phase() else {
                         return Err(make_diff(
                             "turn_phase_mismatch",
@@ -765,14 +819,70 @@ pub fn verify_tape(
                             last_state,
                         ));
                     }
-                    // Verify canonical ordering of all core-supported legal actions inside `cands`
-                    if !dj.cands.is_empty() {
-                        let core_legal: Vec<String> = fight
-                            .legal_actions(Observer::Full)
-                            .into_iter()
-                            .filter(|a| a.action_key != "end_turn" && a.action_key != "stand")
-                            .map(|a| a.action_key)
-                            .collect();
+                    let core_all = fight.legal_actions(Observer::Full);
+                    let core_can_stand = core_all.iter().any(|a| a.action_key == "stand");
+                    let core_legal: Vec<String> = core_all
+                        .into_iter()
+                        .filter(|a| a.action_key != "end_turn" && a.action_key != "stand")
+                        .map(|a| a.action_key)
+                        .collect();
+
+                    if dj.cands.is_empty() {
+                        if dj.chosen == "stand" {
+                            if !fight.unit(cur).flags.contains(UnitFlags::PRONE) || !core_can_stand
+                            {
+                                return Err(make_diff(
+                                    "illegal_forced_stand",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    "prone unit with enough movement to stand".into(),
+                                    format!(
+                                        "{} prone={} can_stand={core_can_stand}",
+                                        dj.who,
+                                        fight.unit(cur).flags.contains(UnitFlags::PRONE)
+                                    ),
+                                    last_state,
+                                ));
+                            }
+                        } else if dj.chosen == "none" {
+                            if !core_legal.is_empty() || core_can_stand {
+                                return Err(make_diff(
+                                    "empty_turn_cands",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    format!(
+                                        "non-empty candidate menu (core has {} legal actions, can_stand={core_can_stand})",
+                                        core_legal.len()
+                                    ),
+                                    "cands=[] chosen=\"none\"".into(),
+                                    last_state,
+                                ));
+                            }
+                        } else {
+                            return Err(make_diff(
+                                "empty_cands_chosen",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                "chosen in {stand, none} when cands is empty".into(),
+                                format!("chosen={:?}", dj.chosen),
+                                last_state,
+                            ));
+                        }
+                    } else {
+                        if dj.chosen != "none" && !dj.cands.contains(&dj.chosen) {
+                            return Err(make_diff(
+                                "chosen_not_in_cands",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("chosen {:?} present in cands", dj.chosen),
+                                format!("cands={:?}", dj.cands),
+                                last_state,
+                            ));
+                        }
                         // Every core-enumerated action must appear in `dj.cands` in the exact same
                         // relative canonical order!
                         let mut last_pos: Option<usize> = None;
@@ -807,6 +917,17 @@ pub fn verify_tape(
                     if fight.template_of(cur).caster.is_some() {
                         fight.unit_mut(cur).pools_init = true;
                     }
+                    pending_turn_dec = Some((line_no, dj.who, dj.chosen));
+                } else {
+                    return Err(make_diff(
+                        "unknown_dec_ctx",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        "dec.ctx in {\"turn\", \"reaction\"}".into(),
+                        format!("dec.ctx == {:?}", dj.ctx),
+                        last_state,
+                    ));
                 }
             }
             "act" => {
@@ -821,6 +942,28 @@ pub fn verify_tape(
                         last_state.clone(),
                     )
                 })?;
+                let Some((dec_ln, dec_who, dec_chosen)) = pending_turn_dec.take() else {
+                    return Err(make_diff(
+                        "missing_decision_for_action",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        format!("preceding turn dec choosing {:?}", aj.a),
+                        format!("act {} -> {:?} with no preceding turn dec", aj.who, aj.a),
+                        last_state,
+                    ));
+                };
+                if dec_who != aj.who || dec_chosen != aj.a {
+                    return Err(make_diff(
+                        "decision_action_mismatch",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        format!("act matching dec at line {dec_ln}: {dec_who} -> {dec_chosen:?}"),
+                        format!("act {} -> {:?}", aj.who, aj.a),
+                        last_state,
+                    ));
+                }
                 let actor = fight.unit_by_key(&aj.who).ok_or_else(|| {
                     make_diff(
                         "act_unknown_unit",
@@ -871,6 +1014,19 @@ pub fn verify_tape(
                         last_state.clone(),
                     )
                 })?;
+                if let Some((dec_ln, dec_who, dec_chosen)) = pending_turn_dec.take() {
+                    if dec_who != ej.who || dec_chosen != "none" {
+                        return Err(make_diff(
+                            "decision_endturn_mismatch",
+                            decisions_checked,
+                            ev_idx,
+                            line_no,
+                            format!("endturn matching dec at line {dec_ln} ({dec_who} -> \"none\")"),
+                            format!("endturn {} after {dec_who} -> {dec_chosen:?}", ej.who),
+                            last_state,
+                        ));
+                    }
+                }
                 // Note: if fight already ended on the last action before endturn, skip.
                 if !fight.state.finished {
                     let cur = fight.current();
@@ -900,6 +1056,18 @@ pub fn verify_tape(
                 }
             }
             "end" => {
+                if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
+                    return Err(make_diff(
+                        "unexecuted_turn_decision",
+                        decisions_checked,
+                        ev_idx,
+                        line_no,
+                        "no pending turn decision at end".into(),
+                        format!("decision at line {dec_ln} ({dec_who} -> {dec_chosen:?}) unexecuted"),
+                        last_state,
+                    ));
+                }
+                seen_end = true;
                 let endj: EndJson = serde_json::from_value(val.clone()).map_err(|e| {
                     make_diff(
                         "end_parse",
@@ -947,6 +1115,53 @@ pub fn verify_tape(
         }
     }
 
+    if !seen_start {
+        return Err(make_diff(
+            "missing_start",
+            decisions_checked,
+            events.len(),
+            last_line_seen,
+            "start event after header".into(),
+            "tape ended before start".into(),
+            last_state,
+        ));
+    }
+    if let Some(req_line) = stop_line {
+        if last_line_seen < req_line {
+            return Err(make_diff(
+                "truncated_before_stop_line",
+                decisions_checked,
+                events.len(),
+                last_line_seen,
+                format!("tape reaching requested --stop-line {req_line}"),
+                format!("tape ended at line {last_line_seen}"),
+                last_state,
+            ));
+        }
+    } else {
+        if !seen_end {
+            return Err(make_diff(
+                "missing_end_record",
+                decisions_checked,
+                events.len(),
+                last_line_seen,
+                "terminal end record for full-fight replay".into(),
+                format!("tape ended at line {last_line_seen} without end record"),
+                last_state,
+            ));
+        }
+        if let Some((dec_ln, dec_who, dec_chosen)) = pending_turn_dec {
+            return Err(make_diff(
+                "unexecuted_turn_decision",
+                decisions_checked,
+                events.len(),
+                dec_ln,
+                "all turn decisions executed".into(),
+                format!("decision at line {dec_ln} ({dec_who} -> {dec_chosen:?}) unexecuted"),
+                last_state,
+            ));
+        }
+    }
     if dice.cursor != draws_in_range {
         return Err(make_diff(
             "trailing_unconsumed_draws",

@@ -809,6 +809,9 @@ impl Fight {
     }
 
     /// Build legal Opportunity Attack options for `reactor` against `target`.
+    /// Preserves canonical rule-18 enumeration order and multiplicity
+    /// (enumerating melee attack candidates across enemies within reach before
+    /// retargeting at the provoking mover).
     pub fn oa_options(&self, reactor: UnitId, target: UnitId) -> SmallVec<[ReactionOption; 8]> {
         let mut opts: SmallVec<[ReactionOption; 8]> = SmallVec::new();
         if !self.unit(reactor).flags.is_conscious() || !self.unit(reactor).has_reaction() {
@@ -818,7 +821,8 @@ impl Fight {
             return opts;
         }
         let tmpl = self.template_of(reactor);
-        let dist_ft = self.unit(reactor).pos.feet_to(self.unit(target).pos);
+        let r_pos = self.unit(reactor).pos;
+        let mover_dist_ft = r_pos.feet_to(self.unit(target).pos);
         for (ai, def) in tmpl.attacks.iter().enumerate() {
             if def.ranged || def.save_attack.is_some() || def.bonus_action {
                 continue;
@@ -826,13 +830,38 @@ impl Fight {
             if !self.attack_available(reactor, ai) {
                 continue;
             }
-            if dist_ft <= def.max_range_ft as i32 {
-                opts.push(ReactionOption::OpportunityAttack {
-                    attack_idx: ai as u8,
-                    target,
-                });
+            if mover_dist_ft > def.max_range_ft as i32 {
+                continue;
+            }
+            for ti in 0..self.state.units.len() {
+                let other = UnitId(ti as u8);
+                if other == reactor
+                    || !self.opposing(reactor, other)
+                    || self.unit(other).flags.is_dead()
+                {
+                    continue;
+                }
+                if !self.can_see(reactor, other) {
+                    continue;
+                }
+                if r_pos.feet_to(self.unit(other).pos) <= def.max_range_ft as i32 {
+                    opts.push(ReactionOption::OpportunityAttack {
+                        attack_idx: ai as u8,
+                        target,
+                    });
+                }
             }
         }
+        opts.sort_by(|a, b| {
+            let key_of = |opt: &ReactionOption| match opt {
+                ReactionOption::OpportunityAttack { attack_idx, target } => self.canon_key(
+                    reactor,
+                    &ActionPayload::Attack { attack_idx: *attack_idx, target: *target, reaction: true },
+                ),
+                ReactionOption::Decline => self.canon_key(reactor, &ActionPayload::EndTurn),
+            };
+            key_of(a).cmp(&key_of(b))
+        });
         opts
     }
 

@@ -488,3 +488,38 @@ fn noop_sink_matches_vec_sink_state_rng_and_event_cursor() {
     assert_eq!(f_noop.state, f_vec.state);
     assert_eq!(f_noop.state.event_cursor, f_vec.state.event_cursor);
 }
+
+#[test]
+fn oa_options_preserves_multi_target_enumeration_multiplicity() {
+    let db = build_test_db();
+    let spec = EncounterSpec {
+        units: vec!["hero".into(), "monster-1".into(), "monster-2".into(), "monster-3".into()],
+        placements: vec![
+            Placement { id: "hero".into(), x: 3, y: 3 },
+            Placement { id: "monster-1".into(), x: 4, y: 3 },
+            Placement { id: "monster-2".into(), x: 3, y: 4 },
+            Placement { id: "monster-3".into(), x: 4, y: 4 },
+        ],
+        map_rows: Some(vec![
+            "HHHHHHHH".into(),
+            "H......H".into(),
+            "H......H".into(),
+            "H......H".into(),
+            "H......H".into(),
+            "H......H".into(),
+            "HHHHHHHH".into(),
+        ]),
+        max_rounds: 20,
+    };
+    let mut fight = Fight::new(db, &spec, 7).unwrap();
+    let mut sink = NoopSink;
+    fight.start(&mut sink).unwrap();
+    let opts = fight.oa_options(UnitId(0), UnitId(1));
+    assert_eq!(opts.len(), 3);
+    for opt in opts {
+        assert_eq!(
+            opt,
+            ember_core::ReactionOption::OpportunityAttack { attack_idx: 0, target: UnitId(1) }
+        );
+    }
+}
