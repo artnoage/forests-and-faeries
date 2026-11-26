@@ -1,0 +1,18 @@
+{
+ "schema": 2,
+ "id": "shatter",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "name": "Shatter",
+ "is_spell": true,
+ "base_level": 2,
+ "cost": "action",
+ "concentration": false,
+ "targeting": { "kind": "point_radius", "radius_ft": 10, "range_ft": 60 },
+ "steps": [
+  { "op": "roll_damage", "dice": "3d8", "damage_type": "thunder", "slot": 0, "tag": "spells.shatter", "upcast_extra_dice": 1, "empowerable": true },
+  { "op": "saving_throw", "ability": "con", "dc": { "kind": "spell_dc" }, "magical": true, "shared_roll": true, "half_on_save": true, "disadvantage_on_construct": true },
+  { "op": "apply_damage", "slot": 0, "half_if_saved": true }
+ ]
+}

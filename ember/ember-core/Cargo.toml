@@ -1,0 +1,12 @@
+[package]
+name = "ember-core"
+description = "Single-threaded, Wasm-clean SRD 5.2.1 tactical combat core with data-driven step resolution, unified active effects, nested interrupts, and first-class partial information."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bitflags.workspace = true
+postcard.workspace = true
+serde.workspace = true
+smallvec.workspace = true

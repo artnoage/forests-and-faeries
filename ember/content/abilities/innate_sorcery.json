@@ -1,0 +1,18 @@
+{
+ "schema": 2,
+ "id": "innate_sorcery",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "name": "Innate Sorcery",
+ "is_spell": false,
+ "base_level": 0,
+ "cost": "bonus_action",
+ "concentration": false,
+ "targeting": { "kind": "self_only" },
+ "steps": [
+  { "op": "modify_resource", "resource": "bonus_action", "delta": -1 },
+  { "op": "modify_resource", "resource": "innate_sorcery", "delta": -1 },
+  { "op": "apply_effect", "effect": "innate_sorcery", "expiry": { "kind": "game_time", "seconds": 60 }, "to_self": true }
+ ]
+}

@@ -1,0 +1,188 @@
+{
+ "schema": 1,
+ "id": "guy",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/characters/guy.yml": "cd6a0403bfc45563cf63174a88901b0b291884219b35f7c6dcd04d9642baf8d4",
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/char_classes/fighter.yml": "afce31a34b52f91ca90c53f4c369d298540438a59f970149b5769adee84f5dfd",
+   "templates/feats/alert.yml": "f3d3345e243c49700211a88ebb58ed07fe88c7a0f16d2a8338c18a551b17b8ef",
+   "templates/feats/great_weapon_fighting.yml": "e6f66ea3fe04b1e82ef9c6b80461b9c65583d43a6147212cb33645e6b33642a6",
+   "templates/feats/savage_attacker.yml": "b6a8f1e0becc7beef65bf135d2821336c824b1ccb1a91e644244ed8da5126b99",
+   "templates/items/equipment.yml": "0e4a7f72acce1eb5fc6e2a26071f3ebc1a3604286c600fba0f533e771bb12cc0",
+   "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
+   "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
+   "templates/rulesets/5e-2024/char_classes/fighter.yml": "b46406e2d376e7ff7e85a5c319f39eac0ff04ff39b45a98eb096837672c0380a",
+   "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
+   "templates/rulesets/5e-2024/races/human.yml": "8fb26b79eda7e1ab395db2b3c912e04434d4c180922cf51666f06cc7a0c6c432"
+  }
+ },
+ "side": "heroes",
+ "name": "Guy",
+ "pc": true,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "human"
+ ],
+ "ac": 16,
+ "max_hp": 25,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 17,
+  "dex": 14,
+  "con": 12,
+  "int": 14,
+  "wis": 16,
+  "cha": 16
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 5,
+  "dex": 2,
+  "con": 3,
+  "int": 2,
+  "wis": 3,
+  "cha": 3
+ },
+ "initiative": {
+  "bonus": 4,
+  "advantage": true
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 15,
+ "skills": {
+  "medicine": 3,
+  "athletics": 5,
+  "acrobatics": 2
+ },
+ "base_id": "guy",
+ "loadout": {
+  "equipment": [
+   {
+    "id": "greatsword",
+    "type": "melee_attack",
+    "hand_slots": 2.0
+   },
+   {
+    "id": "chain_mail",
+    "type": "armor",
+    "hand_slots": 0.0
+   }
+  ],
+  "spares": {},
+  "wearing_armor": true
+ },
+ "classes": {
+  "fighter": 3
+ },
+ "attacks": [
+  {
+   "name": "greatsword",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 5,
+   "damage": "2d6+3",
+   "damage_type": "slashing",
+   "ability": "str",
+   "proficient": true,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [
+    "graze"
+   ],
+   "riders": [
+    "savage_attacker",
+    "great_weapon_fighting"
+   ],
+   "thrown": false,
+   "versatile": null,
+   "item": "greatsword"
+  },
+  {
+   "name": "unarmed_attack",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 5,
+   "damage": "1+3",
+   "damage_type": "bludgeoning",
+   "ability": "str",
+   "proficient": true,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "thrown": false,
+   "versatile": null,
+   "item": null
+  }
+ ],
+ "multiattack": [],
+ "features": [
+  {
+   "id": "great_weapon_fighting",
+   "model": "treat_1_2_as_3"
+  },
+  {
+   "id": "savage_attacker"
+  },
+  {
+   "id": "alert"
+  },
+  {
+   "id": "resourceful"
+  },
+  {
+   "id": "skillful"
+  },
+  {
+   "id": "versatile"
+  },
+  {
+   "id": "second_wind",
+   "uses": 2,
+   "die": "1d10+3",
+   "level": 3
+  },
+  {
+   "id": "weapon_mastery"
+  },
+  {
+   "id": "action_surge",
+   "uses": 1
+  },
+  {
+   "id": "martial_archetype"
+  },
+  {
+   "id": "improved_critical"
+  },
+  {
+   "id": "remarkable_athlete"
+  }
+ ],
+ "traits": [],
+ "spellcasting": null
+}

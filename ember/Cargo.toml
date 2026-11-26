@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "ember-core",
+    "ember-content",
+    "ember-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+bitflags = { version = "2", features = ["serde"] }
+postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+smallvec = { version = "1", features = ["serde", "union"] }
+sha2 = "0.10"
+
+[profile.release]
+debug = 1
+lto = "thin"
+codegen-units = 4

@@ -1,0 +1,131 @@
+{
+ "schema": 1,
+ "id": "skeleton",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/npcs/skeleton.yml": "edcb5f633b6d192628d44342c62785653627c73b8cbc9e93796f9ed9f04e4de9",
+   "templates/rulesets/5e-2024/npcs/skeleton.yml": "3a5c609693bdccef3895c0d7fcb7a25c87669b922f503bb6501d668c7a36fd75"
+  }
+ },
+ "side": "monsters",
+ "name": "Skeleton",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": true,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "undead"
+ ],
+ "ac": 14,
+ "max_hp": 13,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 10,
+  "dex": 16,
+  "con": 15,
+  "int": 6,
+  "wis": 8,
+  "cha": 5
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 0,
+  "dex": 3,
+  "con": 2,
+  "int": -2,
+  "wis": -1,
+  "cha": -3
+ },
+ "initiative": {
+  "bonus": 3,
+  "advantage": false
+ },
+ "melee_reach": 5,
+ "damage": {
+  "resistances": [],
+  "immunities": [
+   "poison"
+  ],
+  "vulnerabilities": [
+   "bludgeoning"
+  ]
+ },
+ "condition_immunities": [
+  "exhaustion",
+  "poisoned"
+ ],
+ "passive_perception": 9,
+ "skills": {
+  "medicine": -1,
+  "athletics": 0,
+  "acrobatics": 3
+ },
+ "darkvision": 60,
+ "attacks": [
+  {
+   "name": "shortsword",
+   "type": "melee_attack",
+   "range": 5,
+   "range_max": 5,
+   "to_hit": 5,
+   "damage": "1d6+3",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "shortbow",
+   "type": "ranged_attack",
+   "range": 80,
+   "range_max": 320,
+   "to_hit": 5,
+   "damage": "1d6+3",
+   "damage_type": "piercing",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  }
+ ],
+ "inventory": {},
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    5,
+    6.5
+   ],
+   [
+    5,
+    6.5
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

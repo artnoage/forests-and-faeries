@@ -1,0 +1,25 @@
+{
+ "schema": 2,
+ "id": "chromatic_orb",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "name": "Chromatic Orb",
+ "is_spell": true,
+ "base_level": 1,
+ "cost": "action",
+ "concentration": false,
+ "targeting": { "kind": "single_creature", "range_ft": 90, "max_range_ft": 90 },
+ "steps": [
+  { "op": "attack_roll", "kind": "spell_ranged", "range_ft": 90, "melee_type": false, "tag": "Ranged Spell Attack: Chromatic Orb" },
+  {
+   "op": "branch",
+   "predicate": "hit",
+   "then_steps": [
+    { "op": "roll_damage", "dice": "3d8", "damage_type": "acid", "slot": 0, "tag": "spells.chromatic_orb", "upcast_extra_dice": 1, "double_on_crit": true, "empowerable": true },
+    { "op": "apply_damage", "slot": 0 }
+   ],
+   "else_steps": []
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+[package]
+name = "ember-content"
+description = "Fail-closed SRD 5.2.1 JSON schema validator and step-program compiler for ember-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ember-core = { path = "../ember-core" }
+serde.workspace = true
+serde_json.workspace = true
+smallvec.workspace = true
