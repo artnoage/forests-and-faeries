@@ -319,7 +319,7 @@ impl Unit {
         let m = crate::content::ability_mod(score);
         m + if self.t.save_prof[ab.idx()] { self.t.prof_bonus } else { 0 }
     }
-    fn add_status(&mut self, s: St) {
+    pub(crate) fn add_status(&mut self, s: St) {
         if !self.has(s) {
             self.statuses.push(s);
         }
@@ -2438,6 +2438,7 @@ impl Fight {
         let mut force_miss = false;
         let mut shield_cast = None;
         let mut atk_roll_fmt: Option<String> = None;
+        let mut atk_roll_fmt_blind: Option<String> = None;
         // the roll had Advantage and no Disadvantage (`advantage_mod > 0`):
         // `condition: advantage` riders apply
         let mut had_adv = false;
@@ -2556,6 +2557,7 @@ impl Fight {
                 force_miss = blocks;
                 shield_cast = Some((at_level, total, ac));
             }
+            atk_roll_fmt_blind = if blind_occupant == Some(tgt) { atk_roll_fmt.clone() } else { None };
             self.describe_attack_cover(&mut atk_roll_fmt, tgt, ac, shield_cast.is_some());
             let mut c = nat20 || (t.improved_critical && face >= 19);
             let critical_roll = c;
@@ -2616,6 +2618,17 @@ impl Fight {
                     applied_damage: 0,
                     atk_roll_fmt,
                     dmg_roll_fmt: None,
+                });
+            } else {
+                let sp = self.units[src].pos;
+                let tp = self.units[tgt].pos;
+                self.emit_web(crate::web_events::WebEv::BlindMiss {
+                    src,
+                    src_pos: sp,
+                    square: tp,
+                    attack_name: atk_name,
+                    ranged_weapon: def.ranged,
+                    atk_roll_fmt: atk_roll_fmt_blind,
                 });
             }
             self.spend_attack(src, atk, reaction, cleave);
@@ -2981,9 +2994,30 @@ impl Fight {
             self.do_attack_inner(src, atk, o, false, false, Some(o));
             return;
         }
-        self.roll_d20(src, "attack", RollMode::Disadvantage);
+        let (_face, dv) = self.roll_d20_raw(src, "attack", RollMode::Disadvantage);
         // the `blind_miss` item has the attack roll and no target
         let def: &'static AttackDef = &self.units[src].t.attacks[atk];
+        if self.web_events.is_some() {
+            let (to_hit, _, _) = self.attack_numbers(src, atk);
+            let mod_val = plus_string_modifier(to_hit);
+            let sp = self.units[src].pos;
+            let mut reasons = String::from(" [Disadvantage from unseen target");
+            if (def.ranged || def.thrown) && self.square_distance(sp, square) * 5 > def.range {
+                reasons.push_str(", long range");
+            }
+            reasons.push(']');
+            let atk_roll_fmt = Some(
+                crate::web_events::fmt_d20_roll(dv, RollMode::Disadvantage, mod_val, None) + &reasons,
+            );
+            self.emit_web(crate::web_events::WebEv::BlindMiss {
+                src,
+                src_pos: sp,
+                square,
+                attack_name: def.name,
+                ranged_weapon: def.ranged,
+                atk_roll_fmt,
+            });
+        }
         self.note_attack_roll(src, None, def, false);
         self.consume_attack(src, atk, false);
     }

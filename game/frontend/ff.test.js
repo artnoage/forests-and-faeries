@@ -129,6 +129,9 @@ test('the page has no inline styles or scripts and no private paths', () => {
     assert.ok(app.includes(`'${fey}'`), `app.js maps portrait for ${fey}`);
   }
   assert.ok(app.includes('will_o_wisp: "Will-o\'-Wisp"'), 'app.js formats Will-o\'-Wisp name');
+  assert.ok(app.includes('Invisible — heard here'), 'app.js tags non-hidden invisible creatures');
+  assert.ok(app.includes('square_attack'), 'app.js supports attack-a-square actions');
+  assert.ok(read('frontend/scene3d.js').includes('Invisible — heard here'), 'scene3d.js tags non-hidden invisible creatures');
   assert.ok(read('catalogue.py').includes("'will_o_wisp': \"Will-o'-Wisp\""), 'catalogue.py formats Will-o\'-Wisp name');
   assert.doesNotMatch(app, /\bstyle\s*=\s*\\?["'`]/i, 'no style="" built in app.js');
   for (const text of [html, app, read('static/style.css')]) {

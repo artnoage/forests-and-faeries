@@ -575,9 +575,16 @@
     const cls = unit.class || niceName(unit.content || unit.kind || (unit.team === 'heroes' ? 'adventurer' : 'creature'));
     return `${includeLevel && unit.level ? 'Lv ' + unit.level + ' · ' : ''}${sub ? sub.charAt(0).toUpperCase() + sub.slice(1) + ' ' : ''}${cls}`;
   }
+  const isInvisibleHeard = u => Boolean(u && u.alive !== false && u.invisible_to_heroes);
+  const isInvisibleAny = u => Boolean(u && u.alive !== false && (u.invisible_to_heroes || (u.conditions || []).includes('invisible')));
+  const invisibleTag = u => isInvisibleHeard(u) ? 'Invisible — heard here' : '';
   function conditionLabels(unit) {
     const conditions = (unit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c));
-    return [...new Set([...conditions, ...(unit.marks || [])].filter(Boolean))];
+    const list = [...new Set([...conditions, ...(unit.marks || [])].filter(Boolean))];
+    if (isInvisibleHeard(unit)) {
+      return ['Invisible — heard here', ...list.filter(c => c !== 'invisible')];
+    }
+    return list;
   }
 
   function lifeText(unit) {
@@ -804,7 +811,9 @@
         ? `Move here · ${matchingAct.cost || ''}`
         : matchingAct.kind === 'spiritual_weapon_move'
           ? `Move Spiritual Weapon → ${cellName(x, y)}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`
-          : `${matchingAct.label}${rayTag}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`;
+          : matchingAct.square_attack
+            ? `${matchingAct.label}${hoveredUnit?.invisible_to_heroes ? ` → ${hoveredUnit.name}` : ` → square ${cellName(x, y)}`} · Disadvantage (unseen target)${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`
+            : `${matchingAct.label}${rayTag}${matchingAct.cost ? ' · ' + matchingAct.cost : ''}`;
       const warns = actionWarnings(matchingAct);
       const actCls = warns.length ? 'warn' : (matchingAct.kind !== 'move' && matchingAct.kind !== 'spiritual_weapon_move' ? 'attack' : '');
       parts.push(`<div class="tt-action ${actCls}">${escape(text)}</div>`);
@@ -1022,12 +1031,12 @@
       .filter(u => u.alive !== false || u.team === 'heroes' || !livingCells.has(`${u.x},${u.y}`))
       .sort((a, b) => (a.alive === false ? 0 : 1) - (b.alive === false ? 0 : 1));
     const unitTokens = sortedUnits.map(u => {
-      const cx = u.x + 0.5, cy = u.y + 0.5, life = lifeText(u);
+      const cx = u.x + 0.5, cy = u.y + 0.5, life = lifeText(u), inv = invisibleTag(u);
       const words = String(u.name || u.id).split(/[\s_-]+/).filter(Boolean);
       const initial = escape(words.length > 1
         ? words.map(w => (/^\d+$/.test(w) ? w : w[0].toUpperCase())).join('').slice(0, 3)
         : words.join('').slice(0, 2));
-      return `<g class="token ${u.team === 'heroes' ? 'hero' : 'monster'}${u.alive ? '' : ' down'}${u.id === state.turn_id ? ' active' : ''}" data-unit="${escape(u.id)}" role="button" aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${life ? ', ' + life : ''}`)}"><circle cx="${cx}" cy="${cy}" r=".34"/><text x="${cx}" y="${cy + 0.1}">${initial}</text></g>`;
+      return `<g class="token ${u.team === 'heroes' ? 'hero' : 'monster'}${u.alive ? '' : ' down'}${isInvisibleAny(u) ? ' invisible-heard' : ''}${u.id === state.turn_id ? ' active' : ''}" data-unit="${escape(u.id)}" role="button" aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${inv ? ', ' + inv : ''}${life ? ', ' + life : ''}`)}"><circle cx="${cx}" cy="${cy}" r=".34"/><text x="${cx}" y="${cy + 0.1}">${initial}</text></g>`;
     }).join('');
     board.setAttribute('viewBox', `0 0 ${map.width} ${map.height}`);
     board.innerHTML = `<g pointer-events="none">${base.join('')}</g>${cells.join('')}${unitTokens}`;
@@ -1087,8 +1096,8 @@
       return;
     }
     $('initiative-list').innerHTML = state.units.map(u => {
-      const act = u.id === activeUnit()?.id, life = lifeText(u);
-      return `<button class="init-medallion ${u.team === 'monsters' ? 'monster' : ''} ${act ? 'active' : ''} ${!u.alive ? 'fallen' : ''} ${vitalOf(u) ? 'vital-' + vitalOf(u).state : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${escape(u.id)}" ${act ? 'aria-current="true"' : ''} aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${life ? ', ' + life : ''}${act ? ', acting now' : ''}`)}" title="${escape(u.name)} (${escape(u.hp)}/${escape(u.max_hp)} HP)">${portrait(u)}${hpBar(u, 'init-hp-mini')}<span class="init-badge">${escape(u.initiative_roll ?? '·')}</span></button>`;
+      const act = u.id === activeUnit()?.id, life = lifeText(u), inv = invisibleTag(u);
+      return `<button class="init-medallion ${u.team === 'monsters' ? 'monster' : ''} ${act ? 'active' : ''} ${!u.alive ? 'fallen' : ''} ${isInvisibleAny(u) ? 'is-invisible' : ''} ${vitalOf(u) ? 'vital-' + vitalOf(u).state : ''}" data-inspect="${escape(u.id)}" data-cam-focus="${escape(u.id)}" ${act ? 'aria-current="true"' : ''} aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${inv ? ', ' + inv : ''}${life ? ', ' + life : ''}${act ? ', acting now' : ''}`)}" title="${escape(u.name)} (${escape(u.hp)}/${escape(u.max_hp)} HP${inv ? ' · ' + escape(inv) : ''})">${portrait(u)}${hpBar(u, 'init-hp-mini')}<span class="init-badge">${escape(u.initiative_roll ?? '·')}</span></button>`;
     }).join('');
   }
 
@@ -1611,14 +1620,21 @@
         chips.push(`<button class="target-chip confirm${hasWarning(armed) ? ' friendly-fire' : ''}" data-action="${escape(armed.id)}">${escape(bits.join(' · '))}</button>`);
       }
       const mine = choices.filter(c => list.some(a => a.id === c.id));
-      const targetActs = mine.length ? mine : cur.filter(a => hasTarget(a) || a.target_ids?.length || !hasPosition(a) || a.cells);
+      const heardInvisibleAt = a => (state.units || []).find(u => isInvisibleHeard(u) && hasPosition(a) && atCell(u, a.x, a.y)) || null;
+      const targetActs = mine.length ? mine : cur.filter(a => {
+        if (a.square_attack) return Boolean(heardInvisibleAt(a)) || sceneUnavailable;
+        return hasTarget(a) || a.target_ids?.length || !hasPosition(a) || a.cells;
+      });
       for (const a of targetActs) {
         if (seen.has(a.id) || (armed && armed.id === a.id)) continue;
         seen.add(a.id);
-        const tgt = chipTargetText(a), hits = hitsLabel(a), cov = coverText(a), defTxt = defenseText(a), warns = actionWarnings(a);
+        const heardUnit = a.square_attack ? heardInvisibleAt(a) : null;
+        const tgt = heardUnit ? `${heardUnit.name} (Invisible — heard here)` : chipTargetText(a);
+        const hits = hitsLabel(a), cov = coverText(a), defTxt = defenseText(a), warns = actionWarnings(a);
+        const disTag = a.disadvantage ? 'Disadvantage' : '';
         const rayTag = a.ray_count ? ` [Ray ${a.ray_number}/${a.ray_count}]` : '';
         const head = tgt ? `${a.label}${rayTag} → ${tgt}` : `${a.label}${rayTag}`;
-        const bits = [head, defTxt, cov, ...warns, a.cost, hits].filter(Boolean);
+        const bits = [head, disTag, defTxt, cov, ...warns, a.cost, hits].filter(Boolean);
         chips.push(`<button class="target-chip ${hasWarning(a) ? 'friendly-fire' : ''}" data-action="${escape(a.id)}" title="${escape(a.description || head)}">${escape(bits.join(' · '))}</button>`);
       }
     }
@@ -1639,7 +1655,9 @@
             ? `${group.label}: click a highlighted square${sceneUnavailable ? ' on the map or a square below' : ''}.`
             : cur[0]?.kind === 'spiritual_weapon_move'
               ? `${group.label}: click a highlighted square on the map or a square above.`
-              : `${group.label}: click a highlighted creature or a choice above.`;
+              : cur.some(a => a.square_attack)
+                ? `${group.label}: click a highlighted creature, or click any square in range to attack blindly (Disadvantage).`
+                : `${group.label}: click a highlighted creature or a choice above.`;
   }
 
   // The engine's log, with what the page reads from it set apart: Sanctuary saves and its end,
@@ -1821,7 +1839,9 @@
       else {
         let txt = action.label + (action.option ? ` (${niceName(action.option)})` : '');
         if (tgt) txt += ` → ${tgt}`;
-        else if (Number.isInteger(action.x) && actor && action.cells) {
+        else if (action.square_attack && Number.isInteger(action.x) && Number.isInteger(action.y)) {
+          txt += ` → ${cellName(action.x, action.y)} (Disadvantage — unseen target)`;
+        } else if (Number.isInteger(action.x) && actor && action.cells) {
           txt += ['burning_hands', 'thunderwave'].includes(action.spell) || action.kind === 'dragons_breath_exhale'
             ? ` → ${compass(action.x - actor.x, action.y - actor.y)}` : ` → ${cellName(action.x, action.y)}`;
         }

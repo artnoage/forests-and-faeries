@@ -84,6 +84,17 @@ pub enum WebEv {
     BlindHitTarget {
         target: usize,
     },
+    /// Emitted when a blind attack (`Act::BlindAttack`) misses — either an empty
+    /// square or an unseen occupant whose AC was not beaten. Identical in both
+    /// cases so the attacker never learns whether a hidden creature was there.
+    BlindMiss {
+        src: usize,
+        src_pos: Pos,
+        square: Pos,
+        attack_name: &'static str,
+        ranged_weapon: bool,
+        atk_roll_fmt: Option<String>,
+    },
     RiderDamage {
         advantage_roll: Option<String>,
         plain_roll: Option<String>,

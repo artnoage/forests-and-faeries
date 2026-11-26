@@ -266,6 +266,25 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     g.addColorStop(1, 'rgba(176,214,232,0)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
   }, 128, 128);
+  const shimmerFloorTexture = makeTexture((ctx, w, h) => {
+    const cx = w / 2, cy = h / 2;
+    ctx.clearRect(0, 0, w, h);
+    const g = ctx.createRadialGradient(cx, cy, w * 0.04, cx, cy, w * 0.48);
+    g.addColorStop(0, 'rgba(196,246,255,0.42)');
+    g.addColorStop(0.55, 'rgba(130,226,255,0.20)');
+    g.addColorStop(1, 'rgba(110,210,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(182, 246, 255, 0.88)';
+    ctx.lineWidth = 3.5;
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath(); ctx.arc(cx, cy, w * 0.38, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(218, 252, 255, 0.65)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 10]);
+    ctx.beginPath(); ctx.arc(cx, cy, w * 0.25, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }, 128, 128);
 
   function clearBoardTrees() {
     for (const tree of boardTrees) {
@@ -1411,18 +1430,26 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     return ck ? (ck === 'goblin' ? 1.38 : ck === 'goblin_boss' ? 1.48 : 1.66) : 1.56;
   }
 
+  const isInvisibleShimmer = u => Boolean(u && u.alive !== false && (u.invisible_to_heroes || (u.conditions || []).includes('invisible')));
+
   function label(unit, y = labelHeight(unit)) {
     const conditions = (unit.conditions || []).filter(c => !['dead', 'unconscious'].includes(c));
     const condCount = new Set([...conditions, ...(unit.marks || [])].filter(Boolean)).size;
+    const invHeard = Boolean(unit.alive !== false && unit.invisible_to_heroes);
+    const canvasW = invHeard ? 264 : 240;
+    const canvasH = invHeard ? 84 : 64;
     const texture = makeTexture((ctx, w, h) => {
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(11, 20, 24, 0.88)';
+      ctx.fillStyle = invHeard ? 'rgba(9, 24, 32, 0.88)' : 'rgba(11, 20, 24, 0.88)';
       ctx.beginPath(); ctx.roundRect(4, 4, w - 8, h - 8, 16); ctx.fill();
-      ctx.strokeStyle = unit.active && unit.alive ? '#ffdb86' : unit.team === 'heroes' ? '#62c4be' : '#d68265';
+      ctx.save();
+      if (invHeard) ctx.setLineDash([8, 5]);
+      ctx.strokeStyle = invHeard ? '#90eeff' : unit.active && unit.alive ? '#ffdb86' : unit.team === 'heroes' ? '#62c4be' : '#d68265';
       ctx.lineWidth = unit.active && unit.alive ? 3.5 : 2.5;
       ctx.stroke();
+      ctx.restore();
 
-      ctx.fillStyle = '#f6efe0';
+      ctx.fillStyle = invHeard ? '#d8f9ff' : '#f6efe0';
       ctx.font = '700 24px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'left';
       const raw = String(unit.name || unit.id), displayName = raw.length > 24 ? `${raw.slice(0, 23)}…` : raw;
@@ -1469,20 +1496,30 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       if (ratio > 0) {
         ctx.beginPath(); ctx.roundRect(15, 44, Math.max(8, (w - 30) * ratio), 8, 4); ctx.fill();
       }
+      if (invHeard) {
+        ctx.fillStyle = '#9cf4ff';
+        ctx.font = '700 17px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Invisible — heard here', w / 2, 72);
+      }
       if (condCount > 0) {
-        ctx.fillStyle = '#ffd966';
+        ctx.fillStyle = invHeard ? '#9cf4ff' : '#ffd966';
         for (let i = 0; i < Math.min(4, condCount); i++) {
           ctx.beginPath(); ctx.arc(w - 18 - i * 10, 13, 3.2, 0, Math.PI * 2); ctx.fill();
         }
       }
-    }, 240, 64);
+    }, canvasW, canvasH);
     const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
     const sprite = new THREE.Sprite(mat);
     sprite.renderOrder = 15;
-    sprite.scale.set(0.92, 0.245, 1);
+    const baseScaleX = invHeard ? 1.08 : 0.92;
+    const baseScaleY = invHeard ? 0.35 : 0.245;
+    sprite.scale.set(baseScaleX, baseScaleY, 1);
     sprite.position.set(0, y, 0);
     sprite.userData.unitId = unit.id;
     sprite.userData.baseY = y;
+    sprite.userData.baseScaleX = baseScaleX;
+    sprite.userData.baseScaleY = baseScaleY;
     return sprite;
   }
 
@@ -1506,7 +1543,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         sp.visible = false;
         continue;
       }
-      sp.visible = labelMode !== 'minimal' || Boolean(entry.data.active || entry.data.id === inspectedId || entry.data.vital?.state === 'dying');
+      sp.visible = labelMode !== 'minimal' || Boolean(entry.data.active || entry.data.id === inspectedId || entry.data.vital?.state === 'dying' || entry.data.invisible_to_heroes);
       if (!sp.visible) continue;
       const baseY = entry.data.alive ? entry.labelY : 0.66;
       projection.set(entry.root.position.x, baseY, entry.root.position.z).project(camera);
@@ -1534,7 +1571,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   function spLift(sp, targetY, dist) {
     sp.position.y += (targetY - sp.position.y) * 0.35;
     const s = Math.max(0.36, Math.min(1.42, dist / 15.0));
-    sp.scale.set(0.92 * s, 0.245 * s, 1);
+    sp.scale.set((sp.userData.baseScaleX || 0.92) * s, (sp.userData.baseScaleY || 0.245) * s, 1);
   }
 
   const forceWeapons = new Map();
@@ -1766,6 +1803,93 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     return { kind: 'steam_mephit', group, materials: ownMats, groundMist, hazeMat, puffs, phase };
   }
 
+  function buildInvisibleShimmer(unit) {
+    const group = new THREE.Group();
+    group.name = 'invisible-shimmer';
+    const ownMats = [];
+    const phase = (unit.x * 2.3 + unit.y * 1.7 + String(unit.id || '').length * 0.9) % 6.283;
+    const floorMat = new THREE.MeshBasicMaterial({
+      map: shimmerFloorTexture, color: '#b4f6ff', transparent: true, opacity: 0.72,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    });
+    ownMats.push(floorMat);
+    const floorRing = new THREE.Mesh(planeGeometry, floorMat);
+    floorRing.rotation.x = -Math.PI / 2;
+    floorRing.position.set(0, 0.052, 0);
+    floorRing.scale.set(1.06, 1.06, 1);
+    floorRing.castShadow = false;
+    floorRing.receiveShadow = false;
+    floorRing.renderOrder = 2;
+    group.add(floorRing);
+
+    const wisps = [];
+    const specs = [
+      [0, 0.56, 0, 0.86, 0.32, '#c8f8ff'],
+      [0.14, 0.74, -0.08, 0.54, 0.24, '#92ecff'],
+      [-0.14, 0.42, 0.08, 0.50, 0.22, '#e2fcff'],
+    ];
+    for (let i = 0; i < specs.length; i++) {
+      const [wx, wy, wz, sc, op, col] = specs[i];
+      const mat = new THREE.SpriteMaterial({
+        map: wispHaloTexture, color: col, transparent: true, opacity: op,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+      });
+      ownMats.push(mat);
+      const sp = new THREE.Sprite(mat);
+      sp.position.set(wx, wy, wz);
+      sp.scale.set(sc, sc * 1.15, 1);
+      sp.renderOrder = 4;
+      group.add(sp);
+      wisps.push({ sprite: sp, mat, baseX: wx, baseY: wy, baseZ: wz, baseScale: sc, baseOpacity: op, idx: i });
+    }
+    return { group, materials: ownMats, floorRing, floorMat, wisps, phase };
+  }
+
+  function applyBodyShimmer(body, invisible) {
+    body.traverse(obj => {
+      if (!obj.isMesh || !obj.material) return;
+      if (obj.userData.origCastShadow === undefined) obj.userData.origCastShadow = obj.castShadow;
+      obj.castShadow = invisible ? false : obj.userData.origCastShadow;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) {
+        if (invisible) {
+          if (!m.userData.shimmerSaved) {
+            m.userData.shimmerSaved = {
+              transparent: m.transparent,
+              opacity: m.opacity,
+              depthWrite: m.depthWrite,
+              emissiveHex: m.emissive ? m.emissive.getHex() : null,
+              emissiveIntensity: m.emissiveIntensity ?? 0,
+              restEmissive: m.userData.restEmissive ? { ...m.userData.restEmissive } : null,
+            };
+          }
+          m.transparent = true;
+          m.opacity = 0.16;
+          m.depthWrite = false;
+          if (m.emissive) {
+            m.emissive.set('#8cecff');
+            m.emissiveIntensity = 0.55;
+            m.userData.restEmissive = { color: 0x8cecff, intensity: 0.55 };
+          }
+          m.needsUpdate = true;
+        } else if (m.userData.shimmerSaved) {
+          const s = m.userData.shimmerSaved;
+          m.transparent = s.transparent;
+          m.opacity = s.opacity;
+          m.depthWrite = s.depthWrite;
+          if (m.emissive && s.emissiveHex !== null) {
+            m.emissive.setHex(s.emissiveHex);
+            m.emissiveIntensity = s.emissiveIntensity;
+          }
+          if (s.restEmissive) m.userData.restEmissive = { ...s.restEmissive };
+          else delete m.userData.restEmissive;
+          delete m.userData.shimmerSaved;
+          m.needsUpdate = true;
+        }
+      }
+    });
+  }
+
   function makeUnit(unit) {
     const known = ['fighter', 'mage', 'goblin', 'skeleton'], base = unit.model?.base || unit.kind;
     const fallbackKind = known.includes(base) ? base : (unit.team === 'heroes' ? 'fighter' : 'goblin');
@@ -1779,10 +1903,12 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
     const castKey = resolveCastKey(unit);
     const ownMaterials = [];
-    if (castKey !== 'will_o_wisp') ring(root, planeGeometry, contactMaterial, 0.002).scale.set(0.97, 0.97, 1);
+    const contactShadow = castKey !== 'will_o_wisp' ? ring(root, planeGeometry, contactMaterial, 0.002) : null;
+    if (contactShadow) contactShadow.scale.set(0.97, 0.97, 1);
     const plinth = mesh(root, cylinder, material(unit.team === 'heroes' ? '#255a61' : '#6e493a', 0.25, 0.65), 0, 0.055, 0, 0.365, 0.09, 0.365);
     plinth.userData.unitId = unit.id;
-    ring(root, ringGeometry, glow(unit.team === 'heroes' ? '#6bd4cf' : '#e09a70'), 0.105).scale.setScalar(0.86);
+    const plinthRing = ring(root, ringGeometry, glow(unit.team === 'heroes' ? '#6bd4cf' : '#e09a70'), 0.105);
+    plinthRing.scale.setScalar(0.86);
     const active = ring(root, activeGeometry, glow('#ffdb86'), 0.023); active.visible = false;
     const target = ring(root, geometry('target-ring', () => new THREE.RingGeometry(0.49, 0.54, 48)), glow('#fa856e'), 0.026); target.visible = false;
     const inspect = ring(root, geometry('inspect-ring', () => new THREE.RingGeometry(0.55, 0.585, 48)), glow('#b8f6ee', 0.8), 0.028); inspect.visible = false;
@@ -1833,6 +1959,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
     const entry = {
       root, body, rig, name: nameSprite, labelY: lY, active, target, inspect, picker, downRing, deadRing, stableRing,
+      contactShadow, plinth, plinthRing, shimmerFx: null,
       markGroups, ownMaterials, ambientFx, castKey: castInst ? castKey : null,
       data: { ...unit },
       start: new THREE.Vector3(unit.x, 0.04, unit.y),
@@ -1916,13 +2043,26 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       entry.picker.position.y = 0.65;
     }
 
-    if (entry.ambientFx) entry.ambientFx.group.visible = Boolean(data.alive);
+    const invShimmer = isInvisibleShimmer(data);
+    applyBodyShimmer(entry.body, invShimmer);
+    if (entry.contactShadow) entry.contactShadow.visible = !invShimmer;
+    if (entry.plinth) entry.plinth.visible = !invShimmer;
+    if (entry.plinthRing) entry.plinthRing.visible = !invShimmer;
+    if (invShimmer && !entry.shimmerFx) {
+      entry.shimmerFx = buildInvisibleShimmer(data);
+      entry.root.add(entry.shimmerFx.group);
+    }
+    if (entry.shimmerFx) entry.shimmerFx.group.visible = invShimmer;
+    if (entry.ambientFx) entry.ambientFx.group.visible = Boolean(data.alive) && !invShimmer;
     entry.data = { ...data };
     entry.target.visible = false;
   }
 
   function removeUnit(entry) {
     removeLabel(entry.name);
+    if (entry.shimmerFx) {
+      entry.shimmerFx.materials.forEach(m => m.dispose());
+    }
     if (entry.ambientFx) {
       entry.ambientFx.materials.forEach(m => m.dispose());
       entry.ambientFx.light?.dispose?.();
@@ -1976,8 +2116,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         if (entry.moveEnd) entry.root.position.copy(entry.start);
         else entry.root.position.copy(entry.end);
       }
-      const prevCondKey = JSON.stringify([entry.data.conditions, entry.data.marks, entry.data.vital || null, entry.data.alive]);
-      const nextCondKey = JSON.stringify([data.conditions, data.marks, data.vital || null, data.alive]);
+      const prevCondKey = JSON.stringify([entry.data.conditions, entry.data.marks, entry.data.vital || null, entry.data.alive, Boolean(entry.data.invisible_to_heroes)]);
+      const nextCondKey = JSON.stringify([data.conditions, data.marks, data.vital || null, data.alive, Boolean(data.invisible_to_heroes)]);
       if (data.hp !== entry.data.hp || data.max_hp !== entry.data.max_hp || data.name !== entry.data.name || data.active !== entry.data.active || prevCondKey !== nextCondKey) {
         removeLabel(entry.name);
         entry.name = label(data, entry.labelY);
@@ -2024,12 +2164,19 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     clearGroup(overlays);
     const destinations = new Set();
     const forceDestinations = new Set();
+    const attackSquares = new Set();
     const targetIds = new Set();
     for (const action of options.selectedActions || []) {
       if (action.kind === 'move' && Number.isInteger(action.x) && Number.isInteger(action.y)) destinations.add(`${action.x},${action.y}`);
       else if (action.kind === 'spiritual_weapon_move' && Number.isInteger(action.x) && Number.isInteger(action.y)) forceDestinations.add(`${action.x},${action.y}`);
+      else if (action.square_attack && Number.isInteger(action.x) && Number.isInteger(action.y)) attackSquares.add(`${action.x},${action.y}`);
       for (const id of action.target_ids || []) targetIds.add(id);
       if (action.target_id) targetIds.add(action.target_id);
+    }
+    for (const data of nextState.units || []) {
+      if (data.alive !== false && data.invisible_to_heroes && attackSquares.has(`${data.x},${data.y}`)) {
+        targetIds.add(data.id);
+      }
     }
     if (nextState.phase === 'setup' && options.setupFigure) {
       for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
@@ -2038,22 +2185,23 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         }
       }
     }
-    const drawDestSet = (set, fillHex, rimHex) => {
+    const drawDestSet = (set, fillHex, rimHex, fillAlpha = 0.25, rimAlpha = 0.88) => {
       for (const key of set) {
         const [x, y] = key.split(',').map(Number);
-        const tile = mesh(overlays, planeGeometry, glow(fillHex, busy ? 0.12 : 0.25), x, 0.058, y, 0.84, 0.84, 1);
+        const tile = mesh(overlays, planeGeometry, glow(fillHex, busy ? fillAlpha * 0.5 : fillAlpha), x, 0.058, y, 0.84, 0.84, 1);
         tile.rotation.x = -Math.PI / 2; tile.castShadow = false;
         const rim = mesh(overlays, geometry('move-rim', () => {
           const shape = new THREE.Shape();
           shape.moveTo(-0.435, -0.435); shape.lineTo(0.435, -0.435); shape.lineTo(0.435, 0.435); shape.lineTo(-0.435, 0.435); shape.closePath();
           const hole = new THREE.Path(); hole.moveTo(-0.405, -0.405); hole.lineTo(-0.405, 0.405); hole.lineTo(0.405, 0.405); hole.lineTo(0.405, -0.405); hole.closePath(); shape.holes.push(hole);
           return new THREE.ShapeGeometry(shape);
-        }), glow(rimHex, busy ? 0.35 : 0.88), x, 0.061, y);
+        }), glow(rimHex, busy ? rimAlpha * 0.4 : rimAlpha), x, 0.061, y);
         rim.rotation.x = -Math.PI / 2; rim.castShadow = false;
       }
     };
     drawDestSet(destinations, '#59d8c3', '#8cf0de');
     drawDestSet(forceDestinations, '#7cc4ff', '#bfe4ff');
+    drawDestSet(attackSquares, '#f08668', '#f5a182', 0.08, 0.46);
     for (const id of targetIds) { const entry = units.get(id); if (entry) entry.target.visible = true; }
     const previewColor = options.previewFriendlyFire ? '#ff4a38' : '#ff7a3d';
     for (const cell of options.previewCells || []) {
@@ -2821,6 +2969,19 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
   function tickUnitAmbientFx(now) {
     for (const entry of units.values()) {
+      const sh = entry.shimmerFx;
+      if (sh && sh.group.visible) {
+        const pulse = Math.sin(now * 0.0038 + sh.phase);
+        sh.floorRing.rotation.z = now * 0.00045;
+        const fs = 1.04 + pulse * 0.05;
+        sh.floorRing.scale.set(fs, fs, 1);
+        sh.floorMat.opacity = 0.62 + pulse * 0.14;
+        for (const w of sh.wisps) {
+          const t = now * 0.0024 + sh.phase + w.idx * 2.1;
+          w.sprite.position.set(w.baseX + Math.sin(t) * 0.05, w.baseY + Math.cos(t * 1.2) * 0.05, w.baseZ + Math.cos(t) * 0.05);
+          w.mat.opacity = w.baseOpacity * (0.78 + 0.28 * Math.sin(t * 1.5));
+        }
+      }
       const fx = entry.ambientFx;
       if (!fx || !fx.group.visible) continue;
       if (fx.kind === 'will_o_wisp') {

@@ -1347,6 +1347,10 @@ kbd { display: inline-block; padding: 1px 5px; font-size: 10px; background: #1d2
 #battlefield .token.monster circle { fill: #4a221d; stroke: #f47e66; }
 #battlefield .token.active circle { stroke: #ffdb86; stroke-width: 0.1; }
 #battlefield .token.down { opacity: 0.4; }
+#battlefield .token.invisible-heard circle { fill: rgba(132, 232, 255, 0.16); stroke: #94efff; stroke-dasharray: 0.14 0.09; }
+#battlefield .token.invisible-heard text { fill: #c6f7ff; opacity: 0.82; }
+.init-medallion.is-invisible { border-style: dashed; border-color: rgba(144, 238, 255, 0.75); }
+.init-medallion.is-invisible .portrait { opacity: 0.56; filter: drop-shadow(0 0 4px rgba(132, 236, 255, 0.65)); }
 #battlefield .token text { fill: #f2efe6; font: 700 0.27px system-ui, sans-serif; text-anchor: middle; pointer-events: none; }
 .world-layer.is-fallback .scene-view { visibility: hidden; }
 .world-layer.is-fallback #battlefield {

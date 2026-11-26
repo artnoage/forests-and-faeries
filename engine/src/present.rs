@@ -32,11 +32,21 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 18;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 19;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
 const ACTION_CAP: usize = 24;
+
+fn cell_label(p: Pos) -> String {
+    let x = p.0.max(0) as u32;
+    let mut col = String::new();
+    if x >= 26 {
+        col.push(char::from_u32(u32::from(b'A') + (x / 26 - 1)).unwrap_or('A'));
+    }
+    col.push(char::from_u32(u32::from(b'A') + (x % 26)).unwrap_or('A'));
+    format!("{col}{}", p.1 + 1)
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LevelInput {
@@ -462,6 +472,24 @@ impl WebArena {
             f.units[hero].team == 0 && f.units[hero].conscious() && f.can_see(hero, u))
     }
 
+    /// SRD 5.2.1 ("Invisible" & "Unseen Attackers and Targets"): an invisible
+    /// creature that has not taken the Hide action cannot be seen (without
+    /// Blindsight/Truesight), yet its location is still known (heard/sensed).
+    fn invisible_unseen_by_heroes(&self, u: usize) -> bool {
+        if self.replay_version < 19 || self.finished || self.monster_control == "manual" {
+            return false;
+        }
+        let f = self.fight.as_ref().unwrap();
+        let unit = &f.units[u];
+        unit.team != 0
+            && unit.conscious()
+            && unit.invisible()
+            && !self.concealed_from_heroes(u)
+            && !(0..f.units.len()).any(|hero| {
+                f.units[hero].team == 0 && f.units[hero].conscious() && f.can_see(hero, u)
+            })
+    }
+
     fn acting_unit(&self, fight: &Fight) -> usize {
         self.interrupted_move.as_ref().map_or_else(|| fight.current(), |m| m.champion)
     }
@@ -551,7 +579,8 @@ impl WebArena {
         fight.set_rule_version(match self.replay_version {
             1..=3 => i32::from(self.replay_version),
             4 => 3,
-            v => i32::from(v - 1),
+            5..=18 => i32::from(self.replay_version - 1),
+            _ => 17,
         });
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
@@ -1244,6 +1273,29 @@ impl WebArena {
                 }
                 WebEv::BlindHitTarget { target } => {
                     blind_hit_target = Some(target);
+                }
+                WebEv::BlindMiss { src, src_pos, square, attack_name, ranged_weapon, atk_roll_fmt }
+                    if self.replay_version >= 19 =>
+                {
+                    let src_name = self.unit_display_name(src).to_string();
+                    let pretty_atk = attack_name.replace('_', " ");
+                    let cell = cell_label(square);
+                    let check = atk_roll_fmt.as_deref().map(|r| format!(" (attack {r})")).unwrap_or_default();
+                    self.push_log(&format!("{src_name}: {pretty_atk} misses at {cell}{check}."), "miss", round);
+                    let style = self.effect_style_for(action_src, act, src, attack_name, None, ranged_weapon);
+                    let src_id = self.fight.as_ref().unwrap().units[src].id.clone();
+                    let mut m = Map::new();
+                    m.insert("type".into(), json!("attack"));
+                    m.insert("source_id".into(), json!(src_id));
+                    m.insert("target_id".into(), json!(null));
+                    m.insert("style".into(), json!(style));
+                    m.insert("outcome".into(), json!("miss"));
+                    m.insert("amount".into(), json!(0));
+                    m.insert("text".into(), json!("MISS"));
+                    m.insert("source".into(), json!({"x": src_pos.0, "y": src_pos.1}));
+                    m.insert("target".into(), json!({"x": square.0, "y": square.1}));
+                    m.insert("attack".into(), json!(attack_name));
+                    self.push_effect(m);
                 }
                 WebEv::SavageRoll { source, sides, kept, discarded } => {
                     let who = self.unit_display_name(source);
@@ -2009,6 +2061,16 @@ impl WebArena {
                     items.push((t, "mage_armor", "MAGE ARMOR"));
                 }
             }
+            if self.replay_version >= 19 && c.spell == SpellId::Invisibility {
+                let tgts: Vec<usize> = if c.targets.is_empty() { vec![src] } else { c.targets.clone() };
+                for t in tgts {
+                    if !self.concealed_from_heroes(t) {
+                        let who = self.unit_display_name(t).to_string();
+                        self.push_log(&format!("{who} becomes invisible."), "status", self.current_round());
+                        items.push((t, "invisibility", "INVISIBLE"));
+                    }
+                }
+            }
         }
         match act {
             Act::Dodge => items.push((src, "dodge", "DODGE")),
@@ -2020,6 +2082,13 @@ impl WebArena {
             Act::Rage => items.push((src, "rage", "RAGE")),
             Act::ExtendRage => items.push((src, "extend_rage", "RAGE")),
             Act::RecklessAttack => items.push((src, "reckless_attack", "RECKLESS")),
+            Act::NpcVanish if self.replay_version >= 19 => {
+                if !self.concealed_from_heroes(src) {
+                    let who = self.unit_display_name(src).to_string();
+                    self.push_log(&format!("{who} vanishes from sight."), "status", self.current_round());
+                    items.push((src, "invisibility", "INVISIBLE"));
+                }
+            }
             _ => {}
         }
         let (src_id, sp) = {
@@ -2193,7 +2262,7 @@ impl WebArena {
                 let refresh = !f.units[actor].t.pc
                     || (0..f.units[actor].t.attacks.len()).any(|a| f.can_attack(actor, a))
                     || (f.units[actor].bonus > 0 && f.units[actor].two_weapon);
-                let sensed = if refresh {
+                let sensed = if self.replay_version < 19 && refresh {
                     let (entries, heard) = f.sensed_split(actor);
                     Some(
                         entries
@@ -2206,10 +2275,25 @@ impl WebArena {
                 } else {
                     None
                 };
+                // For replay_version >= 19 (web human turns only; batch trainer & AI untouched):
+                // every weapon attack can target any legal square in reach/range without Total
+                // Cover, regardless of whether an unseen creature is there (SRD 5.2.1 "Unseen
+                // Attackers and Targets"). Squares holding a visible conscious creature (ally or
+                // enemy already targeted by Act::Attack) are excluded so visible targets use
+                // direct attacks and allies aren't misclicked.
+                let visible_conscious_squares: HashSet<Pos> = if self.replay_version >= 19 {
+                    (0..f.units.len())
+                        .filter(|&u| u != actor && f.units[u].conscious() && f.can_see(actor, u))
+                        .map(|u| f.units[u].pos)
+                        .collect()
+                } else {
+                    HashSet::new()
+                };
                 for (ai, def) in f.units[actor].t.attacks.iter().enumerate() {
                     if !f.can_attack(actor, ai) || !f.attack_available(actor, ai) {
                         continue;
                     }
+                    let mut visible_target_squares: HashSet<Pos> = HashSet::new();
                     for t in 0..f.units.len() {
                         if t == actor || !f.opposing(actor, t) || f.units[t].dead() || !f.can_see(actor, t) {
                             continue;
@@ -2220,9 +2304,30 @@ impl WebArena {
                         if def.save_immune && f.units[t].save_immune_to.contains(&(actor, def.name)) {
                             continue;
                         }
+                        visible_target_squares.insert(f.units[t].pos);
                         non_spell.push(Act::Attack { atk: ai, target: t, reaction: false });
                     }
-                    if let Some(ref s_list) = sensed {
+                    if self.replay_version >= 19 {
+                        if def.save_attack.is_none() && !def.no_damage {
+                            let here = f.units[actor].pos;
+                            let reach_sq = (def.range_max / 5).max(1);
+                            let x0 = (here.0 - reach_sq).max(0);
+                            let x1 = (here.0 + reach_sq).min(self.grid.w - 1);
+                            let y0 = (here.1 - reach_sq).max(0);
+                            let y1 = (here.1 + reach_sq).min(self.grid.h - 1);
+                            for y in y0..=y1 {
+                                for x in x0..=x1 {
+                                    let sq = (x, y);
+                                    if visible_target_squares.contains(&sq) || visible_conscious_squares.contains(&sq) {
+                                        continue;
+                                    }
+                                    if f.can_blind_attack_square(here, sq, def.range_max) {
+                                        non_spell.push(Act::BlindAttack { atk: ai, square: sq, heard: false });
+                                    }
+                                }
+                            }
+                        }
+                    } else if let Some(ref s_list) = sensed {
                         if def.save_attack.is_none() {
                             let here = f.units[actor].pos;
                             let mut seen = Vec::new();
@@ -2357,10 +2462,17 @@ impl WebArena {
                             "None".into(),
                         )
                     }
-                    Act::BlindAttack { atk, .. } => {
+                    Act::BlindAttack { atk, square, .. } => {
                         let def = &f.units[actor].t.attacks[*atk];
                         let thrown_s = py_bool_opt_str(Some(def.thrown));
-                        (Vec::new(), Vec::new(), None, def.name, None, None, "None".into(), "None".into(), "None".into(), thrown_s, "None".into())
+                        // In v19+, sort square attacks deterministically by coordinate AFTER
+                        // direct visible-target attacks (never revealing hidden occupancy).
+                        let sort_tids = if self.replay_version >= 19 {
+                            vec![format!("~{:02},{:02}", square.0, square.1)]
+                        } else {
+                            Vec::new()
+                        };
+                        (Vec::new(), sort_tids, None, def.name, None, None, "None".into(), "None".into(), "None".into(), thrown_s, "None".into())
                     }
                     Act::Cleave { atk, target } => {
                         let def = &f.units[actor].t.attacks[*atk];
@@ -2598,9 +2710,11 @@ impl WebArena {
         }
 
         if self.replay_version >= 7 {
-            if let Act::BlindAttack { square: (x, y), heard, .. } = &cand.act {
-                let sense = if *heard { "heard" } else { "last known" };
-                label.push_str(&format!(" at unseen square {x},{y} ({sense})"));
+            if self.replay_version < 19 {
+                if let Act::BlindAttack { square: (x, y), heard, .. } = &cand.act {
+                    let sense = if *heard { "heard" } else { "last known" };
+                    label.push_str(&format!(" at unseen square {x},{y} ({sense})"));
+                }
             }
             if let Some(c) = spell_opt.filter(|c| matches!(c.spell, SpellId::ChromaticOrb | SpellId::SorcerousBurst) || self.replay_version >= 8 && c.spell == SpellId::DragonsBreath) {
                 if let Some(dt) = c.dt { label.push_str(&format!(" ({})", dt.name())); }
@@ -2702,6 +2816,10 @@ impl WebArena {
             let names: Vec<&str> = targets.iter().map(|&t| self.unit_display_name(t)).collect();
             description.push_str(" → ");
             description.push_str(&names.join(", "));
+        } else if let Act::BlindAttack { square, .. } = &cand.act {
+            if self.replay_version >= 19 {
+                description.push_str(&format!(" → {} (Disadvantage — unseen target)", cell_label(*square)));
+            }
         } else if let Some((px, py)) = point {
             if category == "spell" {
                 let col = (b'A' + (px as u8)) as char;
@@ -2732,6 +2850,7 @@ impl WebArena {
             Act::Move(_) => dest,
             _ => point,
         };
+        let is_square_attack = self.replay_version >= 19 && matches!(&cand.act, Act::BlindAttack { .. });
         let mut view = Map::new();
         view.insert("id".into(), json!(format!("r{}-{index}", self.revision)));
         view.insert("kind".into(), json!(kind));
@@ -2740,9 +2859,13 @@ impl WebArena {
         if !(kind != "move" && (target_ids.len() > 1 || point.is_some())) {
             view.insert("description".into(), json!(description));
         }
-        if !target_ids.is_empty() {
+        if !target_ids.is_empty() && !is_square_attack {
             view.insert("target_id".into(), json!(target_ids[0]));
             view.insert("target_ids".into(), json!(target_ids));
+        }
+        if is_square_attack {
+            view.insert("square_attack".into(), json!(true));
+            view.insert("disadvantage".into(), json!(true));
         }
         if let Some((ax, ay)) = aim {
             view.insert("x".into(), json!(ax));
@@ -3025,7 +3148,7 @@ impl WebArena {
             let mut conds: Vec<&str> = unit.statuses.iter().map(|s| s.name()).collect();
             if self.replay_version >= 9 && unit.poisoned() && !conds.contains(&"poisoned") { conds.push("poisoned"); }
             conds.sort_unstable();
-            units.push(json!({
+            let mut uobj = json!({
                 "id": unit.id,
                 "x": unit.pos.0,
                 "y": unit.pos.1,
@@ -3037,7 +3160,11 @@ impl WebArena {
                 "marks": self.unit_marks(u),
                 "str_loss": unit.str_drain.unwrap_or(0),
                 "dead": unit.dead(),
-            }));
+            });
+            if self.replay_version >= 19 {
+                uobj["invisible_to_heroes"] = json!(self.invisible_unseen_by_heroes(u));
+            }
+            units.push(uobj);
         }
         let base_res = match actor {
             Some(u) => json!({
@@ -3138,6 +3265,9 @@ impl WebArena {
         m.insert("conditions".into(), json!(conds));
         if self.concealed_from_heroes(u) {
             m.insert("hidden_from_heroes".into(), json!(true));
+        }
+        if self.invisible_unseen_by_heroes(u) {
+            m.insert("invisible_to_heroes".into(), json!(true));
         }
         m.insert("controlled_by".into(), json!(controlled_by));
         m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
@@ -3281,7 +3411,7 @@ impl WebArena {
         let Some(obj) = state.as_object_mut() else { return state };
         let Some(actions) = obj.get("actions").and_then(Value::as_array).cloned() else { return state };
 
-        let static_keys = ["kind", "category", "label", "cost", "spell", "spell_level", "at_level", "free_cast", "metamagic", "mode", "option", "ray_number", "ray_count"];
+        let static_keys = ["kind", "category", "label", "cost", "spell", "spell_level", "at_level", "free_cast", "metamagic", "mode", "option", "ray_number", "ray_count", "square_attack", "disadvantage"];
         let row_keys = ["target_ids", "x", "y", "area", "hits", "allies", "path", "cover", "aid_no_hp_targets"];
 
         let mut defs: Vec<Value> = Vec::new();
@@ -3575,5 +3705,111 @@ mod tests {
         let _ = f.observe_enemies(ghast);
         assert!(!f.units[ghast].mem.known.iter().any(|(k, _)| *k == guy));
         assert!(!f.units[ghast].mem.investigate.iter().any(|(p, _)| *p == (2, 1)));
+    }
+
+    #[test]
+    fn web_v19_invisibility_shimmer_flag_and_attack_any_square_without_leaking_hidden() {
+        let level = LevelInput {
+            encounter_id: "unseen_v19".into(), preset_id: "test".into(), theme: "woodland".into(),
+            map_name: "glade".into(),
+            rows: [
+                "........",
+                "........",
+                "........",
+                "........",
+                "........",
+            ].into_iter().map(String::from).collect(),
+            scene: json!({}), level_view: json!({}),
+            heroes: vec!["ilyra".into()],
+            monsters: vec![
+                ("sprite-1".into(), "sprite".into(), "Sprite".into()),
+                ("goblin_warrior-1".into(), "goblin_warrior".into(), "Goblin Warrior".into()),
+            ],
+            suggested_placements: vec![
+                Placement { id: "ilyra".into(), x: 2, y: 2 },
+                Placement { id: "sprite-1".into(), x: 3, y: 2 },
+                Placement { id: "goblin_warrior-1".into(), x: 4, y: 2 },
+            ],
+        };
+        let mut game = WebArena::new(level, 11, 0, "csrf".into(), "enc".into()).unwrap();
+        game.start().unwrap();
+        let f = game.fight.as_mut().unwrap();
+        let ilyra = f.units.iter().position(|u| u.id == "ilyra").unwrap();
+        let sprite = f.units.iter().position(|u| u.id == "sprite-1").unwrap();
+        let goblin = f.units.iter().position(|u| u.id == "goblin_warrior-1").unwrap();
+        f.turn_idx = f.order.iter().position(|&u| u == ilyra).unwrap();
+        f.units[ilyra].action = 1;
+        // 1) Sprite is invisible, NOT hidden -> location known, invisible_to_heroes = true, not hidden_from_heroes
+        f.units[sprite].add_status(St::Invisible);
+        // 2) Goblin is hidden (and invisible, so it stays concealed in open floor when moved) -> hidden_from_heroes = true
+        f.units[goblin].add_status(St::Invisible);
+        f.units[goblin].add_status(St::Hidden);
+        f.units[goblin].hidden_stealth = Some(30);
+
+        // Verify Fight::available_moves (batch trainer / AI path) does NOT offer empty squares!
+        let ai_moves = f.available_moves(ilyra);
+        assert!(
+            !ai_moves.iter().any(|a| matches!(a, Act::BlindAttack { square: (1, 1), .. })),
+            "batch trainer/AI action list must remain unchanged (no empty-square blind attacks)"
+        );
+
+        game.cache_revision = None;
+        let st = game.state();
+        let units = st.get("units").and_then(Value::as_array).unwrap();
+        let sprite_v = units.iter().find(|u| u["id"] == "sprite-1").unwrap();
+        let goblin_v = units.iter().find(|u| u["id"] == "goblin_warrior-1").unwrap();
+        assert_eq!(sprite_v.get("invisible_to_heroes"), Some(&json!(true)));
+        assert!(sprite_v.get("hidden_from_heroes").is_none());
+        assert_eq!(goblin_v.get("hidden_from_heroes"), Some(&json!(true)));
+        assert!(goblin_v.get("invisible_to_heroes").is_none());
+
+        // Compare web actions with Goblin at (4, 2) vs Goblin moved to (7, 4):
+        // Attack-a-square menu MUST be 100% identical (zero leak of hidden Goblin!).
+        let acts_here: Vec<(String, i64, i64, bool)> = st["actions"].as_array().unwrap().iter()
+            .filter(|a| a.get("square_attack") == Some(&json!(true)))
+            .map(|a| (
+                a["label"].as_str().unwrap().to_string(),
+                a["x"].as_i64().unwrap(),
+                a["y"].as_i64().unwrap(),
+                a["disadvantage"].as_bool().unwrap_or(false),
+            ))
+            .collect();
+        // Adjacent melee dagger & thrown dagger offered on empty square (1, 1), invisible Sprite (3, 2), and hidden Goblin (4, 2)
+        assert!(acts_here.iter().any(|(l, x, y, dis)| l == "Dagger" && (*x, *y) == (1, 1) && *dis));
+        assert!(acts_here.iter().any(|(l, x, y, dis)| l == "Dagger" && (*x, *y) == (3, 2) && *dis));
+        assert!(acts_here.iter().any(|(l, x, y, dis)| l == "Dagger (thrown)" && (*x, *y) == (4, 2) && *dis));
+        assert!(acts_here.iter().any(|(l, x, y, dis)| l == "Dagger (thrown)" && (*x, *y) == (5, 2) && *dis));
+
+        game.fight.as_mut().unwrap().move_to(goblin, (7, 4));
+        game.cache_revision = None;
+        let st_moved = game.state();
+        let acts_moved: Vec<(String, i64, i64, bool)> = st_moved["actions"].as_array().unwrap().iter()
+            .filter(|a| a.get("square_attack") == Some(&json!(true)))
+            .map(|a| (
+                a["label"].as_str().unwrap().to_string(),
+                a["x"].as_i64().unwrap(),
+                a["y"].as_i64().unwrap(),
+                a["disadvantage"].as_bool().unwrap_or(false),
+            ))
+            .collect();
+        assert_eq!(acts_here, acts_moved, "hidden creature position must not alter square-attack menu");
+
+        // Throw a Dagger at empty square (5, 2): spends action + spare dagger, logs miss at F3 with no leak
+        let spares_before = game.fight.as_ref().unwrap().units[ilyra].spares.clone();
+        let throw_empty_id = st_moved["actions"].as_array().unwrap().iter()
+            .find(|a| a["label"] == "Dagger (thrown)" && a.get("square_attack") == Some(&json!(true))
+                && a["x"] == 5 && a["y"] == 2)
+            .unwrap()["id"].as_str().unwrap().to_string();
+        let after = game.perform(&throw_empty_id).unwrap();
+        assert_eq!(after["resources"]["action"], json!(0));
+        let spares_after = game.fight.as_ref().unwrap().units[ilyra].spares.clone();
+        assert_ne!(spares_before, spares_after, "thrown weapon ammo/spare must be spent on empty-square miss");
+        assert!(after["log"].as_array().unwrap().iter().any(|e| {
+            let t = e["text"].as_str().unwrap_or("");
+            t.contains("Ilyra: dagger misses at F3") && t.contains("Disadvantage from unseen target")
+        }), "empty-square attack must log miss without leaking");
+        assert!(after["effects"].as_array().unwrap().iter().any(|e| {
+            e["outcome"] == "miss" && e["target"]["x"] == 5 && e["target"]["y"] == 2
+        }));
     }
 }
