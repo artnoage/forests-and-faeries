@@ -121,6 +121,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   const torchFlames = [];
   const stepPuffs = [];
   const motes = [];
+  const boardTrees = [];
   let activeThemeId = 'forged_hall';
   let state = null, boardKey = '', width = 10, height = 8;
   let disposed = false, unavailable = false, frame = 0, ready = false, busy = false;
@@ -131,11 +132,15 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.025);
   const hitPoint = new THREE.Vector3();
   const projection = new THREE.Vector3();
+  const occRayDir = new THREE.Vector3();
+  const occToTree = new THREE.Vector3();
+  const occClosest = new THREE.Vector3();
   const scratch = new THREE.Object3D();
   const combatEffects = createCombatEffects({ scene, units, requestRender, reducedMotion });
   let playback = null, inspectedId = null, upgradePending = false;
   let cameraViewDir = new THREE.Vector3(0.54, 0.92, 1.13).normalize();
   let hasFramedOnce = false, camTween = null, lastHoverKey = '';
+  let hoverBoardCell = null, previewHoverCell = null;
   let safeArea = null;
   let autoCam = true, actionZoom = true, manualHold = false, track = null, presetName = 'tactical', lastDirected = null, lastEnded = null;
   const hoverGeoms = [];
@@ -213,6 +218,63 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   }, 64, 64);
   const contactMaterial = new THREE.MeshBasicMaterial({ map: contactTexture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
   materials.set('contact', contactMaterial);
+
+  const wispHaloTexture = makeTexture((ctx, w, h) => {
+    const cx = w / 2, cy = h / 2, r = w / 2;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.22, 'rgba(176,250,255,0.88)');
+    g.addColorStop(0.50, 'rgba(84,228,255,0.42)');
+    g.addColorStop(0.78, 'rgba(42,190,245,0.12)');
+    g.addColorStop(1, 'rgba(24,160,235,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  }, 128, 128);
+  const wispGroundTexture = makeTexture((ctx, w, h) => {
+    const cx = w / 2, cy = h / 2, r = w / 2;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, 'rgba(205,254,255,0.92)');
+    g.addColorStop(0.32, 'rgba(104,238,255,0.58)');
+    g.addColorStop(0.66, 'rgba(48,200,245,0.22)');
+    g.addColorStop(1, 'rgba(24,160,235,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  }, 128, 128);
+  const steamPuffTexture = makeTexture((ctx, w, h) => {
+    ctx.clearRect(0, 0, w, h);
+    const lobes = [
+      [0.50, 0.50, 0.36, 0.72],
+      [0.37, 0.54, 0.27, 0.58],
+      [0.64, 0.53, 0.26, 0.55],
+      [0.48, 0.36, 0.25, 0.56],
+      [0.54, 0.62, 0.24, 0.45],
+    ];
+    for (const [lx, ly, lr, alpha] of lobes) {
+      const gx = w * lx, gy = h * ly, gr = w * lr;
+      const g = ctx.createRadialGradient(gx, gy, gr * 0.08, gx, gy, gr);
+      g.addColorStop(0, `rgba(255,255,255,${alpha})`);
+      g.addColorStop(0.55, `rgba(226,244,252,${alpha * 0.55})`);
+      g.addColorStop(1, 'rgba(200,228,242,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(gx, gy, gr, 0, Math.PI * 2); ctx.fill();
+    }
+  }, 128, 128);
+  const steamHazeTexture = makeTexture((ctx, w, h) => {
+    const cx = w / 2, cy = h / 2, r = w / 2;
+    const g = ctx.createRadialGradient(cx, cy, r * 0.14, cx, cy, r);
+    g.addColorStop(0, 'rgba(232,246,252,0.58)');
+    g.addColorStop(0.45, 'rgba(210,236,248,0.44)');
+    g.addColorStop(0.76, 'rgba(190,222,238,0.18)');
+    g.addColorStop(1, 'rgba(176,214,232,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  }, 128, 128);
+
+  function clearBoardTrees() {
+    for (const tree of boardTrees) {
+      for (const m of tree.canopyMaterials) m.dispose();
+      for (const m of tree.trunkMaterials) m.dispose();
+      for (const m of tree.fallbackMats) m.dispose();
+    }
+    boardTrees.length = 0;
+  }
 
   function clearGroup(group) {
     group.traverse(child => { if (child.isInstancedMesh) child.dispose(); });
@@ -420,20 +482,58 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     // Immediate procedural tabletop oak fallback while props/oak_tree.glb streams in
     const bark = timber('#5a432d');
     const moss = material('#425e32', 0.0, 0.92);
-    const leafDark = material('#2e4c26', 0.0, 0.90);
-    const leafMid = material('#436631', 0.0, 0.88);
-    const leafHi = material('#5c7e3b', 0.0, 0.88);
+    const leafDark = material('#2e4c26', 0.0, 0.90).clone();
+    const leafMid = material('#436631', 0.0, 0.88).clone();
+    const leafHi = material('#5c7e3b', 0.0, 0.88).clone();
+    const fallbackCanopyMeshes = [];
     mesh(g, cylinder, moss, 0, 0.04, 0, 0.38, 0.08, 0.38);
     mesh(g, cylinder, bark, 0, 0.62, 0, 0.15, 1.18, 0.15);
     for (let i = 0; i < 4; i++) {
       const a = i * (Math.PI / 2) + 0.3;
       beam(g, bark, [0, 0.96, 0], [Math.cos(a) * 0.32, 1.44, Math.sin(a) * 0.32], 0.055);
-      mesh(g, sphere, i % 2 ? leafMid : leafDark, Math.cos(a) * 0.28, 1.52, Math.sin(a) * 0.28, 0.27, 0.20, 0.27);
+      fallbackCanopyMeshes.push(mesh(g, sphere, i % 2 ? leafMid : leafDark, Math.cos(a) * 0.28, 1.52, Math.sin(a) * 0.28, 0.27, 0.20, 0.27));
     }
-    mesh(g, sphere, leafMid, 0, 1.68, 0, 0.36, 0.27, 0.36);
-    mesh(g, sphere, leafHi, 0.05, 1.88, -0.04, 0.26, 0.19, 0.26);
+    fallbackCanopyMeshes.push(mesh(g, sphere, leafMid, 0, 1.68, 0, 0.36, 0.27, 0.36));
+    fallbackCanopyMeshes.push(mesh(g, sphere, leafHi, 0.05, 1.88, -0.04, 0.26, 0.19, 0.26));
 
-    placePropModel(g, { width: 1, depth: 1 }, 'oak_tree');
+    const treeRec = {
+      x, y, scale: sc, group: g,
+      canopyMeshes: fallbackCanopyMeshes,
+      trunkMeshes: [],
+      canopyMaterials: [leafDark, leafMid, leafHi],
+      trunkMaterials: [],
+      fallbackMats: [leafDark, leafMid, leafHi],
+      canopyOpacity: 1,
+      trunkOpacity: 1,
+      occlusionInit: false,
+    };
+    boardTrees.push(treeRec);
+
+    placePropModel(g, { width: 1, depth: 1 }, 'oak_tree', model => {
+      for (const m of treeRec.fallbackMats) m.dispose();
+      treeRec.fallbackMats.length = 0;
+      treeRec.canopyMeshes = [];
+      treeRec.trunkMeshes = [];
+      treeRec.canopyMaterials = [];
+      treeRec.trunkMaterials = [];
+      const cloned = new Map();
+      model.traverse(child => {
+        if (!child.isMesh || !child.material) return;
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        const isCanopy = /canopy|foliage|leaf|leaves/i.test(`${child.name} ${mats.map(m => m.name || '').join(' ')}`);
+        const ownMats = mats.map(src => {
+          if (!cloned.has(src)) {
+            const m = src.clone();
+            cloned.set(src, m);
+            (isCanopy ? treeRec.canopyMaterials : treeRec.trunkMaterials).push(m);
+          }
+          return cloned.get(src);
+        });
+        child.material = Array.isArray(child.material) ? ownMats : ownMats[0];
+        (isCanopy ? treeRec.canopyMeshes : treeRec.trunkMeshes).push(child);
+      });
+      treeRec.occlusionInit = false;
+    });
   }
 
   function woodlandRockMaterial(wallMat) {
@@ -1008,7 +1108,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     pane.rotation.y = facing[2]; pane.castShadow = false; pane.receiveShadow = false;
   }
 
-  function placePropModel(group, prop, kind) {
+  function placePropModel(group, prop, kind, onAttached = null) {
     loadPropModel(PROP_MODELS[kind]).then(template => {
       if (!template || disposed || !group.parent) return;
       const procedural = [...group.children];
@@ -1020,6 +1120,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         model.scale.setScalar(Math.min(1, span / 2));
       }
       group.add(model);
+      onAttached?.(model);
       for (const child of procedural) if (!(child.isLight) && child.userData.keep !== true) child.visible = false;
       renderer.shadowMap.needsUpdate = true;
       requestRender();
@@ -1028,6 +1129,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
   function buildBoard(map) {
     clearMotes();
+    clearBoardTrees();
     clearGroup(board);
     torchFlames.length = 0;
     width = Number(map.width) || 10; height = Number(map.height) || 8;
@@ -1534,6 +1636,136 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     },
   };
 
+  function positionSteamPuff(puff, p) {
+    const y = 0.24 + p * 1.38;
+    const r = puff.radius * (0.58 + p * 1.05);
+    const ang = puff.angle + p * puff.swirl;
+    puff.sprite.position.set(Math.cos(ang) * r, y, Math.sin(ang) * r);
+    const sc = puff.baseScale * (0.68 + p * 1.26);
+    puff.sprite.scale.set(sc, sc * 0.92, 1);
+    const env = Math.sin(p * Math.PI);
+    puff.mat.opacity = env * puff.peakOpacity;
+  }
+
+  function buildUnitAmbientFx(unit, castKey) {
+    if (castKey !== 'will_o_wisp' && castKey !== 'steam_mephit') return null;
+    const group = new THREE.Group();
+    group.name = `ambient-fx-${castKey}`;
+    const ownMats = [];
+    const phase = (unit.x * 1.9 + unit.y * 2.7 + String(unit.id || '').length * 0.7) % 6.283;
+
+    if (castKey === 'will_o_wisp') {
+      const light = new THREE.PointLight('#6ceeff', 7.5, 6.2, 1.5);
+      light.position.set(0, 0.72, 0);
+      group.add(light);
+
+      const makeGlowSprite = (color, opacity, scale, y, order) => {
+        const mat = new THREE.SpriteMaterial({
+          map: wispHaloTexture, color, transparent: true, opacity,
+          blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+        });
+        ownMats.push(mat);
+        const sp = new THREE.Sprite(mat);
+        sp.position.set(0, y, 0);
+        sp.scale.set(scale, scale, 1);
+        sp.renderOrder = order;
+        group.add(sp);
+        return { sprite: sp, mat, baseScale: scale, baseOpacity: opacity };
+      };
+      const outerHalo = makeGlowSprite('#52e6ff', 0.62, 2.35, 0.66, 3);
+      const innerHalo = makeGlowSprite('#b4fbff', 0.64, 0.96, 0.66, 4);
+
+      const groundMat = new THREE.MeshBasicMaterial({
+        map: wispGroundTexture, color: '#7cf2ff', transparent: true, opacity: 0.78,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+      });
+      ownMats.push(groundMat);
+      const groundPool = new THREE.Mesh(planeGeometry, groundMat);
+      groundPool.rotation.x = -Math.PI / 2;
+      groundPool.position.set(0, 0.048, 0);
+      groundPool.scale.set(2.45, 2.45, 1);
+      groundPool.castShadow = false;
+      groundPool.receiveShadow = false;
+      groundPool.renderOrder = 1;
+      group.add(groundPool);
+
+      const sparks = [];
+      for (let i = 0; i < 5; i++) {
+        const angle = phase + (i / 5) * Math.PI * 2;
+        const radius = 0.28 + (i % 3) * 0.08;
+        const baseY = 0.44 + (i % 4) * 0.14;
+        const sc = 0.18 + (i % 2) * 0.06;
+        const mat = new THREE.SpriteMaterial({
+          map: wispHaloTexture, color: i % 2 ? '#eaffff' : '#80f3ff', transparent: true, opacity: 0.88,
+          blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+        });
+        ownMats.push(mat);
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.set(Math.cos(angle) * radius, baseY, Math.sin(angle) * radius);
+        sprite.scale.set(sc, sc, 1);
+        sprite.renderOrder = 5;
+        group.add(sprite);
+        sparks.push({ sprite, mat, angle, radius, baseY, speed: 0.75 + (i % 3) * 0.28, baseScale: sc, bob: 0.07 + (i % 2) * 0.04 });
+      }
+      return { kind: 'will_o_wisp', group, materials: ownMats, light, innerHalo, outerHalo, groundPool, groundMat, sparks, phase };
+    }
+
+    // Steam Mephit: billowing rising scalding vapour plumes + warm vent haze + misty ground halo
+    const hazeMat = new THREE.MeshBasicMaterial({
+      map: steamHazeTexture, color: '#eaf7fc', transparent: true, opacity: 0.62, depthWrite: false,
+    });
+    ownMats.push(hazeMat);
+    const groundMist = new THREE.Mesh(planeGeometry, hazeMat);
+    groundMist.rotation.x = -Math.PI / 2;
+    groundMist.position.set(0, 0.050, 0);
+    groundMist.scale.set(1.72, 1.72, 1);
+    groundMist.castShadow = false;
+    groundMist.receiveShadow = false;
+    groundMist.renderOrder = 1;
+    group.add(groundMist);
+
+    const puffs = [];
+    const puffCount = 14;
+    for (let i = 0; i < puffCount; i++) {
+      const tint = i % 3 === 0 ? '#ffffff' : i % 3 === 1 ? '#def3fc' : '#f4fbff';
+      const mat = new THREE.SpriteMaterial({
+        map: steamPuffTexture, color: tint, transparent: true, opacity: 0.6, depthWrite: false,
+      });
+      mat.rotation = ((i * 1.13 + phase) % 6.283);
+      ownMats.push(mat);
+      const sprite = new THREE.Sprite(mat);
+      sprite.renderOrder = 3;
+      group.add(sprite);
+      const puff = {
+        sprite, mat,
+        offset: (i + 0.3) / puffCount,
+        angle: phase + i * 2.399,
+        radius: 0.16 + (i % 3) * 0.10,
+        swirl: (i % 2 ? 1 : -1) * (0.95 + (i % 3) * 0.3),
+        baseScale: 0.38 + (i % 3) * 0.08,
+        peakOpacity: 0.68 + (i % 2) * 0.10,
+        speed: 0.82 + (i % 4) * 0.14,
+      };
+      positionSteamPuff(puff, puff.offset);
+      puffs.push(puff);
+    }
+
+    // Subtle warm superheated vent shimmer at chest/shoulders so vapour reads as scalding steam
+    for (const [vx, vy, vz] of [[-0.14, 0.58, 0.06], [0.14, 0.54, -0.05]]) {
+      const ventMat = new THREE.SpriteMaterial({
+        map: wispHaloTexture, color: '#ffe3c4', transparent: true, opacity: 0.22,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+      });
+      ownMats.push(ventMat);
+      const sp = new THREE.Sprite(ventMat);
+      sp.position.set(vx, vy, vz);
+      sp.scale.set(0.42, 0.42, 1);
+      sp.renderOrder = 2;
+      group.add(sp);
+    }
+    return { kind: 'steam_mephit', group, materials: ownMats, groundMist, hazeMat, puffs, phase };
+  }
+
   function makeUnit(unit) {
     const known = ['fighter', 'mage', 'goblin', 'skeleton'], base = unit.model?.base || unit.kind;
     const fallbackKind = known.includes(base) ? base : (unit.team === 'heroes' ? 'fighter' : 'goblin');
@@ -1545,8 +1777,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     const body = new THREE.Group(); root.add(body);
     body.rotation.y = unit.team === 'heroes' ? -1.57 : 1.57;
 
+    const castKey = resolveCastKey(unit);
     const ownMaterials = [];
-    ring(root, planeGeometry, contactMaterial, 0.002).scale.set(0.97, 0.97, 1);
+    if (castKey !== 'will_o_wisp') ring(root, planeGeometry, contactMaterial, 0.002).scale.set(0.97, 0.97, 1);
     const plinth = mesh(root, cylinder, material(unit.team === 'heroes' ? '#255a61' : '#6e493a', 0.25, 0.65), 0, 0.055, 0, 0.365, 0.09, 0.365);
     plinth.userData.unitId = unit.id;
     ring(root, ringGeometry, glow(unit.team === 'heroes' ? '#6bd4cf' : '#e09a70'), 0.105).scale.setScalar(0.86);
@@ -1555,7 +1788,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     const inspect = ring(root, geometry('inspect-ring', () => new THREE.RingGeometry(0.55, 0.585, 48)), glow('#b8f6ee', 0.8), 0.028); inspect.visible = false;
     const markGroups = {};
 
-    const castKey = resolveCastKey(unit);
+    const ambientFx = buildUnitAmbientFx(unit, castKey);
+    if (ambientFx) root.add(ambientFx.group);
+
     const castInst = castKey ? createCastInstance(unit) : null;
     if (castKey && !castInst) requestCastModel(castKey);
 
@@ -1598,7 +1833,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
 
     const entry = {
       root, body, rig, name: nameSprite, labelY: lY, active, target, inspect, picker, downRing, deadRing, stableRing,
-      markGroups, ownMaterials, castKey: castInst ? castKey : null,
+      markGroups, ownMaterials, ambientFx, castKey: castInst ? castKey : null,
       data: { ...unit },
       start: new THREE.Vector3(unit.x, 0.04, unit.y),
       end: new THREE.Vector3(unit.x, 0.04, unit.y),
@@ -1681,12 +1916,17 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       entry.picker.position.y = 0.65;
     }
 
+    if (entry.ambientFx) entry.ambientFx.group.visible = Boolean(data.alive);
     entry.data = { ...data };
     entry.target.visible = false;
   }
 
   function removeUnit(entry) {
     removeLabel(entry.name);
+    if (entry.ambientFx) {
+      entry.ambientFx.materials.forEach(m => m.dispose());
+      entry.ambientFx.light?.dispose?.();
+    }
     if (entry.rig.dispose) entry.rig.dispose();
     const importedMaterials = entry.rig.model ? new Set(resourceMaterials(entry.rig.model)) : new Set();
     entry.ownMaterials.forEach(m => { if (!importedMaterials.has(m)) m.dispose(); });
@@ -2252,6 +2492,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   function clearHoverPreview() {
     while (hoverGroup.children.length) hoverGroup.remove(hoverGroup.children[0]);
     while (hoverGeoms.length) hoverGeoms.pop().dispose();
+    if (previewHoverCell) { previewHoverCell = null; requestRender(); }
   }
 
   function setTacticalPreview({ hoverCell = null, pathCells = null, pathColor = '#6af7df', pathDotColor = '#a8fff0', arcFrom = null, arcTo = null, arcColor = '#ffd478', areaCells = null, areaColor = '#ff7a3d' } = {}) {
@@ -2259,6 +2500,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     clearHoverPreview();
     // 1. 3D Floor Hover Cursor Reticle
     if (hoverCell && Number.isInteger(hoverCell.x) && Number.isInteger(hoverCell.y)) {
+      previewHoverCell = { x: hoverCell.x, y: hoverCell.y };
       const bracket = mesh(hoverGroup, geometry('hover-bracket', () => {
         const s = new THREE.Shape();
         s.moveTo(-0.47, -0.47); s.lineTo(0.47, -0.47); s.lineTo(0.47, 0.47); s.lineTo(-0.47, 0.47); s.closePath();
@@ -2493,6 +2735,124 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     return true;
   }
 
+  function applyMaterialOpacity(mats, meshes, opacity) {
+    const fade = opacity < 0.99;
+    for (const m of mats) {
+      if (m.userData.origSide === undefined) m.userData.origSide = m.side;
+      const nextSide = fade ? THREE.FrontSide : m.userData.origSide;
+      const changed = m.transparent !== fade || m.side !== nextSide;
+      m.transparent = fade;
+      m.opacity = opacity;
+      m.depthWrite = !fade;
+      m.side = nextSide;
+      if (changed) m.needsUpdate = true;
+    }
+    for (const obj of meshes) obj.renderOrder = fade ? 2 : 0;
+  }
+
+  function updateTreeOcclusion() {
+    if (!boardTrees.length) return false;
+    const focusPts = [];
+    for (const entry of units.values()) {
+      if (entry.data.alive !== false) {
+        const ux = entry.root.position.x, uz = entry.root.position.z;
+        focusPts.push([ux, 0.50, uz], [ux, 1.02, uz]);
+      } else if (entry.data.team === 'heroes') {
+        focusPts.push([entry.root.position.x, 0.25, entry.root.position.z]);
+      }
+    }
+    if (hoverBoardCell) focusPts.push([hoverBoardCell.x, 0.45, hoverBoardCell.y]);
+    if (previewHoverCell) focusPts.push([previewHoverCell.x, 0.45, previewHoverCell.y]);
+
+    let animating = false;
+    for (const tree of boardTrees) {
+      let canopyHit = false, trunkHit = false;
+      const cx = tree.x, cy = 0.03 + 1.66 * tree.scale, cz = tree.y;
+      const ty = 0.03 + 0.88 * tree.scale;
+      const horizR = 0.90 * tree.scale, vertR = 0.74 * tree.scale;
+      const trunkR = 0.52 * tree.scale, trunkH = 0.76 * tree.scale;
+
+      for (const [px, py, pz] of focusPts) {
+        occRayDir.set(px - camera.position.x, py - camera.position.y, pz - camera.position.z);
+        const dist = occRayDir.length();
+        if (dist < 0.25) continue;
+        occRayDir.divideScalar(dist);
+
+        occToTree.set(cx - camera.position.x, cy - camera.position.y, cz - camera.position.z);
+        const proj = occToTree.dot(occRayDir);
+        if (proj > 0.35 && proj < dist - 0.12) {
+          occClosest.copy(camera.position).addScaledVector(occRayDir, proj);
+          const dx = occClosest.x - cx, dz = occClosest.z - cz, dy = occClosest.y - cy;
+          if ((dx * dx + dz * dz) / (horizR * horizR) + (dy * dy) / (vertR * vertR) <= 1.0) {
+            canopyHit = true;
+          }
+        }
+        occToTree.set(cx - camera.position.x, ty - camera.position.y, cz - camera.position.z);
+        const tProj = occToTree.dot(occRayDir);
+        if (tProj > 0.35 && tProj < dist - 0.12) {
+          occClosest.copy(camera.position).addScaledVector(occRayDir, tProj);
+          const dx = occClosest.x - cx, dz = occClosest.z - cz, dy = occClosest.y - ty;
+          if ((dx * dx + dz * dz) <= trunkR * trunkR && Math.abs(dy) <= trunkH) {
+            trunkHit = true;
+          }
+        }
+        if (canopyHit && trunkHit) break;
+      }
+
+      const targetCanopy = (canopyHit || trunkHit) ? 0.08 : 1.0;
+      const targetTrunk = trunkHit ? 0.24 : canopyHit ? 0.48 : 1.0;
+      if (!tree.occlusionInit || reducedMotion) {
+        tree.canopyOpacity = targetCanopy;
+        tree.trunkOpacity = targetTrunk;
+        tree.occlusionInit = true;
+      } else {
+        const dc = targetCanopy - tree.canopyOpacity;
+        const dt = targetTrunk - tree.trunkOpacity;
+        if (Math.abs(dc) > 0.015) { tree.canopyOpacity += dc * 0.28; animating = true; }
+        else tree.canopyOpacity = targetCanopy;
+        if (Math.abs(dt) > 0.015) { tree.trunkOpacity += dt * 0.28; animating = true; }
+        else tree.trunkOpacity = targetTrunk;
+      }
+      applyMaterialOpacity(tree.canopyMaterials, tree.canopyMeshes, tree.canopyOpacity);
+      applyMaterialOpacity(tree.trunkMaterials, tree.trunkMeshes, tree.trunkOpacity);
+    }
+    return animating;
+  }
+
+  function tickUnitAmbientFx(now) {
+    for (const entry of units.values()) {
+      const fx = entry.ambientFx;
+      if (!fx || !fx.group.visible) continue;
+      if (fx.kind === 'will_o_wisp') {
+        const pulse = Math.sin(now * 0.0048 + fx.phase) * 0.12 + Math.cos(now * 0.0091 + fx.phase * 1.4) * 0.06;
+        fx.light.intensity = 7.5 * (1 + pulse * 0.9);
+        const sIn = fx.innerHalo.baseScale * (1 + pulse * 0.6);
+        fx.innerHalo.sprite.scale.set(sIn, sIn, 1);
+        fx.innerHalo.mat.opacity = Math.min(1, fx.innerHalo.baseOpacity * (0.94 + pulse * 0.5));
+        const sOut = fx.outerHalo.baseScale * (1 + pulse * 0.8);
+        fx.outerHalo.sprite.scale.set(sOut, sOut, 1);
+        fx.outerHalo.mat.opacity = fx.outerHalo.baseOpacity * (0.92 + pulse * 0.6);
+        const sGround = 2.45 * (1 + pulse * 0.35);
+        fx.groundPool.scale.set(sGround, sGround, 1);
+        fx.groundMat.opacity = 0.76 * (0.92 + pulse * 0.5);
+        for (const sp of fx.sparks) {
+          const ang = sp.angle + now * 0.0014 * sp.speed;
+          const y = sp.baseY + Math.sin(now * 0.0036 * sp.speed + sp.angle) * sp.bob;
+          sp.sprite.position.set(Math.cos(ang) * sp.radius, y, Math.sin(ang) * sp.radius);
+          const sc = sp.baseScale * (0.85 + 0.25 * Math.sin(now * 0.006 + sp.angle));
+          sp.sprite.scale.set(sc, sc, 1);
+        }
+      } else if (fx.kind === 'steam_mephit') {
+        const sway = Math.sin(now * 0.0022 + fx.phase) * 0.06;
+        fx.groundMist.scale.set(1.72 + sway, 1.72 - sway * 0.7, 1);
+        for (const puff of fx.puffs) {
+          const p = (puff.offset + now * 0.00038 * puff.speed) % 1;
+          positionSteamPuff(puff, p);
+        }
+      }
+    }
+  }
+
   function render(now) {
     frame = 0;
     if (disposed || unavailable) return;
@@ -2585,9 +2945,11 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         const fade = Math.sin((cycle / 2.15) * Math.PI);
         mt.mat.opacity = 0.12 + fade * 0.42;
       }
+      tickUnitAmbientFx(now);
     }
 
     animate = combatEffects.tick(now, camera, canvas.clientHeight) || animate;
+    animate = updateTreeOcclusion() || animate;
     deoverlapLabels();
     if (shadowChanged) renderer.shadowMap.needsUpdate = true;
     renderer.render(scene, camera);
@@ -2622,6 +2984,13 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     pointer = event.isPrimary && event.button === 0 ? { id: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now(), dragged: false } : null;
     if (event.button !== 0) takeCamera();
   }
+  function setHoverBoardCell(x, y) {
+    const same = hoverBoardCell ? (x !== null && hoverBoardCell.x === x && hoverBoardCell.y === y) : (x === null);
+    if (same) return;
+    hoverBoardCell = x === null ? null : { x, y };
+    if (boardTrees.length) requestRender();
+  }
+
   function pointerMove(event) {
     if (pointer?.id === event.pointerId && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) {
       pointer.dragged = true;
@@ -2637,6 +3006,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     if (figHit) {
       const entry = units.get(figHit.object.userData.unitId);
       if (entry) {
+        setHoverBoardCell(entry.data.x, entry.data.y);
         const hk = `u:${entry.data.id}:${event.clientX >> 2}:${event.clientY >> 2}`;
         if (hk !== lastHoverKey) { lastHoverKey = hk; onHover({ x: entry.data.x, y: entry.data.y, unitId: entry.data.id, clientX: event.clientX, clientY: event.clientY }); }
         return;
@@ -2645,6 +3015,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     if (raycaster.ray.intersectPlane(floorPlane, hitPoint)) {
       const hx = Math.floor(hitPoint.x + 0.5), hy = Math.floor(hitPoint.z + 0.5);
       if (hx >= 0 && hy >= 0 && hx < width && hy < height) {
+        setHoverBoardCell(hx, hy);
         const u = (state.units || []).find(item => item.x === hx && item.y === hy && item.alive !== false)
           || (state.units || []).find(item => item.x === hx && item.y === hy && item.team === 'heroes');
         const obj = (state.objects || []).find(o => !o.destroyed && footprintContains(o, hx, hy));
@@ -2653,9 +3024,11 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         return;
       }
     }
+    setHoverBoardCell(null, null);
     if (lastHoverKey !== 'none') { lastHoverKey = 'none'; onHover(null); }
   }
   function pointerLeave() {
+    setHoverBoardCell(null, null);
     if (lastHoverKey !== 'none') { lastHoverKey = 'none'; onHover?.(null); }
   }
   function wheelInterrupt() { takeCamera(); }
@@ -2753,6 +3126,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     for (const pf of stepPuffs) { pf.mesh.removeFromParent(); pf.mat.dispose(); }
     stepPuffs.length = 0;
     clearMotes();
+    clearBoardTrees();
     for (const entry of units.values()) removeUnit(entry);
     units.clear(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose());
     board.traverse(child => { if (child.isInstancedMesh) child.dispose(); });

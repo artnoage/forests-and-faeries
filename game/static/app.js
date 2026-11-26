@@ -23,15 +23,30 @@
     shield_of_faith: 'Shield of Faith', spiritual_weapon: 'Spiritual Weapon', command: 'Command',
     lesser_restoration: 'Lesser Restoration', protection_from_evil_and_good: 'Prot. Evil & Good',
     empowered_spell: 'Empowered', heightened_spell: 'Heightened',
+    will_o_wisp: "Will-o'-Wisp",
   };
   const niceName = k => NICE_NAMES[k] || String(k || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   // The strongest creature names a level card's portrait.
-  const LEAD_ORDER = ['mummy', 'wight', 'ghast', 'specter', 'animated_armor', 'ghoul', 'shadow', 'goblin_boss',
+  const LEAD_ORDER = ['green_hag', 'sea_hag', 'will_o_wisp', 'mummy', 'wight', 'ghast', 'specter',
+    'bugbear_warrior', 'dryad', 'harpy', 'animated_armor', 'ghoul', 'shadow', 'goblin_boss',
+    'satyr', 'steam_mephit', 'giant_wasp', 'blink_dog', 'violet_fungus', 'sprite',
     'zombie', 'skeleton', 'goblin_warrior', 'kobold_warrior', 'goblin_minion'];
 
   function portraitSymbol(unit) {
     const raw = [unit?.base_id, unit?.content, unit?.kind, unit?.class, unit?.id, unit?.name].filter(Boolean).join(' ').toLowerCase();
+    if (raw.includes('violet_fungus') || raw.includes('violet fungus')) return 'violet_fungus';
+    if (raw.includes('giant_wasp') || raw.includes('giant wasp')) return 'giant_wasp';
+    if (raw.includes('satyr')) return 'satyr';
+    if (raw.includes('steam_mephit') || raw.includes('steam mephit')) return 'steam_mephit';
+    if (raw.includes('blink_dog') || raw.includes('blink dog')) return 'blink_dog';
+    if (raw.includes('sprite')) return 'sprite';
+    if (raw.includes('dryad')) return 'dryad';
+    if (raw.includes('bugbear')) return 'bugbear_warrior';
+    if (raw.includes('harpy')) return 'harpy';
+    if (raw.includes('sea_hag') || raw.includes('sea hag')) return 'sea_hag';
+    if (raw.includes('green_hag') || raw.includes('green hag')) return 'green_hag';
+    if (raw.includes('will_o_wisp') || raw.includes("will-o'-wisp") || raw.includes('will o wisp')) return 'will_o_wisp';
     if (raw.includes('animated_armor') || raw.includes('armor')) return 'armor';
     if (raw.includes('kobold')) return 'kobold';
     if (raw.includes('mummy')) return 'mummy';

@@ -112,10 +112,24 @@ test('the page has no inline styles or scripts and no private paths', () => {
   assert.doesNotMatch(html, /\sstyle\s*=/i);
   assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)[^>]*>\s*\S/i);
   assert.doesNotMatch(html, /\son[a-z]+\s*=\s*["']/i);
-  for (const id of ['difficulty-step', 'levels-step', 'difficulty-tabs', 'hero-level-tabs', 'art-armor', 'art-kobold', 'art-barbarian']) {
+  for (const id of [
+    'difficulty-step', 'levels-step', 'difficulty-tabs', 'hero-level-tabs',
+    'art-armor', 'art-kobold', 'art-barbarian',
+    'art-violet_fungus', 'art-giant_wasp', 'art-satyr', 'art-steam_mephit',
+    'art-blink_dog', 'art-sprite', 'art-dryad', 'art-bugbear_warrior',
+    'art-harpy', 'art-sea_hag', 'art-green_hag', 'art-will_o_wisp',
+  ]) {
     assert.ok(html.includes(`id="${id}"`), `index.html contains #${id}`);
   }
   const app = read('static/app.js');
+  for (const fey of [
+    'violet_fungus', 'giant_wasp', 'satyr', 'steam_mephit', 'blink_dog', 'sprite',
+    'dryad', 'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp',
+  ]) {
+    assert.ok(app.includes(`'${fey}'`), `app.js maps portrait for ${fey}`);
+  }
+  assert.ok(app.includes('will_o_wisp: "Will-o\'-Wisp"'), 'app.js formats Will-o\'-Wisp name');
+  assert.ok(read('catalogue.py').includes("'will_o_wisp': \"Will-o'-Wisp\""), 'catalogue.py formats Will-o\'-Wisp name');
   assert.doesNotMatch(app, /\bstyle\s*=\s*\\?["'`]/i, 'no style="" built in app.js');
   for (const text of [html, app, read('static/style.css')]) {
     assert.doesNotMatch(text, /\/home\/|theater/i);

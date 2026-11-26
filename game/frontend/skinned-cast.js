@@ -42,7 +42,7 @@ export const CAST_MODELS = Object.freeze({
   harpy:           Object.freeze({ file: 'models/harpy.glb',           height: 1.32, group: 'monster' }),
   sea_hag:         Object.freeze({ file: 'models/sea_hag.glb',         height: 1.30, group: 'monster' }),
   green_hag:       Object.freeze({ file: 'models/green_hag.glb',       height: 1.34, group: 'monster' }),
-  will_o_wisp:     Object.freeze({ file: 'models/will_o_wisp.glb',     height: 0.88, group: 'monster', ghost: 0.86, glow: '#7ceeff', glowIntensity: 0.58 }),
+  will_o_wisp:     Object.freeze({ file: 'models/will_o_wisp.glb',     height: 0.88, group: 'monster', ghost: 0.90, glow: '#78efff', glowIntensity: 1.45, noShadow: true }),
 });
 
 export const CAST_KEYS = Object.freeze(Object.keys(CAST_MODELS));
@@ -194,8 +194,8 @@ export function createCastAsset(gltf, key) {
         if (obj.name === 'Goblin_Bow') goblinBow = obj;
         if (!obj.isMesh) return;
         obj.userData.unitId = unit.id;
-        obj.castShadow = true;
-        obj.receiveShadow = true;
+        obj.castShadow = !spec.noShadow;
+        obj.receiveShadow = !spec.noShadow;
         const own = src => {
           if (!materials.has(src)) {
             const m = src.clone();
@@ -207,8 +207,9 @@ export function createCastAsset(gltf, key) {
               m.depthWrite = true;
             }
             if (spec.glow && m.emissive) {
-              m.emissive.set(spec.glow);
-              m.emissiveIntensity = spec.glowIntensity || 0.3;
+              const isWispCore = key === 'will_o_wisp' && /core/i.test(src.name || '');
+              m.emissive.set(isWispCore ? '#dffcff' : spec.glow);
+              m.emissiveIntensity = isWispCore ? 2.0 : (spec.glowIntensity || 0.3);
               m.userData.restEmissive = { color: m.emissive.getHex(), intensity: m.emissiveIntensity };
             } else if (m.emissive && m.emissiveIntensity > 0) {
               m.userData.restEmissive = { color: m.emissive.getHex(), intensity: m.emissiveIntensity };

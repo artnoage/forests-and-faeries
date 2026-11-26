@@ -42,7 +42,12 @@ PROP_KINDS = ('pillar', 'brazier', 'table', 'bench', 'shelf', 'barrel', 'crate',
               'sarcophagus', 'altar', 'stained_glass', 'bell', 'lantern_post', 'ore_vein', 'water_lock', 'kiln')
 MAX_SIZE = 32
 MAX_CREATURES = 24
-CONTENT_NAMES = {'goblin_minion': 'Goblin Minion', 'goblin_warrior': 'Goblin Warrior', 'goblin_boss': 'Goblin Boss'}
+CONTENT_NAMES = {
+    'goblin_minion': 'Goblin Minion',
+    'goblin_warrior': 'Goblin Warrior',
+    'goblin_boss': 'Goblin Boss',
+    'will_o_wisp': "Will-o'-Wisp",
+}
 
 
 class CatalogueError(ValueError):
