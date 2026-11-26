@@ -282,4 +282,69 @@ mod tests {
         let err = validate_ability(&ab, "deep", &effects).unwrap_err();
         assert!(err.to_string().contains("branch depth"));
     }
+
+    fn copy_dir_recursive(src: &Path, dst: &Path) {
+        fs::create_dir_all(dst).unwrap();
+        for entry in fs::read_dir(src).unwrap() {
+            let entry = entry.unwrap();
+            let sp = entry.path();
+            let dp = dst.join(entry.file_name());
+            if sp.is_dir() {
+                copy_dir_recursive(&sp, &dp);
+            } else {
+                fs::copy(&sp, &dp).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn content_hash_is_deterministic_across_reloads_and_catches_resistance_mutation() {
+        let content_dir = default_content_dir();
+        let (db1, _) = load_content_dir(&content_dir).expect("first load");
+        let (db2, _) = load_content_dir(&content_dir).expect("second independent load");
+        assert_eq!(db1.content_hash, db2.content_hash);
+
+        let spec = ember_core::EncounterSpec {
+            units: vec!["mara".into(), "ghast-1".into()],
+            placements: vec![
+                ember_core::Placement { id: "mara".into(), x: 9, y: 2 },
+                ember_core::Placement { id: "ghast-1".into(), x: 10, y: 2 },
+            ],
+            map_rows: None,
+            max_rounds: 20,
+        };
+        let mut fight = ember_core::Fight::new(db1.clone(), &spec, 127503819021).unwrap();
+        fight.set_reaction_mode(ember_core::ReactionMode::Interactive);
+        fight.start(&mut ember_core::NoopSink).unwrap();
+        let bytes = fight.save_bytes().unwrap();
+
+        // Unchanged independently compiled pack loads the saved fight cleanly.
+        let reloaded = ember_core::Fight::load_bytes(db2, &bytes).expect("unchanged pack loads");
+        assert_eq!(reloaded.save_bytes().unwrap(), bytes);
+
+        // Mutating ONLY mara.json damage.resistances ([] -> ["necrotic"]) must change content_hash
+        // and prevent resuming the save under altered combat rules.
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "ember-content-hash-resist-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp_dir);
+        copy_dir_recursive(&content_dir, &tmp_dir);
+
+        let mara_path = tmp_dir.join("creatures/mara.json");
+        let mara_text = fs::read_to_string(&mara_path).unwrap();
+        let mut mara_val: serde_json::Value = serde_json::from_str(&mara_text).unwrap();
+        mara_val["damage"]["resistances"] = serde_json::json!(["necrotic"]);
+        fs::write(&mara_path, serde_json::to_string_pretty(&mara_val).unwrap()).unwrap();
+
+        let (db_resist, _) = load_content_dir(&tmp_dir).expect("mutated resistance pack compiles");
+        assert_ne!(db_resist.content_hash, db1.content_hash);
+        let err = ember_core::Fight::load_bytes(db_resist, &bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            ember_core::CoreError::Serialization(ref msg) if msg.contains("content_hash")
+        ));
+
+        let _ = fs::remove_dir_all(&tmp_dir);
+    }
 }

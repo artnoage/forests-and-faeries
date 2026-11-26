@@ -1829,11 +1829,14 @@ impl Fight {
             let mut dice = LiveDice { rng: &mut rng };
             self.start_with_dice(&mut dice, sink)
         };
-        self.state.rng = rng;
+        if res.is_ok() {
+            self.state.rng = rng;
+        }
         res
     }
 
     /// Start the fight using an explicit [`DiceSource`] (e.g. [`crate::rng::SuppliedDraws`]).
+    /// Atomic: on `Err`, fight state, event cursor, and `sink` remain completely untouched.
     pub fn start_with_dice<D: DiceSource, S: EventSink>(
         &mut self,
         dice: &mut D,
@@ -1842,6 +1845,31 @@ impl Fight {
         if self.state.started {
             return Err(CoreError::InvalidPhase("fight already started".into()));
         }
+        let saved = self.state.clone();
+        let res = if S::ACTIVE {
+            let mut buf = crate::event::VecSink::default();
+            let r = self.start_with_dice_inner(dice, &mut buf);
+            if r.is_ok() {
+                for ev in buf.events {
+                    sink.emit(ev);
+                }
+            }
+            r
+        } else {
+            let mut noop = crate::event::NoopSink;
+            self.start_with_dice_inner(dice, &mut noop)
+        };
+        if res.is_err() {
+            self.state = saved;
+        }
+        res
+    }
+
+    fn start_with_dice_inner<D: DiceSource, S: EventSink>(
+        &mut self,
+        dice: &mut D,
+        sink: &mut S,
+    ) -> Result<StepOutcome, CoreError> {
         let draws_before = self.state.draws;
         self.emit_ev(sink, Event::CombatStarted);
         self.roll_initiative(dice, sink)?;
@@ -1866,7 +1894,9 @@ impl Fight {
             let mut dice = LiveDice { rng: &mut rng };
             self.apply_with_dice(action_id, &mut dice, sink)
         };
-        self.state.rng = rng;
+        if res.is_ok() {
+            self.state.rng = rng;
+        }
         res
     }
 
@@ -1939,6 +1969,33 @@ impl Fight {
         dice: &mut D,
         sink: &mut S,
     ) -> Result<StepOutcome, CoreError> {
+        let saved = self.state.clone();
+        let res = if S::ACTIVE {
+            let mut buf = crate::event::VecSink::default();
+            let r = self.apply_checked_inner(actor, payload, dice, &mut buf);
+            if r.is_ok() {
+                for ev in buf.events {
+                    sink.emit(ev);
+                }
+            }
+            r
+        } else {
+            let mut noop = crate::event::NoopSink;
+            self.apply_checked_inner(actor, payload, dice, &mut noop)
+        };
+        if res.is_err() {
+            self.state = saved;
+        }
+        res
+    }
+
+    fn apply_checked_inner<D: DiceSource, S: EventSink>(
+        &mut self,
+        actor: UnitId,
+        payload: &ActionPayload,
+        dice: &mut D,
+        sink: &mut S,
+    ) -> Result<StepOutcome, CoreError> {
         let draws_before = self.state.draws;
         if matches!(payload, ActionPayload::EndTurn) {
             self.arena_end_turn(dice, sink)?;
@@ -1977,12 +2034,15 @@ impl Fight {
             let mut dice = LiveDice { rng: &mut rng };
             self.respond_reaction_with_dice(choice, &mut dice, sink)
         };
-        self.state.rng = rng;
+        if res.is_ok() {
+            self.state.rng = rng;
+        }
         res
     }
 
     /// Answer a pending reaction prompt using an explicit [`DiceSource`].
-    /// Rejects stale, duplicate, or out-of-range replies without touching state or RNG.
+    /// Atomic: rejects stale, duplicate, out-of-range replies, or rejected dice without
+    /// mutating fight state, pending interrupt frame, RNG, event cursor, or `sink`.
     pub fn respond_reaction_with_dice<D: DiceSource, S: EventSink>(
         &mut self,
         choice: ReactionChoice,
@@ -2009,6 +2069,32 @@ impl Fight {
                 CoreError::InvalidReactionChoice(format!("choice index {idx} out of range"))
             })?,
         };
+        let saved = self.state.clone();
+        let res = if S::ACTIVE {
+            let mut buf = crate::event::VecSink::default();
+            let r = self.respond_reaction_inner(selected_opt, dice, &mut buf);
+            if r.is_ok() {
+                for ev in buf.events {
+                    sink.emit(ev);
+                }
+            }
+            r
+        } else {
+            let mut noop = crate::event::NoopSink;
+            self.respond_reaction_inner(selected_opt, dice, &mut noop)
+        };
+        if res.is_err() {
+            self.state = saved;
+        }
+        res
+    }
+
+    fn respond_reaction_inner<D: DiceSource, S: EventSink>(
+        &mut self,
+        selected_opt: ReactionOption,
+        dice: &mut D,
+        sink: &mut S,
+    ) -> Result<StepOutcome, CoreError> {
         let draws_before = self.state.draws;
         let frame = self.state.interrupts.pop().unwrap();
         self.resolve_interrupt_frame(frame, selected_opt, dice, sink)?;
@@ -2039,7 +2125,9 @@ impl Fight {
             let mut dice = LiveDice { rng: &mut rng };
             self.end_turn_with_dice(&mut dice, sink)
         };
-        self.state.rng = rng;
+        if res.is_ok() {
+            self.state.rng = rng;
+        }
         res
     }
 

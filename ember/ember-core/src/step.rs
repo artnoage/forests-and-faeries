@@ -419,7 +419,10 @@ pub struct ContentDb {
 }
 
 impl ContentDb {
-    /// Recompute [`ContentDb::content_hash`] deterministically over all compiled content.
+    /// Recompute [`ContentDb::content_hash`] deterministically over every field of
+    /// all compiled effects, abilities (including step programs), templates (including
+    /// resistances/immunities/vulnerabilities, traits, attacks, gear, caster grants),
+    /// and canonical key-lookup maps.
     pub fn recompute_hash(&mut self) {
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
         let mut mix = |bytes: &[u8]| {
@@ -428,39 +431,26 @@ impl ContentDb {
                 h = h.wrapping_mul(0x0000_0100_0000_01b3);
             }
         };
-        mix(&(self.effects.len() as u64).to_le_bytes());
-        for ef in &self.effects {
-            mix(ef.key.as_bytes());
-            mix(&[0x01]);
-            mix(ef.mark_label.as_bytes());
-            mix(&[0x02]);
-        }
-        mix(&(self.abilities.len() as u64).to_le_bytes());
-        for ab in &self.abilities {
-            mix(ab.key.as_bytes());
-            mix(&[ab.base_level, u8::from(ab.is_spell), u8::from(ab.concentration)]);
-            if let Ok(bytes) = postcard::to_allocvec(&ab.steps) {
-                mix(&bytes);
-            }
-            mix(&[0x03]);
-        }
-        mix(&(self.templates.len() as u64).to_le_bytes());
-        for t in &self.templates {
-            mix(t.key.as_bytes());
-            mix(&t.ac.to_le_bytes());
-            mix(&t.max_hp.to_le_bytes());
-            mix(&t.speed.to_le_bytes());
-            for &a in &t.abilities {
-                mix(&a.to_le_bytes());
-            }
-            mix(&t.init_bonus.to_le_bytes());
-            mix(&(t.attacks.len() as u64).to_le_bytes());
-            for atk in &t.attacks {
-                mix(atk.name.as_bytes());
-                mix(&atk.ability_id.0.to_le_bytes());
-            }
-            mix(&[0x04]);
-        }
+        let payload = postcard::to_allocvec(&(&self.effects, &self.abilities, &self.templates))
+            .expect("ContentDb serialization is infallible");
+        mix(&(payload.len() as u64).to_le_bytes());
+        mix(&payload);
+
+        let mut effect_keys: Vec<(&str, u16)> =
+            self.effect_by_key.iter().map(|(k, v)| (k.as_str(), v.0)).collect();
+        effect_keys.sort_unstable();
+        let mut ability_keys: Vec<(&str, u16)> =
+            self.ability_by_key.iter().map(|(k, v)| (k.as_str(), v.0)).collect();
+        ability_keys.sort_unstable();
+        let mut template_keys: Vec<(&str, u16)> =
+            self.template_by_key.iter().map(|(k, v)| (k.as_str(), v.0)).collect();
+        template_keys.sort_unstable();
+        let map_payload = postcard::to_allocvec(&(effect_keys, ability_keys, template_keys))
+            .expect("ContentDb key-map serialization is infallible");
+        mix(&[0xff]);
+        mix(&(map_payload.len() as u64).to_le_bytes());
+        mix(&map_payload);
+
         h ^= h >> 30;
         h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
         h ^= h >> 27;

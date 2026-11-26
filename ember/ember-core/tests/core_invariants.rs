@@ -622,11 +622,21 @@ fn snapshot_validation_rejects_bad_content_hash_and_version() {
     fight.start(&mut NoopSink).unwrap();
     let bytes = fight.save_bytes().unwrap();
 
-    // Modified content hash must fail cleanly on load_bytes
+    // Changing any rules-affecting template field (such as damage resistances)
+    // must change recompute_hash() and fail cleanly on load_bytes.
     let mut other_db = (*db).clone();
-    other_db.content_hash ^= 0x1;
+    other_db.templates[0].dmg_resist.insert(ember_core::Dmg::Necrotic);
+    other_db.recompute_hash();
+    assert_ne!(other_db.content_hash, db.content_hash);
     let err = Fight::load_bytes(Arc::new(other_db), &bytes).unwrap_err();
     assert!(matches!(err, CoreError::Serialization(msg) if msg.contains("content_hash")));
+
+    // Independently recomputing an unchanged ContentDb preserves the exact hash and loads cleanly.
+    let mut same_db = (*db).clone();
+    same_db.content_hash = 0;
+    same_db.recompute_hash();
+    assert_eq!(same_db.content_hash, db.content_hash);
+    Fight::load_bytes(Arc::new(same_db), &bytes).unwrap();
 
     // Truncated/corrupt bytes must fail cleanly
     let err2 = Fight::load_bytes(db, &bytes[..4]).unwrap_err();
@@ -666,7 +676,9 @@ fn bad_inputs_return_errors_without_panicking() {
     assert_eq!(fight.save_bytes().unwrap(), before);
 
     // 3. Paired draw value for a normal roll returns DrawMismatch cleanly (no panic)
-    let mut f2 = Fight::new(db, &oa_spec(), 55).unwrap();
+    //    AND leaves fight state & sink untouched so a corrected retry succeeds.
+    let mut f2 = Fight::new(db.clone(), &oa_spec(), 55).unwrap();
+    let f2_before = f2.save_bytes().unwrap();
     let mut bad_draws = SuppliedDraws::new(vec![DrawRecord {
         who: "hero".into(),
         tag: "initiative".into(),
@@ -674,6 +686,97 @@ fn bad_inputs_return_errors_without_panicking() {
         mode: RollMode::Normal,
         val: DrawVal::Two([10, 11]),
     }]);
-    let err_draw = f2.start_with_dice(&mut bad_draws, &mut NoopSink).unwrap_err();
+    let mut start_sink = VecSink::default();
+    let err_draw = f2.start_with_dice(&mut bad_draws, &mut start_sink).unwrap_err();
     assert!(matches!(err_draw, CoreError::DrawMismatch { .. }));
+    assert!(start_sink.events.is_empty());
+    assert_eq!(f2.save_bytes().unwrap(), f2_before);
+    assert_eq!(f2.event_cursor(), 0);
+}
+
+#[test]
+fn rejected_supplied_draw_on_reaction_preserves_prompt_and_allows_retry() {
+    let db = build_test_db();
+    let mut fight = Fight::new(db, &oa_spec(), 0x1234_5678_9ABC_DEF0).unwrap();
+    fight.set_reaction_mode(ReactionMode::Interactive);
+    let init_draws = vec![
+        DrawRecord {
+            who: "hero".into(),
+            tag: "initiative".into(),
+            sides: 20,
+            mode: RollMode::Normal,
+            val: DrawVal::One(18),
+        },
+        DrawRecord {
+            who: "monster-1".into(),
+            tag: "initiative".into(),
+            sides: 20,
+            mode: RollMode::Normal,
+            val: DrawVal::One(5),
+        },
+    ];
+    let mut init_src = SuppliedDraws::new(init_draws);
+    fight.start_with_dice(&mut init_src, &mut NoopSink).unwrap();
+
+    let retreat = fight
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|a| a.action_key == "move:3,3;2,3")
+        .unwrap();
+    let FightPhase::AwaitingReaction { prompt_id, .. } =
+        fight.apply(retreat.id, &mut NoopSink).unwrap().phase
+    else {
+        panic!("expected OA prompt");
+    };
+
+    let good_draws = vec![
+        DrawRecord {
+            who: "monster-1".into(),
+            tag: "attack".into(),
+            sides: 20,
+            mode: RollMode::Normal,
+            val: DrawVal::One(18),
+        },
+        DrawRecord {
+            who: "monster-1".into(),
+            tag: "damage".into(),
+            sides: 8,
+            mode: RollMode::Normal,
+            val: DrawVal::One(6),
+        },
+    ];
+    let answer = ReactionChoice { prompt_id, choice_index: Some(0) };
+
+    // Reject at BOTH the first die (index 0) and the second die (index 1):
+    // every failed attempt must preserve save_bytes, phase, revision, draws,
+    // event_cursor, and emit zero events into sink.
+    for bad_idx in [0usize, 1usize] {
+        let before = fight.save_bytes().unwrap();
+        let before_phase = fight.phase();
+        let before_cursors = (fight.draws(), fight.event_cursor(), fight.revision());
+        let mut bad = good_draws.clone();
+        bad[bad_idx].tag = "audit_wrong_tag".into();
+        let mut bad_src = SuppliedDraws::new(bad);
+        let mut sink = VecSink::default();
+        let err = fight
+            .respond_reaction_with_dice(answer, &mut bad_src, &mut sink)
+            .unwrap_err();
+        assert!(matches!(err, CoreError::DrawMismatch { .. }));
+        assert_eq!(fight.save_bytes().unwrap(), before);
+        assert_eq!(fight.phase(), before_phase);
+        assert_eq!((fight.draws(), fight.event_cursor(), fight.revision()), before_cursors);
+        assert!(sink.events.is_empty());
+        assert_eq!(bad_src.cursor(), bad_idx);
+    }
+
+    // Retry with the valid draws must now succeed cleanly!
+    let mut good_src = SuppliedDraws::new(good_draws);
+    let mut ok_sink = VecSink::default();
+    let out = fight
+        .respond_reaction_with_dice(answer, &mut good_src, &mut ok_sink)
+        .unwrap();
+    assert_eq!(out.draws_consumed, 2);
+    assert_eq!(good_src.cursor(), 2);
+    assert!(!ok_sink.events.is_empty());
+    assert!(matches!(out.phase, FightPhase::AwaitingAction(UnitId(0))));
 }
