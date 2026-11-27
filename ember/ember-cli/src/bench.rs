@@ -103,7 +103,7 @@ pub fn run_bench(db: Arc<ContentDb>, iters: usize) {
             map_rows: c.map.map(|rows| rows.iter().map(|r| (*r).to_string()).collect()),
             max_rounds: 50,
         };
-        let mut fight = Fight::new(db.clone(), &spec, c.seed).expect("bench fight setup");
+        let mut fight = Fight::new(db.clone(), &spec, c.seed, c.seed as u128).expect("bench fight setup");
         let mut sink = NoopSink;
         fight.start(&mut sink).expect("bench fight start");
 
@@ -176,7 +176,7 @@ pub fn run_bench(db: Arc<ContentDb>, iters: usize) {
     };
     // Pick a seed where curogana acts first to time Curogana's full caster menu directly
     for seed in 1u64..200 {
-        let mut f = Fight::new(db.clone(), &curo_spec, seed).expect("curo bench");
+        let mut f = Fight::new(db.clone(), &curo_spec, seed, seed as u128).expect("curo bench");
         f.start(&mut NoopSink).expect("curo start");
         if f.unit_key(f.current()) == "curogana" {
             let n_acts = f.legal_actions(Observer::Full).len();

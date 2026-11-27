@@ -22,11 +22,95 @@ use std::sync::Arc;
 
 use ember_core::{
     ContentDb, CoreError, DiceSource, DrawRecord, DrawVal, EncounterSpec, Event, Fight, FightPhase,
-    Observer, OracleSink, Placement, ReactionChoice, ReactionMode, RollMode, StateDigest,
-    UnitDigest, UnitFlags, UnitId,
+    Metamagic, Observer, OracleSink, Placement, Pos, ReactionChoice, ReactionMode, RollMode,
+    StateDigest, UnitDigest, UnitFlags, UnitId,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+const PHASE0_DEFERRED_LEDGER_JSON: &str =
+    include_str!("../expected-deferred/phase0-deferred-menus.json");
+
+#[derive(Clone, Debug, Deserialize)]
+struct PinnedDeferredLedger {
+    schema: u32,
+    supported_spells: Vec<String>,
+    tapes: Vec<PinnedTapeDeferred>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct PinnedTapeDeferred {
+    #[allow(dead_code)]
+    tape: String,
+    seed: u64,
+    header_sha256: String,
+    #[allow(dead_code)]
+    reference_sha256: String,
+    #[allow(dead_code)]
+    approved_stop_line: usize,
+    #[allow(dead_code)]
+    max_verified_line: usize,
+    #[allow(dead_code)]
+    approved_deferred_count: usize,
+    turns: Vec<PinnedTurnDeferred>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct PinnedTurnDeferred {
+    turn_decision: usize,
+    jsonl_line: usize,
+    actor: String,
+    deferred: Vec<PinnedDeferredEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+struct PinnedDeferredEntry {
+    menu_index: usize,
+    key: String,
+}
+
+fn load_deferred_ledger() -> PinnedDeferredLedger {
+    let ledger: PinnedDeferredLedger = serde_json::from_str(PHASE0_DEFERRED_LEDGER_JSON)
+        .expect("committed phase0-deferred-menus.json must be valid JSON");
+    assert_eq!(ledger.schema, 1, "unexpected phase0-deferred-menus schema");
+    ledger
+}
+
+/// Verify that every Phase 0 supported spell declared in the committed ledger is
+/// compiled and present in `db` (so deleting a supported spell file fails closed).
+pub fn verify_supported_spells(db: &ContentDb) -> Result<(), String> {
+    let ledger = load_deferred_ledger();
+    for sp in &ledger.supported_spells {
+        let Some(&ab_id) = db.ability_by_key.get(sp) else {
+            return Err(format!(
+                "missing Phase 0 supported spell ability {sp:?} required by expected-deferred ledger"
+            ));
+        };
+        if !db.ability(ab_id).is_spell {
+            return Err(format!(
+                "expected Phase 0 supported ability {sp:?} to be a spell"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn header_sha256(hdr: &HeaderRec) -> String {
+    let mut h = Sha256::new();
+    h.update(format!("seed={}\n", hdr.seed).as_bytes());
+    h.update(format!("units={}\n", hdr.units.join(",")).as_bytes());
+    let pls: Vec<String> = hdr
+        .placements
+        .iter()
+        .map(|p| format!("{}@{},{}", p.id, p.x, p.y))
+        .collect();
+    h.update(format!("placements={}\n", pls.join(";")).as_bytes());
+    match &hdr.map {
+        Some(rows) => h.update(format!("map={}\n", rows.join("|")).as_bytes()),
+        None => h.update(b"map=none\n"),
+    }
+    format!("{:x}", h.finalize())
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ReplayReport {
@@ -210,48 +294,256 @@ impl DiceSource for TapeDice {
     }
 }
 
-/// Returns `true` ONLY for an unchosen Phase 1–3 candidate that legitimately
-/// belongs to `actor`'s own compiled character sheet (and is explicitly
-/// deferred out of Phase 0):
-/// - spells listed in `actor`'s `CasterTemplate.deferred_spells`
-/// - Sorcerer Font of Magic slot/point conversion on Sorcerers
-/// - `first_aid:><ally>` when `actor` is a PC adjacent to an unconscious unstable ally
-///
-/// Any unknown or foreign candidate (such as `"spell:wish:L9:>ghast-1"`) returns `false`
-/// and fails bidirectional menu equality immediately.
-fn is_sheet_deferred_phase0_candidate(fight: &Fight, actor: UnitId, cand: &str) -> bool {
+/// Classifies and strictly validates whether `cand` is a well-formed, currently legal
+/// Phase 1–3 deferred menu candidate for `actor`:
+/// - `Ok(false)`: NOT a deferred candidate (must appear in `ember-core::legal_actions`;
+///   bogus spells like `spell:wish:L9:>ghast-1` return `Ok(false)` and fail menu equality).
+/// - `Ok(true)`: well-formed and currently legal Phase 1–3 deferred candidate (still
+///   must match the committed per-tape/decision/actor `phase0-deferred-menus.json` ledger!).
+/// - `Err(reason)`: matches a deferred spell/feature prefix on `actor`'s sheet, but is
+///   malformed or illegal for `actor`'s current resources/targets/metamagic/grid bounds.
+fn validate_deferred_phase0_candidate(
+    fight: &Fight,
+    actor: UnitId,
+    cand: &str,
+) -> Result<bool, String> {
     let tmpl = fight.template_of(actor);
+    let u = fight.unit(actor);
+
     if let Some(rest) = cand.strip_prefix("spell:") {
-        let spell_key = rest.split(':').next().unwrap_or("");
-        return tmpl
-            .caster
-            .as_ref()
-            .is_some_and(|c| c.deferred_spells.iter().any(|s| s == spell_key));
-    }
-    if tmpl.sorcerer
-        && matches!(
-            cand,
-            "create_spell_slot:L1"
-                | "create_spell_slot:L2"
-                | "convert_spell_slot:L1"
-                | "convert_spell_slot:L2"
-        )
-    {
-        return true;
-    }
-    if tmpl.pc {
-        if let Some(target_key) = cand.strip_prefix("first_aid:>") {
-            if let Some(t) = fight.unit_by_key(target_key) {
-                let tu = fight.unit(t);
-                return fight.allies(actor, t)
-                    && tu.flags.is_unconscious()
-                    && !tu.flags.contains(UnitFlags::STABLE)
-                    && fight.unit(actor).pos.feet_to(tu.pos) <= 5
-                    && fight.unit(actor).action > 0;
+        let Some(caster) = &tmpl.caster else {
+            return Ok(false);
+        };
+        let parts: Vec<&str> = rest.split(':').collect();
+        let spell_key = parts[0];
+        let Some(spec) = caster.deferred_spells.iter().find(|s| s.id == spell_key) else {
+            return Ok(false);
+        };
+        if parts.len() < 3 {
+            return Err(format!(
+                "deferred spell {cand:?} missing level or target/point segment"
+            ));
+        }
+        let at_level: u8 = parts[1]
+            .strip_prefix('L')
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| format!("deferred spell {cand:?} has invalid cast level {:?}", parts[1]))?;
+
+        let mut free = false;
+        let mut metamagic: Option<Metamagic> = None;
+        let mut has_target_or_point = false;
+
+        for (pi, &part) in parts[2..].iter().enumerate() {
+            let is_last = pi + 1 == parts[2..].len();
+            if part == "free" {
+                if free || has_target_or_point {
+                    return Err(format!("deferred spell {cand:?} has misplaced/duplicate :free"));
+                }
+                free = true;
+            } else if let Some(mm_str) = part.strip_prefix("mm=") {
+                if metamagic.is_some() || has_target_or_point {
+                    return Err(format!("deferred spell {cand:?} has misplaced/duplicate metamagic"));
+                }
+                let mm = Metamagic::from_key(mm_str).ok_or_else(|| {
+                    format!("deferred spell {cand:?} uses unknown/unsupported metamagic {mm_str:?}")
+                })?;
+                let knows_mm = match mm {
+                    Metamagic::EmpoweredSpell => caster.has_empowered,
+                    Metamagic::HeightenedSpell => caster.has_heightened,
+                };
+                if !knows_mm {
+                    return Err(format!(
+                        "deferred spell {cand:?} uses metamagic {mm_str:?} not known by {}",
+                        fight.unit_key(actor)
+                    ));
+                }
+                if u.sorcery_points < mm.sorcery_cost() as u8 {
+                    return Err(format!(
+                        "deferred spell {cand:?} requires {} SP for {mm_str:?}, {} has {}",
+                        mm.sorcery_cost(),
+                        fight.unit_key(actor),
+                        u.sorcery_points
+                    ));
+                }
+                metamagic = Some(mm);
+            } else if let Some(tlist) = part.strip_prefix('>') {
+                if !is_last || has_target_or_point || tlist.is_empty() {
+                    return Err(format!("deferred spell {cand:?} has malformed target list {part:?}"));
+                }
+                for tid in tlist.split(',') {
+                    let target = fight.unit_by_key(tid).ok_or_else(|| {
+                        format!("deferred spell {cand:?} references unknown target {tid:?}")
+                    })?;
+                    let tu = fight.unit(target);
+                    if tu.flags.is_dead() {
+                        return Err(format!(
+                            "deferred spell {cand:?} targets dead unit {tid:?}"
+                        ));
+                    }
+                    if u.pos.feet_to(tu.pos) > 120 {
+                        return Err(format!(
+                            "deferred spell {cand:?} target {tid:?} out of max range ({} ft)",
+                            u.pos.feet_to(tu.pos)
+                        ));
+                    }
+                }
+                has_target_or_point = true;
+            } else if let Some(pt) = part.strip_prefix('@') {
+                if !is_last || has_target_or_point {
+                    return Err(format!("deferred spell {cand:?} has malformed point {part:?}"));
+                }
+                let (xs, ys) = pt.split_once(',').ok_or_else(|| {
+                    format!("deferred spell {cand:?} has invalid point coordinates {pt:?}")
+                })?;
+                let x: i16 = xs.parse().map_err(|_| {
+                    format!("deferred spell {cand:?} has non-integer x coord {xs:?}")
+                })?;
+                let y: i16 = ys.parse().map_err(|_| {
+                    format!("deferred spell {cand:?} has non-integer y coord {ys:?}")
+                })?;
+                let pos = Pos::new(x, y);
+                if !fight.grid_in_bounds(pos) {
+                    return Err(format!(
+                        "deferred spell {cand:?} point ({x},{y}) is out of grid bounds"
+                    ));
+                }
+                if u.pos.feet_to(pos) > 120 {
+                    return Err(format!(
+                        "deferred spell {cand:?} point ({x},{y}) out of max range ({} ft)",
+                        u.pos.feet_to(pos)
+                    ));
+                }
+                has_target_or_point = true;
+            } else {
+                return Err(format!(
+                    "deferred spell {cand:?} has unexpected segment {part:?}"
+                ));
             }
         }
+        if !has_target_or_point {
+            return Err(format!(
+                "deferred spell {cand:?} is missing target/point segment"
+            ));
+        }
+
+        // Action economy & slot level legality
+        if u.action <= 0 && u.bonus <= 0 {
+            return Err(format!(
+                "deferred spell {cand:?} listed with no action or bonus action remaining"
+            ));
+        }
+        if spec.base_level == 0 {
+            if at_level != 0 || free {
+                return Err(format!(
+                    "cantrip {spell_key:?} must be cast at L0 without :free (got {cand:?})"
+                ));
+            }
+        } else {
+            if at_level < spec.base_level || (at_level as usize) >= u.slots.len() {
+                return Err(format!(
+                    "deferred spell {cand:?} has illegal slot level L{at_level} (base L{}, max L{})",
+                    spec.base_level,
+                    u.slots.len().saturating_sub(1)
+                ));
+            }
+            if free {
+                return Err(format!(
+                    "deferred spell {cand:?} claims :free without an active free-cast grant"
+                ));
+            }
+            if u.slot_spent_this_turn {
+                return Err(format!(
+                    "deferred leveled spell {cand:?} listed after a spell slot was already spent this turn"
+                ));
+            }
+            if u.slots[at_level as usize] == 0 {
+                return Err(format!(
+                    "deferred spell {cand:?} requires L{at_level} slot, {} has 0",
+                    fight.unit_key(actor)
+                ));
+            }
+        }
+        return Ok(true);
     }
-    false
+
+    if let Some(lvl_s) = cand.strip_prefix("create_spell_slot:L") {
+        if !tmpl.sorcerer {
+            return Ok(false);
+        }
+        let lvl: usize = lvl_s
+            .parse()
+            .map_err(|_| format!("invalid create_spell_slot level in {cand:?}"))?;
+        let sp_cost: u8 = match lvl {
+            1 => 2,
+            2 => 3,
+            _ => return Err(format!("unsupported create_spell_slot level L{lvl} in {cand:?}")),
+        };
+        if u.bonus <= 0 || u.sorcery_points < sp_cost {
+            return Err(format!(
+                "illegal {cand:?} for {} (bonus={}, sp={}, need {sp_cost})",
+                fight.unit_key(actor),
+                u.bonus,
+                u.sorcery_points
+            ));
+        }
+        return Ok(true);
+    }
+
+    if let Some(lvl_s) = cand.strip_prefix("convert_spell_slot:L") {
+        if !tmpl.sorcerer {
+            return Ok(false);
+        }
+        let Some(caster) = &tmpl.caster else {
+            return Ok(false);
+        };
+        let lvl: usize = lvl_s
+            .parse()
+            .map_err(|_| format!("invalid convert_spell_slot level in {cand:?}"))?;
+        if !(1..=2).contains(&lvl) {
+            return Err(format!("unsupported convert_spell_slot level L{lvl} in {cand:?}"));
+        }
+        // SRD 5.2.1 Font of Magic: converting a spell slot into Sorcery Points requires
+        // no action (free), whereas creating a spell slot uses a Bonus Action.
+        if u.slots[lvl] == 0 || u.sorcery_points >= caster.sorcery_points {
+            return Err(format!(
+                "illegal {cand:?} for {} (slots[L{lvl}]={}, sp={}/{})",
+                fight.unit_key(actor),
+                u.slots[lvl],
+                u.sorcery_points,
+                caster.sorcery_points
+            ));
+        }
+        return Ok(true);
+    }
+
+    if let Some(target_key) = cand.strip_prefix("first_aid:>") {
+        if !tmpl.pc {
+            return Ok(false);
+        }
+        let target = fight.unit_by_key(target_key).ok_or_else(|| {
+            format!("deferred {cand:?} references unknown unit {target_key:?}")
+        })?;
+        let tu = fight.unit(target);
+        if !fight.allies(actor, target)
+            || !tu.flags.is_unconscious()
+            || tu.flags.contains(UnitFlags::STABLE)
+            || u.pos.feet_to(tu.pos) > 5
+            || u.action <= 0
+        {
+            return Err(format!(
+                "illegal {cand:?} for {} (action={}, ally={}, uncon={}, stable={}, dist={})",
+                fight.unit_key(actor),
+                u.action,
+                fight.allies(actor, target),
+                tu.flags.is_unconscious(),
+                tu.flags.contains(UnitFlags::STABLE),
+                u.pos.feet_to(tu.pos)
+            ));
+        }
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 /// Compare `expected` (from legacy rule-18 tape) against `got` (`ember-core::state_digest`),
@@ -467,13 +759,31 @@ pub fn verify_tape(
         }
     }
 
+    verify_supported_spells(&db).map_err(|msg| ReplayDiff {
+        kind: "missing_supported_spell".into(),
+        first_diff_decision: 0,
+        event_index: 0,
+        jsonl_line: 1,
+        seed: hdr.seed,
+        tape_sha256: tape_sha256.clone(),
+        expected: "all Phase 0 supported spells compiled in content db".into(),
+        got: msg,
+        preceding_state: None,
+    })?;
+    let ledger = load_deferred_ledger();
+    let hdr_hash = header_sha256(&hdr);
+    let pinned_tape = ledger
+        .tapes
+        .iter()
+        .find(|t| t.seed == hdr.seed && t.header_sha256 == hdr_hash);
+
     let spec = EncounterSpec {
         units: hdr.units.clone(),
         placements: hdr.placements.clone(),
         map_rows: hdr.map.clone(),
         max_rounds: hdr.max_rounds,
     };
-    let mut fight = Fight::new(db, &spec, hdr.seed).map_err(|e| ReplayDiff {
+    let mut fight = Fight::new(db, &spec, hdr.seed, hdr.seed as u128).map_err(|e| ReplayDiff {
         kind: "setup".into(),
         first_diff_decision: 0,
         event_index: 0,
@@ -538,6 +848,7 @@ pub fn verify_tape(
     let mut sink = OracleSink::default();
     let mut last_state: Option<StateDigest> = None;
     let mut decisions_checked = 0usize;
+    let mut turn_decisions_checked = 0usize;
     let mut actions_checked = 0usize;
     let mut states_checked = 0usize;
     let mut draws_seen_in_stream = 0usize;
@@ -959,6 +1270,7 @@ pub fn verify_tape(
                         ));
                     }
                     "turn" => {
+                        turn_decisions_checked += 1;
                         if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
                             return Err(make_diff(
                                 "unexecuted_turn_decision",
@@ -1002,7 +1314,32 @@ pub fn verify_tape(
                             .map(|a| a.action_key)
                             .collect();
 
+                        let expected_deferred: &[PinnedDeferredEntry] = pinned_tape
+                            .and_then(|pt| {
+                                pt.turns.iter().find(|t| {
+                                    t.turn_decision == turn_decisions_checked
+                                        && t.jsonl_line == line_no
+                                        && t.actor == dj.who
+                                })
+                            })
+                            .map_or(&[], |t| t.deferred.as_slice());
+
                         if dj.cands.is_empty() {
+                            if !expected_deferred.is_empty() {
+                                return Err(make_diff(
+                                    "deferred_menu_mismatch",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    format!(
+                                        "{} pinned deferred entries for {} at turn_decision={turn_decisions_checked}",
+                                        expected_deferred.len(),
+                                        dj.who
+                                    ),
+                                    "empty cands=[]".into(),
+                                    last_state,
+                                ));
+                            }
                             if dj.chosen == "stand" {
                                 if !fight.unit(cur).flags.contains(UnitFlags::PRONE)
                                     || !core_can_stand
@@ -1059,30 +1396,75 @@ pub fn verify_tape(
                                     last_state,
                                 ));
                             }
-                            if dj.chosen != "none"
-                                && is_sheet_deferred_phase0_candidate(&fight, cur, &dj.chosen)
-                            {
+
+                            // STRICT BIDIRECTIONAL EQUALITY + PINNED DEFERRED LEDGER:
+                            // 1. Validate every deferred candidate is well-formed & currently legal.
+                            // 2. Require exact (menu_index, key) equality against the committed
+                            //    per-tape/decision/actor `phase0-deferred-menus.json` ledger
+                            //    (empty [] for all unpinned turns and all pure-martial tapes).
+                            // 3. Require every remaining candidate to match `core_legal` identically.
+                            let mut tape_in_scope: Vec<String> = Vec::with_capacity(dj.cands.len());
+                            let mut actual_deferred: Vec<PinnedDeferredEntry> = Vec::new();
+                            for (ci, cand) in dj.cands.iter().enumerate() {
+                                match validate_deferred_phase0_candidate(&fight, cur, cand) {
+                                    Ok(true) => {
+                                        if dj.chosen == *cand {
+                                            return Err(make_diff(
+                                                "deferred_action_chosen",
+                                                decisions_checked,
+                                                ev_idx,
+                                                line_no,
+                                                "Phase 0 in-scope chosen action".into(),
+                                                format!("deferred candidate {:?} chosen", dj.chosen),
+                                                last_state,
+                                            ));
+                                        }
+                                        actual_deferred.push(PinnedDeferredEntry {
+                                            menu_index: ci,
+                                            key: cand.clone(),
+                                        });
+                                        deferred_menu_entries_skipped += 1;
+                                    }
+                                    Ok(false) => tape_in_scope.push(cand.clone()),
+                                    Err(reason) => {
+                                        return Err(make_diff(
+                                            "malformed_deferred_candidate",
+                                            decisions_checked,
+                                            ev_idx,
+                                            line_no,
+                                            "well-formed, currently legal Phase 1-3 deferred candidate".into(),
+                                            reason,
+                                            last_state,
+                                        ));
+                                    }
+                                }
+                            }
+                            if actual_deferred.as_slice() != expected_deferred {
+                                let extra: Vec<&PinnedDeferredEntry> = actual_deferred
+                                    .iter()
+                                    .filter(|e| !expected_deferred.contains(e))
+                                    .collect();
+                                let missing: Vec<&PinnedDeferredEntry> = expected_deferred
+                                    .iter()
+                                    .filter(|e| !actual_deferred.contains(e))
+                                    .collect();
                                 return Err(make_diff(
-                                    "deferred_action_chosen",
+                                    "deferred_menu_mismatch",
                                     decisions_checked,
                                     ev_idx,
                                     line_no,
-                                    "Phase 0 in-scope chosen action".into(),
-                                    format!("deferred candidate {:?} chosen", dj.chosen),
+                                    format!(
+                                        "pinned deferred menu match for {} turn_decision={turn_decisions_checked} (expected {}, missing={missing:?}, extra={extra:?})",
+                                        dj.who,
+                                        expected_deferred.len()
+                                    ),
+                                    format!(
+                                        "actual_deferred({})={actual_deferred:?} vs expected_deferred({})={expected_deferred:?}",
+                                        actual_deferred.len(),
+                                        expected_deferred.len()
+                                    ),
                                     last_state,
                                 ));
-                            }
-
-                            // STRICT BIDIRECTIONAL EQUALITY: filter out ONLY sheet-declared
-                            // deferred Phase 1-3 entries; every remaining candidate MUST match
-                            // `core_legal` in exact set and canonical order (both ways)!
-                            let mut tape_in_scope: Vec<String> = Vec::with_capacity(dj.cands.len());
-                            for cand in &dj.cands {
-                                if is_sheet_deferred_phase0_candidate(&fight, cur, cand) {
-                                    deferred_menu_entries_skipped += 1;
-                                } else {
-                                    tape_in_scope.push(cand.clone());
-                                }
                             }
                             if tape_in_scope != core_legal {
                                 let extra_in_tape: Vec<&String> = tape_in_scope

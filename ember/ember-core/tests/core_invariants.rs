@@ -321,7 +321,7 @@ fn mid_oa_interactive_save_load_duplicate_reject_and_parity() {
     let spec = oa_spec();
     let seed = 0xFEDC_BA98_7654_3210u64;
 
-    let mut auto_fight = Fight::new(db.clone(), &spec, seed).unwrap();
+    let mut auto_fight = Fight::new(db.clone(), &spec, seed, 1).unwrap();
     auto_fight.set_reaction_mode(ReactionMode::Auto);
     let mut sink_a = VecSink::default();
     auto_fight.start(&mut sink_a).unwrap();
@@ -332,7 +332,7 @@ fn mid_oa_interactive_save_load_duplicate_reject_and_parity() {
         .expect("move away from monster");
     auto_fight.apply(move_away.id, &mut sink_a).unwrap();
 
-    let mut inter = Fight::new(db.clone(), &spec, seed).unwrap();
+    let mut inter = Fight::new(db.clone(), &spec, seed, 2).unwrap();
     inter.set_reaction_mode(ReactionMode::Interactive);
     let mut sink_i = VecSink::default();
     inter.start(&mut sink_i).unwrap();
@@ -370,7 +370,7 @@ fn mid_oa_interactive_save_load_duplicate_reject_and_parity() {
 #[test]
 fn stale_action_id_leaves_state_and_rng_untouched() {
     let db = build_test_db();
-    let mut fight = Fight::new(db, &oa_spec(), 0x8000_0000_0000_1234).unwrap();
+    let mut fight = Fight::new(db, &oa_spec(), 0x8000_0000_0000_1234, 10).unwrap();
     let mut sink = NoopSink;
     fight.start(&mut sink).unwrap();
 
@@ -396,8 +396,8 @@ fn noop_sink_matches_vec_sink_state_rng_and_event_cursor() {
     let spec = oa_spec();
     let seed = 0x1234_5678_9ABC_DEF0u64;
 
-    let mut f_noop = Fight::new(db.clone(), &spec, seed).unwrap();
-    let mut f_vec = Fight::new(db, &spec, seed).unwrap();
+    let mut f_noop = Fight::new(db.clone(), &spec, seed, 20).unwrap();
+    let mut f_vec = Fight::new(db, &spec, seed, 21).unwrap();
     let mut noop = NoopSink;
     let mut vec = VecSink::default();
 
@@ -446,7 +446,7 @@ fn oa_options_preserves_multi_target_enumeration_multiplicity() {
         ]),
         max_rounds: 20,
     };
-    let mut fight = Fight::new(db, &spec, 7).unwrap();
+    let mut fight = Fight::new(db, &spec, 7, 30).unwrap();
     let mut sink = NoopSink;
     fight.start(&mut sink).unwrap();
     let opts = fight.oa_options(UnitId(0), UnitId(1));
@@ -460,66 +460,84 @@ fn oa_options_preserves_multi_target_enumeration_multiplicity() {
 }
 
 #[test]
-fn foreign_encounter_action_and_reaction_ids_rejected_untouched() {
+fn same_seed_and_nonce_produce_identical_bytes_and_distinct_bit127_nonces_stay_isolated() {
     let db = build_test_db();
-    let first_spec = oa_spec();
-    let mut other_spec = oa_spec();
-    for p in &mut other_spec.placements {
-        p.x += 1;
-    }
+    let spec = oa_spec();
     let seed = 0xFEDC_BA98_7654_3210u64;
+    let nonce_a: u128 = 0xFEDC_BA98_7654_3210_5555_AAAA_7777_8888;
+    let nonce_b: u128 = nonce_a ^ (1u128 << 127);
 
-    let mut a = Fight::new(db.clone(), &first_spec, seed).unwrap();
-    let mut b = Fight::new(db.clone(), &other_spec, seed).unwrap();
-    let a_same_spec = Fight::new(db.clone(), &first_spec, seed).unwrap();
-    assert_ne!(a.fight_id(), b.fight_id());
-    assert_ne!(a.fight_id(), a_same_spec.fight_id());
+    let run_to_prompt = |nonce: u128| {
+        let mut f = Fight::new(db.clone(), &spec, seed, nonce).unwrap();
+        f.set_reaction_mode(ReactionMode::Interactive);
+        let mut sink = VecSink::default();
+        f.start(&mut sink).unwrap();
+        let mv = f
+            .legal_actions(Observer::Full)
+            .into_iter()
+            .find(|a| a.action_key == "move:3,3;2,3")
+            .unwrap();
+        f.apply(mv.id, &mut sink).unwrap();
+        (f, mv.id, sink.events)
+    };
 
-    a.set_reaction_mode(ReactionMode::Interactive);
-    b.set_reaction_mode(ReactionMode::Interactive);
-    let mut sink = NoopSink;
-    a.start(&mut sink).unwrap();
-    b.start(&mut sink).unwrap();
+    let (mut a1, a1_move, a1_ev) = run_to_prompt(nonce_a);
+    let (a2, a2_move, a2_ev) = run_to_prompt(nonce_a);
+    let (b, _, _) = run_to_prompt(nonce_b);
 
-    let a_move = a
-        .legal_actions(Observer::Full)
-        .into_iter()
-        .find(|m| m.action_key == "move:3,3;2,3")
-        .unwrap();
-    let b_before = b.save_bytes().unwrap();
-    let err = b.apply(a_move.id, &mut sink).unwrap_err();
-    assert!(matches!(err, CoreError::StaleActionId { .. }));
-    assert_eq!(b.save_bytes().unwrap(), b_before);
+    // Same seed + same nonce: 100% byte-identical snapshots, views, action IDs, and events.
+    assert_eq!(a1.fight_id(), nonce_a);
+    assert_eq!(a1_move, a2_move);
+    assert_eq!(a1.save_bytes().unwrap(), a2.save_bytes().unwrap());
+    assert_eq!(a1.view(Observer::Full), a2.view(Observer::Full));
+    assert_eq!(a1_ev, a2_ev);
 
-    let b_retreat = b
-        .legal_actions(Observer::Full)
-        .into_iter()
-        .find(|m| m.action_key == "move:4,3;3,3")
-        .unwrap();
-    let FightPhase::AwaitingReaction { prompt_id: aid, .. } =
-        a.apply(a_move.id, &mut sink).unwrap().phase
-    else {
+    // Different nonces (even differing only in bit 127): identical FightState & digest
+    // while paused mid-OA, different fight_id / save_bytes, and foreign IDs rejected untouched.
+    assert_eq!(b.fight_id(), nonce_b);
+    assert_ne!(a1.fight_id(), b.fight_id());
+    assert_eq!(a1.state_snapshot(), b.state_snapshot());
+    assert_eq!(a1.state_digest(), b.state_digest());
+    assert_ne!(a1.save_bytes().unwrap(), b.save_bytes().unwrap());
+
+    let FightPhase::AwaitingReaction { prompt_id: aid, .. } = a1.phase() else {
         panic!("expected A reaction prompt");
     };
-    let FightPhase::AwaitingReaction { prompt_id: bid, .. } =
-        b.apply(b_retreat.id, &mut sink).unwrap().phase
-    else {
+    let FightPhase::AwaitingReaction { prompt_id: bid, .. } = b.phase() else {
         panic!("expected B reaction prompt");
     };
     assert_ne!(aid, bid);
 
     let b_bytes = b.save_bytes().unwrap();
-    let mut b_restored = Fight::load_bytes(db, &b_bytes).unwrap();
-    let b_snap = b_restored.save_bytes().unwrap();
+    let mut b_restored = Fight::load_bytes(db.clone(), &b_bytes).unwrap();
+    assert_eq!(b_restored.fight_id(), nonce_b);
+    assert_eq!(b_restored.state_snapshot(), a1.state_snapshot());
+
+    let mut sink = VecSink::default();
     let foreign_rx = b_restored
         .respond_reaction(ReactionChoice { prompt_id: aid, choice_index: Some(0) }, &mut sink)
         .unwrap_err();
     assert!(matches!(foreign_rx, CoreError::StaleActionId { .. }));
-    assert_eq!(b_restored.save_bytes().unwrap(), b_snap);
+    assert!(sink.events.is_empty());
+    assert_eq!(b_restored.save_bytes().unwrap(), b_bytes);
 
-    b_restored
-        .respond_reaction(ReactionChoice { prompt_id: bid, choice_index: Some(0) }, &mut sink)
+    // Foreign move ActionId rejected on a fresh bit-127 encounter before reaction too.
+    let mut b_fresh = Fight::new(db, &spec, seed, nonce_b).unwrap();
+    b_fresh.set_reaction_mode(ReactionMode::Interactive);
+    b_fresh.start(&mut NoopSink).unwrap();
+    let bf_before = b_fresh.save_bytes().unwrap();
+    let foreign_mv = b_fresh.apply(a1_move, &mut sink).unwrap_err();
+    assert!(matches!(foreign_mv, CoreError::StaleActionId { .. }));
+    assert!(sink.events.is_empty());
+    assert_eq!(b_fresh.save_bytes().unwrap(), bf_before);
+
+    // Own replies resolve cleanly on both restored fights.
+    a1.respond_reaction(ReactionChoice { prompt_id: aid, choice_index: Some(0) }, &mut NoopSink)
         .unwrap();
+    b_restored
+        .respond_reaction(ReactionChoice { prompt_id: bid, choice_index: Some(0) }, &mut NoopSink)
+        .unwrap();
+    assert_eq!(a1.state_snapshot(), b_restored.state_snapshot());
 }
 
 #[test]
@@ -556,8 +574,10 @@ fn saved_prompt_and_new_encounter_in_fresh_process_never_collide() {
     let dir = std::path::PathBuf::from(env::var_os("EMBER_CROSS_PROC_DIR").unwrap());
     let db = build_test_db();
     let seed = 0xFEDC_BA98_7654_3210u64;
-    let new_game = || {
-        let mut f = Fight::new(db.clone(), &oa_spec(), seed).unwrap();
+    let nonce_a: u128 = 0xFEDC_BA98_7654_3210_5555_AAAA_7777_8888;
+    let nonce_b: u128 = nonce_a ^ (1u128 << 127);
+    let new_game = |nonce: u128| {
+        let mut f = Fight::new(db.clone(), &oa_spec(), seed, nonce).unwrap();
         f.set_reaction_mode(ReactionMode::Interactive);
         f.start(&mut NoopSink).unwrap();
         f
@@ -571,7 +591,7 @@ fn saved_prompt_and_new_encounter_in_fresh_process_never_collide() {
     };
 
     if worker.as_deref() == Some("writer") {
-        let mut orig = new_game();
+        let mut orig = new_game(nonce_a);
         let act = move_btn(&orig);
         let act_bytes = postcard::to_allocvec(&act).unwrap();
         fs::write(dir.join("action.bin"), act_bytes).unwrap();
@@ -582,13 +602,19 @@ fn saved_prompt_and_new_encounter_in_fresh_process_never_collide() {
 
     let foreign_action: ActionId =
         postcard::from_bytes(&fs::read(dir.join("action.bin")).unwrap()).unwrap();
-    let mut restored =
-        Fight::load_bytes(db.clone(), &fs::read(dir.join("snapshot.bin")).unwrap()).unwrap();
+    let snap_bytes = fs::read(dir.join("snapshot.bin")).unwrap();
+    let mut restored = Fight::load_bytes(db.clone(), &snap_bytes).unwrap();
     let FightPhase::AwaitingReaction { prompt_id: saved_id, .. } = restored.phase() else {
         panic!("missing restored prompt");
     };
 
-    let mut independent = new_game();
+    // Replaying with the exact same seed & nonce in a fresh process produces byte-identical save bytes.
+    let mut same = new_game(nonce_a);
+    let same_act = move_btn(&same);
+    same.apply(same_act, &mut NoopSink).unwrap();
+    assert_eq!(same.save_bytes().unwrap(), snap_bytes);
+
+    let mut independent = new_game(nonce_b);
     assert_ne!(restored.fight_id(), independent.fight_id());
     let own_action = move_btn(&independent);
 
@@ -604,6 +630,7 @@ fn saved_prompt_and_new_encounter_in_fresh_process_never_collide() {
         panic!("missing new prompt");
     };
     assert_ne!(saved_id, new_id);
+    assert_eq!(restored.state_snapshot(), independent.state_snapshot());
 
     let reply = ReactionChoice { prompt_id: saved_id, choice_index: Some(0) };
     let before_rx = independent.save_bytes().unwrap();
@@ -618,7 +645,7 @@ fn saved_prompt_and_new_encounter_in_fresh_process_never_collide() {
 #[test]
 fn snapshot_validation_rejects_bad_content_hash_and_version() {
     let db = build_test_db();
-    let mut fight = Fight::new(db.clone(), &oa_spec(), 42).unwrap();
+    let mut fight = Fight::new(db.clone(), &oa_spec(), 42, 42).unwrap();
     fight.start(&mut NoopSink).unwrap();
     let bytes = fight.save_bytes().unwrap();
 
@@ -646,7 +673,7 @@ fn snapshot_validation_rejects_bad_content_hash_and_version() {
 #[test]
 fn bad_inputs_return_errors_without_panicking() {
     let db = build_test_db();
-    let mut fight = Fight::new(db.clone(), &oa_spec(), 55).unwrap();
+    let mut fight = Fight::new(db.clone(), &oa_spec(), 55, 55).unwrap();
     fight.start(&mut NoopSink).unwrap();
 
     // 1. Illegal teleport move rejected by apply_payload_with_dice without mutating state
@@ -677,7 +704,7 @@ fn bad_inputs_return_errors_without_panicking() {
 
     // 3. Paired draw value for a normal roll returns DrawMismatch cleanly (no panic)
     //    AND leaves fight state & sink untouched so a corrected retry succeeds.
-    let mut f2 = Fight::new(db.clone(), &oa_spec(), 55).unwrap();
+    let mut f2 = Fight::new(db.clone(), &oa_spec(), 55, 56).unwrap();
     let f2_before = f2.save_bytes().unwrap();
     let mut bad_draws = SuppliedDraws::new(vec![DrawRecord {
         who: "hero".into(),
@@ -697,7 +724,7 @@ fn bad_inputs_return_errors_without_panicking() {
 #[test]
 fn rejected_supplied_draw_on_reaction_preserves_prompt_and_allows_retry() {
     let db = build_test_db();
-    let mut fight = Fight::new(db, &oa_spec(), 0x1234_5678_9ABC_DEF0).unwrap();
+    let mut fight = Fight::new(db, &oa_spec(), 0x1234_5678_9ABC_DEF0, 77).unwrap();
     fight.set_reaction_mode(ReactionMode::Interactive);
     let init_draws = vec![
         DrawRecord {

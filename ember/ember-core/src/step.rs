@@ -325,6 +325,15 @@ pub struct SpellGrant {
     pub sorcerer_spell: bool,
 }
 
+/// Metadata for a spell declared on a creature's sheet whose step program is deferred
+/// out of Phase 0 (used strictly for well-formedness & pinned-ledger menu validation).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeferredSpellSpec {
+    pub id: String,
+    pub base_level: u8,
+    pub sorcerer_spell: bool,
+}
+
 /// Compiled spellcasting configuration on a [`CreatureTemplate`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CasterTemplate {
@@ -338,7 +347,7 @@ pub struct CasterTemplate {
     pub grants: Vec<SpellGrant>,
     /// Spells declared on this creature's sheet whose step programs are deferred to
     /// later phases (used by Phase-0 menu verification; never executable in Phase 0).
-    pub deferred_spells: Vec<String>,
+    pub deferred_spells: Vec<DeferredSpellSpec>,
     pub free_cast_pools: Vec<String>,
     pub sorcery_points: u8,
     pub innate_sorcery_uses: u8,

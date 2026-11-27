@@ -71,9 +71,11 @@ pub enum ActionContinuation {
 }
 
 /// One frame on the nested `PendingInterrupt` stack.
+/// Stores only `prompt_revision` (not the host-supplied `fight_id` nonce) so
+/// [`crate::fight::FightState`] equality remains invariant across distinct nonces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InterruptFrame {
-    pub prompt_id: ActionId,
+    pub prompt_revision: u64,
     pub kind: InterruptKind,
     pub reactor: UnitId,
     pub trigger_actor: UnitId,
@@ -82,9 +84,14 @@ pub struct InterruptFrame {
 }
 
 impl InterruptFrame {
-    pub fn info(&self) -> InterruptInfo {
+    #[inline]
+    pub fn prompt_id(&self, fight_id: u128) -> ActionId {
+        ActionId { fight_id, revision: self.prompt_revision, index: 0 }
+    }
+
+    pub fn info(&self, fight_id: u128) -> InterruptInfo {
         InterruptInfo {
-            prompt_id: self.prompt_id,
+            prompt_id: self.prompt_id(fight_id),
             kind: self.kind,
             reactor: self.reactor,
             trigger_actor: self.trigger_actor,

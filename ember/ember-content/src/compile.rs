@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use ember_core::effect::{EffectExpiry, EffectKind};
 use ember_core::step::{
     AbilityDef, ActionCost, AttackAbility, AttackKind, AttackTemplate, BranchPredicate,
-    CasterTemplate, ContentDb, CreatureTemplate, DcExpr, EffectDef, MoveMode, ReactionWindowKind,
-    ResourceKind, SpecialKind, SpellGrant, Step, TargetMode,
+    CasterTemplate, ContentDb, CreatureTemplate, DcExpr, DeferredSpellSpec, EffectDef, MoveMode,
+    ReactionWindowKind, ResourceKind, SpecialKind, SpellGrant, Step, TargetMode,
 };
 use ember_core::types::{
     ability_mod, Ability, AbilityId, Dice, Dmg, DmgMask, EffectDefId, Size, SpellPayment, Team,
@@ -253,7 +253,11 @@ fn compile_creature(
             let Some(&ab_id) = db.ability_by_key.get(&info.id) else {
                 // Spells declared on the sheet whose step programs are deferred to
                 // later phases are tracked explicitly for menu verification.
-                deferred_spells.push(info.id.clone());
+                deferred_spells.push(DeferredSpellSpec {
+                    id: info.id.clone(),
+                    base_level: info.level,
+                    sorcerer_spell: info.sorcerer_spell,
+                });
                 continue;
             };
             // Slot grant

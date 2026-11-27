@@ -1,0 +1,998 @@
+{
+  "schema": 1,
+  "supported_spells": [
+    "chromatic_orb",
+    "magic_missile",
+    "shatter"
+  ],
+  "tapes": [
+    {
+      "tape": "c2p_hgt_mix_wight_3zomb_L01_s0.r18.jsonl",
+      "seed": 18221619017,
+      "header_sha256": "26874a781e142b4e4422a4d7ef83e19df759cc73a57592dc8b24949c48d6a2d7",
+      "reference_sha256": "3d7c7687bd88f8df90bf78d1008c9fd988794e8a2d0b61514b0d8aec2b3869f0",
+      "approved_stop_line": 90,
+      "max_verified_line": 129,
+      "approved_deferred_count": 48,
+      "turns": [
+        {
+          "turn_decision": 12,
+          "jsonl_line": 54,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "create_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "create_spell_slot:L2"
+            },
+            {
+              "menu_index": 9,
+              "key": "spell:acid_splash:L0:@4,9"
+            },
+            {
+              "menu_index": 10,
+              "key": "spell:acid_splash:L0:mm=empowered_spell:@4,9"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:acid_splash:L0:mm=heightened_spell:@4,9"
+            },
+            {
+              "menu_index": 12,
+              "key": "spell:blur:L2:>curogana"
+            },
+            {
+              "menu_index": 21,
+              "key": "spell:command:L1:>wight-1"
+            },
+            {
+              "menu_index": 22,
+              "key": "spell:command:L2:>wight-1"
+            },
+            {
+              "menu_index": 23,
+              "key": "spell:command:L1:mm=heightened_spell:>wight-1"
+            },
+            {
+              "menu_index": 24,
+              "key": "spell:command:L2:mm=heightened_spell:>wight-1"
+            },
+            {
+              "menu_index": 25,
+              "key": "spell:command:L2:>wight-1,zombie-2"
+            },
+            {
+              "menu_index": 26,
+              "key": "spell:command:L2:mm=heightened_spell:>wight-1,zombie-2"
+            },
+            {
+              "menu_index": 27,
+              "key": "spell:command:L1:>zombie-2"
+            },
+            {
+              "menu_index": 28,
+              "key": "spell:command:L2:>zombie-2"
+            },
+            {
+              "menu_index": 29,
+              "key": "spell:command:L1:mm=heightened_spell:>zombie-2"
+            },
+            {
+              "menu_index": 30,
+              "key": "spell:command:L2:mm=heightened_spell:>zombie-2"
+            },
+            {
+              "menu_index": 31,
+              "key": "spell:dragons_breath:L2:>curogana"
+            },
+            {
+              "menu_index": 32,
+              "key": "spell:firebolt:L0:>wight-1"
+            },
+            {
+              "menu_index": 33,
+              "key": "spell:firebolt:L0:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 34,
+              "key": "spell:firebolt:L0:>zombie-2"
+            },
+            {
+              "menu_index": 35,
+              "key": "spell:firebolt:L0:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 62,
+              "key": "spell:ray_of_frost:L0:>wight-1"
+            },
+            {
+              "menu_index": 63,
+              "key": "spell:ray_of_frost:L0:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 64,
+              "key": "spell:ray_of_frost:L0:>zombie-2"
+            },
+            {
+              "menu_index": 65,
+              "key": "spell:ray_of_frost:L0:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 66,
+              "key": "spell:scorching_ray:L2:>wight-1"
+            },
+            {
+              "menu_index": 67,
+              "key": "spell:scorching_ray:L2:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 68,
+              "key": "spell:scorching_ray:L2:>zombie-2"
+            },
+            {
+              "menu_index": 69,
+              "key": "spell:scorching_ray:L2:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 70,
+              "key": "spell:see_invisibility:L2:>curogana"
+            },
+            {
+              "menu_index": 74,
+              "key": "spell:sorcerous_burst:L0:>wight-1"
+            },
+            {
+              "menu_index": 75,
+              "key": "spell:sorcerous_burst:L0:>zombie-2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 13,
+          "jsonl_line": 63,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 14,
+          "jsonl_line": 66,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 15,
+          "jsonl_line": 69,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 16,
+          "jsonl_line": 72,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 17,
+          "jsonl_line": 75,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 18,
+          "jsonl_line": 78,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 19,
+          "jsonl_line": 81,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 20,
+          "jsonl_line": 84,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tape": "c2p_hgt_mix_wight_3zomb_L01_s0.seed18221619025.r18.jsonl",
+      "seed": 18221619025,
+      "header_sha256": "8ec05c8af392596b2d785b698d9d440a4c7e76767f68191a8564d99b1fec38dd",
+      "reference_sha256": "18e446cf6a7ab9e9689459b614d2b94d7974bbb1ccdb067cfe03c11ae8d74c41",
+      "approved_stop_line": 216,
+      "max_verified_line": 347,
+      "approved_deferred_count": 79,
+      "turns": [
+        {
+          "turn_decision": 30,
+          "jsonl_line": 117,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "create_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "create_spell_slot:L2"
+            },
+            {
+              "menu_index": 9,
+              "key": "spell:acid_splash:L0:@5,4"
+            },
+            {
+              "menu_index": 10,
+              "key": "spell:acid_splash:L0:mm=empowered_spell:@5,4"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:acid_splash:L0:mm=heightened_spell:@5,4"
+            },
+            {
+              "menu_index": 12,
+              "key": "spell:blur:L2:>curogana"
+            },
+            {
+              "menu_index": 21,
+              "key": "spell:command:L1:>wight-1"
+            },
+            {
+              "menu_index": 22,
+              "key": "spell:command:L2:>wight-1"
+            },
+            {
+              "menu_index": 23,
+              "key": "spell:command:L1:mm=heightened_spell:>wight-1"
+            },
+            {
+              "menu_index": 24,
+              "key": "spell:command:L2:mm=heightened_spell:>wight-1"
+            },
+            {
+              "menu_index": 25,
+              "key": "spell:command:L2:>wight-1,zombie-2"
+            },
+            {
+              "menu_index": 26,
+              "key": "spell:command:L2:mm=heightened_spell:>wight-1,zombie-2"
+            },
+            {
+              "menu_index": 27,
+              "key": "spell:command:L1:>zombie-2"
+            },
+            {
+              "menu_index": 28,
+              "key": "spell:command:L2:>zombie-2"
+            },
+            {
+              "menu_index": 29,
+              "key": "spell:command:L1:mm=heightened_spell:>zombie-2"
+            },
+            {
+              "menu_index": 30,
+              "key": "spell:command:L2:mm=heightened_spell:>zombie-2"
+            },
+            {
+              "menu_index": 31,
+              "key": "spell:dragons_breath:L2:>curogana"
+            },
+            {
+              "menu_index": 32,
+              "key": "spell:firebolt:L0:>wight-1"
+            },
+            {
+              "menu_index": 33,
+              "key": "spell:firebolt:L0:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 34,
+              "key": "spell:firebolt:L0:>zombie-2"
+            },
+            {
+              "menu_index": 35,
+              "key": "spell:firebolt:L0:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 62,
+              "key": "spell:ray_of_frost:L0:>wight-1"
+            },
+            {
+              "menu_index": 63,
+              "key": "spell:ray_of_frost:L0:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 64,
+              "key": "spell:ray_of_frost:L0:>zombie-2"
+            },
+            {
+              "menu_index": 65,
+              "key": "spell:ray_of_frost:L0:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 66,
+              "key": "spell:scorching_ray:L2:>wight-1"
+            },
+            {
+              "menu_index": 67,
+              "key": "spell:scorching_ray:L2:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 68,
+              "key": "spell:scorching_ray:L2:>zombie-2"
+            },
+            {
+              "menu_index": 69,
+              "key": "spell:scorching_ray:L2:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 70,
+              "key": "spell:see_invisibility:L2:>curogana"
+            },
+            {
+              "menu_index": 74,
+              "key": "spell:sorcerous_burst:L0:>wight-1"
+            },
+            {
+              "menu_index": 75,
+              "key": "spell:sorcerous_burst:L0:>zombie-2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 31,
+          "jsonl_line": 125,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 32,
+          "jsonl_line": 128,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 33,
+          "jsonl_line": 131,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 34,
+          "jsonl_line": 134,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 35,
+          "jsonl_line": 137,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 36,
+          "jsonl_line": 140,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 37,
+          "jsonl_line": 143,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 1,
+              "key": "convert_spell_slot:L2"
+            }
+          ]
+        },
+        {
+          "turn_decision": 50,
+          "jsonl_line": 198,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 4,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 5,
+              "key": "convert_spell_slot:L2"
+            },
+            {
+              "menu_index": 9,
+              "key": "first_aid:>guy"
+            },
+            {
+              "menu_index": 13,
+              "key": "spell:acid_splash:L0:@8,5"
+            },
+            {
+              "menu_index": 14,
+              "key": "spell:acid_splash:L0:mm=empowered_spell:@8,5"
+            },
+            {
+              "menu_index": 15,
+              "key": "spell:blur:L2:>curogana"
+            },
+            {
+              "menu_index": 24,
+              "key": "spell:command:L1:>wight-1"
+            },
+            {
+              "menu_index": 25,
+              "key": "spell:command:L2:>wight-1"
+            },
+            {
+              "menu_index": 26,
+              "key": "spell:command:L2:>wight-1,zombie-2"
+            },
+            {
+              "menu_index": 27,
+              "key": "spell:command:L1:>zombie-2"
+            },
+            {
+              "menu_index": 28,
+              "key": "spell:command:L2:>zombie-2"
+            },
+            {
+              "menu_index": 29,
+              "key": "spell:dragons_breath:L2:>curogana"
+            },
+            {
+              "menu_index": 30,
+              "key": "spell:dragons_breath:L2:>guy"
+            },
+            {
+              "menu_index": 31,
+              "key": "spell:firebolt:L0:>wight-1"
+            },
+            {
+              "menu_index": 32,
+              "key": "spell:firebolt:L0:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 33,
+              "key": "spell:firebolt:L0:>zombie-2"
+            },
+            {
+              "menu_index": 34,
+              "key": "spell:firebolt:L0:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 61,
+              "key": "spell:ray_of_frost:L0:>wight-1"
+            },
+            {
+              "menu_index": 62,
+              "key": "spell:ray_of_frost:L0:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 63,
+              "key": "spell:ray_of_frost:L0:>zombie-2"
+            },
+            {
+              "menu_index": 64,
+              "key": "spell:ray_of_frost:L0:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 65,
+              "key": "spell:scorching_ray:L2:>wight-1"
+            },
+            {
+              "menu_index": 66,
+              "key": "spell:scorching_ray:L2:mm=empowered_spell:>wight-1"
+            },
+            {
+              "menu_index": 67,
+              "key": "spell:scorching_ray:L2:>zombie-2"
+            },
+            {
+              "menu_index": 68,
+              "key": "spell:scorching_ray:L2:mm=empowered_spell:>zombie-2"
+            },
+            {
+              "menu_index": 69,
+              "key": "spell:see_invisibility:L2:>curogana"
+            },
+            {
+              "menu_index": 72,
+              "key": "spell:sorcerous_burst:L0:>wight-1"
+            },
+            {
+              "menu_index": 73,
+              "key": "spell:sorcerous_burst:L0:>zombie-2"
+            },
+            {
+              "menu_index": 74,
+              "key": "spell:thunderwave:L1:@6,5"
+            },
+            {
+              "menu_index": 75,
+              "key": "spell:thunderwave:L2:@6,5"
+            },
+            {
+              "menu_index": 76,
+              "key": "spell:thunderwave:L1:mm=empowered_spell:@6,5"
+            },
+            {
+              "menu_index": 77,
+              "key": "spell:thunderwave:L2:mm=empowered_spell:@6,5"
+            }
+          ]
+        },
+        {
+          "turn_decision": 51,
+          "jsonl_line": 208,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 59,
+          "jsonl_line": 250,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 2,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 9,
+              "key": "spell:acid_splash:L0:@8,5"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:command:L1:>wight-1"
+            },
+            {
+              "menu_index": 12,
+              "key": "spell:firebolt:L0:>wight-1"
+            },
+            {
+              "menu_index": 15,
+              "key": "spell:ray_of_frost:L0:>wight-1"
+            },
+            {
+              "menu_index": 16,
+              "key": "spell:sorcerous_burst:L0:>wight-1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 60,
+          "jsonl_line": 256,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 67,
+          "jsonl_line": 291,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 2,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 9,
+              "key": "spell:acid_splash:L0:@8,5"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:command:L1:>wight-1"
+            },
+            {
+              "menu_index": 12,
+              "key": "spell:firebolt:L0:>wight-1"
+            },
+            {
+              "menu_index": 14,
+              "key": "spell:ray_of_frost:L0:>wight-1"
+            },
+            {
+              "menu_index": 15,
+              "key": "spell:sorcerous_burst:L0:>wight-1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 68,
+          "jsonl_line": 297,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 74,
+          "jsonl_line": 328,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 2,
+              "key": "convert_spell_slot:L1"
+            },
+            {
+              "menu_index": 6,
+              "key": "first_aid:>guy"
+            },
+            {
+              "menu_index": 10,
+              "key": "spell:acid_splash:L0:@8,5"
+            },
+            {
+              "menu_index": 12,
+              "key": "spell:command:L1:>wight-1"
+            },
+            {
+              "menu_index": 13,
+              "key": "spell:firebolt:L0:>wight-1"
+            },
+            {
+              "menu_index": 15,
+              "key": "spell:ray_of_frost:L0:>wight-1"
+            },
+            {
+              "menu_index": 16,
+              "key": "spell:sorcerous_burst:L0:>wight-1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 75,
+          "jsonl_line": 334,
+          "actor": "curogana",
+          "deferred": [
+            {
+              "menu_index": 0,
+              "key": "convert_spell_slot:L1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tape": "g8a_room_12x10_p_oa_ghast1_L01_s0.r18.jsonl",
+      "seed": 127503819017,
+      "header_sha256": "76c4dc121652979796641a51796164928851e10f468bacc102ca03c9a9d05da6",
+      "reference_sha256": "12889d9830224fee7d65189c37aca5674b45a38963affa462130f2453cba93ae",
+      "approved_stop_line": 58,
+      "max_verified_line": 74,
+      "approved_deferred_count": 6,
+      "turns": [
+        {
+          "turn_decision": 15,
+          "jsonl_line": 58,
+          "actor": "ilyra",
+          "deferred": [
+            {
+              "menu_index": 10,
+              "key": "spell:acid_splash:L0:@3,3"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:burning_hands:L1:@3,2"
+            },
+            {
+              "menu_index": 13,
+              "key": "spell:firebolt:L0:>ghast-1"
+            },
+            {
+              "menu_index": 14,
+              "key": "spell:mage_armor:L1:>ilyra"
+            },
+            {
+              "menu_index": 17,
+              "key": "spell:ray_of_frost:L0:>ghast-1"
+            },
+            {
+              "menu_index": 18,
+              "key": "spell:thunderwave:L1:@2,3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tape": "g8a_room_12x10_p_oa_ghast1_L01_s0.seed127503819018.r18.jsonl",
+      "seed": 127503819018,
+      "header_sha256": "2f1555f04e4e0d0c5e95490ab9d0e35c1fca25ed99ce9ccdae9c2ddcea860cf1",
+      "reference_sha256": "f35afe2213566077f7ce44c3b86ccc4880335a37e5db05bef23f43a43a0c153e",
+      "approved_stop_line": 40,
+      "max_verified_line": 95,
+      "approved_deferred_count": 6,
+      "turns": [
+        {
+          "turn_decision": 11,
+          "jsonl_line": 40,
+          "actor": "ilyra",
+          "deferred": [
+            {
+              "menu_index": 10,
+              "key": "spell:acid_splash:L0:@3,3"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:burning_hands:L1:@3,2"
+            },
+            {
+              "menu_index": 13,
+              "key": "spell:firebolt:L0:>ghast-1"
+            },
+            {
+              "menu_index": 14,
+              "key": "spell:mage_armor:L1:>ilyra"
+            },
+            {
+              "menu_index": 17,
+              "key": "spell:ray_of_frost:L0:>ghast-1"
+            },
+            {
+              "menu_index": 18,
+              "key": "spell:thunderwave:L1:@2,3"
+            }
+          ]
+        },
+        {
+          "turn_decision": 19,
+          "jsonl_line": 79,
+          "actor": "ilyra",
+          "deferred": [
+            {
+              "menu_index": 10,
+              "key": "spell:acid_splash:L0:@3,3"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:burning_hands:L1:@3,2"
+            },
+            {
+              "menu_index": 13,
+              "key": "spell:firebolt:L0:>ghast-1"
+            },
+            {
+              "menu_index": 14,
+              "key": "spell:mage_armor:L1:>ilyra"
+            },
+            {
+              "menu_index": 16,
+              "key": "spell:ray_of_frost:L0:>ghast-1"
+            },
+            {
+              "menu_index": 17,
+              "key": "spell:thunderwave:L1:@2,3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tape": "g8a_room_12x10_p_oa_ghast1_L01_s0.seed127503819021.r18.jsonl",
+      "seed": 127503819021,
+      "header_sha256": "0680945fba785d74fe88a3ced65eed0d6bf68e27c5b0252f838295d5e284eed0",
+      "reference_sha256": "10057f886204769aba96c68660ed2b0b52fbf717c71088d8aa9105fe31051ade",
+      "approved_stop_line": 74,
+      "max_verified_line": 112,
+      "approved_deferred_count": 4,
+      "turns": [
+        {
+          "turn_decision": 1,
+          "jsonl_line": 8,
+          "actor": "ilyra",
+          "deferred": [
+            {
+              "menu_index": 8,
+              "key": "spell:acid_splash:L0:@10,2"
+            },
+            {
+              "menu_index": 10,
+              "key": "spell:firebolt:L0:>ghast-1"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:mage_armor:L1:>ilyra"
+            },
+            {
+              "menu_index": 14,
+              "key": "spell:ray_of_frost:L0:>ghast-1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 22,
+          "jsonl_line": 88,
+          "actor": "ilyra",
+          "deferred": [
+            {
+              "menu_index": 11,
+              "key": "spell:burning_hands:L1:@9,0"
+            },
+            {
+              "menu_index": 13,
+              "key": "spell:firebolt:L0:>ghast-1"
+            },
+            {
+              "menu_index": 14,
+              "key": "spell:mage_armor:L1:>ilyra"
+            },
+            {
+              "menu_index": 16,
+              "key": "spell:ray_of_frost:L0:>ghast-1"
+            },
+            {
+              "menu_index": 17,
+              "key": "spell:thunderwave:L1:@7,1"
+            }
+          ]
+        },
+        {
+          "turn_decision": 23,
+          "jsonl_line": 94,
+          "actor": "ilyra",
+          "deferred": [
+            {
+              "menu_index": 10,
+              "key": "spell:firebolt:L0:>ghast-1"
+            },
+            {
+              "menu_index": 11,
+              "key": "spell:mage_armor:L1:>ilyra"
+            },
+            {
+              "menu_index": 13,
+              "key": "spell:ray_of_frost:L0:>ghast-1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

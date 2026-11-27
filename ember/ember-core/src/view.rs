@@ -88,7 +88,7 @@ pub struct UnitView {
 /// Strictly redacted state snapshot returned by [`Fight::view`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObserverView {
-    pub fight_id: u64,
+    pub fight_id: u128,
     pub revision: u64,
     pub round: i32,
     pub phase: FightPhase,
@@ -356,7 +356,7 @@ mod tests {
             ]),
             max_rounds: 20,
         };
-        let mut fight = Fight::new(db, &spec, 99).unwrap();
+        let mut fight = Fight::new(db, &spec, 99, 99).unwrap();
         let mut sink = NoopSink;
         fight.start(&mut sink).unwrap();
 

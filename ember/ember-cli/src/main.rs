@@ -46,7 +46,11 @@ fn main() -> ExitCode {
                 }
             }
             match ember_content::load_content_dir(&content_dir) {
-                Ok((_, summary)) => {
+                Ok((db, summary)) => {
+                    if let Err(msg) = tape::verify_supported_spells(&db) {
+                        eprintln!("CONTENT FAIL: {msg}");
+                        return ExitCode::from(1);
+                    }
                     println!(
                         "CONTENT OK: {} creatures (allowlist {}), {} effects, {} standalone abilities ({} compiled total)",
                         summary.creatures,

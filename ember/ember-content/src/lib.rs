@@ -313,7 +313,7 @@ mod tests {
             map_rows: None,
             max_rounds: 20,
         };
-        let mut fight = ember_core::Fight::new(db1.clone(), &spec, 127503819021).unwrap();
+        let mut fight = ember_core::Fight::new(db1.clone(), &spec, 127503819021, 1).unwrap();
         fight.set_reaction_mode(ember_core::ReactionMode::Interactive);
         fight.start(&mut ember_core::NoopSink).unwrap();
         let bytes = fight.save_bytes().unwrap();

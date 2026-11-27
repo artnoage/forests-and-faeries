@@ -457,7 +457,7 @@ pub enum SenseState {
 /// without mutating fight state or advancing the RNG.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ActionId {
-    pub fight_id: u64,
+    pub fight_id: u128,
     pub revision: u64,
     pub index: u16,
 }
@@ -560,7 +560,7 @@ pub struct EncounterSpec {
 pub enum CoreError {
     Setup(String),
     InvalidPhase(String),
-    StaleActionId { expected_fight: u64, expected_rev: u64, got: ActionId },
+    StaleActionId { expected_fight: u128, expected_rev: u64, got: ActionId },
     UnknownAction(String),
     InvalidReactionChoice(String),
     DrawMismatch {

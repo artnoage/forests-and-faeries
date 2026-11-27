@@ -1,10 +1,7 @@
 //! Compact, zero-heap-allocation `FightState` and public `Fight` API.
 
-use std::collections::hash_map::RandomState;
-use std::collections::{BTreeMap, HashSet};
-use std::hash::BuildHasher;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -26,12 +23,12 @@ use crate::types::{
 use crate::view::{sense_of, ActionPayload, CanonKey, LegalAction, ObserverView, UnitView};
 
 /// Current binary snapshot wire version written by [`Fight::save_bytes`].
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 1;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 2;
 
 /// Static per-fight metadata shared across `fork()` / `clone()` via `Arc`.
 #[derive(Clone, Debug)]
 pub struct FightMeta {
-    pub fight_id: u64,
+    pub fight_id: u128,
     pub max_rounds: i32,
     pub unit_keys: Vec<String>,
     pub unit_names: Vec<String>,
@@ -227,7 +224,7 @@ pub struct FightState {
 struct FightSnapshot {
     format_version: u32,
     content_hash: u64,
-    fight_id: u64,
+    fight_id: u128,
     max_rounds: i32,
     unit_keys: Vec<String>,
     unit_names: Vec<String>,
@@ -246,8 +243,16 @@ pub struct Fight {
 }
 
 impl Fight {
-    /// Construct a new fight in [`FightPhase::Setup`] from an [`EncounterSpec`].
-    pub fn new(db: Arc<ContentDb>, spec: &EncounterSpec, seed: u64) -> Result<Self, CoreError> {
+    /// Construct a new fight in [`FightPhase::Setup`] from an [`EncounterSpec`],
+    /// binding all [`ActionId`] and reaction prompt handles to the caller-supplied
+    /// 128-bit `fight_id` nonce (stored in snapshots, excluded from [`FightState`]
+    /// equality and digests).
+    pub fn new(
+        db: Arc<ContentDb>,
+        spec: &EncounterSpec,
+        seed: u64,
+        fight_id: u128,
+    ) -> Result<Self, CoreError> {
         let grid = match &spec.map_rows {
             Some(rows) => Arc::new(Grid::from_rows(rows).map_err(CoreError::Setup)?),
             None => Grid::ember_vault(),
@@ -293,7 +298,6 @@ impl Fight {
             unit_names.push(tmpl.name.clone());
         }
 
-        let fight_id = compute_fight_id(spec, &grid, seed);
         let state = FightState {
             units,
             occ,
@@ -326,8 +330,13 @@ impl Fight {
     }
 
     #[inline]
-    pub fn fight_id(&self) -> u64 {
+    pub fn fight_id(&self) -> u128 {
         self.meta.fight_id
+    }
+
+    #[inline]
+    pub fn grid_in_bounds(&self, pos: Pos) -> bool {
+        self.grid.in_bounds(pos)
     }
 
     #[inline]
@@ -465,7 +474,7 @@ impl Fight {
         }
         if let Some(top) = self.state.interrupts.top() {
             return FightPhase::AwaitingReaction {
-                prompt_id: top.prompt_id,
+                prompt_id: top.prompt_id(self.meta.fight_id),
                 reactor: top.reactor,
             };
         }
@@ -580,7 +589,6 @@ impl Fight {
                 ));
             }
         }
-        remember_restored_fight_id(snap.fight_id);
         let meta = Arc::new(FightMeta {
             fight_id: snap.fight_id,
             max_rounds: snap.max_rounds,
@@ -1049,7 +1057,7 @@ impl Fight {
                 Observer::Team(t) => self.unit(frame.reactor).team == t,
                 Observer::Unit(u) => frame.reactor == u,
             };
-            visible.then(|| frame.info())
+            visible.then(|| frame.info(self.meta.fight_id))
         });
         let mut units = Vec::with_capacity(self.state.units.len());
         for i in 0..self.state.units.len() {
@@ -2006,14 +2014,10 @@ impl Fight {
             }
         }
         self.state.revision += 1;
-        // Update prompt_id revision on any newly-pushed interrupt so respond_reaction binds to it!
+        // Update prompt_revision on any newly-pushed interrupt so respond_reaction binds to it!
         if let Some(top) = self.state.interrupts.frames.last_mut() {
-            top.prompt_id = ActionId {
-                fight_id: self.meta.fight_id,
-                revision: self.state.revision,
-                index: 0,
-            };
-            let info = top.info();
+            top.prompt_revision = self.state.revision;
+            let info = top.info(self.meta.fight_id);
             self.emit_ev(sink, Event::ReactionPrompted(info));
         }
         Ok(StepOutcome {
@@ -2056,7 +2060,7 @@ impl Fight {
                 got: choice.prompt_id,
             });
         };
-        if choice.prompt_id != top.prompt_id {
+        if choice.prompt_id != top.prompt_id(self.meta.fight_id) {
             return Err(CoreError::StaleActionId {
                 expected_fight: self.meta.fight_id,
                 expected_rev: self.state.revision,
@@ -2103,12 +2107,8 @@ impl Fight {
         }
         self.state.revision += 1;
         if let Some(next_top) = self.state.interrupts.frames.last_mut() {
-            next_top.prompt_id = ActionId {
-                fight_id: self.meta.fight_id,
-                revision: self.state.revision,
-                index: 0,
-            };
-            let info = next_top.info();
+            next_top.prompt_revision = self.state.revision;
+            let info = next_top.info(self.meta.fight_id);
             self.emit_ev(sink, Event::ReactionPrompted(info));
         }
         Ok(StepOutcome {
@@ -2324,101 +2324,13 @@ impl Fight {
         continuation: ActionContinuation,
     ) {
         self.state.interrupts.push(InterruptFrame {
-            prompt_id: ActionId {
-                fight_id: self.meta.fight_id,
-                revision: self.state.revision,
-                index: 0,
-            },
+            prompt_revision: self.state.revision,
             kind,
             reactor,
             trigger_actor,
             options,
             continuation,
         });
-    }
-}
-
-static NEXT_FIGHT_SEQ: AtomicU64 = AtomicU64::new(1);
-static PROCESS_SALT: OnceLock<u64> = OnceLock::new();
-static RESTORED_FIGHT_IDS: OnceLock<Mutex<HashSet<u64>>> = OnceLock::new();
-
-fn restored_ids() -> &'static Mutex<HashSet<u64>> {
-    RESTORED_FIGHT_IDS.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
-fn remember_restored_fight_id(id: u64) {
-    if let Ok(mut guard) = restored_ids().lock() {
-        guard.insert(id);
-    }
-}
-
-fn is_restored_fight_id(id: u64) -> bool {
-    restored_ids().lock().map_or(false, |guard| guard.contains(&id))
-}
-
-fn process_salt() -> u64 {
-    *PROCESS_SALT.get_or_init(|| {
-        let rs1 = RandomState::new();
-        let rs2 = RandomState::new();
-        let mut h = rs1.hash_one(0xA1B2_C3D4_E5F6_0718u64)
-            ^ rs2.hash_one(0x9E37_79B9_7F4A_7C15u64).rotate_left(17);
-        let boxed = Box::new(0u64);
-        let addr = (&*boxed as *const u64) as usize as u64;
-        h ^= addr.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let pid = std::process::id() as u64;
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_nanos() as u64);
-            h ^= pid.rotate_left(31) ^ nanos;
-        }
-        h ^= h >> 30;
-        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        h ^= h >> 27;
-        h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
-        h ^ (h >> 31)
-    })
-}
-
-fn compute_fight_id(spec: &EncounterSpec, grid: &Grid, seed: u64) -> u64 {
-    let salt = process_salt();
-    loop {
-        let seq = NEXT_FIGHT_SEQ.fetch_add(1, Ordering::Relaxed);
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ salt;
-        let mut mix = |bytes: &[u8]| {
-            for &b in bytes {
-                h ^= b as u64;
-                h = h.wrapping_mul(0x0000_0100_0000_01b3);
-            }
-        };
-        mix(&seed.to_le_bytes());
-        mix(&seq.to_le_bytes());
-        mix(&spec.max_rounds.to_le_bytes());
-        mix(&(spec.units.len() as u64).to_le_bytes());
-        for uid in &spec.units {
-            mix(uid.as_bytes());
-            mix(&[0xff]);
-        }
-        for pl in &spec.placements {
-            mix(pl.id.as_bytes());
-            mix(&pl.x.to_le_bytes());
-            mix(&pl.y.to_le_bytes());
-        }
-        mix(&(grid.w as u16).to_le_bytes());
-        mix(&(grid.h as u16).to_le_bytes());
-        for row in &grid.rows {
-            mix(row.as_bytes());
-            mix(&[0xfe]);
-        }
-        h ^= h >> 30;
-        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        h ^= h >> 27;
-        h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
-        let id = h ^ (h >> 31);
-        if id != 0 && !is_restored_fight_id(id) {
-            return id;
-        }
     }
 }
 
