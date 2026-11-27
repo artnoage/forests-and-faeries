@@ -146,12 +146,16 @@ pub struct ReplayDiff {
     pub preceding_state: Option<StateDigest>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+fn default_native_chooser() -> String {
+    "native".to_string()
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct ChooserRec {
-    #[serde(default)]
-    heroes: Option<String>,
-    #[serde(default)]
-    monsters: Option<String>,
+    #[serde(default = "default_native_chooser")]
+    heroes: String,
+    #[serde(default = "default_native_chooser")]
+    monsters: String,
     #[serde(default)]
     units: BTreeMap<String, String>,
 }
@@ -173,19 +177,38 @@ struct HeaderRec {
     stats: BTreeMap<String, HeaderStat>,
 }
 
+/// Mirrors `engine/src/tape.rs::ChooserHdr` + `engine/src/replay.rs::controllers_for`:
+/// any team whose chooser is not `"native"` is external, and any listed unit whose
+/// chooser is not `"native"` is external regardless of its team.
 fn is_external_actor(hdr: &HeaderRec, fight: &Fight, who: &str) -> bool {
     let Some(c) = &hdr.chooser else {
         return false;
     };
-    if let Some(mode) = c.units.get(who) {
-        return mode == "external";
-    }
-    let Some(uid) = fight.unit_by_key(who) else {
-        return false;
-    };
-    match fight.unit(uid).team {
-        ember_core::Team::Heroes => c.heroes.as_deref() == Some("external"),
-        ember_core::Team::Monsters => c.monsters.as_deref() == Some("external"),
+    let unit_ext = c.units.get(who).is_some_and(|mode| mode != "native");
+    let team_ext = fight
+        .unit_by_key(who)
+        .is_some_and(|uid| match fight.unit(uid).team {
+            ember_core::Team::Heroes => c.heroes != "native",
+            ember_core::Team::Monsters => c.monsters != "native",
+        });
+    team_ext || unit_ext
+}
+
+#[derive(Clone, Debug)]
+struct PendingTurnDec {
+    line_no: usize,
+    who: String,
+    native_chosen: String,
+    /// `None` means End Turn (`"end_turn"` / `"none"`), expecting an `endturn` event.
+    expected_exec: Option<String>,
+    external: bool,
+}
+
+impl PendingTurnDec {
+    fn expected_label(&self) -> &str {
+        self.expected_exec
+            .as_deref()
+            .unwrap_or(if self.external { "end_turn" } else { "none" })
     }
 }
 
@@ -230,6 +253,16 @@ struct TurnJson {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+struct DecExtJson {
+    legal: Vec<String>,
+    #[serde(default)]
+    native: Option<usize>,
+    exec: usize,
+    #[serde(default)]
+    forced: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct DecJson {
     ctx: String,
     who: String,
@@ -238,6 +271,8 @@ struct DecJson {
     order: Vec<usize>,
     adj: Vec<f64>,
     chosen: String,
+    #[serde(default)]
+    ext: Option<DecExtJson>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -916,6 +951,24 @@ pub fn verify_tape(
     })?;
     fight.set_reaction_mode(ReactionMode::Interactive);
 
+    if let Some(c) = &hdr.chooser {
+        for uid in c.units.keys() {
+            if fight.unit_by_key(uid).is_none() {
+                return Err(ReplayDiff {
+                    kind: "hdr_chooser_unknown_unit".into(),
+                    first_diff_decision: 0,
+                    event_index: 0,
+                    jsonl_line: 1,
+                    seed: hdr.seed,
+                    tape_sha256,
+                    expected: format!("chooser unit {uid:?} present in hdr.units"),
+                    got: format!("unknown chooser unit {uid:?}"),
+                    preceding_state: None,
+                });
+            }
+        }
+    }
+
     for (uid, st) in &hdr.stats {
         let Some(u) = fight.unit_by_key(uid) else {
             return Err(ReplayDiff {
@@ -974,7 +1027,7 @@ pub fn verify_tape(
     let mut draws_seen_in_stream = 0usize;
     let mut deferred_menu_entries_skipped = 0usize;
     let mut turn_ev_cursor = 0usize;
-    let mut pending_turn_dec: Option<(usize, String, String)> = None;
+    let mut pending_turn_dec: Option<PendingTurnDec> = None;
     let mut last_turn_actor: Option<String> = None;
     let mut closing_endturn_seen = false;
     let mut seen_start = false;
@@ -1054,7 +1107,7 @@ pub fn verify_tape(
                 })?;
             }
             "turn" => {
-                if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
+                if let Some(pending) = &pending_turn_dec {
                     return Err(make_diff(
                         "unexecuted_turn_decision",
                         decisions_checked,
@@ -1062,7 +1115,10 @@ pub fn verify_tape(
                         line_no,
                         "no pending turn decision across turn boundary".into(),
                         format!(
-                            "decision at line {dec_ln} ({dec_who} -> {dec_chosen:?}) was never executed"
+                            "decision at line {} ({} -> {:?}) was never executed",
+                            pending.line_no,
+                            pending.who,
+                            pending.expected_label()
                         ),
                         last_state,
                     ));
@@ -1391,7 +1447,7 @@ pub fn verify_tape(
                     }
                     "turn" => {
                         turn_decisions_checked += 1;
-                        if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
+                        if let Some(pending) = &pending_turn_dec {
                             return Err(make_diff(
                                 "unexecuted_turn_decision",
                                 decisions_checked,
@@ -1399,8 +1455,34 @@ pub fn verify_tape(
                                 line_no,
                                 "previous turn decision executed before next dec".into(),
                                 format!(
-                                    "unexecuted decision at line {dec_ln} ({dec_who} -> {dec_chosen:?})"
+                                    "unexecuted decision at line {} ({} -> {:?})",
+                                    pending.line_no,
+                                    pending.who,
+                                    pending.expected_label()
                                 ),
+                                last_state,
+                            ));
+                        }
+                        let external = is_external_actor(&hdr, &fight, &dj.who);
+                        if !external && dj.ext.is_some() {
+                            return Err(make_diff(
+                                "unexpected_ext_decision",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("native decision without ext block for {}", dj.who),
+                                "dec contains ext block for native actor".into(),
+                                last_state,
+                            ));
+                        }
+                        if external && dj.ext.is_none() {
+                            return Err(make_diff(
+                                "missing_ext_decision",
+                                decisions_checked,
+                                ev_idx,
+                                line_no,
+                                format!("external decision with ext block for {}", dj.who),
+                                "dec is missing ext block for external actor".into(),
                                 last_state,
                             ));
                         }
@@ -1479,7 +1561,12 @@ pub fn verify_tape(
                                     ));
                                 }
                             } else if dj.chosen == "none" {
-                                if !core_legal.is_empty() || core_can_stand {
+                                let scores_off_external = external
+                                    && dj.ext.as_ref().is_some_and(|x| {
+                                        x.native.is_none() && x.forced.is_none()
+                                    });
+                                if !scores_off_external && (!core_legal.is_empty() || core_can_stand)
+                                {
                                     return Err(make_diff(
                                         "empty_turn_cands",
                                         decisions_checked,
@@ -1618,7 +1705,166 @@ pub fn verify_tape(
                             }
                         }
                         validate_scores_and_order(&dj)?;
-                        pending_turn_dec = Some((line_no, dj.who, dj.chosen));
+                        let expected_exec = if let Some(ext) = &dj.ext {
+                            if ext.legal.is_empty() {
+                                return Err(make_diff(
+                                    "ext_legal_empty",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    "non-empty ext.legal".into(),
+                                    "ext.legal=[]".into(),
+                                    last_state,
+                                ));
+                            }
+                            if ext.exec >= ext.legal.len() {
+                                return Err(make_diff(
+                                    "ext_exec_out_of_bounds",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    format!("ext.exec < ext.legal.len() ({})", ext.legal.len()),
+                                    format!("ext.exec={}", ext.exec),
+                                    last_state,
+                                ));
+                            }
+                            if !dj.cands.is_empty() {
+                                // `engine/src/env.rs::external_decision`: `ext.legal` starts with
+                                // deduplicated `cands` in order, optionally followed by crossing
+                                // moves and `"end_turn"`.
+                                let mut dedup_cands: Vec<&str> = Vec::with_capacity(dj.cands.len());
+                                for c in &dj.cands {
+                                    if dedup_cands.last().copied() != Some(c.as_str()) {
+                                        dedup_cands.push(c.as_str());
+                                    }
+                                }
+                                let prefix_ok = ext.legal.len() >= dedup_cands.len()
+                                    && ext.legal[..dedup_cands.len()]
+                                        .iter()
+                                        .map(String::as_str)
+                                        .eq(dedup_cands.iter().copied());
+                                let tail = if prefix_ok {
+                                    &ext.legal[dedup_cands.len()..]
+                                } else {
+                                    &[]
+                                };
+                                let tail_ok = prefix_ok
+                                    && tail.iter().enumerate().all(|(i, k)| {
+                                        (i + 1 == tail.len() && k == "end_turn")
+                                            || k.starts_with("move:")
+                                    });
+                                if !tail_ok {
+                                    return Err(make_diff(
+                                        "ext_legal_mismatch",
+                                        decisions_checked,
+                                        ev_idx,
+                                        line_no,
+                                        format!(
+                                            "ext.legal starting with deduplicated cands ({}) + optional crossing moves + end_turn",
+                                            dedup_cands.len()
+                                        ),
+                                        format!("ext.legal={:?}", ext.legal),
+                                        last_state,
+                                    ));
+                                }
+                            } else if ext.forced.as_deref() == Some("end_turn")
+                                && (ext.legal.len() != 1 || ext.legal[0] != "end_turn")
+                            {
+                                return Err(make_diff(
+                                    "ext_legal_mismatch",
+                                    decisions_checked,
+                                    ev_idx,
+                                    line_no,
+                                    "ext.legal == [\"end_turn\"] for forced end_turn".into(),
+                                    format!("ext.legal={:?}", ext.legal),
+                                    last_state,
+                                ));
+                            }
+                            if let Some(native_idx) = ext.native {
+                                let Some(native_key) = ext.legal.get(native_idx) else {
+                                    return Err(make_diff(
+                                        "ext_native_out_of_bounds",
+                                        decisions_checked,
+                                        ev_idx,
+                                        line_no,
+                                        format!(
+                                            "ext.native < ext.legal.len() ({})",
+                                            ext.legal.len()
+                                        ),
+                                        format!("ext.native={native_idx}"),
+                                        last_state,
+                                    ));
+                                };
+                                let expected_chosen = if native_key == "end_turn" {
+                                    "none"
+                                } else {
+                                    native_key.as_str()
+                                };
+                                if dj.chosen != expected_chosen {
+                                    return Err(make_diff(
+                                        "ext_native_mismatch",
+                                        decisions_checked,
+                                        ev_idx,
+                                        line_no,
+                                        format!(
+                                            "dec.chosen matching ext.legal[ext.native={native_idx}] ({expected_chosen:?})"
+                                        ),
+                                        format!("dec.chosen={:?}", dj.chosen),
+                                        last_state,
+                                    ));
+                                }
+                            }
+                            let exec_key = ext.legal[ext.exec].as_str();
+                            if exec_key == "end_turn" {
+                                None
+                            } else {
+                                match validate_deferred_phase0_candidate(
+                                    &fight,
+                                    cur,
+                                    exec_key,
+                                    &ledger.deferred_spell_rules,
+                                ) {
+                                    Ok(true) => {
+                                        return Err(make_diff(
+                                            "deferred_action_chosen",
+                                            decisions_checked,
+                                            ev_idx,
+                                            line_no,
+                                            "Phase 0 in-scope external executed action".into(),
+                                            format!(
+                                                "deferred candidate {exec_key:?} selected by ext.exec={}",
+                                                ext.exec
+                                            ),
+                                            last_state,
+                                        ));
+                                    }
+                                    Ok(false) => {}
+                                    Err(reason) => {
+                                        return Err(make_diff(
+                                            "malformed_deferred_candidate",
+                                            decisions_checked,
+                                            ev_idx,
+                                            line_no,
+                                            "valid external executed action".into(),
+                                            reason,
+                                            last_state,
+                                        ));
+                                    }
+                                }
+                                Some(exec_key.to_string())
+                            }
+                        } else if dj.chosen == "none" {
+                            None
+                        } else {
+                            Some(dj.chosen.clone())
+                        };
+                        pending_turn_dec = Some(PendingTurnDec {
+                            line_no,
+                            who: dj.who,
+                            native_chosen: dj.chosen,
+                            expected_exec,
+                            external,
+                        });
                     }
                     other => {
                         return Err(make_diff(
@@ -1645,7 +1891,7 @@ pub fn verify_tape(
                         last_state.clone(),
                     )
                 })?;
-                let Some((dec_ln, dec_who, dec_chosen)) = pending_turn_dec.take() else {
+                let Some(pending) = pending_turn_dec.take() else {
                     return Err(make_diff(
                         "missing_decision_for_action",
                         decisions_checked,
@@ -1656,14 +1902,29 @@ pub fn verify_tape(
                         last_state,
                     ));
                 };
-                let external = is_external_actor(&hdr, &fight, &aj.who);
-                if dec_who != aj.who || (!external && dec_chosen != aj.a) {
+                if pending.who != aj.who || pending.expected_exec.as_deref() != Some(aj.a.as_str()) {
+                    let expected_desc = if pending.external {
+                        format!(
+                            "act matching external dec at line {}: {} -> {:?} (native recommendation {:?})",
+                            pending.line_no,
+                            pending.who,
+                            pending.expected_label(),
+                            pending.native_chosen
+                        )
+                    } else {
+                        format!(
+                            "act matching dec at line {}: {} -> {:?}",
+                            pending.line_no,
+                            pending.who,
+                            pending.expected_label()
+                        )
+                    };
                     return Err(make_diff(
                         "decision_action_mismatch",
                         decisions_checked,
                         ev_idx,
                         line_no,
-                        format!("act matching dec at line {dec_ln}: {dec_who} -> {dec_chosen:?}"),
+                        expected_desc,
                         format!("act {} -> {:?}", aj.who, aj.a),
                         last_state,
                     ));
@@ -1749,18 +2010,31 @@ pub fn verify_tape(
                         last_state.clone(),
                     )
                 })?;
-                if let Some((dec_ln, dec_who, dec_chosen)) = pending_turn_dec.take() {
-                    let external = is_external_actor(&hdr, &fight, &ej.who);
-                    if dec_who != ej.who || (!external && dec_chosen != "none") {
+                if let Some(pending) = pending_turn_dec.take() {
+                    if pending.who != ej.who || pending.expected_exec.is_some() {
+                        let expected_desc = if pending.external {
+                            format!(
+                                "endturn matching external dec at line {} ({} -> \"end_turn\", got expected_exec={:?})",
+                                pending.line_no, pending.who, pending.expected_exec
+                            )
+                        } else {
+                            format!(
+                                "endturn matching dec at line {} ({} -> \"none\")",
+                                pending.line_no, pending.who
+                            )
+                        };
                         return Err(make_diff(
                             "decision_endturn_mismatch",
                             decisions_checked,
                             ev_idx,
                             line_no,
+                            expected_desc,
                             format!(
-                                "endturn matching dec at line {dec_ln} ({dec_who} -> \"none\")"
+                                "endturn {} after {} -> {:?}",
+                                ej.who,
+                                pending.who,
+                                pending.expected_label()
                             ),
-                            format!("endturn {} after {dec_who} -> {dec_chosen:?}", ej.who),
                             last_state,
                         ));
                     }
@@ -1808,14 +2082,19 @@ pub fn verify_tape(
                 }
             }
             "end" => {
-                if let Some((dec_ln, dec_who, dec_chosen)) = &pending_turn_dec {
+                if let Some(pending) = &pending_turn_dec {
                     return Err(make_diff(
                         "unexecuted_turn_decision",
                         decisions_checked,
                         ev_idx,
                         line_no,
                         "no pending turn decision at end".into(),
-                        format!("decision at line {dec_ln} ({dec_who} -> {dec_chosen:?}) unexecuted"),
+                        format!(
+                            "decision at line {} ({} -> {:?}) unexecuted",
+                            pending.line_no,
+                            pending.who,
+                            pending.expected_label()
+                        ),
                         last_state,
                     ));
                 }
@@ -1906,14 +2185,19 @@ pub fn verify_tape(
                 last_state,
             ));
         }
-        if let Some((dec_ln, dec_who, dec_chosen)) = pending_turn_dec {
+        if let Some(pending) = pending_turn_dec {
             return Err(make_diff(
                 "unexecuted_turn_decision",
                 decisions_checked,
                 events.len(),
-                dec_ln,
+                pending.line_no,
                 "all turn decisions executed".into(),
-                format!("decision at line {dec_ln} ({dec_who} -> {dec_chosen:?}) unexecuted"),
+                format!(
+                    "decision at line {} ({} -> {:?}) unexecuted",
+                    pending.line_no,
+                    pending.who,
+                    pending.expected_label()
+                ),
                 last_state,
             ));
         }
@@ -2040,5 +2324,121 @@ mod tests {
             validate_deferred_phase0_candidate(&f_near, curo2, "spell:blur:L2:>guy", &ledger.deferred_spell_rules)
                 .is_err()
         );
+    }
+
+    fn verify_tape_lines(db: Arc<ContentDb>, name: &str, lines: &[String]) -> Result<ReplayReport, ReplayDiff> {
+        let path = std::env::temp_dir().join(format!(
+            "ember_cli_test_{}_{}.jsonl",
+            std::process::id(),
+            name
+        ));
+        let mut body = lines.join("\n");
+        body.push('\n');
+        fs::write(&path, body).expect("write temp tape");
+        let res = verify_tape(db, &path, None);
+        let _ = fs::remove_file(&path);
+        res
+    }
+
+    fn sample_uniform_tape(chooser_json: &str) -> Vec<String> {
+        vec![
+            format!(
+                r#"{{"t":"hdr","version":19,"n20_commit":"c0025a88679950621baa29a64a66e1aadcd40ea9","units":["guy","skeleton-1"],"placements":[{{"id":"guy","x":3,"y":3}},{{"id":"skeleton-1","x":4,"y":3}}],"seed":1,"max_rounds":1,"prefer":[],"meta":{{}},"stats":{{"guy":{{"name":"Guy","ac":16,"hp":25,"mhp":25,"speed":30,"size":"medium","abil":{{"str":17,"dex":14,"con":12,"int":14,"wis":16,"cha":16}},"init_bonus":4,"npc":false}},"skeleton-1":{{"name":"skeleton-1","ac":14,"hp":13,"mhp":13,"speed":30,"size":"medium","abil":{{"str":10,"dex":16,"con":15,"int":6,"wis":8,"cha":5}},"init_bonus":3,"npc":true}}}},"map":["HHHHHHHH","H......H","H......H","H......H","H......H","H......H","HHHHHHHH"],"chooser":{chooser_json}}}"#
+            ),
+            r#"{"t":"start"}"#.into(),
+            r#"{"t":"draw","who":"guy","tag":"initiative","sides":20,"mode":"a","v":[5,19],"expr":"1d20+4"}"#.into(),
+            r#"{"t":"draw","who":"skeleton-1","tag":"initiative","sides":20,"mode":"n","v":3,"expr":"1d20+3"}"#.into(),
+            r#"{"t":"turn","who":"guy","round":0}"#.into(),
+            r#"{"t":"state","round":0,"cur":"guy","units":[{"id":"guy","pos":[3,3],"hp":25,"mhp":25,"thp":0,"st":[],"fx":[],"bst":[],"res":[1,1,1,30],"ds":[0,0],"str":17,"sw":2,"as":1,"asu":false},{"id":"skeleton-1","pos":[4,3],"hp":13,"mhp":13,"thp":0,"st":[],"fx":[],"bst":[],"res":[0,0,1,0],"ds":[0,0],"str":10}]}"#.into(),
+            r#"{"t":"dec","ctx":"turn","who":"guy","cands":["action_surge","attack:greatsword:>skeleton-1","attack:unarmed_attack:>skeleton-1","dash","disengage","dodge","move:3,3;2,2","move:3,3;2,3","move:3,3;2,4","move:3,3;3,2","move:3,3;3,4","move:3,3;4,2","move:3,3;4,4"],"scores":[0,6.0,2.4,0.1,-1000.0,0.1,-1.65,-1.65,-1.65,-0.2,-0.2,-0.2,-0.2],"order":[1,2,3,5,9,10,11,12,6,7,8],"adj":[6.0,2.4,0.1,0.1,-0.2,-0.2,-0.2,-0.2,-1.65,-1.65,-1.65],"chosen":"attack:greatsword:>skeleton-1","ext":{"legal":["action_surge","attack:greatsword:>skeleton-1","attack:unarmed_attack:>skeleton-1","dash","disengage","dodge","move:3,3;2,2","move:3,3;2,3","move:3,3;2,4","move:3,3;3,2","move:3,3;3,4","move:3,3;4,2","move:3,3;4,4","end_turn"],"raw":[-1.0,6.0,2.4,0.1,-1000.0,0.1,-1.65,-1.65,-1.65,-0.2,-0.2,-0.2,-0.2,0.0],"dropped":[true,false,false,false,true,false,false,false,false,false,false,false,false,false],"native":1,"exec":3}}"#.into(),
+            r#"{"t":"act","who":"guy","a":"dash"}"#.into(),
+            r#"{"t":"state","round":0,"cur":"guy","units":[{"id":"guy","pos":[3,3],"hp":25,"mhp":25,"thp":0,"st":[],"fx":[],"bst":[],"res":[0,1,1,60],"ds":[0,0],"str":17,"sw":2,"as":1,"asu":false},{"id":"skeleton-1","pos":[4,3],"hp":13,"mhp":13,"thp":0,"st":[],"fx":[],"bst":[],"res":[0,0,1,0],"ds":[0,0],"str":10}]}"#.into(),
+            r#"{"t":"dec","ctx":"turn","who":"guy","cands":["action_surge","move:3,3;2,2","move:3,3;2,3","move:3,3;2,4","move:3,3;3,2","move:3,3;3,4","move:3,3;4,2","move:3,3;4,4"],"scores":[0,-1.65,-1.65,-1.65,-0.2,-0.2,-0.2,-0.2],"order":[0,4,5,6,7,1,2,3],"adj":[1.0,-0.2,-0.2,-0.2,-0.2,-1.65,-1.65,-1.65],"chosen":"action_surge","ext":{"legal":["action_surge","move:3,3;2,2","move:3,3;2,3","move:3,3;2,4","move:3,3;3,2","move:3,3;3,4","move:3,3;4,2","move:3,3;4,4","end_turn"],"raw":[1.0,-1.65,-1.65,-1.65,-0.2,-0.2,-0.2,-0.2,0.0],"dropped":[false,false,false,false,false,false,false,false,false],"native":0,"exec":8}}"#.into(),
+            r#"{"t":"endturn","who":"guy"}"#.into(),
+            r#"{"t":"turn","who":"skeleton-1","round":0}"#.into(),
+            r#"{"t":"state","round":0,"cur":"skeleton-1","units":[{"id":"guy","pos":[3,3],"hp":25,"mhp":25,"thp":0,"st":[],"fx":[],"bst":[],"res":[0,1,1,60],"ds":[0,0],"str":17,"sw":2,"as":1,"asu":false},{"id":"skeleton-1","pos":[4,3],"hp":13,"mhp":13,"thp":0,"st":[],"fx":[],"bst":[],"res":[1,1,1,30],"ds":[0,0],"str":10}]}"#.into(),
+            r#"{"t":"dec","ctx":"turn","who":"skeleton-1","cands":["attack:shortbow:>guy","attack:shortsword:>guy","dash","disengage","dodge","move:4,3;3,2","move:4,3;3,4","move:4,3;4,2","move:4,3;4,4","move:4,3;5,2","move:4,3;5,3","move:4,3;5,4"],"scores":[1.625,3.25,-1000.0,-1000.0,0.1,-1000.0,-1000.0,-1000.0,-1000.0,-1000.0,-1000.0,-1000.0],"order":[1,0,4],"adj":[3.25,1.625,0.1],"chosen":"attack:shortsword:>guy"}"#.into(),
+            r#"{"t":"act","who":"skeleton-1","a":"attack:shortsword:>guy"}"#.into(),
+            r#"{"t":"draw","who":"skeleton-1","tag":"attack","sides":20,"mode":"n","v":9,"expr":"1d20+5"}"#.into(),
+            r#"{"t":"draw","who":"skeleton-1","tag":"damage","sides":6,"mode":"n","v":1,"expr":"1d6+3"}"#.into(),
+            r#"{"t":"state","round":0,"cur":"skeleton-1","units":[{"id":"guy","pos":[3,3],"hp":25,"mhp":25,"thp":0,"st":[],"fx":[],"bst":[],"res":[0,1,1,60],"ds":[0,0],"str":17,"sw":2,"as":1,"asu":false},{"id":"skeleton-1","pos":[4,3],"hp":13,"mhp":13,"thp":0,"st":[],"fx":[],"bst":[],"res":[0,1,1,30],"ds":[0,0],"str":10}]}"#.into(),
+            r#"{"t":"dec","ctx":"turn","who":"skeleton-1","cands":["move:4,3;3,2","move:4,3;3,4","move:4,3;4,2","move:4,3;4,4","move:4,3;5,2","move:4,3;5,3","move:4,3;5,4"],"scores":[-1000.0,-1000.0,-1000.0,-1000.0,-1000.0,-1000.0,-1000.0],"order":[],"adj":[],"chosen":"none"}"#.into(),
+            r#"{"t":"endturn","who":"skeleton-1"}"#.into(),
+            r#"{"t":"turn","who":"guy","round":1}"#.into(),
+            r#"{"t":"state","round":1,"cur":"guy","units":[{"id":"guy","pos":[3,3],"hp":25,"mhp":25,"thp":0,"st":[],"fx":[],"bst":[],"res":[1,1,1,30],"ds":[0,0],"str":17,"sw":2,"as":1,"asu":false},{"id":"skeleton-1","pos":[4,3],"hp":13,"mhp":13,"thp":0,"st":[],"fx":[],"bst":[],"res":[0,1,1,30],"ds":[0,0],"str":10}]}"#.into(),
+            r#"{"t":"end","winner":null,"finished":false,"round":1,"turns":2,"decisions":2,"wall_s":0.0}"#.into(),
+        ]
+    }
+
+    #[test]
+    fn external_chooser_accepts_non_native_team_and_unit_and_binds_ext_exec() {
+        let db = test_db();
+
+        // 1. Non-native team chooser (`uniform`) passes full replay.
+        let uniform = sample_uniform_tape(r#"{"heroes":"uniform","monsters":"native","seed":1000003}"#);
+        let rep = verify_tape_lines(db.clone(), "uniform", &uniform)
+            .expect("heroes=uniform,monsters=native should replay cleanly");
+        assert_eq!(rep.actions_checked, 2);
+
+        // 2. Per-unit non-native chooser override on an otherwise native team passes.
+        let per_unit = sample_uniform_tape(
+            r#"{"heroes":"native","monsters":"native","units":{"guy":"eps:0.2"},"seed":1000003}"#,
+        );
+        verify_tape_lines(db.clone(), "per_unit", &per_unit)
+            .expect("per-unit non-native chooser should replay cleanly");
+
+        // 3. Mismatched `ext.exec` (0=action_surge vs act=dash) must fail at line 8.
+        let mut wrong_exec = sample_uniform_tape(r#"{"heroes":"external","monsters":"native","seed":1000003}"#);
+        wrong_exec[6] = wrong_exec[6].replace(r#""exec":3"#, r#""exec":0"#);
+        let diff = verify_tape_lines(db.clone(), "wrong_exec", &wrong_exec)
+            .expect_err("ext.exec mismatch must be rejected");
+        assert_eq!(diff.kind, "decision_action_mismatch");
+        assert_eq!(diff.jsonl_line, 8);
+
+        // 4. Mismatched `ext.exec` before `endturn` (0=action_surge vs endturn) must fail at line 11.
+        let mut wrong_endturn = sample_uniform_tape(r#"{"heroes":"uniform","monsters":"native","seed":1000003}"#);
+        wrong_endturn[9] = wrong_endturn[9].replace(r#""exec":8"#, r#""exec":0"#);
+        let diff = verify_tape_lines(db.clone(), "wrong_endturn", &wrong_endturn)
+            .expect_err("ext.exec != end_turn before endturn must be rejected");
+        assert_eq!(diff.kind, "decision_endturn_mismatch");
+        assert_eq!(diff.jsonl_line, 11);
+
+        // 5. External actor missing `ext` block must fail at line 7.
+        let mut missing_ext = sample_uniform_tape(r#"{"heroes":"uniform","monsters":"native","seed":1000003}"#);
+        let cut = missing_ext[6].find(r#","ext":"#).unwrap();
+        missing_ext[6] = format!("{}}}", &missing_ext[6][..cut]);
+        let diff = verify_tape_lines(db.clone(), "missing_ext", &missing_ext)
+            .expect_err("missing ext block on external actor must be rejected");
+        assert_eq!(diff.kind, "missing_ext_decision");
+        assert_eq!(diff.jsonl_line, 7);
+
+        // 6. Native actor carrying an unexpected `ext` block must fail at line 14.
+        let mut unexpected_ext = sample_uniform_tape(r#"{"heroes":"uniform","monsters":"native","seed":1000003}"#);
+        unexpected_ext[13] = unexpected_ext[13].replacen(
+            r#""chosen":"attack:shortsword:>guy"}"#,
+            r#""chosen":"attack:shortsword:>guy","ext":{"legal":["attack:shortsword:>guy","end_turn"],"native":0,"exec":0}}"#,
+            1,
+        );
+        let diff = verify_tape_lines(db.clone(), "unexpected_ext", &unexpected_ext)
+            .expect_err("unexpected ext block on native actor must be rejected");
+        assert_eq!(diff.kind, "unexpected_ext_decision");
+        assert_eq!(diff.jsonl_line, 14);
+
+        // 7. `ext.native` disagreeing with `dec.chosen` must fail at line 7.
+        let mut bad_native = sample_uniform_tape(r#"{"heroes":"uniform","monsters":"native","seed":1000003}"#);
+        bad_native[6] = bad_native[6].replace(r#""native":1"#, r#""native":3"#);
+        let diff = verify_tape_lines(db.clone(), "bad_native", &bad_native)
+            .expect_err("ext.native mismatch with dec.chosen must be rejected");
+        assert_eq!(diff.kind, "ext_native_mismatch");
+        assert_eq!(diff.jsonl_line, 7);
+
+        // 8. Unknown unit id in `chooser.units` must fail at line 1.
+        let bad_chooser = sample_uniform_tape(
+            r#"{"heroes":"native","monsters":"native","units":{"ghost":"uniform"},"seed":1}"#,
+        );
+        let diff = verify_tape_lines(db, "bad_chooser", &bad_chooser)
+            .expect_err("unknown chooser unit must be rejected");
+        assert_eq!(diff.kind, "hdr_chooser_unknown_unit");
+        assert_eq!(diff.jsonl_line, 1);
     }
 }
