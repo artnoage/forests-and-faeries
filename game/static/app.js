@@ -299,7 +299,7 @@
     { id: 'Hard', label: 'Hard', tagline: 'Deadly encounters', desc: 'Multi-threat battles built for a full party and sharp play.', fallbackLead: 'ghast' },
     { id: 'Unbeatable', label: 'Unbeatable', tagline: 'Unconquered by our agents', desc: 'No language-model player won these levels, and both game AIs won fewer than half of their 500 games.', fallbackLead: 'mummy' },
   ];
-  const LEGACY_ENCOUNTERS = new Set(['crypt', 'vault']);
+  const LEGACY_PRESETS = new Set(['crypt/bone_patrol', 'crypt/ghoul_pack', 'crypt/haunting', 'crypt/wights_retinue', 'crypt/two_wights', 'crypt/whole_crypt', 'crypt/mummies_tomb', 'vault/goblin_raiders', 'vault/boss_guard', 'vault/warband', 'vault/three_bosses']);
 
   let startScreenOpen = true;
   let startStep = 'mode';        // 'mode' | 'difficulty' | 'levels'
@@ -1122,8 +1122,7 @@
     const select = $('setup-preset');
     const sig = `${level?.group.id}:${presets.map(p => p.id).join()}`;
     if (select.dataset.signature !== sig) {
-      const legacy = isLegacyGroup(level?.group);
-      select.innerHTML = presets.map(p => `<option value="${escape(p.id)}">${escape(p.name)} · ${escape(legacy ? 'Classic · ungraded' : p.difficulty)}</option>`).join('');
+      select.innerHTML = presets.map(p => `<option value="${escape(p.id)}">${escape(p.name)} · ${escape(isLegacyPreset(level?.group, p) ? 'Classic · ungraded' : p.difficulty)}</option>`).join('');
       select.dataset.signature = sig;
     }
     select.value = state.level?.id || '';
@@ -2253,8 +2252,8 @@
     const kinds = (level.roster || []).map(r => r.content);
     return LEAD_ORDER.find(k => kinds.includes(k)) || kinds[0] || 'skeleton';
   }
-  function isLegacyGroup(group) {
-    return LEGACY_ENCOUNTERS.has(group?.id) || Boolean(group?.private);  // private fights are never graded
+  function isLegacyPreset(group, preset) {
+    return Boolean(group?.private) || LEGACY_PRESETS.has(`${group?.id}/${preset?.id}`);  // private & original 11 fights stay ungraded
   }
   function normalizeDifficulty(value) {
     const low = String(value || '').toLowerCase();
@@ -2263,7 +2262,7 @@
     return match ? match.id : 'Medium';
   }
   function bucketFor(group, preset) {
-    return isLegacyGroup(group) ? 'Classic' : normalizeDifficulty(preset?.difficulty);
+    return isLegacyPreset(group, preset) ? 'Classic' : normalizeDifficulty(preset?.difficulty);
   }
   function levelsForDifficulty(diff) {
     const target = normalizeDifficulty(diff);
@@ -2392,7 +2391,7 @@
           const mapLabel = lv.map?.name ? `${lv.map.name} · ${lv.map.width}×${lv.map.height}` : `${lv.map.width}×${lv.map.height}`;
           const mixedParty = heroLevelsOf(lv).length > 1;
           const bucket = bucketFor(group, lv);
-          const tierLabel = isLegacyGroup(group) ? 'Classic' : lv.difficulty;
+          const tierLabel = isLegacyPreset(group, lv) ? 'Classic' : lv.difficulty;
           return `<button type="button" class="level-card ${on ? 'is-selected' : ''}" data-encounter="${escape(group.id)}" data-preset="${escape(lv.id)}" data-difficulty="${escape(bucket)}" data-hero-tier="${escape(sec.key)}" role="option" aria-selected="${on}">
             <div class="level-card-top">
               <div class="level-card-pills">
@@ -2732,8 +2731,7 @@
   // --- How to play: the encounters part comes from the catalogue -----------------------
   function renderHelpEncounters() {
     $('help-encounters').innerHTML = catalogue.map(group => {
-      const legacy = isLegacyGroup(group);
-      const tag = p => legacy ? 'classic, ungraded' : p.difficulty.toLowerCase();
+      const tag = p => isLegacyPreset(group, p) ? 'classic, ungraded' : p.difficulty.toLowerCase();
       return `<li><b>${escape(group.name)}.</b> ${escape(group.blurb)} Levels: ${group.presets.map(p => `${escape(p.name)} (${escape(tag(p))})`).join(', ')}.</li>`;
     }).join('');
   }

@@ -388,23 +388,30 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
   assert.match(shield.text, /start of your next turn/i);
   assert.match(shield.text, /Magic Missile/i);
 
-  // Promoted encounters keep the 4 ranked cards at 12 / 12 / 14 / 3 (+2 Owlbear glade presets; Crypt & Vault separated into Classic with +2 Ogre vault presets)
+  // Practice classification is per-preset: the 11 original Crypt & Vault fights stay Classic;
+  // both graded Vault Ogre fights and both Whispering Glade Owlbear fights appear under their measured grades (12 / 13 / 15 / 3 + 11 Classic).
   const pubEncounters = encounterFiles('encounters');
-  const legacyIds = new Set(['crypt', 'vault']);
+  const legacyPresets = new Set([
+    'crypt/bone_patrol', 'crypt/ghoul_pack', 'crypt/haunting', 'crypt/wights_retinue',
+    'crypt/two_wights', 'crypt/whole_crypt', 'crypt/mummies_tomb',
+    'vault/goblin_raiders', 'vault/boss_guard', 'vault/warband', 'vault/three_bosses',
+  ]);
   const rankedCounts = { Easy: 0, Medium: 0, Hard: 0, Unbeatable: 0 };
   let classicCount = 0;
   for (const e of pubEncounters) {
     for (const p of e.presets.filter(p => !p.story)) {   // a story's own chapter levels are not in Practice
-      if (legacyIds.has(e.id)) classicCount++;
+      if (legacyPresets.has(`${e.id}/${p.id}`)) classicCount++;
       else rankedCounts[p.difficulty] = (rankedCounts[p.difficulty] || 0) + 1;
       assert.doesNotMatch(p.name, /\(\+[12] monsters?\)/i, `${e.id}/${p.id} has no dev suffix`);
     }
   }
-  assert.deepEqual(rankedCounts, { Easy: 12, Medium: 12, Hard: 14, Unbeatable: 3 });
-  assert.equal(classicCount, 13);
-  assert.match(app, /LEGACY_ENCOUNTERS = new Set\(\['crypt', 'vault'\]\)/, 'app.js separates legacy Crypt & Vault into Classic');
-  assert.match(app, /legacy \? 'Classic · ungraded' : p\.difficulty/, 'deployment preset dropdown marks legacy encounters as Classic · ungraded');
-  const unbeatable = pubEncounters.filter(e => !legacyIds.has(e.id)).flatMap(e => e.presets.filter(p => p.difficulty === 'Unbeatable').map(p => `${e.id}/${p.id}`)).sort();
+  assert.deepEqual(rankedCounts, { Easy: 12, Medium: 13, Hard: 15, Unbeatable: 3 });
+  assert.equal(classicCount, 11);
+  assert.match(app, /const LEGACY_PRESETS = new Set\(/, 'app.js classifies the 11 legacy Classic presets individually');
+  assert.match(app, /isLegacyPreset\(level\?\.group, p\) \? 'Classic · ungraded' : p\.difficulty/, 'setup preset dropdown classifies per preset');
+  assert.match(app, /const tierLabel = isLegacyPreset\(group, lv\) \? 'Classic' : lv\.difficulty;/, 'chooser level cards classify per preset');
+  assert.match(app, /const tag = p => isLegacyPreset\(group, p\) \? 'classic, ungraded' : p\.difficulty\.toLowerCase\(\);/, 'How to Play classifies per preset');
+  const unbeatable = pubEncounters.flatMap(e => e.presets.filter(p => !p.story && !legacyPresets.has(`${e.id}/${p.id}`) && p.difficulty === 'Unbeatable').map(p => `${e.id}/${p.id}`)).sort();
   assert.deepEqual(unbeatable, [
     'bell_court/l1_the_bell_steps_plus1_v3',
     'reed_lock/l1_the_towpath_v3',
@@ -596,4 +603,50 @@ test('the character sheet and the ability info are wired into the page', () => {
   assert.match(app, /\$\('hero-roster'\)\.innerHTML = heroList\.map\(u => slot\(u\)\)/, 'every hero card has a Sheet button');
   assert.match(app, /poolsSeen\.set\(data\.turn_id/, 'the sheet keeps the last pools seen for each figure');
   assert.match(css, /@media \(max-width: 900px\), \(hover: none\)/, 'touch screens get the ⓘ About toggle');
+});
+
+test('Practice preset classification grades both Vault Ogre fights while keeping the 11 legacy and private fights Classic', () => {
+  const { isLegacyPreset, bucketFor } = appHelpers('DIFFICULTIES', 'LEGACY_PRESETS', 'isLegacyPreset', 'normalizeDifficulty', 'bucketFor');
+  const pubEncounters = encounterFiles('encounters');
+  const privEncounters = encounterFiles('encounters/private').map(e => ({ ...e, private: true }));
+
+  const counts = { Easy: 0, Medium: 0, Hard: 0, Unbeatable: 0, Classic: 0 };
+  for (const e of pubEncounters) {
+    for (const p of e.presets.filter(p => !p.story)) {
+      const b = bucketFor(e, p);
+      counts[b] = (counts[b] || 0) + 1;
+    }
+  }
+  assert.deepEqual(counts, { Easy: 12, Medium: 13, Hard: 15, Unbeatable: 3, Classic: 11 });
+
+  for (const e of privEncounters) {
+    for (const p of e.presets) {
+      assert.equal(isLegacyPreset(e, p), true, `private ${e.id}/${p.id} stays legacy`);
+      assert.equal(bucketFor(e, p), 'Classic', `private ${e.id}/${p.id} stays Classic`);
+    }
+  }
+
+  const vault = pubEncounters.find(e => e.id === 'vault');
+  assert.ok(vault, 'vault encounter exists');
+  const byId = id => vault.presets.find(p => p.id === id);
+
+  for (const [id, expectedTier, expectedHelp] of [
+    ['ogre_raiders', 'Medium', 'medium'],
+    ['ogre_warband', 'Hard', 'hard'],
+  ]) {
+    const p = byId(id);
+    assert.ok(p, `vault/${id} exists`);
+    assert.equal(isLegacyPreset(vault, p), false, `vault/${id} is graded, not legacy`);
+    assert.equal(bucketFor(vault, p), expectedTier, `vault/${id} chooser bucket`);
+    assert.equal(isLegacyPreset(vault, p) ? 'Classic' : p.difficulty, expectedTier, `vault/${id} card tier label`);
+    assert.equal(isLegacyPreset(vault, p) ? 'Classic · ungraded' : p.difficulty, expectedTier, `vault/${id} setup dropdown label`);
+    assert.equal(isLegacyPreset(vault, p) ? 'classic, ungraded' : p.difficulty.toLowerCase(), expectedHelp, `vault/${id} How to Play tag`);
+  }
+
+  for (const id of ['goblin_raiders', 'boss_guard', 'warband', 'three_bosses']) {
+    const p = byId(id);
+    assert.ok(p, `vault/${id} exists`);
+    assert.equal(isLegacyPreset(vault, p), true, `original vault/${id} stays Classic`);
+    assert.equal(bucketFor(vault, p), 'Classic', `original vault/${id} stays Classic`);
+  }
 });
