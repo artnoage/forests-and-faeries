@@ -326,6 +326,9 @@ impl Fight {
     /// Corpse tokens in an area (coverage count).
     fn corpses_in_squares(&self, squares: &[Pos], exclude: usize) -> u64 {
         if self.rule_version >= 8 {
+            if !self.any_large {
+                return self.units.iter().enumerate().filter(|(i, unit)| *i != exclude && unit.dead() && squares.contains(&unit.pos)).count() as u64;
+            }
             return self
                 .units
                 .iter()

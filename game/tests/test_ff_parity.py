@@ -525,11 +525,14 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
     assert hdr17['n20_commit'] == 'ef91112bf07b933734bff12a94d7e724ca8f3fee'
 
     # Explicit rule 18 and rule 19 preserve the c0025a88 pin; rule 20 stamps the current Natural20 reference pin.
-    for rv, expected_commit in (
-        (18, 'c0025a887a77b54a1f62152cc971497461d76e9a'),
-        (19, 'c0025a887a77b54a1f62152cc971497461d76e9a'),
-        (20, ember_rs.NATURAL20_COMMIT),
-    ):
+    rule_pins = {
+        17: 'ef91112bf07b933734bff12a94d7e724ca8f3fee',
+        18: 'c0025a88679950621baa29a64a66e1aadcd40ea9',
+        19: 'c0025a88679950621baa29a64a66e1aadcd40ea9',
+        20: ember_rs.NATURAL20_COMMIT,
+    }
+    for rv in (18, 19, 20):
+        expected_commit = rule_pins[rv]
         env_v = ember_rs.BatchEnv(n_slots=1, catalog=[row], threads=1, rule_version=rv)
         assert env_v.rule_version == rv
         env_v.reset([0], spec, ctrl)
@@ -539,11 +542,40 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
         assert hdr_v['version'] == rv
         assert hdr_v['n20_commit'] == expected_commit
 
+    # Every rule-version pin must match real provenance / reference history (never a typo or made-up hash).
+    repo_root = Path(__file__).resolve().parents[2]
+    ref_pin = (repo_root / 'engine' / 'reference' / 'NATURAL20_COMMIT').read_text(encoding='utf-8').strip()
+    assert rule_pins[20] == ref_pin
+    srd_commits = {
+        json.loads(p.read_text(encoding='utf-8')).get('provenance', {}).get('natural20_commit')
+        for p in (repo_root / 'engine' / 'content' / 'srd').glob('*.json')
+    }
+    assert rule_pins[18] in srd_commits, f'rule 18/19 pin {rule_pins[18]} not found in engine/content/srd provenance'
+    assert rule_pins[20] in srd_commits, f'rule 20 pin {rule_pins[20]} not found in engine/content/srd provenance'
+    if (repo_root / '.git').exists():
+        import subprocess
+        hist = subprocess.check_output(
+            ['git', '-C', str(repo_root), 'log', '--format=', '-p', 'engine/reference/NATURAL20_COMMIT'],
+            text=True,
+        )
+        for rv, sha in rule_pins.items():
+            assert len(sha) == 40 and all(c in '0123456789abcdef' for c in sha), f'rule {rv} pin malformed: {sha}'
+            if rv < 20:
+                assert sha in hist, f'rule {rv} pin {sha} not found in engine/reference/NATURAL20_COMMIT git history'
+    priv_repo = repo_root.parent / 'forests-and-faeries-private'
+    if (priv_repo / '.git').exists():
+        import subprocess
+        for rv, sha in rule_pins.items():
+            rc = subprocess.run(
+                ['git', '-C', str(priv_repo), 'cat-file', '-e', f'{sha}^{{commit}}'],
+                capture_output=True,
+            ).returncode
+            assert rc == 0, f'rule {rv} pin {sha} does not resolve in reference repository'
+
     # Rule-17 content/srd directory containing the 09bec740 curogana.json (burning_hands)
     # loads cleanly for rule_version=17 and is rejected for rule_version=18.
     srd_dir = tmp_path / 'content' / 'srd'
     srd_dir.mkdir(parents=True)
-    repo_root = Path(__file__).resolve().parents[2]
     cur_curo = json.loads((repo_root / 'engine' / 'content' / 'srd' / 'curogana.json').read_text(encoding='utf-8'))
     cur_curo['provenance']['natural20_commit'] = '09bec740a7c0da50ab6618a233fd635eb1169334'
     cur_curo['spellcasting']['spells'] = [

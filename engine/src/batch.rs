@@ -57,7 +57,7 @@ pub const NATURAL20_COMMIT: &str = include_str!("../reference/NATURAL20_COMMIT")
 pub const NATURAL20_COMMIT_RULE_17: &str = "ef91112bf07b933734bff12a94d7e724ca8f3fee";
 
 /// The natural20 commit for rule-18 and rule-19 (Vesper + Dodge-ends-on-grapple) tapes.
-pub const NATURAL20_COMMIT_RULE_18_19: &str = "c0025a887a77b54a1f62152cc971497461d76e9a";
+pub const NATURAL20_COMMIT_RULE_18_19: &str = "c0025a88679950621baa29a64a66e1aadcd40ea9";
 
 /// Return the Natural20 reference commit corresponding to `rule_version`.
 pub fn natural20_commit_for_rule_version(version: i32) -> &'static str {
@@ -230,6 +230,114 @@ pub(crate) fn movement_paths(f: &Fight, a: usize, masked: u32, crossings_only: b
 }
 
 pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, crossings_only: bool, first_rows: Option<&[Act]>, budget: i32) -> Vec<Vec<Pos>> {
+    if !f.any_large {
+        movement_paths_1x1(f, a, masked, crossings_only, first_rows, budget)
+    } else {
+        movement_paths_multisquare(f, a, masked, crossings_only, first_rows, budget)
+    }
+}
+
+fn sort_move_seeds(seeds: &mut [&Vec<Pos>], start: Pos) {
+    seeds.sort_by_key(|p| DIRECTIONS.iter().position(|&(dx, dy)| (start.0 + dx, start.1 + dy) == p[1]));
+}
+
+/// Zero-overhead 1x1 destination pathfinder for fights without Large/Huge units.
+fn movement_paths_1x1(f: &Fight, a: usize, masked: u32, crossings_only: bool, first_rows: Option<&[Act]>, budget: i32) -> Vec<Vec<Pos>> {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+    let g = &f.grid;
+    let u = &f.units[a];
+    let start = u.pos;
+    if budget < if crossings_only { 2 } else { 1 } {
+        return Vec::new();
+    }
+    if crossings_only && !DIRECTIONS.iter().any(|&(dx, dy)| f.token_at((start.0 + dx, start.1 + dy)).is_some()) {
+        return Vec::new();
+    }
+    let hidden = |p| masked != 0 && f.token_at(p).is_some_and(|o| masked & (1 << o) != 0);
+    let free = |p| hidden(p) || f.placeable(a, p);
+    let mut best = vec![i32::MAX; g.cells()];
+    let mut parent = vec![start; g.cells()];
+    let mut frontier = BinaryHeap::new();
+    let mut order = 0;
+    let mut result = Vec::new();
+    best[g.index(start.0, start.1)] = 0;
+    let mut initial = vec![None; g.cells()];
+    if let Some(rows) = first_rows.filter(|_| masked == 0 || f.rule_version < 7) {
+        let mut seeds: Vec<_> = rows.iter().filter_map(|act| match act {
+            Act::Move(p) if p.len() > 1 && p[0] == start => Some(p),
+            _ => None,
+        }).collect();
+        sort_move_seeds(&mut seeds, start);
+        for path in seeds {
+            let q = *path.last().unwrap();
+            let idx = g.index(q.0, q.1);
+            let cost = path[1..].iter().map(|&p| f.step_cost(a, p)).sum();
+            if cost <= budget && cost < best[idx] {
+                best[idx] = cost;
+                initial[idx] = Some(path.as_slice());
+                order += 1;
+                frontier.push(Reverse((cost, order, q)));
+            }
+        }
+    } else {
+        frontier.push(Reverse((0, order, start)));
+    }
+    while let Some(Reverse((cost, _, p))) = frontier.pop() {
+        if cost != best[g.index(p.0, p.1)] {
+            continue;
+        }
+        if p != start && free(p) {
+            let mut path = vec![p];
+            let mut q = p;
+            while q != start {
+                let idx = g.index(q.0, q.1);
+                if let Some(seed) = initial[idx] {
+                    path.extend(seed[..seed.len() - 1].iter().rev().copied());
+                    break;
+                }
+                q = parent[idx];
+                path.push(q);
+            }
+            if !crossings_only || path.len() > 2 {
+                path.reverse();
+                result.push(path);
+            }
+            if crossings_only {
+                continue;
+            }
+        }
+        if cost >= budget {
+            continue;
+        }
+        for (dx, dy) in DIRECTIONS {
+            let q = (p.0 + dx, p.1 + dy);
+            if !g.in_bounds(q.0, q.1) || (!hidden(q) && !f.passable(a, q)) {
+                continue;
+            }
+            if f.rule_version >= 5 {
+                if !f.step_clears_corner(a, p, q) { continue; }
+            } else if u.t.pc && dx != 0 && dy != 0 && !(free((p.0 + dx, p.1)) && free((p.0, p.1 + dy))) {
+                continue;
+            }
+            let next = cost + if hidden(q) { 1 + u.prone() as i32 } else { f.step_cost(a, q) };
+            let idx = g.index(q.0, q.1);
+            if next > budget || next >= best[idx] || f.step_toward_fear(a, p, q) {
+                continue;
+            }
+            best[idx] = next;
+            parent[idx] = p;
+            initial[idx] = None;
+            order += 1;
+            frontier.push(Reverse((next, order, q)));
+        }
+    }
+    result
+}
+
+#[cold]
+#[inline(never)]
+fn movement_paths_multisquare(f: &Fight, a: usize, masked: u32, crossings_only: bool, first_rows: Option<&[Act]>, budget: i32) -> Vec<Vec<Pos>> {
     use std::cmp::Reverse;
     use std::collections::BinaryHeap;
     let g = &f.grid;
@@ -274,15 +382,13 @@ pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, cross
     let mut order = 0;
     let mut result = Vec::new();
     best[g.index(start.0, start.1)] = 0;
-    // Seed the walk with actual native rows and whole legal crossings.
-    // A hidden token can mask a later square, never the first action.
     let mut initial = vec![None; g.cells()];
     if let Some(rows) = first_rows.filter(|_| masked == 0 || f.rule_version < 7) {
         let mut seeds: Vec<_> = rows.iter().filter_map(|act| match act {
             Act::Move(p) if p.len() > 1 && p[0] == start => Some(p),
             _ => None,
         }).collect();
-        seeds.sort_by_key(|p| DIRECTIONS.iter().position(|&(dx, dy)| (start.0 + dx, start.1 + dy) == p[1]));
+        sort_move_seeds(&mut seeds, start);
         for path in seeds {
             let q = *path.last().unwrap();
             let idx = g.index(q.0, q.1);
@@ -805,4 +911,59 @@ fn resolve_units(entry: &Entry, units: &[UnitRef]) -> Result<Vec<usize>, String>
         }
     }
     Ok(external_units)
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn natural20_rule_version_pins_match_reference_and_provenance() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let ref_pin = std::fs::read_to_string(root.join("reference").join("NATURAL20_COMMIT"))
+            .expect("engine/reference/NATURAL20_COMMIT")
+            .trim()
+            .to_string();
+        let pins = [
+            (17, natural20_commit_for_rule_version(17)),
+            (18, natural20_commit_for_rule_version(18)),
+            (19, natural20_commit_for_rule_version(19)),
+            (20, natural20_commit_for_rule_version(20)),
+        ];
+        for (rv, sha) in pins {
+            assert_eq!(sha.len(), 40, "rule {rv} pin must be 40 hex chars: {sha}");
+            assert!(sha.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')), "rule {rv} pin must be hex: {sha}");
+        }
+        assert_eq!(natural20_commit_for_rule_version(17), NATURAL20_COMMIT_RULE_17);
+        assert_eq!(natural20_commit_for_rule_version(18), NATURAL20_COMMIT_RULE_18_19);
+        assert_eq!(natural20_commit_for_rule_version(19), NATURAL20_COMMIT_RULE_18_19);
+        assert_eq!(natural20_commit_for_rule_version(20), ref_pin);
+
+        // Rule 18/19 and rule 20 pins must match actual SRD provenance exported from Natural20.
+        let srd_dir = root.join("content").join("srd");
+        let read_prov = |file: &str| -> String {
+            let doc: Value = serde_json::from_str(&std::fs::read_to_string(srd_dir.join(file)).unwrap()).unwrap();
+            doc["provenance"]["natural20_commit"].as_str().unwrap().to_string()
+        };
+        assert_eq!(NATURAL20_COMMIT_RULE_18_19, read_prov("vesper.json"));
+        assert_eq!(NATURAL20_COMMIT_RULE_18_19, read_prov("curogana.json"));
+        assert_eq!(ref_pin, read_prov("ogre.json"));
+        assert_eq!(ref_pin, read_prov("owlbear.json"));
+
+        // If git metadata is available, every historical pin (17, 18/19) must exist in
+        // engine/reference/NATURAL20_COMMIT's commit history (preventing typos or invented hashes).
+        let repo_root = root.parent().unwrap();
+        if repo_root.join(".git").exists() {
+            let out = std::process::Command::new("git")
+                .args(["-C", repo_root.to_str().unwrap(), "log", "--format=", "-p", "engine/reference/NATURAL20_COMMIT"])
+                .output()
+                .expect("git log on NATURAL20_COMMIT");
+            assert!(out.status.success());
+            let hist = String::from_utf8_lossy(&out.stdout);
+            for (rv, sha) in [(17, NATURAL20_COMMIT_RULE_17), (18, NATURAL20_COMMIT_RULE_18_19), (19, NATURAL20_COMMIT_RULE_18_19)] {
+                assert!(hist.contains(sha), "rule {rv} pin {sha} missing from NATURAL20_COMMIT git history");
+            }
+        }
+    }
 }

@@ -1132,21 +1132,14 @@ fn encode_rows(
             if let Some(a) = actor {
                 // the trail of this turn (start square, every step, the square now)
                 let u = &f.units[a];
-                let sz = u.t.token_size;
-                if sz == 1 {
+                if !f.any_large {
                     for &p in u.trail.iter().chain(std::iter::once(&u.pos)) {
                         if g.in_bounds(p.0, p.1) {
                             out.map[ch::TRAIL * CELLS + cx.canvas(p)] = 1;
                         }
                     }
                 } else {
-                    for &p in u.trail.iter().chain(std::iter::once(&u.pos)) {
-                        for cell in UnitCells::new(p, sz) {
-                            if g.in_bounds(cell.0, cell.1) {
-                                out.map[ch::TRAIL * CELLS + cx.canvas(cell)] = 1;
-                            }
-                        }
-                    }
+                    paint_multisquare_trail(&cx, a, out.map);
                 }
             }
         }
@@ -1216,8 +1209,167 @@ fn encode_rows(
     })
 }
 
+#[cold]
+#[inline(never)]
+fn paint_multisquare_trail(cx: &Ctx, a: usize, map: &mut [u8]) {
+    let f = cx.f;
+    let g = &f.grid;
+    let u = &f.units[a];
+    let sz = u.t.token_size;
+    for &p in u.trail.iter().chain(std::iter::once(&u.pos)) {
+        for cell in UnitCells::new(p, sz) {
+            if g.in_bounds(cell.0, cell.1) {
+                map[ch::TRAIL * CELLS + cx.canvas(cell)] = 1;
+            }
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn add_multisquare_exposure(f: &Fight, i: usize, sc: &mut Scratch) {
+    let g = &f.grid;
+    if f.units[i].t.token_size == 1 {
+        if let Some(row) = g.los_from(f.units[i].pos) {
+            for (wi, &word) in row.words().iter().enumerate() {
+                let mut bits = word;
+                while bits != 0 {
+                    let idx = wi * 64 + bits.trailing_zeros() as usize;
+                    sc.exposure[idx] = sc.exposure[idx].saturating_add(1);
+                    bits &= bits - 1;
+                }
+            }
+        }
+        return;
+    }
+    let mut seen = [0u64; CELLS / 64];
+    let mut nwords = 0usize;
+    for cell in f.unit_cells(i) {
+        if let Some(row) = g.los_from(cell) {
+            let words = row.words();
+            nwords = nwords.max(words.len());
+            for (wi, &word) in words.iter().enumerate() {
+                seen[wi] |= word;
+            }
+        }
+    }
+    for (wi, &word) in seen[..nwords].iter().enumerate() {
+        let mut bits = word;
+        while bits != 0 {
+            let idx = wi * 64 + bits.trailing_zeros() as usize;
+            sc.exposure[idx] = sc.exposure[idx].saturating_add(1);
+            bits &= bits - 1;
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn add_multisquare_threat(f: &Fight, unit: &crate::engine::Unit, reach: i32, sc: &mut Scratch) {
+    let g = &f.grid;
+    let r = (2 * reach + 5) / 10;
+    let (x0, y0) = unit.pos;
+    let sz = i32::from(unit.t.token_size);
+    if sz == 1 {
+        for y in (y0 - r).max(0)..=(y0 + r).min(g.h - 1) {
+            for x in (x0 - r).max(0)..=(x0 + r).min(g.w - 1) {
+                if f.within_reach(unit.pos, (x, y), reach) {
+                    let idx = g.index(x, y);
+                    sc.threat[idx] = sc.threat[idx].saturating_add(1);
+                }
+            }
+        }
+        return;
+    }
+    for y in (y0 - r).max(0)..=(y0 + sz - 1 + r).min(g.h - 1) {
+        for x in (x0 - r).max(0)..=(x0 + sz - 1 + r).min(g.w - 1) {
+            if f.within_reach_footprints(unit.pos, unit.t.token_size, (x, y), 1, reach) {
+                let idx = g.index(x, y);
+                sc.threat[idx] = sc.threat[idx].saturating_add(1);
+            }
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn prepare_multisquare_walkable(f: &Fight, a: usize, h: usize, masked: u32, walkable: &mut [u64; 34], free: &mut [u64; 34]) {
+    let g = &f.grid;
+    for (i, u) in f.units.iter().enumerate() {
+        if i != a && masked & (1 << i) == 0 && (f.rule_version() < 8 || !u.dead()) {
+            if u.t.token_size == 1 {
+                free[u.pos.1 as usize + 1] &= !(1u64 << u.pos.0);
+            } else {
+                for cell in f.unit_cells(i) {
+                    if g.in_bounds(cell.0, cell.1) {
+                        free[cell.1 as usize + 1] &= !(1u64 << cell.0);
+                    }
+                }
+            }
+        }
+    }
+    let a_sz = f.units[a].t.token_size;
+    if a_sz > 1 {
+        for _ in 1..a_sz {
+            for y in 1..=h {
+                walkable[y] = walkable[y] & (walkable[y] >> 1) & walkable[y + 1] & (walkable[y + 1] >> 1);
+                free[y] = free[y] & (free[y] >> 1) & free[y + 1] & (free[y + 1] >> 1);
+            }
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn prepare_multisquare_mask_steps(f: &Fight, a: usize, masked: u32, sc: &mut Scratch) {
+    let g = &f.grid;
+    for (i, unit) in f.units.iter().enumerate() {
+        if i != a && !unit.dead() && masked & (1 << i) == 0 {
+            for cell in f.unit_cells(i) {
+                if g.in_bounds(cell.0, cell.1) {
+                    sc.steps[g.index(cell.0, cell.1)] = INF;
+                }
+            }
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn prepare_multisquare_enemy_steps(
+    f: &Fight,
+    view: u8,
+    actor: Option<usize>,
+    far: bool,
+    masked: u32,
+    w: usize,
+    h: usize,
+    free: &[u64; 34],
+    sc: &mut Scratch,
+) {
+    let g = &f.grid;
+    let mut start = [0u64; 34];
+    for (i, unit) in f.units.iter().enumerate() {
+        if unit.team != view && unit.conscious() && masked & (1 << i) == 0 {
+            if unit.t.token_size == 1 {
+                start[unit.pos.1 as usize + 1] |= 1u64 << unit.pos.0;
+            } else {
+                for cell in f.unit_cells(i) {
+                    if g.in_bounds(cell.0, cell.1) {
+                        start[cell.1 as usize + 1] |= 1u64 << cell.0;
+                    }
+                }
+            }
+        }
+    }
+    let a_multi = actor.is_some_and(|a| f.units[a].t.token_size > 1);
+    let stop = if far || a_multi { None } else { actor.map(|a| f.units[a].pos) };
+    bfs_rows(w, h, free, free, &start, Rule::AStar, stop, &mut sc.enemy_steps);
+}
+
 /// The per-call maps: initiative positions, DPR estimates, threat and
 /// exposure counts, the actor's BFS and (with move rows) the enemy BFS.
+#[inline(never)]
 #[allow(clippy::too_many_arguments)]
 fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, masked: u32, version: Version, sc: &mut Scratch) {
     let g = &f.grid;
@@ -1234,12 +1386,13 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
     }
     sc.threat[..cells].fill(0);
     sc.exposure[..cells].fill(0);
+    let any_large = f.any_large;
     for (i, unit) in f.units.iter().enumerate() {
         if unit.team == view || !unit.conscious() || masked & (1 << i) != 0 {
             continue;
         }
         // exposure: the enemy's line-of-sight row (union across occupied cells for Large/Huge)
-        if unit.t.token_size == 1 {
+        if !any_large {
             if let Some(row) = g.los_from(unit.pos) {
                 for (wi, &word) in row.words().iter().enumerate() {
                     let mut bits = word;
@@ -1251,39 +1404,24 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
                 }
             }
         } else {
-            let mut seen = [0u64; CELLS / 64];
-            let mut nwords = 0usize;
-            for cell in f.unit_cells(i) {
-                if let Some(row) = g.los_from(cell) {
-                    let words = row.words();
-                    nwords = nwords.max(words.len());
-                    for (wi, &word) in words.iter().enumerate() {
-                        seen[wi] |= word;
-                    }
-                }
-            }
-            for (wi, &word) in seen[..nwords].iter().enumerate() {
-                let mut bits = word;
-                while bits != 0 {
-                    let idx = wi * 64 + bits.trailing_zeros() as usize;
-                    sc.exposure[idx] = sc.exposure[idx].saturating_add(1);
-                    bits &= bits - 1;
-                }
-            }
+            add_multisquare_exposure(f, i, sc);
         }
         // melee threat: reach squares around its occupied footprint, while it can react
         if let Some(reach) = unit.t.melee_ft {
             if reach > 0 && unit.has_reaction() {
-                let r = (2 * reach + 5) / 10;
-                let (x0, y0) = unit.pos;
-                let sz = i32::from(unit.t.token_size);
-                for y in (y0 - r).max(0)..=(y0 + sz - 1 + r).min(g.h - 1) {
-                    for x in (x0 - r).max(0)..=(x0 + sz - 1 + r).min(g.w - 1) {
-                        if f.within_reach_footprints(unit.pos, unit.t.token_size, (x, y), 1, reach) {
-                            let idx = g.index(x, y);
-                            sc.threat[idx] = sc.threat[idx].saturating_add(1);
+                if !any_large {
+                    let r = (2 * reach + 5) / 10;
+                    let (x0, y0) = unit.pos;
+                    for y in (y0 - r).max(0)..=(y0 + r).min(g.h - 1) {
+                        for x in (x0 - r).max(0)..=(x0 + r).min(g.w - 1) {
+                            if f.within_reach(unit.pos, (x, y), reach) {
+                                let idx = g.index(x, y);
+                                sc.threat[idx] = sc.threat[idx].saturating_add(1);
+                            }
                         }
                     }
+                } else {
+                    add_multisquare_threat(f, unit, reach, sc);
                 }
             }
         }
@@ -1298,27 +1436,14 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
         let mut walkable = [0u64; 34];
         walkable[1..=h].copy_from_slice(floor);
         let mut free = walkable;
-        for (i, u) in f.units.iter().enumerate() {
-            if i != a && masked & (1 << i) == 0 && (f.rule_version() < 8 || !u.dead()) {
-                if u.t.token_size == 1 {
+        if !any_large {
+            for (i, u) in f.units.iter().enumerate() {
+                if i != a && masked & (1 << i) == 0 && (f.rule_version() < 8 || !u.dead()) {
                     free[u.pos.1 as usize + 1] &= !(1u64 << u.pos.0);
-                } else {
-                    for cell in f.unit_cells(i) {
-                        if g.in_bounds(cell.0, cell.1) {
-                            free[cell.1 as usize + 1] &= !(1u64 << cell.0);
-                        }
-                    }
                 }
             }
-        }
-        let a_sz = f.units[a].t.token_size;
-        if a_sz > 1 {
-            for _ in 1..a_sz {
-                for y in 1..=h {
-                    walkable[y] = walkable[y] & (walkable[y] >> 1) & walkable[y + 1] & (walkable[y + 1] >> 1);
-                    free[y] = free[y] & (free[y] >> 1) & free[y + 1] & (free[y + 1] >> 1);
-                }
-            }
+        } else {
+            prepare_multisquare_walkable(f, a, h, masked, &mut walkable, &mut free);
         }
         let rule = if version.is_v4_plus() {
             Rule::ClearWallCorner
@@ -1347,14 +1472,14 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
                     }
                 }
             }
-            for (i, unit) in f.units.iter().enumerate() {
-                if i != a && !unit.dead() && masked & (1 << i) == 0 {
-                    for cell in f.unit_cells(i) {
-                        if g.in_bounds(cell.0, cell.1) {
-                            sc.steps[g.index(cell.0, cell.1)] = INF;
-                        }
+            if !any_large {
+                for (i, unit) in f.units.iter().enumerate() {
+                    if i != a && !unit.dead() && masked & (1 << i) == 0 {
+                        sc.steps[g.index(unit.pos.0, unit.pos.1)] = INF;
                     }
                 }
+            } else {
+                prepare_multisquare_mask_steps(f, a, masked, sc);
             }
         } else if f.units[a].frightened_by.is_empty() && f.units[a].source_fear.is_empty() {
             let mut start = [0u64; 34];
@@ -1370,23 +1495,18 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
     if moves {
         let mut free = [0u64; 34];
         free[1..=h].copy_from_slice(floor);
-        let mut start = [0u64; 34];
-        for (i, unit) in f.units.iter().enumerate() {
-            if unit.team != view && unit.conscious() && masked & (1 << i) == 0 {
-                if unit.t.token_size == 1 {
+        if !any_large {
+            let mut start = [0u64; 34];
+            for (i, unit) in f.units.iter().enumerate() {
+                if unit.team != view && unit.conscious() && masked & (1 << i) == 0 {
                     start[unit.pos.1 as usize + 1] |= 1u64 << unit.pos.0;
-                } else {
-                    for cell in f.unit_cells(i) {
-                        if g.in_bounds(cell.0, cell.1) {
-                            start[cell.1 as usize + 1] |= 1u64 << cell.0;
-                        }
-                    }
                 }
             }
+            let stop = if far { None } else { actor.map(|a| f.units[a].pos) };
+            bfs_rows(w, h, &free, &free, &start, Rule::AStar, stop, &mut sc.enemy_steps);
+        } else {
+            prepare_multisquare_enemy_steps(f, view, actor, far, masked, w, h, &free, sc);
         }
-        let a_multi = actor.is_some_and(|a| f.units[a].t.token_size > 1);
-        let stop = if far || a_multi { None } else { actor.map(|a| f.units[a].pos) };
-        bfs_rows(w, h, &free, &free, &start, Rule::AStar, stop, &mut sc.enemy_steps);
     }
 }
 
@@ -1562,6 +1682,51 @@ fn label(mut bits: u64, y: usize, w: usize, layer: u16, steps: &mut [u16]) {
     }
 }
 
+#[cold]
+#[inline(never)]
+fn paint_actor_los_multi(cx: &Ctx, map: &mut [u8]) {
+    let Some(a) = cx.actor else { return };
+    let f = cx.f;
+    let g = &f.grid;
+    let (w, h) = (g.w as usize, g.h as usize);
+    let (ox, oy) = (cx.ox as usize, cx.oy as usize);
+    let mut bits = [0u64; CELLS / 64];
+    let mut any = false;
+    for cell in f.unit_cells(a) {
+        if let Some(row) = g.los_from(cell) {
+            any = true;
+            for (wi, &word) in row.words().iter().enumerate() {
+                bits[wi] |= word;
+            }
+        }
+    }
+    if !any {
+        return;
+    }
+    for y in 0..h {
+        let src = y * w;
+        let dst = (y + oy) * S + ox;
+        let line = &mut map[ch::LOS * CELLS + dst..ch::LOS * CELLS + dst + w];
+        for (x, v) in line.iter_mut().enumerate() {
+            let idx = src + x;
+            *v = ((bits[idx / 64] >> (idx % 64)) & 1) as u8;
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn paint_multisquare_unit(cx: &Ctx, i: usize, chan: usize, map: &mut [u8]) {
+    let f = cx.f;
+    let g = &f.grid;
+    for cell in f.unit_cells(i) {
+        if g.in_bounds(cell.0, cell.1) {
+            map[chan * CELLS + cx.canvas(cell)] = 1;
+        }
+    }
+}
+
+#[inline(never)]
 fn encode_map(cx: &Ctx, map: &mut [u8]) {
     let f = cx.f;
     let g = &f.grid;
@@ -1599,14 +1764,10 @@ fn encode_map(cx: &Ctx, map: &mut [u8]) {
         } else {
             ch::DOWNED_ALLY
         };
-        if u.t.token_size == 1 {
+        if !f.any_large {
             map[chan * CELLS + cx.canvas(u.pos)] = 1;
         } else {
-            for cell in f.unit_cells(i) {
-                if g.in_bounds(cell.0, cell.1) {
-                    map[chan * CELLS + cx.canvas(cell)] = 1;
-                }
-            }
+            paint_multisquare_unit(cx, i, chan, map);
         }
     }
     // threat, exposure, path cost, reachability, line of sight
@@ -1620,26 +1781,8 @@ fn encode_map(cx: &Ctx, map: &mut [u8]) {
         }
         _ => (1, 0, 0),
     };
-    let los = actor.filter(|u| u.t.token_size == 1).and_then(|u| g.los_from(u.pos));
-    let actor_los_multi: Option<[u64; CELLS / 64]> = if let (Some(a), Some(u)) = (cx.actor, actor) {
-        if u.t.token_size > 1 {
-            let mut bits = [0u64; CELLS / 64];
-            let mut any = false;
-            for cell in f.unit_cells(a) {
-                if let Some(row) = g.los_from(cell) {
-                    any = true;
-                    for (wi, &word) in row.words().iter().enumerate() {
-                        bits[wi] |= word;
-                    }
-                }
-            }
-            any.then_some(bits)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let actor_is_large = f.any_large && actor.is_some_and(|u| u.t.token_size > 1);
+    let los = if actor_is_large { None } else { actor.and_then(|u| g.los_from(u.pos)) };
     debug_assert_eq!(ch::REACH, ch::PATH + 1);
     for y in 0..h {
         let src = y * w;
@@ -1671,13 +1814,10 @@ fn encode_map(cx: &Ctx, map: &mut [u8]) {
             for (x, v) in line.iter_mut().enumerate() {
                 *v = row.get(src + x) as u8;
             }
-        } else if let Some(ref bits) = actor_los_multi {
-            let line = &mut map[ch::LOS * CELLS + dst..ch::LOS * CELLS + dst + w];
-            for (x, v) in line.iter_mut().enumerate() {
-                let idx = src + x;
-                *v = ((bits[idx / 64] >> (idx % 64)) & 1) as u8;
-            }
         }
+    }
+    if actor_is_large {
+        paint_actor_los_multi(cx, map);
     }
     if cx.version.is_v4_plus() {
         for &tpos in g.trees() {
@@ -1795,6 +1935,7 @@ fn dpr_vs_ac14_v4(f: &Fight, u: usize) -> f64 {
     best_combo
 }
 
+#[inline(never)]
 fn encode_creatures(cx: &Ctx, out: &mut ObsSlot) {
     let f = cx.f;
     let fc = out.version.creature();
@@ -2171,6 +2312,7 @@ fn has_bit(mask: u32, j: usize) -> bool {
 /// `creature_rel[i, j, r]` ([`RELATIONS`]): the three masks, then line of
 /// sight and melee reach between living creatures that are not masked from
 /// the view team (a hidden creature's position stays unobserved).
+#[inline(never)]
 fn encode_relations(cx: &Ctx, out: &mut [u8]) {
     out.fill(0);
     let f = cx.f;
@@ -2191,7 +2333,11 @@ fn encode_relations(cx: &Ctx, out: &mut [u8]) {
             if placed && !cx.masked(j) {
                 row[rel::SEES] = f.can_see(i, j) as u8;
                 if let Some(reach) = uj.t.melee_ft {
-                    row[rel::IN_REACH] = (reach > 0 && f.within_reach_footprints(uj.pos, uj.t.token_size, ui.pos, ui.t.token_size, reach)) as u8;
+                    row[rel::IN_REACH] = (reach > 0 && if !f.any_large {
+                        f.within_reach(uj.pos, ui.pos, reach)
+                    } else {
+                        f.within_reach_footprints(uj.pos, uj.t.token_size, ui.pos, ui.t.token_size, reach)
+                    }) as u8;
                 }
             }
         }
@@ -2332,6 +2478,63 @@ fn creature_row_v5(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("fx_starry_wisp")] = b(f.has_effect(i, EffKey::StarryWisp));
 }
 
+#[cold]
+#[inline(never)]
+fn position_features_multisquare(cx: &Ctx, a: usize, i: usize, ap: Pos, dx: i32, dy: i32, row: &mut [f32]) {
+    let f = cx.f;
+    let u = &f.units[i];
+    let a_sz = i32::from(f.units[a].t.token_size);
+    let u_sz = i32::from(u.t.token_size);
+    row[ci!("dist_div32")] = f.dist(a, i) as f32 / 32.0;
+    let cheb = if a_sz == 1 && u_sz == 1 {
+        dx.abs().max(dy.abs())
+    } else {
+        Fight::footprint_chebyshev(ap, a_sz, u.pos, u_sz)
+    };
+    row[ci!("cheb_div32")] = cheb as f32 / 32.0;
+    let cost = if i == a {
+        Some(0)
+    } else if a_sz == 1 && u_sz == 1 {
+        let step = 1 + f.units[a].prone() as i32;
+        let mut best: Option<i32> = None;
+        for nx in -1..=1 {
+            for ny in -1..=1 {
+                if nx == 0 && ny == 0 {
+                    continue;
+                }
+                if let Some(s) = cx.steps_to((u.pos.0 + nx, u.pos.1 + ny)) {
+                    let c = (s as i32 + 1) * step;
+                    best = Some(best.map_or(c, |b: i32| b.min(c)));
+                }
+            }
+        }
+        best
+    } else {
+        let step = 1 + f.units[a].prone() as i32;
+        let mut best: Option<i32> = None;
+        for ax in (u.pos.0 - a_sz)..=(u.pos.0 + u_sz) {
+            for ay in (u.pos.1 - a_sz)..=(u.pos.1 + u_sz) {
+                if ax + a_sz > u.pos.0 && ax < u.pos.0 + u_sz && ay + a_sz > u.pos.1 && ay < u.pos.1 + u_sz {
+                    continue;
+                }
+                if let Some(s) = cx.steps_to((ax, ay)) {
+                    let c = (s as i32 + 1) * step;
+                    best = Some(best.map_or(c, |b: i32| b.min(c)));
+                }
+            }
+        }
+        best
+    };
+    if let Some(c) = cost {
+        row[ci!("path_cost_div32")] = c as f32 / 32.0;
+    }
+    if i != a {
+        if let Some(reach) = f.units[a].t.melee_ft {
+            row[ci!("in_actor_reach")] = b(f.within_reach_footprints(ap, f.units[a].t.token_size, u.pos, u.t.token_size, reach));
+        }
+    }
+}
+
 /// The position group of a creature's token (absent when it is masked).
 fn position_features(cx: &Ctx, i: usize, row: &mut [f32]) {
     let f = cx.f;
@@ -2340,66 +2543,47 @@ fn position_features(cx: &Ctx, i: usize, row: &mut [f32]) {
     row[ci!("y_div32")] = (u.pos.1 + cx.oy) as f32 / 32.0;
     if let Some(a) = cx.actor {
         let ap = f.units[a].pos;
-        let a_sz = i32::from(f.units[a].t.token_size);
-        let u_sz = i32::from(u.t.token_size);
         let (dx, dy) = (u.pos.0 - ap.0, u.pos.1 - ap.1);
         row[ci!("dx_div32")] = dx as f32 / 32.0;
         row[ci!("dy_div32")] = dy as f32 / 32.0;
-        row[ci!("dist_div32")] = f.dist(a, i) as f32 / 32.0;
-        let cheb = if a_sz == 1 && u_sz == 1 {
-            dx.abs().max(dy.abs())
-        } else {
-            Fight::footprint_chebyshev(ap, a_sz, u.pos, u_sz)
-        };
-        row[ci!("cheb_div32")] = cheb as f32 / 32.0;
-        let cost = if i == a {
-            Some(0)
-        } else if a_sz == 1 && u_sz == 1 {
-            // the cheapest free square next to it, plus one step onto it
-            let step = 1 + f.units[a].prone() as i32;
-            let mut best: Option<i32> = None;
-            for nx in -1..=1 {
-                for ny in -1..=1 {
-                    if nx == 0 && ny == 0 {
-                        continue;
-                    }
-                    if let Some(s) = cx.steps_to((u.pos.0 + nx, u.pos.1 + ny)) {
-                        let c = (s as i32 + 1) * step;
-                        best = Some(best.map_or(c, |b: i32| b.min(c)));
+        if !f.any_large {
+            row[ci!("dist_div32")] = f.square_distance(ap, u.pos) as f32 / 32.0;
+            row[ci!("cheb_div32")] = dx.abs().max(dy.abs()) as f32 / 32.0;
+            let cost = if i == a {
+                Some(0)
+            } else {
+                let step = 1 + f.units[a].prone() as i32;
+                let mut best: Option<i32> = None;
+                for nx in -1..=1 {
+                    for ny in -1..=1 {
+                        if nx == 0 && ny == 0 {
+                            continue;
+                        }
+                        if let Some(s) = cx.steps_to((u.pos.0 + nx, u.pos.1 + ny)) {
+                            let c = (s as i32 + 1) * step;
+                            best = Some(best.map_or(c, |b: i32| b.min(c)));
+                        }
                     }
                 }
+                best
+            };
+            if let Some(c) = cost {
+                row[ci!("path_cost_div32")] = c as f32 / 32.0;
             }
-            best
-        } else {
-            // the cheapest free anchor adjacent to i's footprint, plus one step onto it
-            let step = 1 + f.units[a].prone() as i32;
-            let mut best: Option<i32> = None;
-            for ax in (u.pos.0 - a_sz)..=(u.pos.0 + u_sz) {
-                for ay in (u.pos.1 - a_sz)..=(u.pos.1 + u_sz) {
-                    if ax + a_sz > u.pos.0 && ax < u.pos.0 + u_sz && ay + a_sz > u.pos.1 && ay < u.pos.1 + u_sz {
-                        continue;
-                    }
-                    if let Some(s) = cx.steps_to((ax, ay)) {
-                        let c = (s as i32 + 1) * step;
-                        best = Some(best.map_or(c, |b: i32| b.min(c)));
-                    }
+            if i != a {
+                if let Some(reach) = f.units[a].t.melee_ft {
+                    row[ci!("in_actor_reach")] = b(f.within_reach(ap, u.pos, reach));
                 }
             }
-            best
-        };
-        if let Some(c) = cost {
-            row[ci!("path_cost_div32")] = c as f32 / 32.0;
-        }
-        if i != a {
-            if let Some(reach) = f.units[a].t.melee_ft {
-                row[ci!("in_actor_reach")] = b(f.within_reach_footprints(ap, f.units[a].t.token_size, u.pos, u.t.token_size, reach));
-            }
+        } else {
+            position_features_multisquare(cx, a, i, ap, dx, dy, row);
         }
         row[ci!("actor_sees")] = b(f.can_see(a, i));
         row[ci!("sees_actor")] = b(f.can_see(i, a));
     }
 }
 
+#[inline(never)]
 fn encode_global(cx: &Ctx, env: &Env, obj: &Objective, g: &mut [f32]) {
     let f = cx.f;
     g.fill(0.0);
@@ -2611,58 +2795,35 @@ fn encode_cand(cx: &Ctx, a: usize, act: &Act, row: &mut [f32], tg: &mut Targets)
                 row[ai!("dir_nw") + d] = 1.0;
             }
             let g = &f.grid;
-            let a_sz = unit.t.token_size;
-            let es = |p: Pos| -> f32 {
-                let s = if a_sz == 1 {
-                    cx.sc.enemy_steps[g.index(p.0, p.1)]
-                } else {
-                    UnitCells::new(p, a_sz)
-                        .filter(|c| g.in_bounds(c.0, c.1))
-                        .map(|c| cx.sc.enemy_steps[g.index(c.0, c.1)])
-                        .min()
-                        .unwrap_or(INF)
+            if !f.any_large {
+                let es = |p: Pos| -> f32 {
+                    let s = cx.sc.enemy_steps[g.index(p.0, p.1)];
+                    if s == INF { 1.0 } else { (s as f32).min(32.0) / 32.0 }
                 };
-                if s == INF {
-                    1.0
-                } else {
-                    (s as f32).min(32.0) / 32.0
-                }
-            };
-            row[ai!("enemy_steps_before_div32")] = es(from);
-            row[ai!("enemy_steps_after_div32")] = es(dest);
-            let oas = f.opportunity_attacks(a, path).iter().filter(|&&(e, _)| !cx.masked(e)).count();
-            row[ai!("opportunity_attacks_div4")] = oas as f32 / 4.0;
-            let (dest_threat, dest_exposure) = if a_sz == 1 {
+                row[ai!("enemy_steps_before_div32")] = es(from);
+                row[ai!("enemy_steps_after_div32")] = es(dest);
+                let oas = f.opportunity_attacks(a, path).iter().filter(|&&(e, _)| !cx.masked(e)).count();
+                row[ai!("opportunity_attacks_div4")] = oas as f32 / 4.0;
                 let di = g.index(dest.0, dest.1);
-                (cx.sc.threat[di], cx.sc.exposure[di])
-            } else {
-                let mut th = 0u8;
-                let mut ex = 0u8;
-                for c in UnitCells::new(dest, a_sz) {
-                    if g.in_bounds(c.0, c.1) {
-                        let ci = g.index(c.0, c.1);
-                        th = th.max(cx.sc.threat[ci]);
-                        ex = ex.max(cx.sc.exposure[ci]);
+                row[ai!("dest_threat_div4")] = cx.sc.threat[di] as f32 / 4.0;
+                row[ai!("dest_exposure_div4")] = cx.sc.exposure[di] as f32 / 4.0;
+                let (mut leaves, mut enters) = (false, false);
+                for (e, eu) in f.units.iter().enumerate() {
+                    if !cx.enemy(e) || !eu.conscious() || cx.masked(e) {
+                        continue;
+                    }
+                    if let Some(reach) = eu.t.melee_ft {
+                        let before = f.within_reach(eu.pos, from, reach);
+                        let after = f.within_reach(eu.pos, dest, reach);
+                        leaves |= before && !after;
+                        enters |= !before && after;
                     }
                 }
-                (th, ex)
-            };
-            row[ai!("dest_threat_div4")] = dest_threat as f32 / 4.0;
-            row[ai!("dest_exposure_div4")] = dest_exposure as f32 / 4.0;
-            let (mut leaves, mut enters) = (false, false);
-            for (e, eu) in f.units.iter().enumerate() {
-                if !cx.enemy(e) || !eu.conscious() || cx.masked(e) {
-                    continue;
-                }
-                if let Some(reach) = eu.t.melee_ft {
-                    let before = f.within_reach_footprints(eu.pos, eu.t.token_size, from, a_sz, reach);
-                    let after = f.within_reach_footprints(eu.pos, eu.t.token_size, dest, a_sz, reach);
-                    leaves |= before && !after;
-                    enters |= !before && after;
-                }
+                row[ai!("leaves_enemy_reach")] = b(leaves);
+                row[ai!("enters_enemy_reach")] = b(enters);
+            } else {
+                encode_move_multisquare(cx, a, path, from, dest, row);
             }
-            row[ai!("leaves_enemy_reach")] = b(leaves);
-            row[ai!("enters_enemy_reach")] = b(enters);
             row[ai!("dest_difficult")] = b(difficult);
             row[ai!("prone_move")] = b(unit.prone());
             if cx.v2 {
@@ -3105,10 +3266,70 @@ fn attack_riders(f: &Fight, a: usize, atk: usize, target: Option<(usize, f64)>, 
     }
 }
 
-/// The actor at `p` would see an active source of its Frightened
-/// (`Fight::can_see` from `p`; sources masked from the view are skipped).
-fn sees_fear_source_from(cx: &Ctx, a: usize, p: Pos) -> bool {
+#[cold]
+#[inline(never)]
+fn encode_move_multisquare(cx: &Ctx, a: usize, path: &[Pos], from: Pos, dest: Pos, row: &mut [f32]) {
     let f = cx.f;
+    let g = &f.grid;
+    let a_sz = f.units[a].t.token_size;
+    let es = |p: Pos| -> f32 {
+        let s = if a_sz == 1 {
+            cx.sc.enemy_steps[g.index(p.0, p.1)]
+        } else {
+            UnitCells::new(p, a_sz)
+                .filter(|c| g.in_bounds(c.0, c.1))
+                .map(|c| cx.sc.enemy_steps[g.index(c.0, c.1)])
+                .min()
+                .unwrap_or(INF)
+        };
+        if s == INF {
+            1.0
+        } else {
+            (s as f32).min(32.0) / 32.0
+        }
+    };
+    row[ai!("enemy_steps_before_div32")] = es(from);
+    row[ai!("enemy_steps_after_div32")] = es(dest);
+    let oas = f.opportunity_attacks(a, path).iter().filter(|&&(e, _)| !cx.masked(e)).count();
+    row[ai!("opportunity_attacks_div4")] = oas as f32 / 4.0;
+    let (dest_threat, dest_exposure) = if a_sz == 1 {
+        let di = g.index(dest.0, dest.1);
+        (cx.sc.threat[di], cx.sc.exposure[di])
+    } else {
+        let mut th = 0u8;
+        let mut ex = 0u8;
+        for c in UnitCells::new(dest, a_sz) {
+            if g.in_bounds(c.0, c.1) {
+                let ci = g.index(c.0, c.1);
+                th = th.max(cx.sc.threat[ci]);
+                ex = ex.max(cx.sc.exposure[ci]);
+            }
+        }
+        (th, ex)
+    };
+    row[ai!("dest_threat_div4")] = dest_threat as f32 / 4.0;
+    row[ai!("dest_exposure_div4")] = dest_exposure as f32 / 4.0;
+    let (mut leaves, mut enters) = (false, false);
+    for (e, eu) in f.units.iter().enumerate() {
+        if !cx.enemy(e) || !eu.conscious() || cx.masked(e) {
+            continue;
+        }
+        if let Some(reach) = eu.t.melee_ft {
+            let before = f.within_reach_footprints(eu.pos, eu.t.token_size, from, a_sz, reach);
+            let after = f.within_reach_footprints(eu.pos, eu.t.token_size, dest, a_sz, reach);
+            leaves |= before && !after;
+            enters |= !before && after;
+        }
+    }
+    row[ai!("leaves_enemy_reach")] = b(leaves);
+    row[ai!("enters_enemy_reach")] = b(enters);
+}
+
+#[cold]
+#[inline(never)]
+fn sees_fear_source_from_multisquare(cx: &Ctx, a: usize, p: Pos) -> bool {
+    let f = cx.f;
+    let a_sz = f.units[a].t.token_size;
     let mut m = cx.sc.fear[a];
     while m != 0 {
         let s = m.trailing_zeros() as usize;
@@ -3120,12 +3341,36 @@ fn sees_fear_source_from(cx: &Ctx, a: usize, p: Pos) -> bool {
         if src.hidden_stealth.is_some_and(|st| f.units[a].t.passive_perception < st) {
             continue;
         }
-        let a_sz = f.units[a].t.token_size;
         if a_sz == 1 && src.t.token_size == 1 {
             if f.grid.los(p, src.pos) {
                 return true;
             }
         } else if UnitCells::new(p, a_sz).any(|c1| f.unit_cells(s).any(|c2| f.grid.los(c1, c2))) {
+            return true;
+        }
+    }
+    false
+}
+
+/// The actor at `p` would see an active source of its Frightened
+/// (`Fight::can_see` from `p`; sources masked from the view are skipped).
+fn sees_fear_source_from(cx: &Ctx, a: usize, p: Pos) -> bool {
+    let f = cx.f;
+    if f.any_large {
+        return sees_fear_source_from_multisquare(cx, a, p);
+    }
+    let mut m = cx.sc.fear[a];
+    while m != 0 {
+        let s = m.trailing_zeros() as usize;
+        m &= m - 1;
+        if cx.masked(s) {
+            continue;
+        }
+        let src = &f.units[s];
+        if src.hidden_stealth.is_some_and(|st| f.units[a].t.passive_perception < st) {
+            continue;
+        }
+        if f.grid.los(p, src.pos) {
             return true;
         }
     }

@@ -154,33 +154,22 @@ impl Fight {
     pub fn observe_enemies(&mut self, u: usize) -> Observed {
         let mut enemies = Vec::new();
         let upos = self.units[u].pos;
-        let token_size = self.units[u].t.token_size;
-        let mut multi_pc = if token_size > 1 {
-            let mut pc = PathCompute::new(&self.grid, self.units[u].prone(), self.units[u].t.fly, self.occupied_mask(u));
-            pc.incorporeal = self.incorporeal(u);
-            pc.solid_wall_corners = self.rule_version >= 8;
-            pc.token_size = token_size;
-            Some(pc)
+        if !self.any_large {
+            for o in 0..self.units.len() {
+                if o == u || !self.can_see(u, o) {
+                    continue;
+                }
+                if !self.units[o].conscious() || !self.opposing(u, o) {
+                    continue;
+                }
+                let opos = self.units[o].pos;
+                // compute_path(ignore_opposing=True): only walls block, so a path
+                // exists within one component; it has >= 2 cells unless same cell.
+                let ok = (self.incorporeal(u) || self.reachable(upos, opos)) && upos != opos;
+                enemies.push((o, opos, ok));
+            }
         } else {
-            None
-        };
-        for o in 0..self.units.len() {
-            if o == u || !self.can_see(u, o) {
-                continue;
-            }
-            if !self.units[o].conscious() || !self.opposing(u, o) {
-                continue;
-            }
-            let opos = self.units[o].pos;
-            // compute_path(ignore_opposing=True): for 1x1 only walls block, so a
-            // path exists within one component; for Large+ creatures `PathCompute`
-            // tests whether the creature's own footprint can reach `opos`.
-            let ok = if let Some(pc) = multi_pc.as_mut() {
-                upos != opos && pc.compute_path(upos, opos).is_some_and(|p| p.len() >= 2)
-            } else {
-                (self.incorporeal(u) || self.reachable(upos, opos)) && upos != opos
-            };
-            enemies.push((o, opos, ok));
+            self.collect_observed_enemies_multisquare(u, &mut enemies);
         }
         if self.rule_version >= 17 {
             let existing: Vec<(usize, Pos)> = self.units[u].mem.known.clone();
@@ -297,8 +286,49 @@ impl Fight {
         }
     }
 
+    #[cold]
+    #[inline(never)]
+    fn collect_observed_enemies_multisquare(&self, u: usize, enemies: &mut Vec<(usize, Pos, bool)>) {
+        let upos = self.units[u].pos;
+        let token_size = self.units[u].t.token_size;
+        let mut multi_pc = if token_size > 1 {
+            let mut pc = PathCompute::new(&self.grid, self.units[u].prone(), self.units[u].t.fly, self.occupied_mask(u));
+            pc.incorporeal = self.incorporeal(u);
+            pc.solid_wall_corners = self.rule_version >= 8;
+            pc.token_size = token_size;
+            Some(pc)
+        } else {
+            None
+        };
+        for o in 0..self.units.len() {
+            if o == u || !self.can_see(u, o) {
+                continue;
+            }
+            if !self.units[o].conscious() || !self.opposing(u, o) {
+                continue;
+            }
+            let opos = self.units[o].pos;
+            let ok = if let Some(pc) = multi_pc.as_mut() {
+                upos != opos && pc.compute_path(upos, opos).is_some_and(|p| p.len() >= 2)
+            } else {
+                (self.incorporeal(u) || self.reachable(upos, opos)) && upos != opos
+            };
+            enemies.push((o, opos, ok));
+        }
+    }
+
     /// Whether `u` can make a blind weapon attack at `target` square (`unseen_targets.blind_attack_issue`).
+    #[inline]
     pub(crate) fn can_blind_attack_from_unit(&self, u: usize, target: Pos, range_ft: i32) -> bool {
+        if !self.any_large {
+            return self.can_blind_attack_square(self.units[u].pos, target, range_ft);
+        }
+        self.can_blind_attack_multisquare(u, target, range_ft)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn can_blind_attack_multisquare(&self, u: usize, target: Pos, range_ft: i32) -> bool {
         if self.units[u].t.token_size == 1 {
             return self.can_blind_attack_square(self.units[u].pos, target, range_ft);
         }
@@ -736,12 +766,11 @@ impl Fight {
             distances[i] = 0;
             queue.push_back(i);
         }
-        let sz = self.units[u].t.token_size;
-        while let Some(i) = queue.pop_front() {
-            let (x, y) = self.grid.pos_of(i);
-            for nx in x - 1..=x + 1 {
-                for ny in y - 1..=y + 1 {
-                    if sz == 1 {
+        if !self.any_large {
+            while let Some(i) = queue.pop_front() {
+                let (x, y) = self.grid.pos_of(i);
+                for nx in x - 1..=x + 1 {
+                    for ny in y - 1..=y + 1 {
                         if !self.grid.in_bounds(nx, ny) || (!self.incorporeal(u) && self.grid.is_wall(nx, ny)) || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny))) {
                             continue;
                         }
@@ -750,24 +779,61 @@ impl Fight {
                             distances[j] = distances[i] + 1;
                             queue.push_back(j);
                         }
-                    } else {
-                        if !self.footprint_terrain_clear(u, (nx, ny))
-                            || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny)))
-                        {
+                    }
+                }
+            }
+        } else {
+            self.pursuit_distances_multisquare(u, &mut distances, &mut queue, occupied);
+        }
+        distances
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn pursuit_distances_multisquare(
+        &self,
+        u: usize,
+        distances: &mut [u16],
+        queue: &mut VecDeque<usize>,
+        occupied: &crate::map::Bits,
+    ) {
+        if self.units[u].t.token_size == 1 {
+            while let Some(i) = queue.pop_front() {
+                let (x, y) = self.grid.pos_of(i);
+                for nx in x - 1..=x + 1 {
+                    for ny in y - 1..=y + 1 {
+                        if !self.grid.in_bounds(nx, ny) || (!self.incorporeal(u) && self.grid.is_wall(nx, ny)) || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny))) {
                             continue;
                         }
                         let j = self.grid.index(nx, ny);
-                        if distances[j] == u16::MAX
-                            && !self.unit_cells_at(u, (nx, ny)).any(|c| occupied.get(self.grid.index(c.0, c.1)))
-                        {
+                        if distances[j] == u16::MAX && !occupied.get(j) {
                             distances[j] = distances[i] + 1;
                             queue.push_back(j);
                         }
                     }
                 }
             }
+            return;
         }
-        distances
+        while let Some(i) = queue.pop_front() {
+            let (x, y) = self.grid.pos_of(i);
+            for nx in x - 1..=x + 1 {
+                for ny in y - 1..=y + 1 {
+                    if !self.footprint_terrain_clear(u, (nx, ny))
+                        || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny)))
+                    {
+                        continue;
+                    }
+                    let j = self.grid.index(nx, ny);
+                    if distances[j] == u16::MAX
+                        && !self.unit_cells_at(u, (nx, ny)).any(|c| occupied.get(self.grid.index(c.0, c.1)))
+                    {
+                        distances[j] = distances[i] + 1;
+                        queue.push_back(j);
+                    }
+                }
+            }
+        }
     }
 
     fn throws_last_melee_weapon(&self, u: usize, atk: usize) -> bool {
@@ -846,13 +912,23 @@ impl Fight {
         let exploring = sense_pursuit && targets.is_empty();
         if pursuit {
             let mut occupied = crate::map::Bits::new(self.grid.cells());
-            for (i, other) in self.units.iter().enumerate() {
-                if i != u && self.token_at(other.pos) == Some(i)
-                    && (self.rule_version < 6 || !self.unit_can_pass_other(u, i))
-                {
-                    for c in self.unit_cells(i) {
-                        if self.grid.in_bounds(c.0, c.1) {
-                            occupied.set(self.grid.index(c.0, c.1));
+            if !self.any_large {
+                for (i, other) in self.units.iter().enumerate() {
+                    if i != u && self.token_at(other.pos) == Some(i)
+                        && (self.rule_version < 6 || !self.passable(u, other.pos))
+                    {
+                        occupied.set(self.grid.index(other.pos.0, other.pos.1));
+                    }
+                }
+            } else {
+                for (i, other) in self.units.iter().enumerate() {
+                    if i != u && self.token_at(other.pos) == Some(i)
+                        && (self.rule_version < 6 || !self.unit_can_pass_other(u, i))
+                    {
+                        for c in self.unit_cells(i) {
+                            if self.grid.in_bounds(c.0, c.1) {
+                                occupied.set(self.grid.index(c.0, c.1));
+                            }
                         }
                     }
                 }
@@ -869,11 +945,19 @@ impl Fight {
                 let reach = self.units[u].t.melee_ft.unwrap_or_else(|| self.units[u].t.attacks.iter()
                     .map(|a| a.range).max().unwrap_or(5)).max(5);
                 let mut landings = crate::map::Bits::new(self.grid.cells());
-                for (i, unit) in self.units.iter().enumerate() {
-                    if i != u && self.token_at(unit.pos) == Some(i) {
-                        for c in self.unit_cells(i) {
-                            if self.grid.in_bounds(c.0, c.1) {
-                                landings.set(self.grid.index(c.0, c.1));
+                if !self.any_large {
+                    for (i, unit) in self.units.iter().enumerate() {
+                        if i != u && self.token_at(unit.pos) == Some(i) {
+                            landings.set(self.grid.index(unit.pos.0, unit.pos.1));
+                        }
+                    }
+                } else {
+                    for (i, unit) in self.units.iter().enumerate() {
+                        if i != u && self.token_at(unit.pos) == Some(i) {
+                            for c in self.unit_cells(i) {
+                                if self.grid.in_bounds(c.0, c.1) {
+                                    landings.set(self.grid.index(c.0, c.1));
+                                }
                             }
                         }
                     }

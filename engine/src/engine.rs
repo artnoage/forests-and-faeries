@@ -671,6 +671,9 @@ pub struct Fight {
     pub creature_space_rules: bool,
     /// Strict tape version governing controller scores and combat behavior.
     pub(crate) rule_version: i32,
+    /// True when at least one creature in the fight occupies more than 1x1 squares.
+    /// Fights with `any_large == false` skip all multi-square checks and Template dereferences.
+    pub any_large: bool,
     pub(crate) interactive_champion: Option<usize>,
     /// The map, shared by every fight on it.
     pub grid: Arc<Grid>,
@@ -844,11 +847,13 @@ impl Fight {
                 occ[c] = Some(i as u8);
             }
         }
+        let any_large = units.iter().any(|u| u.t.token_size > 1);
         Ok(Fight {
             pool,
             champion_moves_enabled: true,
             creature_space_rules: true,
             rule_version: CURRENT_RULE_VERSION,
+            any_large,
             interactive_champion: None,
             grid,
             units,
@@ -925,6 +930,15 @@ impl Fight {
 
     #[inline]
     pub fn unit_occupies(&self, u: usize, p: Pos) -> bool {
+        if !self.any_large {
+            return self.units[u].pos == p;
+        }
+        self.unit_occupies_multisquare(u, p)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn unit_occupies_multisquare(&self, u: usize, p: Pos) -> bool {
         let unit = &self.units[u];
         let s = i32::from(unit.t.token_size);
         if s == 1 {
@@ -983,7 +997,22 @@ impl Fight {
     }
 
     /// Check the effect path and the observer's senses at the target square (`Map.can_see_square`).
+    #[inline]
     pub(crate) fn sees_lit_square(&self, observer: usize, pos: Pos) -> bool {
+        if !self.any_large {
+            let u = &self.units[observer];
+            if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.effective_light_level(pos) == 0 {
+                let senses = u.t.darkvision.max(u.t.blindsight).max(u.t.truesight);
+                if self.square_distance(u.pos, pos) * 5 > senses { return false; }
+            }
+            return self.clear_sight(u.pos, pos);
+        }
+        self.sees_lit_square_multisquare(observer, pos)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn sees_lit_square_multisquare(&self, observer: usize, pos: Pos) -> bool {
         let u = &self.units[observer];
         if u.t.token_size == 1 {
             if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.effective_light_level(pos) == 0 {
@@ -1018,7 +1047,17 @@ impl Fight {
         true
     }
 
+    #[inline]
     pub(crate) fn units_clear_sight(&self, a: usize, b: usize) -> bool {
+        if !self.any_large {
+            return self.clear_sight(self.units[a].pos, self.units[b].pos);
+        }
+        self.units_clear_sight_multisquare(a, b)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn units_clear_sight_multisquare(&self, a: usize, b: usize) -> bool {
         if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
             return self.clear_sight(self.units[a].pos, self.units[b].pos);
         }
@@ -1034,7 +1073,20 @@ impl Fight {
         false
     }
 
+    #[inline]
     pub(crate) fn sees_hider_clearly(&self, observer: usize, hider: usize) -> bool {
+        if !self.any_large {
+            let pos = self.units[hider].pos;
+            if self.rule_version < 11 { return self.sees_lit_square(observer, pos); }
+            return self.effective_light_level(pos) > 0 && self.sees_lit_square(observer, pos)
+                && self.grid.corner_wall_grade(self.units[observer].pos, pos) < 3;
+        }
+        self.sees_hider_clearly_multisquare(observer, hider)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn sees_hider_clearly_multisquare(&self, observer: usize, hider: usize) -> bool {
         let oa = self.units[observer].t.token_size;
         let ob = self.units[hider].t.token_size;
         if oa == 1 && ob == 1 {
@@ -1100,6 +1152,37 @@ impl Fight {
         if a == b {
             return true;
         }
+        if !self.any_large {
+            if self.units[b].invisible() {
+                let negated = self.rule_version >= 18
+                    && (self.has_effect(b, EffKey::FaerieFire)
+                        || self.has_effect(b, EffKey::StarryWisp)
+                        || self.has_effect(a, EffKey::SeeInvisibility));
+                if !negated {
+                    let sense = self.units[a].t.blindsight.max(self.units[a].t.truesight);
+                    if !(sense > 0 && self.square_distance(self.units[a].pos, self.units[b].pos) * 5 <= sense && self.clear_sight(self.units[a].pos, self.units[b].pos)) {
+                        return false;
+                    }
+                }
+            }
+            if let Some(stealth) = self.units[b].hidden_stealth {
+                let sense = self.units[a].t.blindsight;
+                if self.units[a].t.passive_perception < stealth && !(sense > 0 && self.square_distance(self.units[a].pos, self.units[b].pos) * 5 <= sense) {
+                    return false;
+                }
+            }
+            return self.sees_lit_square(a, self.units[b].pos);
+        }
+        self.can_see_multisquare(a, b)
+    }
+
+    /// Multi-square `Map.can_see` mirror (`natural20/map.py:2116-2195`): iterates
+    /// `entity_1_squares x entity_2_squares` (`ox` outer, `oy` inner), takes max
+    /// illumination across visible pairs, and overwrites `sighting_distance` with
+    /// the last visible pair (tracked as item #3 in `NATURAL20_ISSUES_FOR_JOSEPH.md`).
+    #[cold]
+    #[inline(never)]
+    fn can_see_multisquare(&self, a: usize, b: usize) -> bool {
         if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
             if self.units[b].invisible() {
                 let negated = self.rule_version >= 18
@@ -1121,14 +1204,6 @@ impl Fight {
             }
             return self.sees_lit_square(a, self.units[b].pos);
         }
-        self.can_see_multisquare(a, b)
-    }
-
-    /// Multi-square `Map.can_see` mirror (`natural20/map.py:2116-2195`): iterates
-    /// `entity_1_squares x entity_2_squares` (`ox` outer, `oy` inner), takes max
-    /// illumination across visible pairs, and overwrites `sighting_distance` with
-    /// the last visible pair (tracked as item #3 in `NATURAL20_ISSUES_FOR_JOSEPH.md`).
-    fn can_see_multisquare(&self, a: usize, b: usize) -> bool {
         if let Some(stealth) = self.units[b].hidden_stealth {
             let sense = self.units[a].t.blindsight;
             if self.units[a].t.passive_perception < stealth && !(sense > 0 && self.dist(a, b) * 5 <= sense) {
@@ -1243,16 +1318,23 @@ impl Fight {
 
     #[inline]
     pub fn dist(&self, a: usize, b: usize) -> i32 {
-        let (ua, ub) = (&self.units[a], &self.units[b]);
-        let (sa, sb) = (ua.t.token_size, ub.t.token_size);
-        if sa == 1 && sb == 1 {
-            return self.square_distance(ua.pos, ub.pos);
+        if !self.any_large {
+            return self.square_distance(self.units[a].pos, self.units[b].pos);
         }
-        self.dist_at(a, ua.pos, b)
+        self.dist_multisquare(a, self.units[a].pos, b)
     }
 
     #[inline]
     pub fn dist_at(&self, a: usize, anchor_a: Pos, b: usize) -> i32 {
+        if !self.any_large {
+            return self.square_distance(anchor_a, self.units[b].pos);
+        }
+        self.dist_multisquare(a, anchor_a, b)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn dist_multisquare(&self, a: usize, anchor_a: Pos, b: usize) -> i32 {
         let sa = self.units[a].t.token_size;
         let ub = &self.units[b];
         let sb = ub.t.token_size;
@@ -1273,6 +1355,15 @@ impl Fight {
 
     #[inline]
     pub fn dist_to_square(&self, u: usize, p: Pos) -> i32 {
+        if !self.any_large {
+            return self.square_distance(self.units[u].pos, p);
+        }
+        self.dist_to_square_multisquare(u, p)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn dist_to_square_multisquare(&self, u: usize, p: Pos) -> i32 {
         let unit = &self.units[u];
         let s = unit.t.token_size;
         if s == 1 {
@@ -1285,25 +1376,37 @@ impl Fight {
     }
 
     /// SRD square-grid ranges count the shortest sequence of adjacent squares.
+    #[inline]
     pub fn square_distance(&self, a: Pos, b: Pos) -> i32 {
         if self.rule_version >= 6 { (a.0 - b.0).abs().max((a.1 - b.1).abs()) } else { distance(a, b) }
     }
 
+    #[inline]
     pub(crate) fn within_reach(&self, a: Pos, b: Pos, feet: i32) -> bool {
         if self.rule_version >= 6 { self.square_distance(a, b) * 5 <= feet } else { within_melee(a, b, feet) }
     }
 
     #[inline]
     pub(crate) fn within_reach_at(&self, a: usize, anchor_a: Pos, b: usize, feet: i32) -> bool {
+        if !self.any_large {
+            return self.within_reach(anchor_a, self.units[b].pos, feet);
+        }
+        self.within_reach_at_multisquare(a, anchor_a, b, feet)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn within_reach_at_multisquare(&self, a: usize, anchor_a: Pos, b: usize, feet: i32) -> bool {
         if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
             return self.within_reach(anchor_a, self.units[b].pos, feet);
         }
-        self.dist_at(a, anchor_a, b) * 5 <= feet
+        self.dist_multisquare(a, anchor_a, b) * 5 <= feet
     }
 
-    #[inline]
+    #[cold]
+    #[inline(never)]
     pub(crate) fn within_reach_footprints(&self, a: Pos, sa: u8, b: Pos, sb: u8, feet: i32) -> bool {
-        if sa == 1 && sb == 1 {
+        if !self.any_large || (sa == 1 && sb == 1) {
             return self.within_reach(a, b, feet);
         }
         if self.rule_version >= 6 {
@@ -1347,9 +1450,19 @@ impl Fight {
         }
         let top = self.occ[self.grid.index(p.0, p.1)]? as usize;
         if self.rule_version >= 8 && self.units[top].dead() {
-            return self.units.iter().enumerate().position(|(i, unit)| !unit.dead() && self.unit_occupies(i, p));
+            return self.token_at_live_fallback(p);
         }
         Some(top)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn token_at_live_fallback(&self, p: Pos) -> Option<usize> {
+        if !self.any_large {
+            self.units.iter().position(|unit| unit.pos == p && !unit.dead())
+        } else {
+            self.units.iter().enumerate().position(|(i, unit)| !unit.dead() && self.unit_occupies(i, p))
+        }
     }
 
     pub fn rule_version(&self) -> i32 {
@@ -1392,6 +1505,8 @@ impl Fight {
     /// Mirrors `natural20/utils/ac_utils.py:39-69`: accumulates `max_ac` across
     /// `source_squares x target_squares` and returns on the first pair with LOS
     /// (tracked as item #1 in `NATURAL20_ISSUES_FOR_JOSEPH.md`).
+    #[cold]
+    #[inline(never)]
     fn known_cover_squares(&self, src_cells: UnitCells, target: usize, hidden: u32) -> i32 {
         let mut max_ac = 0;
         for s_pos in src_cells {
@@ -1407,16 +1522,36 @@ impl Fight {
         max_ac
     }
 
+    #[inline]
     pub(crate) fn known_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
         if self.rule_version < 11 { return self.known_point_cover(origin, target, hidden); }
+        if !self.any_large {
+            return self.single_pair_cover(origin, self.units[target].pos, hidden);
+        }
+        self.known_cover_multisquare(origin, target, hidden)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn known_cover_multisquare(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
         if self.units[target].t.token_size == 1 {
             return self.single_pair_cover(origin, self.units[target].pos, hidden);
         }
         self.known_cover_squares(UnitCells::new(origin, 1), target, hidden)
     }
 
+    #[inline]
     pub(crate) fn known_cover_from_unit(&self, src: usize, target: usize, hidden: u32) -> i32 {
         if self.rule_version < 11 { return self.known_point_cover(self.units[src].pos, target, hidden); }
+        if !self.any_large {
+            return self.single_pair_cover(self.units[src].pos, self.units[target].pos, hidden);
+        }
+        self.known_cover_from_unit_multisquare(src, target, hidden)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn known_cover_from_unit_multisquare(&self, src: usize, target: usize, hidden: u32) -> i32 {
         if self.units[src].t.token_size == 1 && self.units[target].t.token_size == 1 {
             return self.single_pair_cover(self.units[src].pos, self.units[target].pos, hidden);
         }
@@ -1425,23 +1560,17 @@ impl Fight {
 
     pub(crate) fn known_point_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
         if self.rule_version < 9 { return 0; }
-        let single = |pos: Pos| {
-            let (walls, creatures) = self.grid.cover_rays(origin, pos, |p| {
-                self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
-            });
-            if walls == 15 {
-                let visible = if self.rule_version >= 11 { self.clear_effect(origin, pos) } else { self.clear_sight(origin, pos) };
-                if !visible { return 0; }
-            }
-            if walls.count_ones() >= 3 { 5 }
-            else if (walls | creatures).count_ones() >= 2 { 2 }
-            else { 0 }
-        };
-        if self.units[target].t.token_size == 1 {
-            return single(self.units[target].pos);
+        let pos = self.units[target].pos;
+        let (walls, creatures) = self.grid.cover_rays(origin, pos, |p| {
+            self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
+        });
+        if walls == 15 {
+            let visible = if self.rule_version >= 11 { self.clear_effect(origin, pos) } else { self.clear_sight(origin, pos) };
+            if !visible { return 0; }
         }
-        // Mirror `Map.directional_cover(origin, target_pos, point_origin=True)` on the target anchor.
-        single(self.units[target].pos)
+        if walls.count_ones() >= 3 { 5 }
+        else if (walls | creatures).count_ones() >= 2 { 2 }
+        else { 0 }
     }
 
     pub(crate) fn attack_ac(&self, origin: Pos, target: usize) -> i32 {
@@ -1494,7 +1623,17 @@ impl Fight {
         self.rule_version >= 9 && self.units[u].t.incorporeal
     }
 
+    #[inline]
     pub(crate) fn step_clears_corner(&self, u: usize, from: Pos, to: Pos) -> bool {
+        if !self.any_large {
+            return self.incorporeal(u) || self.grid.clears_corner(from, to);
+        }
+        self.step_clears_corner_multisquare(u, from, to)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn step_clears_corner_multisquare(&self, u: usize, from: Pos, to: Pos) -> bool {
         if self.incorporeal(u) {
             return true;
         }
@@ -1514,9 +1653,32 @@ impl Fight {
 
     /// `Map.passable(entity, x, y, battle, allow_squeeze=False)`.
     /// TODO(multi-square-squeeze-block): squeezing is disallowed until Natural20 issue #6.
+    #[inline]
     pub fn passable(&self, u: usize, p: Pos) -> bool {
-        let s = self.units[u].t.token_size;
-        if s == 1 {
+        if !self.any_large {
+            if self.incorporeal(u) { return self.grid.in_bounds(p.0, p.1); }
+            if self.grid.is_wall(p.0, p.1) {
+                return false;
+            }
+            if let Some(o) = self.token_at(p) {
+                if o != u
+                    && self.opposing(o, u)
+                    && !self.units[o].incapacitated()
+                    && !(self.creature_space_rules && self.units[o].t.size == "tiny")
+                    && self.units[o].t.size_rank.abs_diff(self.units[u].t.size_rank) < 2
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        self.passable_multisquare(u, p)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn passable_multisquare(&self, u: usize, p: Pos) -> bool {
+        if self.units[u].t.token_size == 1 {
             if self.incorporeal(u) { return self.grid.in_bounds(p.0, p.1); }
             if self.grid.is_wall(p.0, p.1) {
                 return false;
@@ -1531,6 +1693,8 @@ impl Fight {
         self.passable_ignoring_masked(u, p, 0)
     }
 
+    #[cold]
+    #[inline(never)]
     pub(crate) fn passable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
         if !self.footprint_terrain_clear(u, p) {
             return false;
@@ -1550,9 +1714,25 @@ impl Fight {
 
     /// Current rules permit ending movement on remains; no squeezing for multi-square units.
     /// TODO(multi-square-squeeze-block): squeezing is disallowed until Natural20 issue #6.
+    #[inline]
     pub fn placeable(&self, u: usize, p: Pos) -> bool {
-        if self.units[u].t.token_size == 1 {
+        if !self.any_large {
             if !self.passable(u, p) {
+                return false;
+            }
+            return match self.token_at(p) {
+                Some(o) => o == u,
+                None => true,
+            };
+        }
+        self.placeable_multisquare(u, p)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn placeable_multisquare(&self, u: usize, p: Pos) -> bool {
+        if self.units[u].t.token_size == 1 {
+            if !self.passable_multisquare(u, p) {
                 return false;
             }
             return match self.token_at(p) {
@@ -1563,6 +1743,8 @@ impl Fight {
         self.placeable_ignoring_masked(u, p, 0)
     }
 
+    #[cold]
+    #[inline(never)]
     pub(crate) fn placeable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
         if !self.passable_ignoring_masked(u, p, masked) {
             return false;
@@ -1577,13 +1759,30 @@ impl Fight {
         true
     }
 
+    #[inline]
     fn difficult_occupant(&self, u: usize, o: usize) -> bool {
         o != u && !self.units[o].dead()
             && (!self.creature_space_rules || (!self.allies(u, o) && self.units[o].t.size != "tiny"))
     }
 
     /// Occupied or zone difficult terrain under the tape's ruleset (`Map.difficult_terrain`).
+    #[inline]
     pub fn difficult(&self, u: usize, p: Pos) -> bool {
+        if !self.any_large {
+            if self.is_entangle_square(p) {
+                return true;
+            }
+            return match self.token_at(p) {
+                Some(o) => self.difficult_occupant(u, o),
+                None => false,
+            };
+        }
+        self.difficult_multisquare(u, p)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn difficult_multisquare(&self, u: usize, p: Pos) -> bool {
         if self.units[u].t.token_size == 1 {
             if self.is_entangle_square(p) {
                 return true;
@@ -1596,6 +1795,8 @@ impl Fight {
         self.difficult_ignoring_masked(u, p, 0)
     }
 
+    #[cold]
+    #[inline(never)]
     pub(crate) fn difficult_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
         for c in self.unit_cells_at(u, p) {
             if self.unit_occupies(u, c) {
@@ -2500,12 +2701,17 @@ impl Fight {
             }
         }
         // Dragged grappled targets trail behind the mover (move_action.py:207-231).
-        // TODO(multi-square-drag-block): Large+ grappler drag is blocked until
-        // Natural20 issue #6 resolves trailing-square overlap.
-        if self.units[src].is_grappling() && self.units[src].t.token_size == 1 {
+        // TODO(multi-square-drag-block): Large+ grappler or Large+ target drag is blocked
+        // until Natural20 issue #6 resolves multi-square trailing-square overlap.
+        if self.units[src].is_grappling() && (!self.any_large || self.units[src].t.token_size == 1) {
             let dragged = self.units[src].grappling.clone();
-            for (i, t) in dragged.into_iter().enumerate() {
-                let lag = i + 1;
+            let mut drag_idx = 0usize;
+            for t in dragged {
+                if self.any_large && self.units[t].t.token_size > 1 {
+                    continue;
+                }
+                let lag = drag_idx + 1;
+                drag_idx += 1;
                 if seg.len() > lag {
                     let target_dest = seg[seg.len() - 1 - lag];
                     self.move_to(t, target_dest);
@@ -2526,14 +2732,33 @@ impl Fight {
     }
 
     /// `Map.move_to`.
+    #[inline]
     pub(crate) fn move_to(&mut self, u: usize, dest: Pos) {
+        let from = self.units[u].pos;
+        if !self.any_large {
+            let fi = self.grid.index(from.0, from.1);
+            let di = self.grid.index(dest.0, dest.1);
+            if self.rule_version >= 7 && self.occ[fi] == Some(u as u8) {
+                // An interrupted legal crossing can temporarily share a creature's square.
+                self.occ[fi] = self.units.iter().enumerate().find(|(i, unit)| *i != u && unit.pos == from && (self.rule_version < 8 || !unit.dead())).map(|(i, _)| i as u8);
+            } else if self.rule_version < 7 { self.occ[fi] = None; }
+            if self.rule_version < 8 || !self.units[u].dead() { self.occ[di] = Some(u as u8); }
+            self.units[u].pos = dest;
+            if dest != from { self.reveal_exposed_hiders(); }
+            return;
+        }
+        self.move_to_multisquare(u, dest);
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn move_to_multisquare(&mut self, u: usize, dest: Pos) {
         let from = self.units[u].pos;
         let sz = self.units[u].t.token_size;
         if sz == 1 {
             let fi = self.grid.index(from.0, from.1);
             let di = self.grid.index(dest.0, dest.1);
             if self.rule_version >= 7 && self.occ[fi] == Some(u as u8) {
-                // An interrupted legal crossing can temporarily share a creature's square.
                 self.occ[fi] = self.units.iter().enumerate().find(|(i, unit)| *i != u && self.unit_occupies(*i, from) && (self.rule_version < 8 || !unit.dead())).map(|(i, _)| i as u8);
             } else if self.rule_version < 7 { self.occ[fi] = None; }
             if self.rule_version < 8 || !self.units[u].dead() { self.occ[di] = Some(u as u8); }
@@ -3978,6 +4203,28 @@ impl Fight {
     }
 
     /// `Entity.make_dead`.
+    #[cold]
+    #[inline(never)]
+    fn clear_dead_occ_multisquare(&mut self, u: usize, pos: Pos) {
+        let sz = self.units[u].t.token_size;
+        if sz == 1 {
+            let cell = self.grid.index(pos.0, pos.1);
+            if self.occ[cell] == Some(u as u8) {
+                self.occ[cell] = self.units.iter().enumerate().position(|(i, other)| !other.dead() && self.unit_occupies(i, pos)).map(|i| i as u8);
+            }
+        } else {
+            for c in UnitCells::new(pos, sz) {
+                if !self.grid.in_bounds(c.0, c.1) { continue; }
+                let cell = self.grid.index(c.0, c.1);
+                if self.occ[cell] == Some(u as u8) {
+                    self.occ[cell] = self.units.iter().enumerate()
+                        .position(|(i, other)| !other.dead() && self.unit_occupies(i, c))
+                        .map(|i| i as u8);
+                }
+            }
+        }
+    }
+
     fn make_dead(&mut self, u: usize) {
         if self.units[u].dead() {
             return;
@@ -3990,25 +4237,16 @@ impl Fight {
         for g in grapplers {
             self.release_grapple(g, u);
         }
-        let sz = self.units[u].t.token_size;
         let unit = &mut self.units[u];
         unit.add_status(St::Dead);
         if self.rule_version >= 8 {
-            if sz == 1 {
+            if !self.any_large {
                 let cell = self.grid.index(pos.0, pos.1);
                 if self.occ[cell] == Some(u as u8) {
-                    self.occ[cell] = self.units.iter().enumerate().position(|(i, other)| !other.dead() && self.unit_occupies(i, pos)).map(|i| i as u8);
+                    self.occ[cell] = self.units.iter().position(|other| !other.dead() && other.pos == pos).map(|i| i as u8);
                 }
             } else {
-                for c in UnitCells::new(pos, sz) {
-                    if !self.grid.in_bounds(c.0, c.1) { continue; }
-                    let cell = self.grid.index(c.0, c.1);
-                    if self.occ[cell] == Some(u as u8) {
-                        self.occ[cell] = self.units.iter().enumerate()
-                            .position(|(i, other)| !other.dead() && self.unit_occupies(i, c))
-                            .map(|i| i as u8);
-                    }
-                }
+                self.clear_dead_occ_multisquare(u, pos);
             }
         }
         self.end_rage_if_incapacitated(u);
@@ -5550,7 +5788,8 @@ mod srd_level_tests {
         assert_eq!(f.token_at((4, 3)), None);
         assert_eq!(f.token_at((2, 2)), Some(0));
         assert_eq!(f.token_at((2, 3)), Some(0));
-        // Large grappler drag is blocked (TODO(multi-square-drag-block))
+        // Large grappler drag AND dragging a Large target are both blocked (TODO(multi-square-drag-block)),
+        // while Medium-on-Medium dragging continues to work cleanly.
         f.move_to(0, (3, 2));
         f.units[0].grappling.push(1);
         f.units[1].grappled_by.push((0, None));
@@ -5558,6 +5797,27 @@ mod srd_level_tests {
         f.commit_move_segment(0, vec![(3, 2), (2, 2)]);
         assert_eq!(f.units[0].pos, (2, 2));
         assert_eq!(f.units[1].pos, (5, 2));
+        // Clear ogre->guy grapple; now Guy (Medium) grapples Ogre (Large) at (3,2) and steps (5,2)->(5,3):
+        // Ogre stays put at (3,2) and grapple remains intact (still adjacent).
+        f.units[0].grappling.clear();
+        f.units[1].grappled_by.clear();
+        f.move_to(0, (3, 2));
+        f.units[1].grappling.push(0);
+        f.units[0].grappled_by.push((1, None));
+        f.units[1].movement = 30;
+        f.commit_move_segment(1, vec![(5, 2), (5, 3)]);
+        assert_eq!(f.units[1].pos, (5, 3));
+        assert_eq!(f.units[0].pos, (3, 2), "dragging a Large target must be blocked");
+        assert!(f.units[1].grappling.contains(&0), "legal grapple on Large target stays intact");
+        f.move_to(0, (2, 2));
+        // Medium-on-Medium drag control (Guy drags Skeleton)
+        let mut f_med = fight(&open, &[("guy", (4, 4)), ("skeleton-1", (5, 4))]);
+        f_med.units[0].grappling.push(1);
+        f_med.units[1].grappled_by.push((0, None));
+        f_med.units[0].movement = 30;
+        f_med.commit_move_segment(0, vec![(4, 4), (4, 5)]);
+        assert_eq!(f_med.units[0].pos, (4, 5));
+        assert_eq!(f_med.units[1].pos, (4, 4), "Medium-on-Medium drag still trails cleanly");
         // Killing Ogre clears all 4 cells from occ
         f.make_dead(0);
         for c in [(2, 2), (2, 3), (3, 2), (3, 3)] {

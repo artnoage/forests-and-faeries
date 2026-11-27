@@ -2932,6 +2932,41 @@ impl Fight {
 
     /// `landing_square(map, creature, origin, max_squares)`.
     fn landing_square(&self, t: usize, origin: Pos, max_squares: Option<i32>) -> Option<Pos> {
+        if self.any_large {
+            return self.landing_square_multisquare(t, origin, max_squares);
+        }
+        let distances = max_squares.filter(|_| self.rule_version >= 7).map(|_| self.grid.bfs(origin));
+        let mut best: Option<((i32, i32, i32, i32), Pos)> = None;
+        let (sx, sy) = self.units[t].pos;
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                let (x, y) = (sx + dx, sy + dy);
+                if (dx == 0 && dy == 0) || x < 0 || y < 0 || x >= self.grid.w || y >= self.grid.h {
+                    continue;
+                }
+                if self.rule_version >= 7 && (!self.clear_effect((x, y), (sx, sy)) || self.grid.is_wall(x, y)) { continue; }
+                let gap = self.square_distance(origin, (x, y));
+                if let Some(dist) = &distances {
+                    if !(0..=max_squares.unwrap()).contains(&dist[self.grid.index(x, y)]) { continue; }
+                }
+                if let Some(m) = max_squares {
+                    if gap > m {
+                        continue;
+                    }
+                }
+                let busy = if self.token_at((x, y)).is_some() { 1 } else { 0 };
+                let key = (busy, gap, y, x);
+                if best.map_or(true, |b| key < b.0) {
+                    best = Some((key, (x, y)));
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn landing_square_multisquare(&self, t: usize, origin: Pos, max_squares: Option<i32>) -> Option<Pos> {
         let distances = max_squares.filter(|_| self.rule_version >= 7).map(|_| self.grid.bfs(origin));
         let mut best: Option<((i32, i32, i32, i32), Pos)> = None;
         for (sx, sy) in self.unit_cells(t) {

@@ -177,48 +177,55 @@ impl<'a> PathCompute<'a> {
         false
     }
 
+    #[cold]
+    #[inline(never)]
+    fn neighbours_multisquare(&self, x: i32, y: i32, out: &mut Vec<(Cell, f64)>) {
+        let s = i32::from(self.token_size);
+        if !self.footprint_passable(x, y, s) {
+            return;
+        }
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = x + dx;
+                let ny = y + dy;
+                if !self.footprint_passable(nx, ny, s) {
+                    continue;
+                }
+                if dx != 0 && dy != 0 {
+                    let ax_ok = self.footprint_passable(nx, y, s);
+                    let ay_ok = self.footprint_passable(x, ny, s);
+                    let clear = if self.solid_wall_corners {
+                        ax_ok && ay_ok
+                    } else {
+                        ax_ok || ay_ok
+                    };
+                    if !clear {
+                        continue;
+                    }
+                }
+                let difficult = self.footprint_difficult(nx, ny, s);
+                let mut cost = if difficult && (!self.flying || self.incorporeal) { 2.0 } else { 1.0 };
+                if self.prone {
+                    cost += 1.0;
+                }
+                if dx != 0 && dy != 0 {
+                    cost += 0.1;
+                }
+                out.push(((nx, ny), cost));
+            }
+        }
+    }
+
     /// `get_neighbors(x, y)` without doors or hazards, in natural20's order
     /// (the static part is precomputed in `Grid::neighbours` for 1x1 movers).
+    #[inline(always)]
     fn neighbours(&self, x: i32, y: i32, out: &mut Vec<(Cell, f64)>) {
         out.clear();
         if self.token_size > 1 {
-            let s = i32::from(self.token_size);
-            if !self.footprint_passable(x, y, s) {
-                return;
-            }
-            for dx in -1..=1 {
-                for dy in -1..=1 {
-                    if dx == 0 && dy == 0 {
-                        continue;
-                    }
-                    let nx = x + dx;
-                    let ny = y + dy;
-                    if !self.footprint_passable(nx, ny, s) {
-                        continue;
-                    }
-                    if dx != 0 && dy != 0 {
-                        let ax_ok = self.footprint_passable(nx, y, s);
-                        let ay_ok = self.footprint_passable(x, ny, s);
-                        let clear = if self.solid_wall_corners {
-                            ax_ok && ay_ok
-                        } else {
-                            ax_ok || ay_ok
-                        };
-                        if !clear {
-                            continue;
-                        }
-                    }
-                    let difficult = self.footprint_difficult(nx, ny, s);
-                    let mut cost = if difficult && (!self.flying || self.incorporeal) { 2.0 } else { 1.0 };
-                    if self.prone {
-                        cost += 1.0;
-                    }
-                    if dx != 0 && dy != 0 {
-                        cost += 0.1;
-                    }
-                    out.push(((nx, ny), cost));
-                }
-            }
+            self.neighbours_multisquare(x, y, out);
             return;
         }
         if self.incorporeal {
