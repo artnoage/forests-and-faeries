@@ -5,6 +5,20 @@
     "magic_missile",
     "shatter"
   ],
+  "deferred_spell_rules": {
+    "acid_splash": { "target_kind": "point", "range_ft": 60, "casting_time": "action" },
+    "blur": { "target_kind": "self", "range_ft": 0, "casting_time": "action" },
+    "burning_hands": { "target_kind": "point", "range_ft": 15, "casting_time": "action" },
+    "command": { "target_kind": "creatures", "range_ft": 60, "casting_time": "action" },
+    "dragons_breath": { "target_kind": "ally_or_self", "range_ft": 5, "casting_time": "bonus_action" },
+    "firebolt": { "target_kind": "creature", "range_ft": 120, "casting_time": "action" },
+    "mage_armor": { "target_kind": "ally_or_self", "range_ft": 5, "casting_time": "action" },
+    "ray_of_frost": { "target_kind": "creature", "range_ft": 60, "casting_time": "action" },
+    "scorching_ray": { "target_kind": "creatures", "range_ft": 120, "casting_time": "action" },
+    "see_invisibility": { "target_kind": "self", "range_ft": 0, "casting_time": "action" },
+    "sorcerous_burst": { "target_kind": "creature", "range_ft": 120, "casting_time": "action" },
+    "thunderwave": { "target_kind": "point", "range_ft": 15, "casting_time": "action" }
+  },
   "tapes": [
     {
       "tape": "c2p_hgt_mix_wight_3zomb_L01_s0.r18.jsonl",

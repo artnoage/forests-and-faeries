@@ -35,7 +35,15 @@ const PHASE0_DEFERRED_LEDGER_JSON: &str =
 struct PinnedDeferredLedger {
     schema: u32,
     supported_spells: Vec<String>,
+    deferred_spell_rules: BTreeMap<String, DeferredSpellRule>,
     tapes: Vec<PinnedTapeDeferred>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DeferredSpellRule {
+    target_kind: String,
+    range_ft: i32,
+    casting_time: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -306,6 +314,7 @@ fn validate_deferred_phase0_candidate(
     fight: &Fight,
     actor: UnitId,
     cand: &str,
+    spell_rules: &BTreeMap<String, DeferredSpellRule>,
 ) -> Result<bool, String> {
     let tmpl = fight.template_of(actor);
     let u = fight.unit(actor);
@@ -319,6 +328,11 @@ fn validate_deferred_phase0_candidate(
         let Some(spec) = caster.deferred_spells.iter().find(|s| s.id == spell_key) else {
             return Ok(false);
         };
+        let Some(rule) = spell_rules.get(spell_key) else {
+            return Err(format!(
+                "deferred spell {spell_key:?} is missing SRD range/target metadata in expected-deferred ledger"
+            ));
+        };
         if parts.len() < 3 {
             return Err(format!(
                 "deferred spell {cand:?} missing level or target/point segment"
@@ -331,10 +345,12 @@ fn validate_deferred_phase0_candidate(
 
         let mut free = false;
         let mut metamagic: Option<Metamagic> = None;
-        let mut has_target_or_point = false;
+        let mut parsed_targets: Option<Vec<UnitId>> = None;
+        let mut parsed_point: Option<Pos> = None;
 
         for (pi, &part) in parts[2..].iter().enumerate() {
             let is_last = pi + 1 == parts[2..].len();
+            let has_target_or_point = parsed_targets.is_some() || parsed_point.is_some();
             if part == "free" {
                 if free || has_target_or_point {
                     return Err(format!("deferred spell {cand:?} has misplaced/duplicate :free"));
@@ -370,6 +386,7 @@ fn validate_deferred_phase0_candidate(
                 if !is_last || has_target_or_point || tlist.is_empty() {
                     return Err(format!("deferred spell {cand:?} has malformed target list {part:?}"));
                 }
+                let mut targets = Vec::new();
                 for tid in tlist.split(',') {
                     let target = fight.unit_by_key(tid).ok_or_else(|| {
                         format!("deferred spell {cand:?} references unknown target {tid:?}")
@@ -380,14 +397,9 @@ fn validate_deferred_phase0_candidate(
                             "deferred spell {cand:?} targets dead unit {tid:?}"
                         ));
                     }
-                    if u.pos.feet_to(tu.pos) > 120 {
-                        return Err(format!(
-                            "deferred spell {cand:?} target {tid:?} out of max range ({} ft)",
-                            u.pos.feet_to(tu.pos)
-                        ));
-                    }
+                    targets.push(target);
                 }
-                has_target_or_point = true;
+                parsed_targets = Some(targets);
             } else if let Some(pt) = part.strip_prefix('@') {
                 if !is_last || has_target_or_point {
                     return Err(format!("deferred spell {cand:?} has malformed point {part:?}"));
@@ -407,30 +419,110 @@ fn validate_deferred_phase0_candidate(
                         "deferred spell {cand:?} point ({x},{y}) is out of grid bounds"
                     ));
                 }
-                if u.pos.feet_to(pos) > 120 {
-                    return Err(format!(
-                        "deferred spell {cand:?} point ({x},{y}) out of max range ({} ft)",
-                        u.pos.feet_to(pos)
-                    ));
-                }
-                has_target_or_point = true;
+                parsed_point = Some(pos);
             } else {
                 return Err(format!(
                     "deferred spell {cand:?} has unexpected segment {part:?}"
                 ));
             }
         }
-        if !has_target_or_point {
-            return Err(format!(
-                "deferred spell {cand:?} is missing target/point segment"
-            ));
+
+        // Spell-specific target kind and SRD cast-range check
+        match rule.target_kind.as_str() {
+            "self" => {
+                let Some(targets) = &parsed_targets else {
+                    return Err(format!("self-only spell {cand:?} must target caster"));
+                };
+                if targets.len() != 1 || targets[0] != actor {
+                    return Err(format!(
+                        "self-only spell {cand:?} cannot target non-self unit (caster={})",
+                        fight.unit_key(actor)
+                    ));
+                }
+            }
+            "ally_or_self" => {
+                let Some(targets) = &parsed_targets else {
+                    return Err(format!("ally/self spell {cand:?} requires a creature target"));
+                };
+                if targets.len() != 1 {
+                    return Err(format!(
+                        "ally/self spell {cand:?} requires exactly 1 target (got {})",
+                        targets.len()
+                    ));
+                }
+                let target = targets[0];
+                if !fight.allies(actor, target) {
+                    return Err(format!(
+                        "ally/self spell {cand:?} cannot target opposing unit {}",
+                        fight.unit_key(target)
+                    ));
+                }
+                let dist = u.pos.feet_to(fight.unit(target).pos);
+                if dist > rule.range_ft {
+                    return Err(format!(
+                        "deferred spell {cand:?} target {} is {dist} ft away (cast range {} ft)",
+                        fight.unit_key(target),
+                        rule.range_ft
+                    ));
+                }
+            }
+            "creature" | "creatures" => {
+                let Some(targets) = &parsed_targets else {
+                    return Err(format!("creature-targeted spell {cand:?} requires creature target(s)"));
+                };
+                if rule.target_kind == "creature" && targets.len() != 1 {
+                    return Err(format!(
+                        "single-target spell {cand:?} requires 1 target (got {})",
+                        targets.len()
+                    ));
+                }
+                for &target in targets {
+                    let dist = u.pos.feet_to(fight.unit(target).pos);
+                    if dist > rule.range_ft {
+                        return Err(format!(
+                            "deferred spell {cand:?} target {} is {dist} ft away (cast range {} ft)",
+                            fight.unit_key(target),
+                            rule.range_ft
+                        ));
+                    }
+                }
+            }
+            "point" => {
+                let Some(pos) = parsed_point else {
+                    return Err(format!("point-targeted spell {cand:?} requires @x,y target"));
+                };
+                let dist = u.pos.feet_to(pos);
+                if dist > rule.range_ft {
+                    return Err(format!(
+                        "deferred spell {cand:?} point ({},{}) is {dist} ft away (cast range {} ft)",
+                        pos.x, pos.y, rule.range_ft
+                    ));
+                }
+            }
+            other => {
+                return Err(format!("unknown deferred spell target_kind {other:?} for {spell_key:?}"));
+            }
         }
 
-        // Action economy & slot level legality
-        if u.action <= 0 && u.bonus <= 0 {
-            return Err(format!(
-                "deferred spell {cand:?} listed with no action or bonus action remaining"
-            ));
+        // Spell-specific casting-time action economy & slot level legality
+        match rule.casting_time.as_str() {
+            "action" => {
+                if u.action <= 0 {
+                    return Err(format!(
+                        "deferred action spell {cand:?} listed with no action remaining"
+                    ));
+                }
+            }
+            "bonus_action" => {
+                if u.bonus <= 0 {
+                    return Err(format!(
+                        "deferred bonus-action spell {cand:?} listed with no bonus action remaining"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!("unknown casting_time {other:?} for {spell_key:?}"));
+            }
         }
         if spec.base_level == 0 {
             if at_level != 0 || free {
@@ -1406,7 +1498,12 @@ pub fn verify_tape(
                             let mut tape_in_scope: Vec<String> = Vec::with_capacity(dj.cands.len());
                             let mut actual_deferred: Vec<PinnedDeferredEntry> = Vec::new();
                             for (ci, cand) in dj.cands.iter().enumerate() {
-                                match validate_deferred_phase0_candidate(&fight, cur, cand) {
+                                match validate_deferred_phase0_candidate(
+                                    &fight,
+                                    cur,
+                                    cand,
+                                    &ledger.deferred_spell_rules,
+                                ) {
                                     Ok(true) => {
                                         if dj.chosen == *cand {
                                             return Err(make_diff(
@@ -1812,4 +1909,104 @@ pub fn verify_tape(
         draws_consumed: dice.cursor,
         deferred_menu_entries_skipped,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn test_db() -> Arc<ContentDb> {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../content");
+        ember_content::load_content_dir(&dir).expect("load content").0
+    }
+
+    #[test]
+    fn deferred_validator_enforces_spell_specific_target_kind_and_cast_range() {
+        let db = test_db();
+        let ledger = load_deferred_ledger();
+
+        // Setup matching Wight seed 18221619025 line 117: Curogana@(2,1), Guy@(7,3) (25 ft),
+        // Wight@(15,1) (65 ft — beyond 60 ft Command/Ray of Frost, within 120 ft Fire Bolt).
+        let spec_far = EncounterSpec {
+            units: vec!["curogana".into(), "guy".into(), "wight-1".into()],
+            placements: vec![
+                Placement { id: "curogana".into(), x: 2, y: 1 },
+                Placement { id: "guy".into(), x: 7, y: 3 },
+                Placement { id: "wight-1".into(), x: 15, y: 1 },
+            ],
+            map_rows: Some(vec![".".repeat(18); 8]),
+            max_rounds: 20,
+        };
+        let mut fight = Fight::new(db.clone(), &spec_far, 1, 1).unwrap();
+        let mut init = ember_core::SuppliedDraws::new(vec![
+            DrawRecord { who: "curogana".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(20) },
+            DrawRecord { who: "guy".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Advantage, val: DrawVal::Two([5, 6]) },
+            DrawRecord { who: "wight-1".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(1) },
+        ]);
+        fight.start_with_dice(&mut init, &mut ember_core::NoopSink).unwrap();
+        let curo = fight.unit_by_key("curogana").unwrap();
+
+        // Self-only Blur accepts self, rejects ally Guy.
+        assert_eq!(
+            validate_deferred_phase0_candidate(&fight, curo, "spell:blur:L2:>curogana", &ledger.deferred_spell_rules),
+            Ok(true)
+        );
+        assert!(
+            validate_deferred_phase0_candidate(&fight, curo, "spell:blur:L2:>guy", &ledger.deferred_spell_rules)
+                .is_err()
+        );
+
+        // Touch (5 ft) Dragon's Breath accepts self (0 ft), rejects Guy at 25 ft.
+        assert_eq!(
+            validate_deferred_phase0_candidate(&fight, curo, "spell:dragons_breath:L2:>curogana", &ledger.deferred_spell_rules),
+            Ok(true)
+        );
+        assert!(
+            validate_deferred_phase0_candidate(&fight, curo, "spell:dragons_breath:L2:>guy", &ledger.deferred_spell_rules)
+                .is_err()
+        );
+
+        // 60 ft spells reject 65 ft Wight; 120 ft Fire Bolt accepts 65 ft Wight.
+        assert!(
+            validate_deferred_phase0_candidate(&fight, curo, "spell:command:L1:>wight-1", &ledger.deferred_spell_rules)
+                .is_err()
+        );
+        assert!(
+            validate_deferred_phase0_candidate(&fight, curo, "spell:ray_of_frost:L0:>wight-1", &ledger.deferred_spell_rules)
+                .is_err()
+        );
+        assert_eq!(
+            validate_deferred_phase0_candidate(&fight, curo, "spell:firebolt:L0:>wight-1", &ledger.deferred_spell_rules),
+            Ok(true)
+        );
+
+        // Adjacent Guy (5 ft): Dragon's Breath touch succeeds; self-only Blur STILL rejects Guy!
+        let spec_near = EncounterSpec {
+            units: vec!["curogana".into(), "guy".into(), "wight-1".into()],
+            placements: vec![
+                Placement { id: "curogana".into(), x: 6, y: 4 },
+                Placement { id: "guy".into(), x: 7, y: 3 },
+                Placement { id: "wight-1".into(), x: 10, y: 4 },
+            ],
+            map_rows: Some(vec![".".repeat(18); 8]),
+            max_rounds: 20,
+        };
+        let mut f_near = Fight::new(db, &spec_near, 1, 2).unwrap();
+        let mut init2 = ember_core::SuppliedDraws::new(vec![
+            DrawRecord { who: "curogana".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(20) },
+            DrawRecord { who: "guy".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Advantage, val: DrawVal::Two([5, 6]) },
+            DrawRecord { who: "wight-1".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(1) },
+        ]);
+        f_near.start_with_dice(&mut init2, &mut ember_core::NoopSink).unwrap();
+        let curo2 = f_near.unit_by_key("curogana").unwrap();
+        assert_eq!(
+            validate_deferred_phase0_candidate(&f_near, curo2, "spell:dragons_breath:L2:>guy", &ledger.deferred_spell_rules),
+            Ok(true)
+        );
+        assert!(
+            validate_deferred_phase0_candidate(&f_near, curo2, "spell:blur:L2:>guy", &ledger.deferred_spell_rules)
+                .is_err()
+        );
+    }
 }
