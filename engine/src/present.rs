@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 22;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 23;
 
 pub(crate) fn web_replay_rule_version(replay_version: u8) -> i32 {
     match replay_version {
@@ -42,7 +42,8 @@ pub(crate) fn web_replay_rule_version(replay_version: u8) -> i32 {
         19 => 17,
         20 => 18,
         21 => 19,
-        _ => 20,
+        22 => 20,
+        _ => 21,
     }
 }
 const MAX_LOG: usize = 180;
@@ -2796,7 +2797,11 @@ impl WebArena {
                     if self.replay_version >= 19 {
                         if def.save_attack.is_none() && !def.no_damage {
                             let here = f.units[actor].pos;
-                            let span = i32::from(f.units[actor].t.token_size) - 1;
+                            let span = i32::from(if self.replay_version >= 23 {
+                                f.effective_token_size(actor)
+                            } else {
+                                f.units[actor].t.token_size
+                            }) - 1;
                             let reach_sq = (def.range_max / 5).max(1);
                             let x0 = (here.0 - reach_sq).max(0);
                             let x1 = (here.0 + span + reach_sq).min(self.grid.w - 1);
@@ -3826,7 +3831,11 @@ impl WebArena {
             m.insert("x".into(), json!(unit.pos.0));
             m.insert("y".into(), json!(unit.pos.1));
             if self.replay_version >= 22 {
-                let sz = i32::from(ru.t.token_size);
+                let sz = i32::from(if self.replay_version >= 23 {
+                    f.effective_token_size(u)
+                } else {
+                    ru.t.token_size
+                });
                 let mut cells = Vec::with_capacity((sz * sz) as usize);
                 for ox in 0..sz {
                     for oy in 0..sz {

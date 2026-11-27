@@ -78,6 +78,10 @@ pub struct PathCompute<'a> {
     pub(crate) incorporeal: bool,
     /// Footprint side length in 5-ft squares (1 = Tiny/Small/Medium, 2 = Large, 3 = Huge).
     pub(crate) token_size: u8,
+    /// Current effective footprint side length (for `difficult_terrain` checks while squeezed).
+    pub(crate) eff_size: u8,
+    /// Allow squeeze edges (`token_size - 1`) for `token_size > 1` (rule >= 21).
+    pub(crate) allow_squeeze: bool,
     prone: bool,
     /// `is_flying()`: difficult terrain costs 1 (`base_move_cost`).
     flying: bool,
@@ -97,6 +101,8 @@ impl<'a> PathCompute<'a> {
             solid_wall_corners: false,
             incorporeal: false,
             token_size: 1,
+            eff_size: 1,
+            allow_squeeze: false,
             prone,
             flying,
             occupied,
@@ -140,9 +146,7 @@ impl<'a> PathCompute<'a> {
         cost
     }
 
-    /// Terrain passability for a multi-square footprint (`s x s`, no squeezing).
-    /// TODO(multi-square-squeeze-block): squeeze edges are disallowed until upstream
-    /// squeeze footprint semantics are resolved on Natural20 issue #6.
+    /// Terrain passability for a multi-square footprint (`s x s`).
     #[inline]
     fn footprint_passable(&self, x: i32, y: i32, s: i32) -> bool {
         if x < 0 || y < 0 || x + s > self.grid.w || y + s > self.grid.h {
@@ -181,7 +185,51 @@ impl<'a> PathCompute<'a> {
     #[inline(never)]
     fn neighbours_multisquare(&self, x: i32, y: i32, out: &mut Vec<(Cell, f64)>) {
         let s = i32::from(self.token_size);
-        if !self.footprint_passable(x, y, s) {
+        let eff_s = i32::from(self.eff_size.max(1));
+        if !self.allow_squeeze {
+            if !self.footprint_passable(x, y, s) {
+                return;
+            }
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if !self.footprint_passable(nx, ny, s) {
+                        continue;
+                    }
+                    if dx != 0 && dy != 0 {
+                        let ax_ok = self.footprint_passable(nx, y, s);
+                        let ay_ok = self.footprint_passable(x, ny, s);
+                        let clear = if self.solid_wall_corners {
+                            ax_ok && ay_ok
+                        } else {
+                            ax_ok || ay_ok
+                        };
+                        if !clear {
+                            continue;
+                        }
+                    }
+                    let difficult = self.footprint_difficult(nx, ny, s);
+                    let mut cost = if difficult && (!self.flying || self.incorporeal) { 2.0 } else { 1.0 };
+                    if self.prone {
+                        cost += 1.0;
+                    }
+                    if dx != 0 && dy != 0 {
+                        cost += 0.1;
+                    }
+                    out.push(((nx, ny), cost));
+                }
+            }
+            return;
+        }
+        // Rule >= 21 (`path_compute.py:571-623`): try normal passable first, then squeeze passable.
+        let sq_s = (s - 1).max(1);
+        let normal_from_ok = self.footprint_passable(x, y, s);
+        let squeeze_from_ok = normal_from_ok || self.footprint_passable(x, y, sq_s);
+        if !squeeze_from_ok {
             return;
         }
         for dx in -1..=1 {
@@ -191,30 +239,47 @@ impl<'a> PathCompute<'a> {
                 }
                 let nx = x + dx;
                 let ny = y + dy;
-                if !self.footprint_passable(nx, ny, s) {
+                if nx < 0 || ny < 0 || nx >= self.grid.w || ny >= self.grid.h {
                     continue;
                 }
-                if dx != 0 && dy != 0 {
-                    let ax_ok = self.footprint_passable(nx, y, s);
-                    let ay_ok = self.footprint_passable(x, ny, s);
-                    let clear = if self.solid_wall_corners {
-                        ax_ok && ay_ok
+                let diag_clear_normal = if dx == 0 || dy == 0 {
+                    true
+                } else if self.solid_wall_corners {
+                    normal_from_ok && self.footprint_passable(nx, y, s) && self.footprint_passable(x, ny, s)
+                } else {
+                    normal_from_ok && (self.footprint_passable(nx, y, s) || self.footprint_passable(x, ny, s))
+                };
+                let base_cost = || {
+                    let difficult = self.footprint_difficult(nx, ny, eff_s);
+                    let mut cost = if difficult && (!self.flying || self.incorporeal) { 2.0 } else { 1.0 };
+                    if self.prone {
+                        cost += 1.0;
+                    }
+                    if dx != 0 && dy != 0 {
+                        cost += 0.1;
+                    }
+                    cost
+                };
+                if diag_clear_normal && normal_from_ok && self.footprint_passable(nx, ny, s) {
+                    out.push(((nx, ny), base_cost()));
+                } else {
+                    let diag_clear_squeeze = if dx == 0 || dy == 0 {
+                        true
+                    } else if self.solid_wall_corners {
+                        // 5e-2024 `clears_terrain_corner` always uses `allow_squeeze=False`.
+                        normal_from_ok && self.footprint_passable(nx, y, s) && self.footprint_passable(x, ny, s)
                     } else {
-                        ax_ok || ay_ok
+                        self.footprint_passable(nx, y, sq_s) || self.footprint_passable(x, ny, sq_s)
                     };
-                    if !clear {
-                        continue;
+                    if diag_clear_squeeze && self.footprint_passable(nx, ny, sq_s) {
+                        // Exact mirror of `path_compute.py:619-621` (adds +1 squeeze and +1 if prone).
+                        let mut cost = base_cost() + 1.0;
+                        if self.prone {
+                            cost += 1.0;
+                        }
+                        out.push(((nx, ny), cost));
                     }
                 }
-                let difficult = self.footprint_difficult(nx, ny, s);
-                let mut cost = if difficult && (!self.flying || self.incorporeal) { 2.0 } else { 1.0 };
-                if self.prone {
-                    cost += 1.0;
-                }
-                if dx != 0 && dy != 0 {
-                    cost += 0.1;
-                }
-                out.push(((nx, ny), cost));
             }
         }
     }

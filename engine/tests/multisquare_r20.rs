@@ -1,9 +1,9 @@
 //! Replays every committed rule-20 multi-square Natural20 tape in `fixtures/r20/`
-//! (pinned to `reference/NATURAL20_COMMIT`) and requires zero divergences.
+//! (pinned to `NATURAL20_COMMIT_RULE_20`) and requires zero divergences.
 
 use std::path::Path;
 
-use ember_rs::batch::NATURAL20_COMMIT;
+use ember_rs::batch::NATURAL20_COMMIT_RULE_20;
 use ember_rs::content::ContentPool;
 use ember_rs::replay::{check_stats, install_quiet_hook, replay_file, Outcome};
 use ember_rs::tape::Tape;
@@ -20,7 +20,7 @@ fn multisquare_r20_fixtures_replay_without_divergence() {
     files.sort();
     assert!(files.len() >= 6, "expected >= 6 rule-20 fixtures, got {}", files.len());
     let pool = ContentPool::global();
-    let pinned = NATURAL20_COMMIT.trim();
+    let pinned = NATURAL20_COMMIT_RULE_20;
     let mut failures = Vec::new();
     for f in &files {
         let name = f.file_name().unwrap().to_string_lossy().into_owned();

@@ -61,6 +61,7 @@ pub struct MoveCache {
     prone: bool,
     flying: bool,
     token_size: u8,
+    squeezed: bool,
     targets: Vec<Pos>,
     mask: crate::map::Bits,
     /// By cell: the destination's `min_steps_to_multiple`, once computed.
@@ -296,6 +297,8 @@ impl Fight {
             pc.incorporeal = self.incorporeal(u);
             pc.solid_wall_corners = self.rule_version >= 8;
             pc.token_size = token_size;
+            pc.eff_size = self.effective_token_size(u);
+            pc.allow_squeeze = self.rule_version >= 21;
             Some(pc)
         } else {
             None
@@ -329,7 +332,7 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn can_blind_attack_multisquare(&self, u: usize, target: Pos, range_ft: i32) -> bool {
-        if self.units[u].t.token_size == 1 {
+        if self.effective_token_size(u) == 1 {
             return self.can_blind_attack_square(self.units[u].pos, target, range_ft);
         }
         if self.unit_occupies(u, target)
@@ -380,6 +383,10 @@ impl Fight {
         if unit.available_movement() <= 0 {
             return;
         }
+        if self.any_large && self.rule_version >= 21 && unit.t.token_size > 1 {
+            self.move_candidates_r21_large(u, out);
+            return;
+        }
         let (cx, cy) = unit.pos;
         let budget = unit.available_movement().div_euclid(5);
         for dx in -1..=1 {
@@ -397,6 +404,39 @@ impl Fight {
                     }
                 }
                 if !self.passable(u, (nx, ny)) || !self.placeable(u, (nx, ny)) {
+                    continue;
+                }
+                let path = [(cx, cy), (nx, ny)];
+                let (moves, _) = self.compute_actual_moves(u, &path, budget);
+                if moves.len() > 1 {
+                    out.push(Act::Move(moves));
+                }
+            }
+        }
+    }
+
+    /// Rule >= 21 multi-square 1-step move candidates:
+    /// `action_builder.py:440-441` and `player_character.py:1016` check
+    /// `bidirectionally_passable(..., allow_squeeze=False)` and `placeable(..., squeeze=False)`.
+    #[cold]
+    #[inline(never)]
+    fn move_candidates_r21_large(&self, u: usize, out: &mut Vec<Act>) {
+        let unit = &self.units[u];
+        let (cx, cy) = unit.pos;
+        let budget = unit.available_movement().div_euclid(5);
+        let base = unit.t.token_size;
+        if !self.passable_with_size(u, (cx, cy), 0, base) {
+            return;
+        }
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let (nx, ny) = (cx + dx, cy + dy);
+                if !self.passable_with_size(u, (nx, ny), 0, base)
+                    || !self.placeable_with_size(u, (nx, ny), 0, base)
+                {
                     continue;
                 }
                 let path = [(cx, cy), (nx, ny)];
@@ -815,6 +855,7 @@ impl Fight {
             }
             return;
         }
+        let base_sz = self.units[u].t.token_size;
         while let Some(i) = queue.pop_front() {
             let (x, y) = self.grid.pos_of(i);
             for nx in x - 1..=x + 1 {
@@ -825,8 +866,10 @@ impl Fight {
                         continue;
                     }
                     let j = self.grid.index(nx, ny);
+                    // `generic_controller.py:pursuit_distances` passes `allow_squeeze=False`,
+                    // so every BFS edge checks the full `base_sz x base_sz` footprint.
                     if distances[j] == u16::MAX
-                        && !self.unit_cells_at(u, (nx, ny)).any(|c| occupied.get(self.grid.index(c.0, c.1)))
+                        && !crate::engine::UnitCells::new((nx, ny), base_sz).any(|c| occupied.get(self.grid.index(c.0, c.1)))
                     {
                         distances[j] = distances[i] + 1;
                         queue.push_back(j);
@@ -866,6 +909,7 @@ impl Fight {
         let prone = self.units[u].prone();
         let flying = self.units[u].t.fly;
         let token_size = self.units[u].t.token_size;
+        let squeezed = self.any_large && self.units[u].squeezed();
         let mask = self.occupied_mask(u);
 
         // build_move_scores
@@ -896,11 +940,12 @@ impl Fight {
         // result is cached across decisions while that context is unchanged
         // (a creature moves one square per decision with the same targets).
         let mut cache = std::mem::take(&mut self.move_cache);
-        if !(cache.valid && cache.prone == prone && cache.flying == flying && cache.token_size == token_size && cache.targets == targets && cache.mask == mask) {
+        if !(cache.valid && cache.prone == prone && cache.flying == flying && cache.token_size == token_size && cache.squeezed == squeezed && cache.targets == targets && cache.mask == mask) {
             cache.valid = true;
             cache.prone = prone;
             cache.flying = flying;
             cache.token_size = token_size;
+            cache.squeezed = squeezed;
             cache.targets.clone_from(&targets);
             cache.mask.clone_from(&mask);
             cache.pursuit.clear();
@@ -998,7 +1043,11 @@ impl Fight {
         let mut pc = PathCompute::new(&grid, prone, flying, mask);
         pc.incorporeal = self.incorporeal(u);
         pc.solid_wall_corners = self.rule_version >= 8;
-        pc.token_size = token_size;
+        if self.any_large {
+            pc.token_size = token_size;
+            pc.eff_size = self.effective_token_size(u);
+            pc.allow_squeeze = self.rule_version >= 21;
+        }
         if !targets.is_empty() && has_moves {
             let paths = pc.compute_paths_to_multiple(upos, &targets);
             for (dest, path) in targets.iter().zip(paths.iter()) {

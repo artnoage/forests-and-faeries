@@ -5,13 +5,13 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "ddb92d5a0cd6401e27530ccb1e5b956c7771dfbf",
+  "natural20_commit": "fe59bb83220a411783016f5450a5211afe4521b5",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
    "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
    "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
-   "templates/npcs/ogre.yml": "25d84f1cde4c07567687bbc80d0f8b388537f3f77a84f808778a9b2b53f8a54a",
+   "templates/npcs/ogre.yml": "3273a966e43e182f9aa349d74ac80051202b4c3649815db8d8a9eeef8624ddd4",
    "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
    "templates/rulesets/5e-2024/npcs/ogre.yml": "12b2f2792589ce3400513aa59b65329ea4481f67a4cb7163e838d1b17b5361c2"
   }

@@ -1229,7 +1229,7 @@ fn paint_multisquare_trail(cx: &Ctx, a: usize, map: &mut [u8]) {
 #[inline(never)]
 fn add_multisquare_exposure(f: &Fight, i: usize, sc: &mut Scratch) {
     let g = &f.grid;
-    if f.units[i].t.token_size == 1 {
+    if f.effective_token_size(i) == 1 {
         if let Some(row) = g.los_from(f.units[i].pos) {
             for (wi, &word) in row.words().iter().enumerate() {
                 let mut bits = word;
@@ -1265,11 +1265,13 @@ fn add_multisquare_exposure(f: &Fight, i: usize, sc: &mut Scratch) {
 
 #[cold]
 #[inline(never)]
-fn add_multisquare_threat(f: &Fight, unit: &crate::engine::Unit, reach: i32, sc: &mut Scratch) {
+fn add_multisquare_threat(f: &Fight, i: usize, reach: i32, sc: &mut Scratch) {
     let g = &f.grid;
+    let unit = &f.units[i];
     let r = (2 * reach + 5) / 10;
     let (x0, y0) = unit.pos;
-    let sz = i32::from(unit.t.token_size);
+    let eff = f.effective_token_size(i);
+    let sz = i32::from(eff);
     if sz == 1 {
         for y in (y0 - r).max(0)..=(y0 + r).min(g.h - 1) {
             for x in (x0 - r).max(0)..=(x0 + r).min(g.w - 1) {
@@ -1283,7 +1285,7 @@ fn add_multisquare_threat(f: &Fight, unit: &crate::engine::Unit, reach: i32, sc:
     }
     for y in (y0 - r).max(0)..=(y0 + sz - 1 + r).min(g.h - 1) {
         for x in (x0 - r).max(0)..=(x0 + sz - 1 + r).min(g.w - 1) {
-            if f.within_reach_footprints(unit.pos, unit.t.token_size, (x, y), 1, reach) {
+            if f.within_reach_footprints(unit.pos, eff, (x, y), 1, reach) {
                 let idx = g.index(x, y);
                 sc.threat[idx] = sc.threat[idx].saturating_add(1);
             }
@@ -1297,7 +1299,7 @@ fn prepare_multisquare_walkable(f: &Fight, a: usize, h: usize, masked: u32, walk
     let g = &f.grid;
     for (i, u) in f.units.iter().enumerate() {
         if i != a && masked & (1 << i) == 0 && (f.rule_version() < 8 || !u.dead()) {
-            if u.t.token_size == 1 {
+            if f.effective_token_size(i) == 1 {
                 free[u.pos.1 as usize + 1] &= !(1u64 << u.pos.0);
             } else {
                 for cell in f.unit_cells(i) {
@@ -1308,7 +1310,7 @@ fn prepare_multisquare_walkable(f: &Fight, a: usize, h: usize, masked: u32, walk
             }
         }
     }
-    let a_sz = f.units[a].t.token_size;
+    let a_sz = f.effective_token_size(a);
     if a_sz > 1 {
         for _ in 1..a_sz {
             for y in 1..=h {
@@ -1421,7 +1423,7 @@ fn prepare(f: &Fight, view: u8, actor: Option<usize>, moves: bool, far: bool, ma
                         }
                     }
                 } else {
-                    add_multisquare_threat(f, unit, reach, sc);
+                    add_multisquare_threat(f, i, reach, sc);
                 }
             }
         }
@@ -2336,7 +2338,7 @@ fn encode_relations(cx: &Ctx, out: &mut [u8]) {
                     row[rel::IN_REACH] = (reach > 0 && if !f.any_large {
                         f.within_reach(uj.pos, ui.pos, reach)
                     } else {
-                        f.within_reach_footprints(uj.pos, uj.t.token_size, ui.pos, ui.t.token_size, reach)
+                        f.within_reach_footprints(uj.pos, f.effective_token_size(j), ui.pos, f.effective_token_size(i), reach)
                     }) as u8;
                 }
             }
@@ -2483,8 +2485,10 @@ fn creature_row_v5(cx: &Ctx, i: usize, row: &mut [f32]) {
 fn position_features_multisquare(cx: &Ctx, a: usize, i: usize, ap: Pos, dx: i32, dy: i32, row: &mut [f32]) {
     let f = cx.f;
     let u = &f.units[i];
-    let a_sz = i32::from(f.units[a].t.token_size);
-    let u_sz = i32::from(u.t.token_size);
+    let a_eff = f.effective_token_size(a);
+    let u_eff = f.effective_token_size(i);
+    let a_sz = i32::from(a_eff);
+    let u_sz = i32::from(u_eff);
     row[ci!("dist_div32")] = f.dist(a, i) as f32 / 32.0;
     let cheb = if a_sz == 1 && u_sz == 1 {
         dx.abs().max(dy.abs())
@@ -2530,7 +2534,7 @@ fn position_features_multisquare(cx: &Ctx, a: usize, i: usize, ap: Pos, dx: i32,
     }
     if i != a {
         if let Some(reach) = f.units[a].t.melee_ft {
-            row[ci!("in_actor_reach")] = b(f.within_reach_footprints(ap, f.units[a].t.token_size, u.pos, u.t.token_size, reach));
+            row[ci!("in_actor_reach")] = b(f.within_reach_footprints(ap, a_eff, u.pos, u_eff, reach));
         }
     }
 }
@@ -3271,7 +3275,7 @@ fn attack_riders(f: &Fight, a: usize, atk: usize, target: Option<(usize, f64)>, 
 fn encode_move_multisquare(cx: &Ctx, a: usize, path: &[Pos], from: Pos, dest: Pos, row: &mut [f32]) {
     let f = cx.f;
     let g = &f.grid;
-    let a_sz = f.units[a].t.token_size;
+    let a_sz = f.effective_token_size(a);
     let es = |p: Pos| -> f32 {
         let s = if a_sz == 1 {
             cx.sc.enemy_steps[g.index(p.0, p.1)]
@@ -3315,8 +3319,9 @@ fn encode_move_multisquare(cx: &Ctx, a: usize, path: &[Pos], from: Pos, dest: Po
             continue;
         }
         if let Some(reach) = eu.t.melee_ft {
-            let before = f.within_reach_footprints(eu.pos, eu.t.token_size, from, a_sz, reach);
-            let after = f.within_reach_footprints(eu.pos, eu.t.token_size, dest, a_sz, reach);
+            let e_sz = f.effective_token_size(e);
+            let before = f.within_reach_footprints(eu.pos, e_sz, from, a_sz, reach);
+            let after = f.within_reach_footprints(eu.pos, e_sz, dest, a_sz, reach);
             leaves |= before && !after;
             enters |= !before && after;
         }
@@ -3329,7 +3334,7 @@ fn encode_move_multisquare(cx: &Ctx, a: usize, path: &[Pos], from: Pos, dest: Po
 #[inline(never)]
 fn sees_fear_source_from_multisquare(cx: &Ctx, a: usize, p: Pos) -> bool {
     let f = cx.f;
-    let a_sz = f.units[a].t.token_size;
+    let a_sz = f.effective_token_size(a);
     let mut m = cx.sc.fear[a];
     while m != 0 {
         let s = m.trailing_zeros() as usize;
@@ -3341,7 +3346,7 @@ fn sees_fear_source_from_multisquare(cx: &Ctx, a: usize, p: Pos) -> bool {
         if src.hidden_stealth.is_some_and(|st| f.units[a].t.passive_perception < st) {
             continue;
         }
-        if a_sz == 1 && src.t.token_size == 1 {
+        if a_sz == 1 && f.effective_token_size(s) == 1 {
             if f.grid.los(p, src.pos) {
                 return true;
             }

@@ -165,7 +165,7 @@ fn see_invisibility_replaces_burning_hands_only_at_v18_and_shows_per_active_hero
         ],
     };
     let mut game = WebArena::new(level, 5, 0, "csrf".into(), "enc".into()).unwrap();
-    assert_eq!(CURRENT_WEB_REPLAY_VERSION, 22);
+    assert_eq!(CURRENT_WEB_REPLAY_VERSION, 23);
     game.start().unwrap();
 
     // Advance to Curogana's turn via public API? We can use Fight directly via WebArena state by forcing turns cleanly:
@@ -899,15 +899,17 @@ fn ray_of_sickness_presentation_is_version_gated_on_replay_v20() {
 
 #[test]
 fn batch_defaults_to_rule_17_and_maps_n20_commit_per_rule_version() {
-    use ember_rs::batch::NATURAL20_COMMIT_RULE_18_19;
+    use ember_rs::batch::{NATURAL20_COMMIT_RULE_18_19, NATURAL20_COMMIT_RULE_20};
     assert_eq!(DEFAULT_BATCH_RULE_VERSION, 17);
-    assert_eq!(CURRENT_RULE_VERSION, 20);
+    assert_eq!(CURRENT_RULE_VERSION, 21);
     assert_eq!(natural20_commit_for_rule_version(17), NATURAL20_COMMIT_RULE_17);
     assert_eq!(natural20_commit_for_rule_version(18), NATURAL20_COMMIT_RULE_18_19);
     assert_eq!(natural20_commit_for_rule_version(19), NATURAL20_COMMIT_RULE_18_19);
-    assert_eq!(natural20_commit_for_rule_version(20), NATURAL20_COMMIT.trim());
+    assert_eq!(natural20_commit_for_rule_version(20), NATURAL20_COMMIT_RULE_20);
+    assert_eq!(natural20_commit_for_rule_version(21), NATURAL20_COMMIT.trim());
     assert_ne!(NATURAL20_COMMIT_RULE_17, NATURAL20_COMMIT_RULE_18_19);
-    assert_ne!(NATURAL20_COMMIT_RULE_18_19, NATURAL20_COMMIT.trim());
+    assert_ne!(NATURAL20_COMMIT_RULE_18_19, NATURAL20_COMMIT_RULE_20);
+    assert_ne!(NATURAL20_COMMIT_RULE_20, NATURAL20_COMMIT.trim());
 }
 
 #[test]

@@ -1625,9 +1625,19 @@ impl Fight {
             return (x, y);
         }
         let can_stop = |n: Pos| {
-            self.grid.in_bounds(n.0, n.1)
-                && self.placeable(t, n)
-                && (reserved.is_empty() || !self.unit_cells_at(t, n).any(|c| reserved.contains(&c)))
+            if !self.grid.in_bounds(n.0, n.1) || !self.placeable(t, n) {
+                return false;
+            }
+            if reserved.is_empty() {
+                return true;
+            }
+            let base = self.units[t].t.token_size;
+            let sz = if self.rule_version >= 21 && base > 1 && self.requires_squeeze(t, n) {
+                base - 1
+            } else {
+                base
+            };
+            !crate::engine::UnitCells::new(n, sz).any(|c| reserved.contains(&c))
         };
         let (sx, sy) = (ox.signum(), oy.signum());
         let mut best = (x, y);

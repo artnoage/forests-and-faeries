@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 20;
+pub const CURRENT_RULE_VERSION: i32 = 21;
 
 /// Zero-allocation iterator over a creature's `s x s` grid cells in Natural20
 /// `Map.entity_squares_at_pos` order (`ox` outer `0..s`, `oy` inner `0..s`).
@@ -74,6 +74,7 @@ pub enum St {
     Restrained,
     Invisible,
     Deafened,
+    Squeezed,
 }
 
 impl St {
@@ -93,6 +94,7 @@ impl St {
             St::Restrained => "restrained",
             St::Invisible => "invisible",
             St::Deafened => "deafened",
+            St::Squeezed => "squeezed",
         }
     }
 }
@@ -322,6 +324,10 @@ impl Unit {
     #[inline]
     pub fn invisible(&self) -> bool {
         self.has(St::Invisible)
+    }
+    #[inline]
+    pub fn squeezed(&self) -> bool {
+        self.has(St::Squeezed)
     }
     /// `Entity.has_reaction`: no incapacitated creature (unconscious
     /// included, N20-019) can react.
@@ -918,14 +924,26 @@ impl Fight {
     }
 
     #[inline]
+    pub fn effective_token_size(&self, u: usize) -> u8 {
+        if !self.any_large {
+            return 1;
+        }
+        let base = self.units[u].t.token_size;
+        if self.rule_version >= 21 && base > 1 && self.units[u].squeezed() {
+            base - 1
+        } else {
+            base
+        }
+    }
+
+    #[inline]
     pub fn unit_cells_at(&self, u: usize, anchor: Pos) -> UnitCells {
-        UnitCells::new(anchor, self.units[u].t.token_size)
+        UnitCells::new(anchor, self.effective_token_size(u))
     }
 
     #[inline]
     pub fn unit_cells(&self, u: usize) -> UnitCells {
-        let unit = &self.units[u];
-        UnitCells::new(unit.pos, unit.t.token_size)
+        UnitCells::new(self.units[u].pos, self.effective_token_size(u))
     }
 
     #[inline]
@@ -940,7 +958,7 @@ impl Fight {
     #[inline(never)]
     fn unit_occupies_multisquare(&self, u: usize, p: Pos) -> bool {
         let unit = &self.units[u];
-        let s = i32::from(unit.t.token_size);
+        let s = i32::from(self.effective_token_size(u));
         if s == 1 {
             unit.pos == p
         } else {
@@ -949,10 +967,8 @@ impl Fight {
     }
 
     /// Terrain-only footprint check (`s x s` in bounds and wall-free unless incorporeal).
-    /// TODO(multi-square-squeeze-block): squeeze footprints are disallowed until Natural20 issue #6.
     #[inline]
-    pub(crate) fn footprint_terrain_clear(&self, u: usize, anchor: Pos) -> bool {
-        let s = i32::from(self.units[u].t.token_size);
+    pub(crate) fn footprint_terrain_clear_size(&self, u: usize, anchor: Pos, s: i32) -> bool {
         if anchor.0 < 0 || anchor.1 < 0 || anchor.0 + s > self.grid.w || anchor.1 + s > self.grid.h {
             return false;
         }
@@ -967,6 +983,11 @@ impl Fight {
             }
         }
         true
+    }
+
+    #[inline]
+    pub(crate) fn footprint_terrain_clear(&self, u: usize, anchor: Pos) -> bool {
+        self.footprint_terrain_clear_size(u, anchor, i32::from(self.units[u].t.token_size))
     }
 
     #[inline]
@@ -1014,7 +1035,7 @@ impl Fight {
     #[inline(never)]
     fn sees_lit_square_multisquare(&self, observer: usize, pos: Pos) -> bool {
         let u = &self.units[observer];
-        if u.t.token_size == 1 {
+        if self.effective_token_size(observer) == 1 {
             if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.effective_light_level(pos) == 0 {
                 let senses = u.t.darkvision.max(u.t.blindsight).max(u.t.truesight);
                 if self.square_distance(u.pos, pos) * 5 > senses { return false; }
@@ -1058,7 +1079,7 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn units_clear_sight_multisquare(&self, a: usize, b: usize) -> bool {
-        if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
+        if self.effective_token_size(a) == 1 && self.effective_token_size(b) == 1 {
             return self.clear_sight(self.units[a].pos, self.units[b].pos);
         }
         for p1 in self.unit_cells(a) {
@@ -1087,8 +1108,8 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn sees_hider_clearly_multisquare(&self, observer: usize, hider: usize) -> bool {
-        let oa = self.units[observer].t.token_size;
-        let ob = self.units[hider].t.token_size;
+        let oa = self.effective_token_size(observer);
+        let ob = self.effective_token_size(hider);
         if oa == 1 && ob == 1 {
             let pos = self.units[hider].pos;
             if self.rule_version < 11 { return self.sees_lit_square(observer, pos); }
@@ -1183,7 +1204,7 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn can_see_multisquare(&self, a: usize, b: usize) -> bool {
-        if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
+        if self.effective_token_size(a) == 1 && self.effective_token_size(b) == 1 {
             if self.units[b].invisible() {
                 let negated = self.rule_version >= 18
                     && (self.has_effect(b, EffKey::FaerieFire)
@@ -1335,9 +1356,9 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn dist_multisquare(&self, a: usize, anchor_a: Pos, b: usize) -> i32 {
-        let sa = self.units[a].t.token_size;
+        let sa = self.effective_token_size(a);
         let ub = &self.units[b];
-        let sb = ub.t.token_size;
+        let sb = self.effective_token_size(b);
         if sa == 1 && sb == 1 {
             return self.square_distance(anchor_a, ub.pos);
         }
@@ -1365,7 +1386,7 @@ impl Fight {
     #[inline(never)]
     fn dist_to_square_multisquare(&self, u: usize, p: Pos) -> i32 {
         let unit = &self.units[u];
-        let s = unit.t.token_size;
+        let s = self.effective_token_size(u);
         if s == 1 {
             return self.square_distance(unit.pos, p);
         }
@@ -1397,7 +1418,7 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn within_reach_at_multisquare(&self, a: usize, anchor_a: Pos, b: usize, feet: i32) -> bool {
-        if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
+        if self.effective_token_size(a) == 1 && self.effective_token_size(b) == 1 {
             return self.within_reach(anchor_a, self.units[b].pos, feet);
         }
         self.dist_multisquare(a, anchor_a, b) * 5 <= feet
@@ -1502,9 +1523,10 @@ impl Fight {
         }
     }
 
-    /// Mirrors `natural20/utils/ac_utils.py:39-69`: accumulates `max_ac` across
-    /// `source_squares x target_squares` and returns on the first pair with LOS
-    /// (tracked as item #1 in `NATURAL20_ISSUES_FOR_JOSEPH.md`).
+    /// Mirrors `natural20/utils/ac_utils.py:39-71`:
+    /// - rule < 21: returns on the first pair with LOS;
+    /// - rule >= 21 (upstream 1a7eeb03): scans every `source_squares x target_squares`
+    ///   pair and keeps the greatest cover across all pairs with LOS.
     #[cold]
     #[inline(never)]
     fn known_cover_squares(&self, src_cells: UnitCells, target: usize, hidden: u32) -> i32 {
@@ -1514,7 +1536,7 @@ impl Fight {
             for t_pos in self.unit_cells(target) {
                 if !self.grid.in_bounds(t_pos.0, t_pos.1) { continue; }
                 max_ac = max_ac.max(self.single_pair_cover(s_pos, t_pos, hidden));
-                if self.clear_sight(s_pos, t_pos) {
+                if self.rule_version < 21 && self.clear_sight(s_pos, t_pos) {
                     return max_ac;
                 }
             }
@@ -1534,7 +1556,7 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn known_cover_multisquare(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
-        if self.units[target].t.token_size == 1 {
+        if self.effective_token_size(target) == 1 {
             return self.single_pair_cover(origin, self.units[target].pos, hidden);
         }
         self.known_cover_squares(UnitCells::new(origin, 1), target, hidden)
@@ -1552,7 +1574,7 @@ impl Fight {
     #[cold]
     #[inline(never)]
     fn known_cover_from_unit_multisquare(&self, src: usize, target: usize, hidden: u32) -> i32 {
-        if self.units[src].t.token_size == 1 && self.units[target].t.token_size == 1 {
+        if self.effective_token_size(src) == 1 && self.effective_token_size(target) == 1 {
             return self.single_pair_cover(self.units[src].pos, self.units[target].pos, hidden);
         }
         self.known_cover_squares(self.unit_cells(src), target, hidden)
@@ -1643,7 +1665,11 @@ impl Fight {
         if from.0 == to.0 || from.1 == to.1 {
             return true;
         }
-        self.footprint_terrain_clear(u, (to.0, from.1)) && self.footprint_terrain_clear(u, (from.0, to.1))
+        // `clears_terrain_corner` calls `bidirectionally_passable(..., origin, None, allow_squeeze=False)`,
+        // which checks `origin` as well as both orthogonal neighbors at full footprint size.
+        (self.rule_version < 21 || self.footprint_terrain_clear(u, from))
+            && self.footprint_terrain_clear(u, (to.0, from.1))
+            && self.footprint_terrain_clear(u, (from.0, to.1))
     }
 
     pub(crate) fn shadow_can_hide(&self, u: usize) -> bool {
@@ -1651,8 +1677,38 @@ impl Fight {
         self.rule_version >= 9 && unit.t.shadow_stealth.is_some() && self.grid.light_level(unit.pos) < 2
     }
 
-    /// `Map.passable(entity, x, y, battle, allow_squeeze=False)`.
-    /// TODO(multi-square-squeeze-block): squeezing is disallowed until Natural20 issue #6.
+    /// `Map.passable(entity, x, y, battle, allow_squeeze)` at an explicit footprint side length `sz`.
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn passable_with_size(&self, u: usize, p: Pos, masked: u32, sz: u8) -> bool {
+        if !self.footprint_terrain_clear_size(u, p, i32::from(sz)) {
+            return false;
+        }
+        if self.incorporeal(u) {
+            return true;
+        }
+        for c in UnitCells::new(p, sz) {
+            if let Some(o) = self.token_at(c) {
+                if (masked & (1 << o)) == 0 && !self.unit_can_pass_other(u, o) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// `movement.requires_squeeze(entity, x, y, map, battle)` (`rule_version >= 21`).
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn requires_squeeze(&self, u: usize, p: Pos) -> bool {
+        let base = self.units[u].t.token_size;
+        if self.rule_version < 21 || base <= 1 {
+            return false;
+        }
+        !self.passable_with_size(u, p, 0, base) && self.passable_with_size(u, p, 0, base - 1)
+    }
+
+    /// `Map.passable(entity, x, y, battle, allow_squeeze = rule_version >= 21)`.
     #[inline]
     pub fn passable(&self, u: usize, p: Pos) -> bool {
         if !self.any_large {
@@ -1696,24 +1752,12 @@ impl Fight {
     #[cold]
     #[inline(never)]
     pub(crate) fn passable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
-        if !self.footprint_terrain_clear(u, p) {
-            return false;
-        }
-        if self.incorporeal(u) {
-            return true;
-        }
-        for c in self.unit_cells_at(u, p) {
-            if let Some(o) = self.token_at(c) {
-                if (masked & (1 << o)) == 0 && !self.unit_can_pass_other(u, o) {
-                    return false;
-                }
-            }
-        }
-        true
+        let base = self.units[u].t.token_size;
+        let sz = if self.rule_version >= 21 && base > 1 { base - 1 } else { base };
+        self.passable_with_size(u, p, masked, sz)
     }
 
-    /// Current rules permit ending movement on remains; no squeezing for multi-square units.
-    /// TODO(multi-square-squeeze-block): squeezing is disallowed until Natural20 issue #6.
+    /// `Map.placeable(entity, x, y, battle, squeeze = rule_version >= 21)`.
     #[inline]
     pub fn placeable(&self, u: usize, p: Pos) -> bool {
         if !self.any_large {
@@ -1745,11 +1789,11 @@ impl Fight {
 
     #[cold]
     #[inline(never)]
-    pub(crate) fn placeable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
-        if !self.passable_ignoring_masked(u, p, masked) {
+    pub(crate) fn placeable_with_size(&self, u: usize, p: Pos, masked: u32, sz: u8) -> bool {
+        if !self.passable_with_size(u, p, masked, sz) {
             return false;
         }
-        for c in self.unit_cells_at(u, p) {
+        for c in UnitCells::new(p, sz) {
             if let Some(o) = self.token_at(c) {
                 if o != u && (masked & (1 << o)) == 0 {
                     return false;
@@ -1757,6 +1801,14 @@ impl Fight {
             }
         }
         true
+    }
+
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn placeable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
+        let base = self.units[u].t.token_size;
+        let sz = if self.rule_version >= 21 && base > 1 { base - 1 } else { base };
+        self.placeable_with_size(u, p, masked, sz)
     }
 
     #[inline]
@@ -2576,13 +2628,29 @@ impl Fight {
     // Movement
     // ------------------------------------------------------------------
 
+    #[inline]
     pub(crate) fn step_cost(&self, u: usize, to: Pos) -> i32 {
         let difficult = if self.incorporeal(u) {
             self.grid.is_wall(to.0, to.1) || self.token_at(to).is_some_and(|o| o != u)
         } else {
             self.difficult(u, to) && !self.units[u].t.fly
         };
-        1 + self.units[u].prone() as i32 + i32::from(difficult) + i32::from(self.drag_penalty(u))
+        let base = 1 + self.units[u].prone() as i32 + i32::from(difficult) + i32::from(self.drag_penalty(u));
+        if !self.any_large {
+            base
+        } else {
+            base + self.step_cost_squeeze_multisquare(u, to)
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn step_cost_squeeze_multisquare(&self, u: usize, to: Pos) -> i32 {
+        if self.rule_version >= 21 && self.units[u].t.token_size > 1 {
+            i32::from(self.requires_squeeze(u, to))
+        } else {
+            0
+        }
     }
 
     /// `compute_actual_moves(entity, path, map, battle, budget)` for paths of
@@ -2658,6 +2726,70 @@ impl Fight {
         moves
     }
 
+    /// `MoveAction.drag_square_free(map, target, grappler, pos, grappler_stay_squares)` (upstream 8f46774a + 1a7eeb03).
+    #[cold]
+    #[inline(never)]
+    fn drag_square_free(&self, target: usize, grappler: usize, pos: Pos, grappler_stay: UnitCells) -> bool {
+        for c in self.unit_cells_at(target, pos) {
+            if !self.grid.in_bounds(c.0, c.1) { continue; }
+            if grappler_stay.into_iter().any(|s| s == c) {
+                return false;
+            }
+            if let Some(o) = self.token_at(c) {
+                if o != target && o != grappler {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Rule >= 21 (upstream 8f46774a + 1a7eeb03): compute clamped drag destinations
+    /// against pre-move board occupancy & pre-move grappler footprint at `dest`, matching
+    /// `MoveAction.resolve` before `MoveAction.apply` executes `move_to`.
+    #[cold]
+    #[inline(never)]
+    fn commit_move_r21_grappling(&mut self, src: usize, seg: Vec<Pos>, cost: i32, dest: Pos, champion_move: bool) {
+        let grappler_stay = self.unit_cells_at(src, dest);
+        let mut drag_r21: Vec<(usize, Pos)> = Vec::with_capacity(self.units[src].grappling.len());
+        for (i, &t) in self.units[src].grappling.iter().enumerate() {
+            let start_pos = self.units[t].pos;
+            let lag = i + 1;
+            let mut trail_t: Vec<Pos> = Vec::with_capacity(seg.len() + 1);
+            trail_t.push(start_pos);
+            if seg.len() > lag {
+                trail_t.extend_from_slice(&seg[..seg.len() - lag]);
+            }
+            while trail_t.len() > 1
+                && !self.drag_square_free(t, src, *trail_t.last().unwrap(), grappler_stay)
+            {
+                trail_t.pop();
+            }
+            drag_r21.push((t, *trail_t.last().unwrap()));
+        }
+        if self.units.iter().any(Unit::hidden) {
+            for &step in seg.iter().skip(1) { self.move_to(src, step); }
+        } else {
+            self.move_to(src, dest);
+        }
+        if champion_move {
+            self.units[src].champion_movement -= cost * 5;
+        } else {
+            self.units[src].champion_movement = 0;
+            self.units[src].movement -= cost * 5;
+        }
+        let trail = &mut self.units[src].trail;
+        for &p in &seg {
+            if trail.last() != Some(&p) {
+                trail.push(p);
+            }
+        }
+        for (t, target_dest) in drag_r21 {
+            self.move_to(t, target_dest);
+        }
+        self.emit_web(crate::web_events::WebEv::MoveExecuted { u: src, path: seg });
+    }
+
     pub(crate) fn commit_move_segment(&mut self, src: usize, moves: Vec<Pos>) {
         self.commit_move_prefix(src, moves, false);
     }
@@ -2678,10 +2810,14 @@ impl Fight {
                 break;
             }
             seg.pop();
-            cost -= 1;
+            cost = (cost - 1).max(0);
         }
         let Some(&dest) = seg.last() else { return };
         let champion_move = self.champion_move_fits(src, &seg);
+        if self.rule_version >= 21 && self.units[src].is_grappling() {
+            self.commit_move_r21_grappling(src, seg, cost, dest, champion_move);
+            return;
+        }
         if self.rule_version >= 11 && self.units.iter().any(Unit::hidden) {
             for &step in seg.iter().skip(1) { self.move_to(src, step); }
         } else {
@@ -2700,10 +2836,8 @@ impl Fight {
                 trail.push(p);
             }
         }
-        // Dragged grappled targets trail behind the mover (move_action.py:207-231).
-        // TODO(multi-square-drag-block): Large+ grappler or Large+ target drag is blocked
-        // until Natural20 issue #6 resolves multi-square trailing-square overlap.
         if self.units[src].is_grappling() && (!self.any_large || self.units[src].t.token_size == 1) {
+            // Rules 17-20: lagged drag without drag_square_free; rule 20 skips Large grappler/target.
             let dragged = self.units[src].grappling.clone();
             let mut drag_idx = 0usize;
             for t in dragged {
@@ -2754,8 +2888,8 @@ impl Fight {
     #[inline(never)]
     fn move_to_multisquare(&mut self, u: usize, dest: Pos) {
         let from = self.units[u].pos;
-        let sz = self.units[u].t.token_size;
-        if sz == 1 {
+        let base_sz = self.units[u].t.token_size;
+        if base_sz == 1 {
             let fi = self.grid.index(from.0, from.1);
             let di = self.grid.index(dest.0, dest.1);
             if self.rule_version >= 7 && self.occ[fi] == Some(u as u8) {
@@ -2766,7 +2900,18 @@ impl Fight {
             if dest != from { self.reveal_exposed_hiders(); }
             return;
         }
-        for c in UnitCells::new(from, sz) {
+        let dst_sz = if self.rule_version >= 21 {
+            if self.requires_squeeze(u, dest) {
+                self.units[u].add_status(St::Squeezed);
+                base_sz - 1
+            } else {
+                self.units[u].remove_status(St::Squeezed);
+                base_sz
+            }
+        } else {
+            base_sz
+        };
+        for c in UnitCells::new(from, base_sz) {
             if !self.grid.in_bounds(c.0, c.1) { continue; }
             let ci = self.grid.index(c.0, c.1);
             if self.rule_version >= 7 && self.occ[ci] == Some(u as u8) {
@@ -2779,7 +2924,7 @@ impl Fight {
         }
         self.units[u].pos = dest;
         if self.rule_version < 8 || !self.units[u].dead() {
-            for c in UnitCells::new(dest, sz) {
+            for c in UnitCells::new(dest, dst_sz) {
                 if self.grid.in_bounds(c.0, c.1) {
                     let ci = self.grid.index(c.0, c.1);
                     self.occ[ci] = Some(u as u8);
@@ -5770,6 +5915,7 @@ mod srd_level_tests {
             "........",
         ];
         let mut f = fight(&open, &[("ogre-1", (3, 2)), ("guy", (5, 2))]);
+        f.set_rule_version(20);
         for c in [(3, 2), (3, 3), (4, 2), (4, 3)] {
             assert_eq!(f.token_at(c), Some(0));
             assert!(f.unit_occupies(0, c));
@@ -5831,7 +5977,8 @@ mod srd_level_tests {
             ".......",
             ".......",
         ];
-        let f1 = fight(&wall_1, &[("ogre-1", (2, 1)), ("guy", (0, 1))]);
+        let mut f1 = fight(&wall_1, &[("ogre-1", (2, 1)), ("guy", (0, 1))]);
+        f1.set_rule_version(20);
         assert!(!f1.passable(0, (3, 0)));
         assert!(!f1.placeable(0, (3, 0)));
         let wall_2 = [
@@ -5840,7 +5987,8 @@ mod srd_level_tests {
             ".......",
             ".......",
         ];
-        let f2 = fight(&wall_2, &[("ogre-1", (2, 1)), ("guy", (0, 1))]);
+        let mut f2 = fight(&wall_2, &[("ogre-1", (2, 1)), ("guy", (0, 1))]);
+        f2.set_rule_version(20);
         assert!(f2.passable(0, (2, 0)));
         assert!(f2.placeable(0, (2, 0)));
 
@@ -5970,7 +6118,7 @@ mod srd_level_tests {
         // Web replay v21 omits token_size/cells/climb_speed (1x1) and rejects Large creatures; v22 includes them
         use crate::present::{LevelInput, WebArena, CURRENT_WEB_REPLAY_VERSION};
         use crate::tape::Placement;
-        assert_eq!(CURRENT_WEB_REPLAY_VERSION, 22);
+        assert_eq!(CURRENT_WEB_REPLAY_VERSION, 23);
         let level_skel = LevelInput {
             encounter_id: "test-skel".into(),
             preset_id: "test-skel".into(),
@@ -6018,5 +6166,126 @@ mod srd_level_tests {
         assert_eq!(owl22["token_size"], 2);
         assert_eq!(owl22["climb_speed"], 40);
         assert_eq!(owl22["cells"], serde_json::json!([[3, 2], [3, 3], [4, 2], [4, 3]]));
+    }
+
+    #[test]
+    fn rule_21_upstream_rulings_squeeze_cover_drag_and_web_v23() {
+        // 1. Squeezing (1a7eeb03): 1-wide gap sets St::Squeezed, shrinks footprint to 1x1,
+        //    adds +1 movement cost, preserves 2024 no-attack-modifier rule, and unsqueezes on exit.
+        let squeeze_arena = [
+            "HHHHHHHHHH",
+            "H........H",
+            "H.HHH.HH.H",
+            "H.HHH.HH.H",
+            "H........H",
+            "H........H",
+            "HHHHHHHHHH",
+        ];
+        let mut f = fight(&squeeze_arena, &[("ogre-1", (4, 4)), ("guy", (5, 1))]);
+        assert_eq!(f.rule_version(), 21);
+        assert!(!f.units[0].squeezed());
+        assert_eq!(f.unit_cells(0).collect::<Vec<_>>().len(), 4);
+        assert!(f.requires_squeeze(0, (5, 3)));
+        assert_eq!(f.step_cost(0, (5, 4)), 1);
+        assert_eq!(f.step_cost(0, (5, 3)), 2);
+        f.units[0].movement = 40;
+        f.commit_move_segment(0, vec![(4, 4), (5, 4), (5, 3)]);
+        assert_eq!(f.units[0].pos, (5, 3));
+        assert!(f.units[0].squeezed());
+        assert_eq!(f.units[0].movement, 25, "1 normal + 1 squeeze = 3 squares = 15 ft spent");
+        assert_eq!(f.unit_cells(0).collect::<Vec<_>>(), vec![(5, 3)]);
+        assert_eq!(f.dist(0, 1), 2, "squeezed ogre at (5,3) is 10 ft from guy at (5,1)");
+        // Leaving gap unsqueezes and restores 2x2 footprint.
+        f.move_to(0, (4, 4));
+        assert!(!f.units[0].squeezed());
+        assert_eq!(f.unit_cells(0).collect::<Vec<_>>().len(), 4);
+
+        // 2. Greatest cover over ALL source x target pairs (1a7eeb03) vs rule 20 early return.
+        //    Fighter at (1,1), Ogre at (5,1) covering (5,1),(5,2),(6,1),(6,2), wall pillar at (4,2)
+        //    creating cover on the later target square (6,2) while (5,1) has clean LOS.
+        let cover_map = [
+            "HHHHHHHHHH",
+            "H........H",
+            "H...H....H",
+            "H........H",
+            "H........H",
+            "HHHHHHHHHH",
+        ];
+        let mut fc = fight(&cover_map, &[("guy", (1, 1)), ("ogre-1", (5, 1))]);
+        fc.set_rule_version(20);
+        let cov20 = fc.known_cover_from_unit(0, 1, 0);
+        fc.set_rule_version(21);
+        let cov21 = fc.known_cover_from_unit(0, 1, 0);
+        assert_eq!(cov20, 0, "rule 20 stops at first LOS pair (1,1)->(5,1) with 0 cover");
+        assert!(cov21 >= 2, "rule 21 scans all pairs and takes greatest cover (got {cov21})");
+
+        // 3. Drag clamp (8f46774a + 1a7eeb03):
+        //    (a) Ally pass-through: Bugbear at (2,2) grappling Guy at (1,2) crosses ally at (3,2) -> (4,2).
+        //        Rule 20 leaves Guy stacked on ally (3,2); Rule 21 clamps Guy to (2,2) while grapple holds
+        //        until Bugbear's next turn start.
+        let open = [
+            "HHHHHHHHHH",
+            "H........H",
+            "H........H",
+            "H........H",
+            "H........H",
+            "H........H",
+            "HHHHHHHHHH",
+        ];
+        for (rv, expect_guy) in [(20, (3, 2)), (21, (2, 2))] {
+            let mut fd = fight(&open, &[("guy", (1, 2)), ("bugbear_warrior-1", (2, 2)), ("skeleton-1", (3, 2))]);
+            fd.set_rule_version(rv);
+            fd.apply_grapple(1, 0, Some(12));
+            fd.units[1].movement = 30;
+            fd.commit_move_segment(1, vec![(2, 2), (3, 2), (4, 2)]);
+            assert_eq!(fd.units[1].pos, (4, 2));
+            assert_eq!(fd.units[2].pos, (3, 2));
+            assert_eq!(fd.units[0].pos, expect_guy, "rule {rv} ally pass-through drag");
+        }
+        //    (b) Medium grappler at (4,3) holding Large Ogre at (5,3):
+        //        stepping south to (4,4) clamps Ogre at (5,3); stepping west to (3,3) legally pulls Ogre to (4,3).
+        let mut fl = fight(&open, &[("guy", (4, 3)), ("ogre-1", (5, 3))]);
+        fl.apply_grapple(0, 1, None);
+        fl.units[0].movement = 30;
+        fl.commit_move_segment(0, vec![(4, 3), (4, 4)]);
+        assert_eq!(fl.units[0].pos, (4, 4));
+        assert_eq!(fl.units[1].pos, (5, 3), "south step overlaps grappler_stay (4,4) -> clamped");
+        fl.move_to(0, (4, 3));
+        fl.units[0].movement = 30;
+        fl.commit_move_segment(0, vec![(4, 3), (3, 3)]);
+        assert_eq!(fl.units[0].pos, (3, 3));
+        assert_eq!(fl.units[1].pos, (4, 3), "west step leaves (4,3)..(5,4) clear -> legally pulls Large target");
+        //    (c) Large grappler at (3,3) holding hero at (3,2) stepping west to (2,3) -> stay_squares block (3,3).
+        let mut fg = fight(&open, &[("ogre-1", (3, 3)), ("guy", (3, 2))]);
+        fg.apply_grapple(0, 1, None);
+        fg.units[0].movement = 40;
+        fg.commit_move_segment(0, vec![(3, 3), (2, 3)]);
+        assert_eq!(fg.units[0].pos, (2, 3));
+        assert_eq!(fg.units[1].pos, (3, 2), "Large grappler stay_squares prevent dropping catch inside body");
+
+        // 4. Web replay v23 exposes rule 21 (v22 stays rule 20) and squeezed `cells` + condition.
+        use crate::present::{LevelInput, WebArena};
+        use crate::tape::Placement;
+        let sq_level = LevelInput {
+            encounter_id: "sq-v23".into(),
+            preset_id: "sq-v23".into(),
+            theme: "woodland".into(),
+            map_name: "squeeze".into(),
+            rows: squeeze_arena.iter().map(|s| s.to_string()).collect(),
+            scene: serde_json::json!({"props": []}),
+            level_view: serde_json::json!({}),
+            heroes: vec!["guy".into()],
+            monsters: vec![("ogre-1".into(), "ogre".into(), "Ogre".into())],
+            suggested_placements: vec![
+                Placement { id: "guy".into(), x: 1, y: 1 },
+                Placement { id: "ogre-1".into(), x: 4, y: 4 },
+            ],
+        };
+        let mut a22 = WebArena::with_trace(sq_level.clone(), Trace::web_free(9), 0, "c".into(), "e".into(), 22).unwrap();
+        a22.start().unwrap();
+        let mut a23 = WebArena::with_trace(sq_level, Trace::web_free(9), 0, "c".into(), "e".into(), 23).unwrap();
+        let st23 = a23.start().unwrap();
+        let og23 = st23["units"].as_array().unwrap().iter().find(|u| u["id"] == "ogre-1").unwrap();
+        assert_eq!(og23["cells"], serde_json::json!([[4, 4], [4, 5], [5, 4], [5, 5]]));
     }
 }

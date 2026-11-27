@@ -59,12 +59,17 @@ pub const NATURAL20_COMMIT_RULE_17: &str = "ef91112bf07b933734bff12a94d7e724ca8f
 /// The natural20 commit for rule-18 and rule-19 (Vesper + Dodge-ends-on-grapple) tapes.
 pub const NATURAL20_COMMIT_RULE_18_19: &str = "c0025a88679950621baa29a64a66e1aadcd40ea9";
 
+/// The natural20 commit for rule-20 (initial multi-square Large/Huge with temporary squeeze/drag blocks) tapes.
+pub const NATURAL20_COMMIT_RULE_20: &str = "ddb92d5a0cd6401e27530ccb1e5b956c7771dfbf";
+
 /// Return the Natural20 reference commit corresponding to `rule_version`.
 pub fn natural20_commit_for_rule_version(version: i32) -> &'static str {
     if version < 18 {
         NATURAL20_COMMIT_RULE_17
     } else if version < 20 {
         NATURAL20_COMMIT_RULE_18_19
+    } else if version < 21 {
+        NATURAL20_COMMIT_RULE_20
     } else {
         NATURAL20_COMMIT.trim()
     }
@@ -348,8 +353,12 @@ fn movement_paths_multisquare(f: &Fight, a: usize, masked: u32, crossings_only: 
     }
     let sz = u.t.token_size;
     if crossings_only {
-        let near_token = if sz == 1 {
-            DIRECTIONS.iter().any(|&(dx, dy)| f.token_at((start.0 + dx, start.1 + dy)).is_some())
+        let near_token = if sz == 1 || f.rule_version >= 21 {
+            // Mirrors `movement.py:282`: checks `battle_map.entity_at(start+dx, start+dy)`.
+            DIRECTIONS.iter().any(|&(dx, dy)| {
+                let p = (start.0 + dx, start.1 + dy);
+                g.in_bounds(p.0, p.1) && f.token_at(p).is_some()
+            })
         } else {
             DIRECTIONS.iter().any(|&(dx, dy)| {
                 f.unit_cells_at(a, (start.0 + dx, start.1 + dy))
@@ -448,7 +457,12 @@ fn movement_paths_multisquare(f: &Fight, a: usize, masked: u32, crossings_only: 
                 continue;
             }
             let next = cost + if masked != 0 && hidden(q) && (sz == 1 || !f.difficult_ignoring_masked(a, q, masked)) {
-                1 + u.prone() as i32
+                let sq = if f.rule_version >= 21 && sz > 1 {
+                    i32::from(!f.passable_with_size(a, q, masked, sz) && f.passable_with_size(a, q, masked, sz - 1))
+                } else {
+                    0
+                };
+                1 + u.prone() as i32 + sq
             } else {
                 f.step_cost(a, q)
             };
@@ -930,6 +944,7 @@ mod pin_tests {
             (18, natural20_commit_for_rule_version(18)),
             (19, natural20_commit_for_rule_version(19)),
             (20, natural20_commit_for_rule_version(20)),
+            (21, natural20_commit_for_rule_version(21)),
         ];
         for (rv, sha) in pins {
             assert_eq!(sha.len(), 40, "rule {rv} pin must be 40 hex chars: {sha}");
@@ -938,9 +953,10 @@ mod pin_tests {
         assert_eq!(natural20_commit_for_rule_version(17), NATURAL20_COMMIT_RULE_17);
         assert_eq!(natural20_commit_for_rule_version(18), NATURAL20_COMMIT_RULE_18_19);
         assert_eq!(natural20_commit_for_rule_version(19), NATURAL20_COMMIT_RULE_18_19);
-        assert_eq!(natural20_commit_for_rule_version(20), ref_pin);
+        assert_eq!(natural20_commit_for_rule_version(20), NATURAL20_COMMIT_RULE_20);
+        assert_eq!(natural20_commit_for_rule_version(21), ref_pin);
 
-        // Rule 18/19 and rule 20 pins must match actual SRD provenance exported from Natural20.
+        // Rule 18/19 and current pins must match actual SRD provenance exported from Natural20.
         let srd_dir = root.join("content").join("srd");
         let read_prov = |file: &str| -> String {
             let doc: Value = serde_json::from_str(&std::fs::read_to_string(srd_dir.join(file)).unwrap()).unwrap();
@@ -951,7 +967,7 @@ mod pin_tests {
         assert_eq!(ref_pin, read_prov("ogre.json"));
         assert_eq!(ref_pin, read_prov("owlbear.json"));
 
-        // If git metadata is available, every historical pin (17, 18/19) must exist in
+        // If git metadata is available, every historical pin (17, 18/19, 20) must exist in
         // engine/reference/NATURAL20_COMMIT's commit history (preventing typos or invented hashes).
         let repo_root = root.parent().unwrap();
         if repo_root.join(".git").exists() {
@@ -961,7 +977,12 @@ mod pin_tests {
                 .expect("git log on NATURAL20_COMMIT");
             assert!(out.status.success());
             let hist = String::from_utf8_lossy(&out.stdout);
-            for (rv, sha) in [(17, NATURAL20_COMMIT_RULE_17), (18, NATURAL20_COMMIT_RULE_18_19), (19, NATURAL20_COMMIT_RULE_18_19)] {
+            for (rv, sha) in [
+                (17, NATURAL20_COMMIT_RULE_17),
+                (18, NATURAL20_COMMIT_RULE_18_19),
+                (19, NATURAL20_COMMIT_RULE_18_19),
+                (20, NATURAL20_COMMIT_RULE_20),
+            ] {
                 assert!(hist.contains(sha), "rule {rv} pin {sha} missing from NATURAL20_COMMIT git history");
             }
         }
