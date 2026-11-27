@@ -45,6 +45,9 @@ export const CAST_MODELS = Object.freeze({
   sea_hag:         Object.freeze({ file: 'models/sea_hag.glb',         height: 1.30, group: 'monster' }),
   green_hag:       Object.freeze({ file: 'models/green_hag.glb',       height: 1.34, group: 'monster' }),
   will_o_wisp:     Object.freeze({ file: 'models/will_o_wisp.glb',     height: 0.88, group: 'monster', ghost: 0.90, glow: '#78efff', glowIntensity: 1.45, noShadow: true }),
+  // Large (2x2) SRD 5.2.1 monsters
+  ogre:            Object.freeze({ file: 'models/ogre.glb',            height: 2.05, group: 'monster' }),
+  owlbear:         Object.freeze({ file: 'models/owlbear.glb',         height: 1.85, group: 'monster' }),
 });
 
 export const CAST_KEYS = Object.freeze(Object.keys(CAST_MODELS));

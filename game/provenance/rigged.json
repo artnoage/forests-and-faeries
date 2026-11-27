@@ -1,5 +1,5 @@
 {
- "what": "The thirty rigged figures of Forests and Faeries (game/static/models/).",
+ "what": "The 33 rigged figures of Forests and Faeries (game/static/models/).",
  "pipeline": "Project-original meshes (Codex / Gemini reference images, Tripo multiview image-to-3D, reduced in Blender; see mesh_source) rigged and animated by Gemini with its own armatures, geodesic skinning and clips. No third-party geometry, armature, texture or animation data.",
  "rig_manifests": [
   "<repo-root> (with hashes)",
@@ -13,7 +13,8 @@
   "kobold_warrior": "2026-11-20 (SRD 5.2.1 Small Dragon, rigid bone-parented Kobold_Dagger on Weapon.R + Tail.1/Tail.2)",
   "six-hero polish (guy, mara, elion, ilyra, curogana, chruna)": "2026-11-20 (watertight --weld meshes from raw Tripo masters with 0 UV-seam cracks, rigid bone-parented weapons/shields/staves, two-handed Chruna halberd IK, zero-slide Leg-IK walk/run cycles, smooth clip crossfading in skinned-cast.js)",
   "weapon grips (guy, chruna, mara, ilyra, elion)": "2026-11-24 (game/tools/figures/grips.py: weapons through the fist, two-handed weapons in both hands, shields on the forearm, gear limited to the character sheet)",
-  "fey campaign batch (12 creatures)": "2026-11-25 (11 SRD 5.2.1 Tripo multiview meshes [440.0/520.0 cr] + 1 procedural Blender Will-o'-Wisp [0 cr]; welded ~18k tris, 9 clips each, rigid Weapon.R on Bugbear Warrior and Sprite)"
+  "fey campaign batch (12 creatures)": "2026-11-25 (11 SRD 5.2.1 Tripo multiview meshes [440.0/520.0 cr] + 1 procedural Blender Will-o'-Wisp [0 cr]; welded ~18k tris, 9 clips each, rigid Weapon.R on Bugbear Warrior and Sprite)",
+  "large creatures (ogre, owlbear)": "2026-11-27 (2 SRD 5.2.1 Large 2x2 Tripo multiview meshes [80.0/160.0 cr]; welded 18k tris, 9 clips each, rigid Ogre_Greatclub on Weapon.R)"
  },
  "figures": [
   {
@@ -1280,6 +1281,87 @@
     }
    },
    "rigged_by": "Gemini, Blender 5.2.3 LTS, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "ogre",
+   "file": "game/static/models/ogre.glb",
+   "sha256": "37430d477415cb7817e2e99b7da665593c25f0fb953075c859b9c3cd953ff7aa",
+   "bytes": 1254748,
+   "triangles": 18000,
+   "bones": 21,
+   "rigid_weapons": {
+    "Ogre_Greatclub": "Weapon.R"
+   },
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "ogre_Mat"
+   ],
+   "mesh_source": {
+    "group": "large",
+    "file": "<repo-root>/monsters/ogre/model-web.glb",
+    "sha256": "e2c96887a6cf0ffd78abd9633646b275222ae51b433e542bd8f3a051311344b3",
+    "tripo": {
+     "task_id": "fbe5ebe7-0e99-44d1-ae2f-afd4500988ab",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "7c41f68443a07ed8b16c7fd82b72775d16dc704453c90c525c342b972b72fcad"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
+   "rig_manifest_sha256_match": true
+  },
+  {
+   "kind": "owlbear",
+   "file": "game/static/models/owlbear.glb",
+   "sha256": "c22b211b04ab687f52026b408613b6db63eba1665aa6a730217ce1f40dbfc06e",
+   "bytes": 1270548,
+   "triangles": 18000,
+   "bones": 20,
+   "clips": [
+    "arrow",
+    "cast",
+    "death",
+    "guard",
+    "hit",
+    "idle",
+    "run",
+    "slash",
+    "walk"
+   ],
+   "materials": [
+    "owlbear_Mat"
+   ],
+   "mesh_source": {
+    "group": "large",
+    "file": "<repo-root>/monsters/owlbear/model-web.glb",
+    "sha256": "f914485999f3d5947c25968bb75ace11b2ae8bbc68eeb001d900981e6ff8d04a",
+    "tripo": {
+     "task_id": "fe49ba35-41a9-4ce8-b957-90dd4877013f",
+     "type": "multiview_to_model",
+     "model_version": "v3.1-20260211",
+     "geometry_quality": "standard",
+     "texture_quality": "detailed",
+     "pbr": true,
+     "credits": 40.0,
+     "raw_model_sha256": "43745bcf4a0d33fcbc9a61748b0a25edba4a320e56d669e599043542627d8fde"
+    }
+   },
+   "rigged_by": "Gemini, Blender 5.2, <repo-root>",
    "rig_manifest_sha256_match": true
   }
  ]

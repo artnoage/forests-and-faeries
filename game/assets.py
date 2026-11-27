@@ -11,7 +11,7 @@ STATIC = ROOT / 'static'
 MODEL_KEYS = ('guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna', 'vesper', 'skeleton', 'zombie', 'ghoul', 'ghast',
               'shadow', 'specter', 'wight', 'mummy', 'goblin', 'goblin_boss', 'animated_armor', 'kobold_warrior',
               'violet_fungus', 'giant_wasp', 'satyr', 'steam_mephit', 'blink_dog', 'sprite', 'dryad',
-              'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp')
+              'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp', 'ogre', 'owlbear')
 MODEL_FILES = tuple(f'models/{key}.glb' for key in MODEL_KEYS)
 PROP_FILES = ('props/sarcophagus.glb', 'props/brazier.glb', 'props/oak_tree.glb')
 TEXTURE_FILES = tuple(f'textures/mausoleum/{name}.webp' for name in (

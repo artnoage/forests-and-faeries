@@ -188,7 +188,7 @@
    "name": "Sprite Ring",
    "difficulty": "Easy",
    "hero_level": 1,
-   "blurb": "Invisible sprites flit between mossy oaks with a blink dog — Vesper's Faerie Fire reveals them in violet light.",
+   "blurb": "Invisible sprites flit between mossy oaks with a blink dog \u2014 Vesper's Faerie Fire reveals them in violet light.",
    "party": [
     "guy_l1",
     "elion_l1",
@@ -236,7 +236,7 @@
    "name": "Unseen Glade",
    "difficulty": "Medium",
    "hero_level": 2,
-   "blurb": "Sprites vanish under a dryad's canopy while a blink dog circles — outline the unseen before their arrows drop the party.",
+   "blurb": "Sprites vanish under a dryad's canopy while a blink dog circles \u2014 outline the unseen before their arrows drop the party.",
    "party": [
     "guy_l2",
     "curogana_l2",
@@ -282,6 +282,90 @@
      12,
      6
     ]
+   }
+  },
+  {
+   "id": "glade_owlbear",
+   "name": "The Glade Owlbear",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "A territorial owlbear stalks the mossy clearing \u2014 watch its twin claws.",
+   "party": [
+    "mara",
+    "ilyra"
+   ],
+   "roster": [
+    "owlbear"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "ilyra": [
+     2,
+     6
+    ],
+    "owlbear-1": [
+     11,
+     4
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.395,
+    "games": 200,
+    "wins": 79,
+    "losses": 121,
+    "truncations": 0,
+    "mean_rounds": 4.23,
+    "method": "ember-rs rule 20 native AI on both sides, seeds 0-199, these placements"
+   }
+  },
+  {
+   "id": "twin_owlbears",
+   "name": "Twin Owlbears",
+   "difficulty": "Easy",
+   "hero_level": 3,
+   "blurb": "A mated pair of owlbears defends the glade against Guy, Elion and Vesper.",
+   "party": [
+    "guy",
+    "elion",
+    "vesper"
+   ],
+   "roster": [
+    "owlbear",
+    "owlbear"
+   ],
+   "placements": {
+    "guy": [
+     2,
+     4
+    ],
+    "elion": [
+     2,
+     5
+    ],
+    "vesper": [
+     2,
+     6
+    ],
+    "owlbear-1": [
+     11,
+     3
+    ],
+    "owlbear-2": [
+     11,
+     6
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.78,
+    "games": 200,
+    "wins": 156,
+    "losses": 44,
+    "truncations": 0,
+    "mean_rounds": 6.68,
+    "method": "ember-rs rule 20 native AI on both sides, seeds 0-199, these placements"
    }
   }
  ]

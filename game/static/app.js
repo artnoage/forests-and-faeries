@@ -31,13 +31,15 @@
   const niceName = k => NICE_NAMES[k] || String(k || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   // The strongest creature names a level card's portrait.
-  const LEAD_ORDER = ['green_hag', 'sea_hag', 'will_o_wisp', 'mummy', 'wight', 'ghast', 'specter',
+  const LEAD_ORDER = ['owlbear', 'green_hag', 'sea_hag', 'will_o_wisp', 'ogre', 'mummy', 'wight', 'ghast', 'specter',
     'bugbear_warrior', 'dryad', 'harpy', 'animated_armor', 'ghoul', 'shadow', 'goblin_boss',
     'satyr', 'steam_mephit', 'giant_wasp', 'blink_dog', 'violet_fungus', 'sprite',
     'zombie', 'skeleton', 'goblin_warrior', 'kobold_warrior', 'goblin_minion'];
 
   function portraitSymbol(unit) {
     const raw = [unit?.base_id, unit?.content, unit?.kind, unit?.class, unit?.id, unit?.name].filter(Boolean).join(' ').toLowerCase();
+    if (raw.includes('owlbear')) return 'owlbear';
+    if (raw.includes('ogre')) return 'ogre';
     if (raw.includes('violet_fungus') || raw.includes('violet fungus')) return 'violet_fungus';
     if (raw.includes('giant_wasp') || raw.includes('giant wasp')) return 'giant_wasp';
     if (raw.includes('satyr')) return 'satyr';

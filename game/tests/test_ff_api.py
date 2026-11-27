@@ -93,7 +93,9 @@ def test_public_catalogue_has_the_crypt_and_the_vault_and_no_private_room(ff_app
     assert all({'mara', 'ilyra'} <= {h['content'] for h in p['party']} <= {'mara', 'ilyra', 'chruna'} for p in vault)
     assert [p['id'] for p in vault if 'chruna' in {h['content'] for h in p['party']}] == ['three_bosses']
     contents = {r['content'] for p in vault for r in p['roster']}
-    assert 'goblin_boss' in contents and contents <= {'goblin_minion', 'goblin_warrior', 'goblin_boss', 'skeleton'}
+    assert {'goblin_boss', 'ogre'} <= contents and contents <= {'goblin_minion', 'goblin_warrior', 'goblin_boss', 'skeleton', 'ogre'}
+    glade = next(e['presets'] for e in data if e['id'] == 'whispering_glade')
+    assert 'owlbear' in {r['content'] for p in glade for r in p['roster']}
 
 
 def test_private_catalogue_adds_the_seven_mausoleum_rooms_with_neutral_names(private_app):

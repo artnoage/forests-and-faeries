@@ -218,6 +218,98 @@
      "truncation": 0.0005
     }
    }
+  },
+  {
+   "id": "ogre_raiders",
+   "name": "Ogre and Raiders",
+   "difficulty": "Medium",
+   "blurb": "An ogre lumbers into the vault behind two goblin warriors.",
+   "party": [
+    "mara",
+    "ilyra"
+   ],
+   "roster": [
+    "ogre",
+    "goblin_warrior",
+    "goblin_warrior"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "ilyra": [
+     2,
+     7
+    ],
+    "ogre-1": [
+     12,
+     4
+    ],
+    "goblin_warrior-1": [
+     12,
+     7
+    ],
+    "goblin_warrior-2": [
+     11,
+     3
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.5,
+    "games": 200,
+    "wins": 100,
+    "losses": 100,
+    "truncations": 0,
+    "mean_rounds": 7.54,
+    "method": "ember-rs rule 20 native AI on both sides, seeds 0-199, these placements"
+   }
+  },
+  {
+   "id": "ogre_warband",
+   "name": "The Ogre's Warband",
+   "difficulty": "Hard",
+   "blurb": "An ogre backed by a goblin boss and warrior holds the forged hall.",
+   "party": [
+    "mara",
+    "ilyra"
+   ],
+   "roster": [
+    "ogre",
+    "goblin_boss",
+    "goblin_warrior"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "ilyra": [
+     2,
+     7
+    ],
+    "ogre-1": [
+     12,
+     4
+    ],
+    "goblin_boss-1": [
+     12,
+     7
+    ],
+    "goblin_warrior-1": [
+     11,
+     3
+    ]
+   },
+   "balance": {
+    "hero_win_rate": 0.24,
+    "games": 200,
+    "wins": 48,
+    "losses": 152,
+    "truncations": 0,
+    "mean_rounds": 6.82,
+    "method": "ember-rs rule 20 native AI on both sides, seeds 0-199, these placements"
+   }
   }
  ]
 }

@@ -51,6 +51,9 @@
       <linearGradient id="bard-coat" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#445c8c"/><stop offset=".55" stop-color="#27375b"/><stop offset="1" stop-color="#141e36"/></linearGradient>
       <linearGradient id="bard-leather" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#7c5d42"/><stop offset=".55" stop-color="#573f2c"/><stop offset="1" stop-color="#352519"/></linearGradient>
       <linearGradient id="ram-horn" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#69656c"/><stop offset=".5" stop-color="#3b3940"/><stop offset="1" stop-color="#1b1a1f"/></linearGradient>
+      <linearGradient id="ogre-skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a2a088"/><stop offset=".55" stop-color="#6e6d59"/><stop offset="1" stop-color="#3c3c30"/></linearGradient>
+      <linearGradient id="owlbear-plume" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d9ab62"/><stop offset=".55" stop-color="#8b5d30"/><stop offset="1" stop-color="#3e2614"/></linearGradient>
+      <linearGradient id="owlbear-fur" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6b4b32"/><stop offset=".55" stop-color="#442d1c"/><stop offset="1" stop-color="#1f130a"/></linearGradient>
 
       <symbol id="art-fighter" viewBox="-44 -104 88 112">
         <path d="M-18-67Q-39-43-31 0L-7-8 26 1Q33-32 15-68Z" fill="#192d32" stroke="#527170"/>
@@ -422,6 +425,53 @@
         <path d="M-5-51q5 4 10 0q-2 5-5 5q-3 0-5-5Z" fill="#157a96"/>
         <circle cx="-27" cy="-80" r="3" fill="#e6ffff"/><circle cx="29" cy="-72" r="2.6" fill="#e6ffff"/>
         <circle cx="-25" cy="-34" r="2.2" fill="#a8f8ff"/><circle cx="24" cy="-28" r="2.8" fill="#a8f8ff"/>
+      </symbol>
+
+      <symbol id="art-ogre" viewBox="-44 -104 88 112">
+        <!-- Back quiver with three iron-tipped javelins -->
+        <path d="M-24-56L-36-86M-19-59L-29-95M-14-62L-21-101" stroke="#6c5238" stroke-width="3" stroke-linecap="round"/>
+        <path d="M-36-86l-4-8 7 3ZM-29-95l-3-8 6 3ZM-21-101l-2-7 5 3Z" fill="url(#steel)"/>
+        <!-- Hulking shoulders and patched hide harness -->
+        <path d="M-29-65Q-42-36-37 2L35 2Q40-36 27-65Q14-73 0-72Q-14-73-29-65Z" fill="url(#ogre-skin)" stroke="#24241c" stroke-width="2.2"/>
+        <path d="M-23-64L20-12L8 2L-28-28Z" fill="#6a6544" stroke="#2c291b" stroke-width="1.8"/>
+        <path d="M-21-65L25-18M-29-22Q0-16 29-22" fill="none" stroke="#463222" stroke-width="5.5"/>
+        <rect x="-5" y="-23" width="10" height="8" rx="1.5" fill="url(#dark-plate)" stroke="#b8b49e" stroke-width="1.4"/>
+        <!-- Spiked wooden greatclub -->
+        <path d="M31 2L36-78L27-78L25 2Z" fill="#684a30" stroke="#281a0f" stroke-width="1.8"/>
+        <path d="M25-56h12M25-40h11" stroke="#474c50" stroke-width="3.2"/>
+        <path d="M25-56l-5-2 5-3M37-56l5-2-5-3M25-40l-5-2 5-3M36-40l5-2-5-3" fill="#aeb6b8"/>
+        <!-- Heavy-browed ogre head, dark hair, braided beard & tusks -->
+        <path d="M-19-83q0-18 19-18 19 0 19 18l3 21-8-2-28 0-8 2Z" fill="#3a2d24" stroke="#1b1410" stroke-width="1.6"/>
+        <path d="M-16-82q1-15 16-15 15 0 16 15l-3 22-13 7-13-7Z" fill="url(#ogre-skin)" stroke="#26261e" stroke-width="2"/>
+        <path d="M-13-83q13 4 26 0" fill="none" stroke="#2d2d22" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M-11-77l7 2-6 3M11-77l-7 2 6 3" fill="#f0b64a" stroke="#241b0c" stroke-width="1"/>
+        <path d="M-12-65q12 4 24 0l-3 8-18 0Z" fill="#231614"/>
+        <path d="M-9-58l3-8 3 8M9-58l-3-8-3 8" fill="#efe4c6"/>
+        <path d="M-13-61q13 10 26 0l-6 14-7 4-7-4Z" fill="#3a2d24" stroke="#1b1410" stroke-width="1.4"/>
+      </symbol>
+
+      <symbol id="art-owlbear" viewBox="-44 -104 88 112">
+        <!-- Broad shaggy bear torso and hunched feathered shoulders -->
+        <path d="M-31-64Q-43-34-38 2L38 2Q43-34 31-64Q18-76 0-76Q-18-76-31-64Z" fill="url(#owlbear-fur)" stroke="#1b1008" stroke-width="2.2"/>
+        <!-- Layered golden-ochre owl plumage across shoulders & chest -->
+        <path d="M-31-62Q-20-74 0-72Q20-74 31-62Q28-38 0-28Q-28-38-31-62Z" fill="url(#owlbear-plume)" stroke="#2b190c" stroke-width="1.8"/>
+        <path d="M-22-56q8 7 16 0m-8 8q8 7 16 0m-2 0q8 7 16 0M-14-40q7 6 14 0q7 6 14 0" fill="none" stroke="#3a2311" stroke-width="2"/>
+        <!-- Sweeping great-horned owl ear tufts -->
+        <path d="M-14-89L-32-104L-21-79Z" fill="url(#owlbear-plume)" stroke="#24140a" stroke-width="1.8"/>
+        <path d="M14-89L32-104L21-79Z" fill="url(#owlbear-plume)" stroke="#24140a" stroke-width="1.8"/>
+        <!-- Great owl head & facial discs -->
+        <ellipse cx="0" cy="-77" rx="22" ry="19" fill="url(#owlbear-plume)" stroke="#24140a" stroke-width="2.2"/>
+        <ellipse cx="-9" cy="-77" rx="9" ry="9" fill="#e6c48a" stroke="#4a2e16" stroke-width="1.6"/>
+        <ellipse cx="9" cy="-77" rx="9" ry="9" fill="#e6c48a" stroke="#4a2e16" stroke-width="1.6"/>
+        <!-- Fierce glowing amber owl eyes & sharp scowling brow -->
+        <circle cx="-9" cy="-77" r="4.6" fill="#f7a41d" stroke="#241408" stroke-width="1.4"/>
+        <circle cx="9" cy="-77" r="4.6" fill="#f7a41d" stroke="#241408" stroke-width="1.4"/>
+        <circle cx="-9" cy="-77" r="2.1" fill="#140c06"/><circle cx="9" cy="-77" r="2.1" fill="#140c06"/>
+        <circle cx="-10.2" cy="-78.4" r="1" fill="#fff2c2"/><circle cx="7.8" cy="-78.4" r="1" fill="#fff2c2"/>
+        <path d="M-19-84L0-77L19-84" fill="none" stroke="#2b190c" stroke-width="3" stroke-linecap="round"/>
+        <!-- Hooked dark charcoal beak -->
+        <path d="M-5-74Q0-78 5-74L0-61Z" fill="#2c2e33" stroke="#111215" stroke-width="1.6"/>
+        <path d="M0-74V-64" stroke="#686d76" stroke-width="1.1"/>
       </symbol>
 
       <!-- action-icons:start -->

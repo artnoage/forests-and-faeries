@@ -1,0 +1,80 @@
+{
+  "what": "3D miniatures for the SRD 5.2.1 Large (2x2) monster batch (Ogre and Owlbear).",
+  "made": "2026-11-27, for Forests and Faeries, at the maintainer's request.",
+  "design": "Original, generic fantasy tabletop miniatures matching the SRD 5.2.1 stat blocks and the matte painted-miniature style of the existing cast. No third-party geometry, textures, armatures or animation data.",
+  "pipeline": [
+    "Reference images: original orthographic front + 180-degree back turnaround views (plus 90-degree left profile for Owlbear) generated via subscription Gemini image generation (0.00 EUR, no paid image API) matching the approved concepts in neutral symmetric A-pose.",
+    "Meshes (2 creatures): Tripo API v3 multiview-to-model, model v3.1-20260211, standard geometry, detailed PBR texture, 40 credits each, on the maintainer's Tripo API account under a code-enforced <= EUR 10 cap (80.0 / 160.0 cr spent, 1 shot each).",
+    "Rigged copies (both): Blender 5.2.3 LTS, welded meshes decimated to 18k triangles, 1024 px WebP Color/Normal/ORM textures, normalized to face glTF -Z at 2x2 Large scale (Ogre 2.05 m, Owlbear 1.85 m) with feet grounded at y=0, reusing the project's biped armature, geodesic bone-heat skinning, rigid bone-parented Ogre_Greatclub on Weapon.R, and 9 procedural combat clips."
+  ],
+  "rights": "Generated with the maintainer's own accounts under the terms that applied at the time; no third-party asset is included.",
+  "tripo_credits_cap": 160.0,
+  "tripo_credits_total": 80.0,
+  "reference_image_cost_eur": 0.0,
+  "models": [
+    {
+      "kind": "ogre",
+      "file": "game/static/models/ogre.glb",
+      "sha256": "37430d477415cb7817e2e99b7da665593c25f0fb953075c859b9c3cd953ff7aa",
+      "bytes": 1254748,
+      "triangles": 18000,
+      "height": 2.05,
+      "footprint": "Large (2x2 squares)",
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "rigid_weapons": {
+        "Ogre_Greatclub": "Weapon.R"
+      },
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": true,
+      "source_triangles": 1440140,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "fbe5ebe7-0e99-44d1-ae2f-afd4500988ab",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "7c41f68443a07ed8b16c7fd82b72775d16dc704453c90c525c342b972b72fcad",
+        "web_model_sha256": "e2c96887a6cf0ffd78abd9633646b275222ae51b433e542bd8f3a051311344b3"
+      },
+      "references": {
+        "front_sha256": "acc6b1e51d362e92462fd6f5ea537d03610bab0319cb732eb65528f2f8e86394",
+        "back_sha256": "ab3987f51345f60fd3f8c352a79290c5b5e5277b79835a23c6d735a194aa6590",
+        "subject": "Ogre (SRD 5.2.1 Large Giant, CR 2): hulking brutish grey-olive skinned giant in patched hide tunic, rope belt, spiked leather bracers and shinguards, braided dark hair/beard, back quiver of three crude iron-tipped javelins over his right shoulder, gripping a massive spiked wooden greatclub vertically in his right hand (clean gap from right leg for rigid Weapon.R split). Tabletop-miniature sculpt style."
+      }
+    },
+    {
+      "kind": "owlbear",
+      "file": "game/static/models/owlbear.glb",
+      "sha256": "c22b211b04ab687f52026b408613b6db63eba1665aa6a730217ce1f40dbfc06e",
+      "bytes": 1270548,
+      "triangles": 18000,
+      "height": 1.85,
+      "footprint": "Large (2x2 squares)",
+      "placement": "faces -Z (glTF), feet at y=0, centred on the vertical axis",
+      "textures": "base colour, normal and occlusion-roughness-metallic, 1024 px WebP",
+      "welded": true,
+      "source_triangles": 1474342,
+      "source_textures_px": 4096,
+      "tripo": {
+        "task_id": "fe49ba35-41a9-4ce8-b957-90dd4877013f",
+        "type": "multiview_to_model",
+        "model_version": "v3.1-20260211",
+        "geometry_quality": "standard",
+        "texture_quality": "detailed",
+        "pbr": true,
+        "credits": 40.0,
+        "raw_model_sha256": "43745bcf4a0d33fcbc9a61748b0a25edba4a320e56d669e599043542627d8fde",
+        "web_model_sha256": "f914485999f3d5947c25968bb75ace11b2ae8bbc68eeb001d900981e6ff8d04a"
+      },
+      "references": {
+        "front_sha256": "6cb5cf3c11a08ff04e121ba0a6fb967771e93843f57334d3aa2d9f04f712e7f2",
+        "back_sha256": "b1fd0c9181ad64dde5596e857dbf53050911412022fd81cade53ef63adfad4ac",
+        "subject": "Owlbear (SRD 5.2.1 Large Monstrosity, CR 3): ferocious hulking bipedal bear-bodied monstrosity with a great-horned owl's head, glowing amber eyes, curved dark beak, feathered ear tufts, layered mottled ochre-and-brown plumage over shoulders, chest and upper back transitioning into thick shaggy dark-brown bear fur across torso, limbs and stubby tail, with curved black claws on forearms and wide plantigrade hind feet. Hand-painted tabletop-miniature sculpt style.",
+        "left_sha256": "ddd6ee8de9c875a9e657baec4145d794a0dbcd6e391fda30f6524e499ff67078"
+      }
+    }
+  ]
+}

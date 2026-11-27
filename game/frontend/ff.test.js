@@ -34,7 +34,7 @@ test('every hero and monster of the catalogue has a figure', () => {
   assert.equal(resolveCastKey({ content: 'animated_armor', team: 'monsters', id: 'animated_armor-1' }), 'animated_armor');
   assert.equal(resolveCastKey({ content: 'kobold_warrior', team: 'monsters', id: 'kobold_warrior-1' }), 'kobold_warrior');
   for (const fey of ['violet_fungus', 'giant_wasp', 'satyr', 'steam_mephit', 'blink_dog', 'sprite',
-    'dryad', 'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp']) {
+    'dryad', 'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp', 'ogre', 'owlbear']) {
     assert.equal(resolveCastKey({ content: fey, team: 'monsters', id: `${fey}-1` }), fey);
   }
   for (const base of ['guy', 'elion', 'curogana', 'mara', 'ilyra', 'chruna', 'vesper']) {
@@ -118,14 +118,14 @@ test('the page has no inline styles or scripts and no private paths', () => {
     'action-art-bardic_inspiration', 'action-art-faerie_fire', 'action-art-see_invisibility', 'action-art-vicious_mockery',
     'art-violet_fungus', 'art-giant_wasp', 'art-satyr', 'art-steam_mephit',
     'art-blink_dog', 'art-sprite', 'art-dryad', 'art-bugbear_warrior',
-    'art-harpy', 'art-sea_hag', 'art-green_hag', 'art-will_o_wisp',
+    'art-harpy', 'art-sea_hag', 'art-green_hag', 'art-will_o_wisp', 'art-ogre', 'art-owlbear',
   ]) {
     assert.ok(html.includes(`id="${id}"`), `index.html contains #${id}`);
   }
   const app = read('static/app.js');
   for (const fey of [
     'violet_fungus', 'giant_wasp', 'satyr', 'steam_mephit', 'blink_dog', 'sprite',
-    'dryad', 'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp',
+    'dryad', 'bugbear_warrior', 'harpy', 'sea_hag', 'green_hag', 'will_o_wisp', 'ogre', 'owlbear',
   ]) {
     assert.ok(app.includes(`'${fey}'`), `app.js maps portrait for ${fey}`);
   }
@@ -234,6 +234,7 @@ test('every figure is rigged with the clips the scene plays', async () => {
   const { createHash } = await import('node:crypto');
   const need = { mara: ['slash', 'cast', 'guard'], ilyra: ['cast', 'cast_area'], chruna: ['slash', 'cast', 'guard'], vesper: ['slash', 'cast', 'guard'], goblin: ['slash', 'arrow'],
     goblin_boss: ['slash', 'arrow'], animated_armor: ['slash', 'guard'], kobold_warrior: ['slash', 'arrow', 'guard'],
+    ogre: ['slash', 'arrow'], owlbear: ['slash'],
     guy: ['slash'], elion: ['cast'], curogana: ['cast'] };
   for (const [key, spec] of Object.entries(CAST_MODELS)) {
     const bytes = readFileSync(path.join(ff, 'static', spec.file));
@@ -255,6 +256,7 @@ test('every figure is rigged with the clips the scene plays', async () => {
       kobold_warrior: [['Kobold_Dagger', 'Weapon.R']],
       bugbear_warrior: [['Bugbear_Hammer', 'Weapon.R']],
       sprite: [['Sprite_Needle_Sword', 'Weapon.R']],
+      ogre: [['Ogre_Greatclub', 'Weapon.R']],
     };
     if (Object.hasOwn(rigidExpected, key)) {
       const nodes = doc.nodes || [];
@@ -386,7 +388,7 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
   assert.match(shield.text, /start of your next turn/i);
   assert.match(shield.text, /Magic Missile/i);
 
-  // Promoted encounters keep the 4 ranked cards at 11 / 11 / 14 / 3 (with Crypt & Vault separated into Classic; +3 Vesper fey Practice presets)
+  // Promoted encounters keep the 4 ranked cards at 12 / 12 / 14 / 3 (+2 Owlbear glade presets; Crypt & Vault separated into Classic with +2 Ogre vault presets)
   const pubEncounters = encounterFiles('encounters');
   const legacyIds = new Set(['crypt', 'vault']);
   const rankedCounts = { Easy: 0, Medium: 0, Hard: 0, Unbeatable: 0 };
@@ -398,8 +400,8 @@ test('release copy covers Unbeatable tier, reaction refresh, engine credits, and
       assert.doesNotMatch(p.name, /\(\+[12] monsters?\)/i, `${e.id}/${p.id} has no dev suffix`);
     }
   }
-  assert.deepEqual(rankedCounts, { Easy: 11, Medium: 11, Hard: 14, Unbeatable: 3 });
-  assert.equal(classicCount, 11);
+  assert.deepEqual(rankedCounts, { Easy: 12, Medium: 12, Hard: 14, Unbeatable: 3 });
+  assert.equal(classicCount, 13);
   assert.match(app, /LEGACY_ENCOUNTERS = new Set\(\['crypt', 'vault'\]\)/, 'app.js separates legacy Crypt & Vault into Classic');
   assert.match(app, /legacy \? 'Classic · ungraded' : p\.difficulty/, 'deployment preset dropdown marks legacy encounters as Classic · ungraded');
   const unbeatable = pubEncounters.filter(e => !legacyIds.has(e.id)).flatMap(e => e.presets.filter(p => p.difficulty === 'Unbeatable').map(p => `${e.id}/${p.id}`)).sort();

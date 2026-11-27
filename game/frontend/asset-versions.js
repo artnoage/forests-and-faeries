@@ -21,6 +21,8 @@ export const ASSET_VERSIONS = Object.freeze({
   'models/kobold_warrior.glb': '46cbf51bb710',
   'models/mara.glb': 'cb6aa0365609',
   'models/mummy.glb': 'e5329cfb5594',
+  'models/ogre.glb': '37430d477415',
+  'models/owlbear.glb': 'c22b211b04ab',
   'models/satyr.glb': '2b4216e8cfd4',
   'models/sea_hag.glb': '06f0e5bf3d39',
   'models/shadow.glb': '2f42b2566caa',
