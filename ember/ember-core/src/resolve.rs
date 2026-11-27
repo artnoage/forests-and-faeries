@@ -44,6 +44,7 @@ struct ResolutionCtx {
     metamagic: Option<Metamagic>,
     is_sorcerer_spell: bool,
     /// Dynamic overrides computed for hero weapons (`attack_numbers`).
+    attack_idx: Option<usize>,
     weapon_to_hit: Option<i32>,
     weapon_damage_override: Option<Dice>,
     weapon_graze_mod: Option<i32>,
@@ -124,7 +125,7 @@ impl Fight {
         dice: &mut D,
         sink: &mut S,
     ) -> Result<(), CoreError> {
-        while !self.finish_if_needed(sink) && self.state.round < self.meta.max_rounds {
+        while !self.finish_if_needed(sink) {
             self.skip_dead_turns();
             let actor = self.current();
             self.start_turn(actor, dice, sink)?;
@@ -223,6 +224,7 @@ impl Fight {
         let gt = self.gt();
         self.state.effects.expire_game_time(gt);
         self.refresh_all_flags();
+        self.expire_timed_conditions();
 
         self.emit_ev(sink, Event::TurnStarted { unit: u, round: self.state.round });
 
@@ -248,8 +250,14 @@ impl Fight {
         // Ghast Stench start-of-turn CON save
         self.stench_start_of_turn(u, dice, sink)?;
 
+        self.prune_invalid_grapples(u);
+        for (g, _) in self.grapplers_of(u) {
+            self.prune_invalid_grapples(g);
+        }
+
         self.state.effects.expire_game_time(gt);
         self.refresh_all_flags();
+        self.expire_timed_conditions();
         Ok(())
     }
 
@@ -357,6 +365,7 @@ impl Fight {
                 self.apply_prone(current);
             }
         }
+        self.expire_timed_conditions();
         let gt = self.gt();
         self.state.effects.expire_end_of_turn(current, gt);
         self.refresh_all_flags();
@@ -438,6 +447,12 @@ impl Fight {
                 let mut ctx = ResolutionCtx { actor: src, ..Default::default() };
                 self.run_ability(ab_id, &mut ctx, dice, sink)?;
             }
+            ActionPayload::EscapeGrapple { grappler } => {
+                self.do_escape_grapple(src, *grappler, dice, sink)?;
+            }
+            ActionPayload::DropGrapple { target } => {
+                self.release_grapple(src, *target);
+            }
             ActionPayload::CastSpell {
                 spell_key,
                 at_level,
@@ -453,6 +468,7 @@ impl Fight {
         let gt = self.gt();
         self.state.effects.expire_game_time(gt);
         self.refresh_all_flags();
+        self.expire_timed_conditions();
         Ok(())
     }
 
@@ -707,6 +723,10 @@ impl Fight {
                     if *unless_immune_paralyzed && self.template_of(tgt).immune_paralyzed {
                         continue;
                     }
+                    if let EffectKind::Grappled { escape_dc } = *kind {
+                        self.apply_grapple(ctx.actor, tgt, escape_dc);
+                        continue;
+                    }
                     let (eff_kind, eff_exp) = match (*kind, *expiry) {
                         (EffectKind::TimedParalyzed { .. }, _) => {
                             let own_turn = self.state.started
@@ -818,6 +838,9 @@ impl Fight {
                             let t = self.template_of(first_target(ctx)?);
                             !t.undead && !t.elf
                         }
+                        BranchPredicate::TargetSizeAtMost(max_sz) => {
+                            self.template_of(first_target(ctx)?).size <= *max_sz
+                        }
                         BranchPredicate::SaveFailed => ctx.last_save_failed,
                         BranchPredicate::HasAdvantage => ctx.had_adv,
                     };
@@ -864,6 +887,7 @@ impl Fight {
         let mut ctx = ResolutionCtx {
             actor: src,
             targets: SmallVec::from_slice(&[tgt]),
+            attack_idx: Some(atk_idx),
             weapon_to_hit: Some(to_hit),
             weapon_damage_override: Some(dmg_dice),
             weapon_graze_mod: graze,
@@ -1062,15 +1086,20 @@ impl Fight {
         };
         if thrown {
             if let Some(gear_i) = item {
-                let spare_pos = self
-                    .template_of(src)
-                    .spares
-                    .iter()
-                    .position(|&(gi, _)| gi == gear_i);
-                let u = self.unit_mut(src);
-                match spare_pos {
-                    Some(k) if k < 4 && u.spares[k] > 0 => u.spares[k] -= 1,
-                    _ => u.gear_off |= 1u32 << gear_i,
+                if pc {
+                    let spare_pos = self
+                        .template_of(src)
+                        .spares
+                        .iter()
+                        .position(|&(gi, _)| gi == gear_i);
+                    let u = self.unit_mut(src);
+                    match spare_pos {
+                        Some(k) if k < 4 && u.spares[k] > 0 => u.spares[k] -= 1,
+                        _ => u.gear_off |= 1u32 << gear_i,
+                    }
+                } else if (gear_i as usize) < 4 {
+                    let u = self.unit_mut(src);
+                    u.npc_inv[gear_i as usize] = u.npc_inv[gear_i as usize].saturating_sub(1);
                 }
             }
         }
@@ -1324,7 +1353,14 @@ impl Fight {
         let src = ctx.actor;
         let ranged = matches!(kind, AttackKind::WeaponRanged | AttackKind::SpellRanged);
         let is_spell = matches!(kind, AttackKind::SpellMelee | AttackKind::SpellRanged);
-        let (adv, dis) = self.attack_modifiers(src, tgt, ranged, range_ft, is_spell && ctx.is_sorcerer_spell);
+        let (adv, dis) = self.attack_modifiers(
+            src,
+            tgt,
+            ctx.attack_idx,
+            ranged,
+            range_ft,
+            is_spell && ctx.is_sorcerer_spell,
+        );
         ctx.had_adv = adv && !dis;
 
         // Real attack roll consumes Sap Disadvantage
@@ -1376,6 +1412,7 @@ impl Fight {
         &self,
         src: UnitId,
         tgt: UnitId,
+        attack_idx: Option<usize>,
         ranged: bool,
         normal_range_ft: i32,
         sorcerer_spell: bool,
@@ -1388,6 +1425,13 @@ impl Fight {
         if sorcerer_spell && self.innate_active(src) {
             adv = true;
         }
+        if let Some(ai) = attack_idx {
+            if self.template_of(src).attacks[ai].adv_if_grappled_by_source
+                && self.is_grappled_by(tgt, src)
+            {
+                adv = true;
+            }
+        }
         if sf.contains(UnitFlags::PRONE) {
             dis = true;
         }
@@ -1399,6 +1443,9 @@ impl Fight {
         }
         if tf.contains(UnitFlags::RESTRAINED) {
             adv = true;
+        }
+        if sf.contains(UnitFlags::GRAPPLED) && !self.is_grappled_by(src, tgt) {
+            dis = true;
         }
         if tf.contains(UnitFlags::PARALYZED) || tf.is_unconscious() {
             adv = true;
@@ -1568,6 +1615,7 @@ impl Fight {
                             },
                         );
                         self.do_weapon_attack(reactor, attack_idx as usize, target, true, dice, sink)?;
+                        self.expire_timed_conditions();
                     }
                     if !self.unit(mover).flags.is_conscious()
                         || (self.unit(mover).flags.contains(UnitFlags::PRONE) && !was_prone)
@@ -1599,6 +1647,7 @@ impl Fight {
                     },
                 );
                 self.do_weapon_attack(frame.reactor, attack_idx as usize, target, true, dice, sink)?;
+                self.expire_timed_conditions();
             }
             ReactionOption::Decline => {}
         }
@@ -1682,6 +1731,16 @@ impl Fight {
         } else {
             self.unit_mut(src).champion_movement = 0;
             self.unit_mut(src).movement -= cost_ft;
+        }
+        if self.is_grappling(src) {
+            let dragged = self.grappling_targets(src);
+            for (i, t) in dragged.into_iter().enumerate() {
+                let lag = i + 1;
+                if seg.len() > lag {
+                    let target_dest = seg[seg.len() - 1 - lag];
+                    self.move_to(t, target_dest);
+                }
+            }
         }
         if seg.len() > 1 {
             let mut ev_path = SmallVec::new();
@@ -1866,6 +1925,8 @@ impl Fight {
         if self.unit(u).flags.is_dead() {
             return;
         }
+        self.drop_all_grapples(u);
+        self.release_all_grapplers_of(u);
         // Clear Hidden before emitting UnitFell (structural Leak H prevention!)
         self.break_stealth(u);
         let pos = self.unit(u).pos;
@@ -1892,14 +1953,55 @@ impl Fight {
         if self.unit(u).flags.is_unconscious() || self.unit(u).flags.is_dead() {
             return;
         }
+        self.drop_all_grapples(u);
         self.apply_prone(u);
         self.state
             .effects
             .add_unique(u, u, EffectKind::Unconscious, EffectExpiry::Manual);
         self.state.effects.remove_kind(u, EffectKind::Stable);
-        self.state.effects.remove_kind(u, EffectKind::Dodge);
         self.refresh_flags(u);
+        self.lose_dodge_if_ineligible(u);
         self.emit_ev(sink, Event::UnitFell { unit: u, dead: false });
+    }
+
+    fn do_escape_grapple<D: DiceSource, S: EventSink>(
+        &mut self,
+        src: UnitId,
+        grappler: UnitId,
+        dice: &mut D,
+        sink: &mut S,
+    ) -> Result<(), CoreError> {
+        let ath = self.template_of(src).athletics_mod as i32;
+        let acr = self.template_of(src).acrobatics_mod as i32;
+        let (tag, bonus) = if ath > acr { ("athletics", ath) } else { ("acrobatics", acr) };
+        let dis = self.unit(src).flags.contains(UnitFlags::POISONED);
+        let face = self.roll_d20(src, tag, RollMode::from_flags(false, dis), dice, sink)?;
+        let total = face + bonus;
+        let escape_dc = self
+            .grapplers_of(src)
+            .into_iter()
+            .find(|&(g, _)| g == grappler)
+            .and_then(|(_, dc)| dc);
+        let escaped = match escape_dc {
+            Some(dc) => total >= dc as i32,
+            None => {
+                let g_ath = self.template_of(grappler).athletics_mod as i32;
+                let g_dis = self.unit(grappler).flags.contains(UnitFlags::POISONED);
+                let g_face = self.roll_d20(
+                    grappler,
+                    "athletics",
+                    RollMode::from_flags(false, g_dis),
+                    dice,
+                    sink,
+                )?;
+                total > g_face + g_ath
+            }
+        };
+        if escaped {
+            self.release_grapple(grappler, src);
+        }
+        self.unit_mut(src).action = (self.unit(src).action - 1).max(0);
+        Ok(())
     }
 
     fn heal_unit<S: EventSink>(&mut self, u: UnitId, amount: i32, sink: &mut S) {

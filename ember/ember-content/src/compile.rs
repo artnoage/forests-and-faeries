@@ -145,9 +145,11 @@ fn compile_creature(
     // Traits
     let mut stench_dc = None;
     let mut undead_fortitude = None;
+    let mut abduct = false;
     for tr in &c.traits {
         match tr.id.as_str() {
             "stench" => stench_dc = tr.dc,
+            "abduct" => abduct = true,
             "undead_fortitude" => {
                 let base = tr.dc_base.unwrap_or(5);
                 let bypass = tr
@@ -160,6 +162,19 @@ fn compile_creature(
             _ => {}
         }
     }
+
+    let inventory: Vec<(String, u16)> =
+        c.inventory.iter().map(|(k, &v)| (k.clone(), v)).collect();
+    let athletics_mod = c
+        .skills
+        .get("athletics")
+        .copied()
+        .unwrap_or_else(|| ember_core::types::ability_mod(abil[0] as i32) as i16);
+    let acrobatics_mod = c
+        .skills
+        .get("acrobatics")
+        .copied()
+        .unwrap_or_else(|| ember_core::types::ability_mod(abil[1] as i32) as i16);
 
     // Compile each weapon / monster attack into a first-class AbilityDef step program!
     let mut attacks = Vec::with_capacity(c.attacks.len());
@@ -178,11 +193,19 @@ fn compile_creature(
             Some("str") => AttackAbility::Str,
             _ => AttackAbility::Fixed,
         };
-        let item = atk
-            .item
-            .as_deref()
-            .and_then(|id| gear.iter().position(|(gid, _)| gid == id))
-            .map(|i| i as u8);
+        let item = if c.pc {
+            atk.item
+                .as_deref()
+                .and_then(|id| gear.iter().position(|(gid, _)| gid == id))
+                .map(|i| i as u8)
+        } else {
+            atk.item
+                .as_deref()
+                .and_then(|id| inventory.iter().position(|(iid, _)| iid == id))
+                .map(|i| i as u8)
+        };
+        let adv_if_grappled_by_source =
+            atk.advantage_if.as_deref() == Some("target:grappled_by_source");
         let additional = atk
             .additional
             .iter()
@@ -200,6 +223,13 @@ fn compile_creature(
                 let no_undead = oh.conditions.iter().any(|x| x == "!undead");
                 let no_elf = oh.conditions.iter().any(|x| x == "!elf");
                 Some((ab, dc, no_undead, no_elf))
+            } else {
+                None
+            }
+        });
+        let on_hit_grapple = atk.on_hit.iter().find_map(|oh| {
+            if oh.id == "grapple" {
+                Some(oh.escape_dc)
             } else {
                 None
             }
@@ -230,8 +260,10 @@ fn compile_creature(
             bonus_action: atk.bonus_action,
             save_attack,
             item,
+            adv_if_grappled_by_source,
             additional,
             on_hit_paralyze,
+            on_hit_grapple,
         });
     }
 
@@ -339,6 +371,9 @@ fn compile_creature(
         immune_grappled: has_cond_imm("grappled"),
         gear,
         spares,
+        inventory,
+        athletics_mod,
+        acrobatics_mod,
         attacks,
         multiattack: c.multiattack.clone(),
         fighter,
@@ -351,6 +386,7 @@ fn compile_creature(
         improved_critical,
         remarkable_athlete,
         sorcerer,
+        abduct,
         stench_dc,
         undead_fortitude,
         caster,
@@ -461,9 +497,27 @@ fn compile_attack_ability(
             graze_ability_mod: false,
         });
 
-        // On-hit condition saves (e.g. Ghast/Ghoul Claw -> CON save vs Paralyzed)
+        // On-hit condition saves & grapples (e.g. Ghast/Ghoul Claw, Bugbear Warrior Grab)
         for oh in &atk.on_hit {
-            if oh.id == "save_condition" && oh.condition.as_deref() == Some("paralyzed") {
+            if oh.id == "grapple" {
+                let apply_step = Step::ApplyEffect {
+                    kind: EffectKind::Grappled { escape_dc: oh.escape_dc },
+                    expiry: EffectExpiry::Manual,
+                    concentration: false,
+                    to_self: false,
+                    unless_immune_poisoned: false,
+                    unless_immune_paralyzed: false,
+                };
+                if oh.conditions.iter().any(|x| x == "size<=medium") {
+                    hit_steps.push(Step::Branch {
+                        predicate: BranchPredicate::TargetSizeAtMost(Size::Medium),
+                        then_steps: vec![apply_step],
+                        else_steps: Vec::new(),
+                    });
+                } else {
+                    hit_steps.push(apply_step);
+                }
+            } else if oh.id == "save_condition" && oh.condition.as_deref() == Some("paralyzed") {
                 if let (Some(save_s), Some(dc)) = (oh.save.as_deref(), oh.dc) {
                     let save_ab = Ability::from_short(save_s).expect("validated");
                     let no_elf = oh.conditions.iter().any(|x| x == "!elf");
@@ -773,6 +827,7 @@ fn parse_effect_kind(key: &str) -> Result<EffectKind, ContentError> {
         "paralyzed" => Ok(EffectKind::TimedParalyzed { skip_current_turn: false }),
         "incapacitated" => Ok(EffectKind::Incapacitated),
         "poisoned" => Ok(EffectKind::Poisoned),
+        "grappled" => Ok(EffectKind::Grappled { escape_dc: None }),
         "stench_poison" => Ok(EffectKind::StenchPoison),
         "dodge" => Ok(EffectKind::Dodge),
         "disengage" => Ok(EffectKind::Disengage),

@@ -165,7 +165,7 @@ fn see_invisibility_replaces_burning_hands_only_at_v18_and_shows_per_active_hero
         ],
     };
     let mut game = WebArena::new(level, 5, 0, "csrf".into(), "enc".into()).unwrap();
-    assert_eq!(CURRENT_WEB_REPLAY_VERSION, 20);
+    assert_eq!(CURRENT_WEB_REPLAY_VERSION, 21);
     game.start().unwrap();
 
     // Advance to Curogana's turn via public API? We can use Fight directly via WebArena state by forcing turns cleanly:
@@ -900,7 +900,103 @@ fn ray_of_sickness_presentation_is_version_gated_on_replay_v20() {
 #[test]
 fn batch_defaults_to_rule_17_and_maps_n20_commit_per_rule_version() {
     assert_eq!(DEFAULT_BATCH_RULE_VERSION, 17);
+    assert_eq!(CURRENT_RULE_VERSION, 19);
     assert_eq!(natural20_commit_for_rule_version(17), NATURAL20_COMMIT_RULE_17);
     assert_eq!(natural20_commit_for_rule_version(18), NATURAL20_COMMIT.trim());
+    assert_eq!(natural20_commit_for_rule_version(19), NATURAL20_COMMIT.trim());
     assert_ne!(NATURAL20_COMMIT_RULE_17, NATURAL20_COMMIT.trim());
+}
+
+#[test]
+fn web_v21_ends_dodge_when_grappled_while_v20_preserves_rule_18() {
+    let rows = vec!["......".to_string(); 3];
+    let make_level = |id: &str| LevelInput {
+        encounter_id: id.into(),
+        preset_id: "test".into(),
+        theme: "woodland".into(),
+        map_name: "open".into(),
+        rows: rows.clone(),
+        scene: json!({}),
+        level_view: json!({}),
+        heroes: vec!["guy".into()],
+        monsters: vec![
+            ("bugbear_warrior-1".into(), "bugbear_warrior".into(), "Bugbear Warrior 1".into()),
+            ("bugbear_warrior-2".into(), "bugbear_warrior".into(), "Bugbear Warrior 2".into()),
+        ],
+        suggested_placements: vec![
+            Placement { id: "guy".into(), x: 2, y: 1 },
+            Placement { id: "bugbear_warrior-1".into(), x: 1, y: 1 },
+            Placement { id: "bugbear_warrior-2".into(), x: 3, y: 1 },
+        ],
+    };
+
+    // Initiative: Guy acts first (20 -> 25), Bugbear 1 second (15 -> 17), Bugbear 2 third (10 -> 12).
+    // Guy takes Dodge; Bugbear 1's Grab hits with Disadvantage [17, 12] -> 12+4=16 >= 16 and grapples Guy.
+    // Bugbear 2's Grab rolls d20d in v20 (rule 18: Dodge retained) vs d20n in v21 (rule 19: Dodge ended).
+    let base_draws = vec![
+        // Guy Remarkable Athlete initiative (advantage)
+        json!({"who": "guy", "tag": "initiative", "sides": 20, "mode": "a", "v": [20, 18]}),
+        json!({"who": "bugbear_warrior-1", "tag": "initiative", "sides": 20, "mode": "n", "v": 15}),
+        json!({"who": "bugbear_warrior-2", "tag": "initiative", "sides": 20, "mode": "n", "v": 10}),
+        // Bugbear 1 Grab vs dodging Guy -> Disadvantage [17, 12], hits (12+4=16 == AC 16), 2d6+2 dmg = 8
+        json!({"who": "bugbear_warrior-1", "tag": "attack", "sides": 20, "mode": "d", "v": [17, 12]}),
+        json!({"who": "bugbear_warrior-1", "tag": "damage", "sides": 6, "mode": "n", "v": 3}),
+        json!({"who": "bugbear_warrior-1", "tag": "damage", "sides": 6, "mode": "n", "v": 3}),
+    ];
+
+    let mut draws_v20 = base_draws.clone();
+    draws_v20.push(json!({"who": "bugbear_warrior-2", "tag": "attack", "sides": 20, "mode": "d", "v": [15, 2]}));
+    draws_v20.push(json!({"who": "bugbear_warrior-2", "tag": "damage", "sides": 6, "mode": "n", "v": 1}));
+    draws_v20.push(json!({"who": "bugbear_warrior-2", "tag": "damage", "sides": 6, "mode": "n", "v": 1}));
+    let mut draws_v21 = base_draws;
+    draws_v21.push(json!({"who": "bugbear_warrior-2", "tag": "attack", "sides": 20, "mode": "n", "v": 2}));
+    draws_v21.push(json!({"who": "bugbear_warrior-2", "tag": "damage", "sides": 6, "mode": "n", "v": 1}));
+    draws_v21.push(json!({"who": "bugbear_warrior-2", "tag": "damage", "sides": 6, "mode": "n", "v": 1}));
+
+    let placements_json = json!([
+        {"id": "guy", "x": 2, "y": 1},
+        {"id": "bugbear_warrior-1", "x": 1, "y": 1},
+        {"id": "bugbear_warrior-2", "x": 3, "y": 1},
+    ]);
+
+    for (ver, draws, expect_mode) in [(20u8, draws_v20, "d"), (21u8, draws_v21, "n")] {
+        let parsed: Vec<_> = draws.iter().map(|v| parse_draw_json(v).unwrap()).collect();
+        let mut game = WebArena::with_versioned_replay_draws(
+            make_level(&format!("grab_dodge_v{ver}")),
+            parsed,
+            0,
+            "csrf".into(),
+            "enc".into(),
+            ver,
+        ).unwrap();
+        game.configure(&placements_json, &json!("manual")).unwrap();
+        game.start().unwrap();
+        let st = game.state();
+        let dodge_id = st["actions"].as_array().unwrap().iter()
+            .find(|a| a["kind"] == "dodge")
+            .expect("guy must have dodge action")["id"].as_str().unwrap().to_string();
+        game.perform(&dodge_id).unwrap();
+        game.end_turn().unwrap();
+
+        // Bugbear 1 grabs Guy
+        let st_b1 = game.state();
+        let grab1_id = st_b1["actions"].as_array().unwrap().iter()
+            .find(|a| a["kind"] == "attack" && a["label"].as_str().unwrap_or("").to_lowercase().contains("grab"))
+            .expect("bugbear 1 must have grab action")["id"].as_str().unwrap().to_string();
+        game.perform(&grab1_id).unwrap();
+        game.end_turn().unwrap();
+
+        // Bugbear 2 attacks Guy: mode must be "d" at v20 (rule 18) and "n" at v21 (rule 19)
+        let st_b2 = game.state();
+        let atk2_id = st_b2["actions"].as_array().unwrap().iter()
+            .find(|a| a["kind"] == "attack" && a["label"].as_str().unwrap_or("").to_lowercase().contains("grab"))
+            .expect("bugbear 2 must have grab action")["id"].as_str().unwrap().to_string();
+        let after = game.perform(&atk2_id).unwrap();
+        let last_rec = after["timeline"].as_array().unwrap().last().expect("timeline record");
+        let roll_mode = last_rec["draws"].as_array().unwrap().iter()
+            .find(|d| d["tag"] == "attack")
+            .and_then(|d| d["mode"].as_str())
+            .expect("bugbear 2 attack draw");
+        assert_eq!(roll_mode, expect_mode, "web replay_version {ver} follow-up attack roll mode");
+    }
 }

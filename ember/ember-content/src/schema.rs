@@ -169,6 +169,8 @@ pub struct AttackJson {
     pub item: Option<String>,
     #[serde(default)]
     pub bonus_action: bool,
+    #[serde(default)]
+    pub advantage_if: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -190,6 +192,8 @@ pub struct OnHitJson {
     pub dc: Option<i16>,
     #[serde(default)]
     pub condition: Option<String>,
+    #[serde(default)]
+    pub escape_dc: Option<i16>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

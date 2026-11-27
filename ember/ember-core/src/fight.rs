@@ -73,6 +73,7 @@ pub struct UnitState {
     pub str_drain: i8,
     pub gear_off: u32,
     pub spares: [u8; 4],
+    pub npc_inv: [u8; 4],
     // Multiattack inline state (up to 8 combos, up to 4 attacks per combo)
     pub ma_started: bool,
     pub ma_combo_mask: u8,
@@ -87,6 +88,10 @@ impl UnitState {
         let mut spares = [0u8; 4];
         for (i, &(_, cnt)) in t.spares.iter().take(4).enumerate() {
             spares[i] = cnt;
+        }
+        let mut npc_inv = [0u8; 4];
+        for (i, &(_, cnt)) in t.inventory.iter().take(4).enumerate() {
+            npc_inv[i] = cnt.min(u8::MAX as u16) as u8;
         }
         let (slots, free_cast_mask, sorcery_points, innate_sorcery_left) = match &t.caster {
             Some(c) => {
@@ -133,6 +138,7 @@ impl UnitState {
             str_drain: 0,
             gear_off: 0,
             spares,
+            npc_inv,
             ma_started: false,
             ma_combo_mask: 0,
             ma_combo_used: [0; 8],
@@ -764,7 +770,138 @@ impl Fight {
         let unit = self.unit(u);
         unit.flags.contains(UnitFlags::DODGING)
             && !unit.flags.is_incapacitated()
+            && !unit.flags.contains(UnitFlags::GRAPPLED)
             && self.speed_of(u) > 0
+    }
+
+    pub fn lose_dodge_if_ineligible(&mut self, u: UnitId) {
+        if self.unit(u).flags.contains(UnitFlags::DODGING) && !self.benefits_from_dodge(u) {
+            self.state.effects.remove_kind(u, EffectKind::Dodge);
+            self.refresh_flags(u);
+        }
+    }
+
+    pub fn expire_timed_conditions(&mut self) {
+        let n = self.state.units.len();
+        for i in 0..n {
+            self.lose_dodge_if_ineligible(UnitId(i as u8));
+        }
+    }
+
+    pub fn is_grappled_by(&self, tgt: UnitId, grappler: UnitId) -> bool {
+        self.state.effects.entries.iter().any(|e| {
+            e.target == tgt && e.source == grappler && matches!(e.kind, EffectKind::Grappled { .. })
+        })
+    }
+
+    pub fn grapplers_of(&self, tgt: UnitId) -> SmallVec<[(UnitId, Option<i16>); 4]> {
+        let mut out = SmallVec::new();
+        for e in &self.state.effects.entries {
+            if e.target == tgt {
+                if let EffectKind::Grappled { escape_dc } = e.kind {
+                    if !out.iter().any(|&(g, _)| g == e.source) {
+                        out.push((e.source, escape_dc));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    pub fn grappling_targets(&self, src: UnitId) -> SmallVec<[UnitId; 4]> {
+        let mut out = SmallVec::new();
+        for e in &self.state.effects.entries {
+            if e.source == src && matches!(e.kind, EffectKind::Grappled { .. }) && !out.contains(&e.target) {
+                out.push(e.target);
+            }
+        }
+        out
+    }
+
+    pub fn is_grappling(&self, src: UnitId) -> bool {
+        self.state
+            .effects
+            .entries
+            .iter()
+            .any(|e| e.source == src && matches!(e.kind, EffectKind::Grappled { .. }))
+    }
+
+    pub fn drag_penalty(&self, u: UnitId) -> bool {
+        if self.template_of(u).abduct || !self.is_grappling(u) {
+            return false;
+        }
+        let my_rank = self.template_of(u).size as i32;
+        self.grappling_targets(u).into_iter().any(|t| {
+            let tr = self.template_of(t).size as i32;
+            tr > 0 && (tr - my_rank) >= -1
+        })
+    }
+
+    pub fn apply_grapple(&mut self, src: UnitId, tgt: UnitId, escape_dc: Option<i16>) {
+        if self.unit(tgt).flags.is_dead() || self.template_of(tgt).immune_grappled {
+            return;
+        }
+        if let Some(existing) = self.state.effects.entries.iter_mut().find(|e| {
+            e.target == tgt && e.source == src && matches!(e.kind, EffectKind::Grappled { .. })
+        }) {
+            if escape_dc.is_some() {
+                existing.kind = EffectKind::Grappled { escape_dc };
+            }
+        } else {
+            self.state.effects.add(
+                tgt,
+                src,
+                EffectKind::Grappled { escape_dc },
+                crate::effect::EffectExpiry::Manual,
+                false,
+                None,
+            );
+        }
+        self.refresh_flags(tgt);
+        self.lose_dodge_if_ineligible(tgt);
+    }
+
+    pub fn release_grapple(&mut self, src: UnitId, tgt: UnitId) {
+        self.state.effects.entries.retain(|e| {
+            !(e.target == tgt && e.source == src && matches!(e.kind, EffectKind::Grappled { .. }))
+        });
+        self.refresh_flags(tgt);
+    }
+
+    pub fn drop_all_grapples(&mut self, src: UnitId) {
+        let targets = self.grappling_targets(src);
+        if targets.is_empty() {
+            return;
+        }
+        self.state
+            .effects
+            .entries
+            .retain(|e| !(e.source == src && matches!(e.kind, EffectKind::Grappled { .. })));
+        for t in targets {
+            self.refresh_flags(t);
+        }
+    }
+
+    pub fn release_all_grapplers_of(&mut self, tgt: UnitId) {
+        self.state
+            .effects
+            .entries
+            .retain(|e| !(e.target == tgt && matches!(e.kind, EffectKind::Grappled { .. })));
+        self.refresh_flags(tgt);
+    }
+
+    pub fn prune_invalid_grapples(&mut self, src: UnitId) {
+        if !self.is_grappling(src) {
+            return;
+        }
+        let incap = self.unit(src).flags.is_incapacitated();
+        let reach_ft = self.template_of(src).melee_reach_ft.unwrap_or(5).max(5) as i32;
+        for tgt in self.grappling_targets(src) {
+            let out_of_reach = self.unit(src).pos.feet_to(self.unit(tgt).pos) > reach_ft;
+            if incap || self.unit(tgt).flags.is_dead() || out_of_reach {
+                self.release_grapple(src, tgt);
+            }
+        }
     }
 
     #[inline]
@@ -808,10 +945,12 @@ impl Fight {
     }
 
     pub fn attack_available(&self, u: UnitId, atk_idx: usize) -> bool {
-        let def = &self.template_of(u).attacks[atk_idx];
+        let t = self.template_of(u);
+        let def = &t.attacks[atk_idx];
         match def.item {
-            Some(i) => self.unit(u).gear_off & (1u32 << i) == 0,
-            None => true,
+            Some(i) if t.pc => self.unit(u).gear_off & (1u32 << i) == 0,
+            Some(i) if def.thrown => (i as usize) < 4 && self.unit(u).npc_inv[i as usize] > 0,
+            _ => true,
         }
     }
 
@@ -887,7 +1026,9 @@ impl Fight {
 
     pub fn step_cost(&self, u: UnitId, to: Pos) -> i32 {
         let difficult = self.difficult(u, to) && !self.template_of(u).fly;
-        1 + i32::from(self.unit(u).flags.contains(UnitFlags::PRONE)) + i32::from(difficult)
+        1 + i32::from(self.unit(u).flags.contains(UnitFlags::PRONE))
+            + i32::from(difficult)
+            + i32::from(self.drag_penalty(u))
     }
 
     pub fn move_prefix(
@@ -1199,6 +1340,19 @@ impl Fight {
             out.push(ActionPayload::Dodge);
             out.push(ActionPayload::Dash);
             out.push(ActionPayload::Disengage);
+            if unit.flags.contains(UnitFlags::GRAPPLED) {
+                for (grappler, _) in self.grapplers_of(u) {
+                    out.push(ActionPayload::EscapeGrapple { grappler });
+                }
+            }
+        }
+        if self.is_grappling(u) {
+            for tgt in self.grappling_targets(u) {
+                let tf = self.unit(tgt).flags;
+                if tf.is_dead() || tf.is_unconscious() || !self.opposing(u, tgt) {
+                    out.push(ActionPayload::DropGrapple { target: tgt });
+                }
+            }
         }
 
         // Fighter features
@@ -1667,6 +1821,12 @@ impl Fight {
                 k.at_level = at_level.to_string();
                 k.paid = !free;
             }
+            ActionPayload::EscapeGrapple { grappler } => {
+                k.ids = vec![self.unit_key(*grappler).to_string()];
+            }
+            ActionPayload::DropGrapple { target } => {
+                k.ids = vec![self.unit_key(*target).to_string()];
+            }
             _ => {}
         }
         k
@@ -1714,6 +1874,12 @@ impl Fight {
                 }
                 s
             }
+            ActionPayload::EscapeGrapple { grappler } => {
+                format!("escape_grapple:>{}", self.unit_key(*grappler))
+            }
+            ActionPayload::DropGrapple { target } => {
+                format!("drop_grapple:>{}", self.unit_key(*target))
+            }
             other => payload_kind(other).to_string(),
         }
     }
@@ -1731,6 +1897,18 @@ impl Fight {
             "innate_sorcery" => return Ok(ActionPayload::InnateSorcery),
             "end_turn" | "none" => return Ok(ActionPayload::EndTurn),
             _ => {}
+        }
+        if let Some(tid) = key.strip_prefix("escape_grapple:>") {
+            let grappler = self
+                .unit_by_key(tid)
+                .ok_or_else(|| CoreError::UnknownAction(key.into()))?;
+            return Ok(ActionPayload::EscapeGrapple { grappler });
+        }
+        if let Some(tid) = key.strip_prefix("drop_grapple:>") {
+            let target = self
+                .unit_by_key(tid)
+                .ok_or_else(|| CoreError::UnknownAction(key.into()))?;
+            return Ok(ActionPayload::DropGrapple { target });
         }
         if let Some(rest) = key.strip_prefix("move:") {
             let mut path = SmallVec::new();
@@ -2388,6 +2566,8 @@ fn payload_kind(payload: &ActionPayload) -> &'static str {
         ActionPayload::SecondWind => "second_wind",
         ActionPayload::ActionSurge => "action_surge",
         ActionPayload::InnateSorcery => "innate_sorcery",
+        ActionPayload::EscapeGrapple { .. } => "escape_grapple",
+        ActionPayload::DropGrapple { .. } => "drop_grapple",
         ActionPayload::CastSpell { .. } => "spell",
         ActionPayload::EndTurn => "end_turn",
     }

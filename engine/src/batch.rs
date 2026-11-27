@@ -43,12 +43,13 @@ use crate::trace::Trace;
 pub const POTENTIAL_SCALE: f64 = 0.3;
 
 /// Default engine rule version for [`BatchEnv`] / [`Game::new`]: pinned to 17
-/// so live trainers and ladder evaluations keep exact r4 parity until rule 18
-/// (Vesper / 2024 updates) is requested explicitly via `rule_version=18`.
+/// so live trainers and ladder evaluations keep exact r4 parity until newer
+/// rules (18: Vesper / 2024 updates; 19: Dodge ends when grappled) are
+/// requested explicitly via `rule_version=18` or `rule_version=19`.
 pub const DEFAULT_BATCH_RULE_VERSION: i32 = 17;
 
 /// The natural20 commit whose rules this engine mirrors (written into the
-/// header of rule-18 tapes the environment records).
+/// header of rule-18+ tapes the environment records).
 pub const NATURAL20_COMMIT: &str = include_str!("../reference/NATURAL20_COMMIT");
 
 /// The natural20 commit for rule-17 (r4 First Aid baseline) tapes.

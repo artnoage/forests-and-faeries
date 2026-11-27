@@ -27,6 +27,12 @@ pub enum ActionPayload {
     SecondWind,
     ActionSurge,
     InnateSorcery,
+    EscapeGrapple {
+        grappler: UnitId,
+    },
+    DropGrapple {
+        target: UnitId,
+    },
     CastSpell {
         spell_key: String,
         at_level: u8,
@@ -316,6 +322,9 @@ mod tests {
                 immune_grappled: false,
                 gear: vec![],
                 spares: vec![],
+                inventory: vec![],
+                athletics_mod: 2,
+                acrobatics_mod: 2,
                 attacks: vec![],
                 multiattack: vec![],
                 fighter: false,
@@ -328,6 +337,7 @@ mod tests {
                 improved_critical: false,
                 remarkable_athlete: false,
                 sorcerer: false,
+                abduct: false,
                 stench_dc: None,
                 undead_fortitude: None,
                 caster: None,

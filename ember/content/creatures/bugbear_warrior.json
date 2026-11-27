@@ -1,0 +1,163 @@
+{
+ "schema": 1,
+ "id": "bugbear_warrior",
+ "source": "srd-5.2.1",
+ "licence": "CC-BY-4.0",
+ "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
+ "provenance": {
+  "natural20_commit": "09bec740a7c0da50ab6618a233fd635eb1169334",
+  "exporter": "validation/export_content.py",
+  "files": {
+   "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",
+   "templates/items/magic_items.yml": "1b9e34c357a3e9ff6157b0ba43e1644554353bcb1ddc12892e110dea9e49bcf5",
+   "templates/items/weapons.yml": "68d69801ee9f575c8dc6cf10cd59baf6738f4ab5b7292fd33c3e560d1fc60212",
+   "templates/rulesets/5e-2024/items/weapons.yml": "abf8633431ca61f271237dbf6266d2e2a70a57e27b3844d583dbcb88ed4d0602",
+   "templates/rulesets/5e-2024/npcs/bugbear_warrior.yml": "87d082e3fc640bb5c67dcef27c1f5b6b8e18ef7bf0524c319aa18617cec5ffcd"
+  }
+ },
+ "side": "monsters",
+ "name": "Bugbear Warrior",
+ "pc": false,
+ "size": "medium",
+ "tags": {
+  "undead": false,
+  "elf": false,
+  "object": false
+ },
+ "races": [
+  "fey",
+  "goblinoid"
+ ],
+ "ac": 14,
+ "max_hp": 33,
+ "speed": 30,
+ "fly": false,
+ "abilities": {
+  "str": 15,
+  "dex": 14,
+  "con": 13,
+  "int": 8,
+  "wis": 11,
+  "cha": 9
+ },
+ "proficiency_bonus": 2,
+ "saves": {
+  "str": 2,
+  "dex": 2,
+  "con": 1,
+  "int": -1,
+  "wis": 0,
+  "cha": -1
+ },
+ "initiative": {
+  "bonus": 2,
+  "advantage": false
+ },
+ "melee_reach": 10,
+ "damage": {
+  "resistances": [],
+  "immunities": [],
+  "vulnerabilities": []
+ },
+ "condition_immunities": [],
+ "passive_perception": 10,
+ "skills": {
+  "medicine": 0,
+  "athletics": 2,
+  "acrobatics": 2
+ },
+ "darkvision": 60,
+ "attacks": [
+  {
+   "name": "grab",
+   "type": "melee_attack",
+   "range": 10,
+   "range_max": 10,
+   "to_hit": 4,
+   "damage": "2d6+2",
+   "damage_type": "bludgeoning",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [
+    {
+     "id": "grapple",
+     "if": [
+      "size<=medium"
+     ],
+     "escape_dc": 12
+    }
+   ],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": []
+  },
+  {
+   "name": "light_hammer",
+   "type": "melee_attack",
+   "range": 10,
+   "range_max": 10,
+   "to_hit": 4,
+   "damage": "3d4+2",
+   "damage_type": "bludgeoning",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "item": "light_hammer",
+   "advantage_if": "target:grappled_by_source"
+  },
+  {
+   "name": "light_hammer",
+   "type": "melee_attack",
+   "range": 20,
+   "range_max": 60,
+   "to_hit": 4,
+   "damage": "3d4+2",
+   "damage_type": "bludgeoning",
+   "ability": null,
+   "proficient": null,
+   "additional": [],
+   "on_hit": [],
+   "save_attack": null,
+   "multiattack_group": null,
+   "masteries": [],
+   "riders": [],
+   "item": "light_hammer",
+   "advantage_if": "target:grappled_by_source",
+   "thrown": true
+  }
+ ],
+ "inventory": {
+  "light_hammer": 3
+ },
+ "reactions": [],
+ "multiattack": [],
+ "expected_round_damage": {
+  "attacks": [
+   [
+    4,
+    9.0
+   ],
+   [
+    4,
+    9.5
+   ]
+  ],
+  "count": 1
+ },
+ "traits": [
+  {
+   "id": "abduct"
+  }
+ ],
+ "features": [],
+ "loadout": null,
+ "classes": {},
+ "spellcasting": null
+}

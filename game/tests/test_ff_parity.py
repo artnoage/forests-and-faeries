@@ -496,7 +496,7 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
     the frozen rule-17 curogana.json pack for rule 17 only, and stamps each tape
     header with the matching Natural20 commit."""
     assert ember_rs.DEFAULT_BATCH_RULE_VERSION == 17
-    assert ember_rs.CURRENT_RULE_VERSION >= 18
+    assert ember_rs.CURRENT_RULE_VERSION >= 19
 
     row = {
         'id': 'rule-version-smoke',
@@ -524,15 +524,16 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
     assert hdr17['version'] == 17
     assert hdr17['n20_commit'] == 'ef91112bf07b933734bff12a94d7e724ca8f3fee'
 
-    # Explicit rule 18 stamps the current Bard reference pin.
-    env18 = ember_rs.BatchEnv(n_slots=1, catalog=[row], threads=1, rule_version=18)
-    assert env18.rule_version == 18
-    env18.reset([0], spec, ctrl)
-    tape18 = tmp_path / 'r18.jsonl'
-    env18.record(0, str(tape18))
-    hdr18 = json.loads(tape18.read_text(encoding='utf-8').splitlines()[0])
-    assert hdr18['version'] == 18
-    assert hdr18['n20_commit'] == ember_rs.NATURAL20_COMMIT
+    # Explicit rule 18 and rule 19 both stamp the current Natural20 reference pin.
+    for rv in (18, 19):
+        env_v = ember_rs.BatchEnv(n_slots=1, catalog=[row], threads=1, rule_version=rv)
+        assert env_v.rule_version == rv
+        env_v.reset([0], spec, ctrl)
+        tape_v = tmp_path / f'r{rv}.jsonl'
+        env_v.record(0, str(tape_v))
+        hdr_v = json.loads(tape_v.read_text(encoding='utf-8').splitlines()[0])
+        assert hdr_v['version'] == rv
+        assert hdr_v['n20_commit'] == ember_rs.NATURAL20_COMMIT
 
     # Rule-17 content/srd directory containing the 09bec740 curogana.json (burning_hands)
     # loads cleanly for rule_version=17 and is rejected for rule_version=18.
@@ -564,3 +565,5 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
     assert env_from_17.rule_version == 17
     with pytest.raises(ValueError, match='rule-18 content pack'):
         ember_rs.BatchEnv(n_slots=1, content=pool17, catalog=[row], threads=1, rule_version=18)
+    with pytest.raises(ValueError, match='rule-19 content pack'):
+        ember_rs.BatchEnv(n_slots=1, content=pool17, catalog=[row], threads=1, rule_version=19)

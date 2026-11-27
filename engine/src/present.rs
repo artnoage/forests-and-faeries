@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 20;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 21;
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -669,7 +669,8 @@ impl WebArena {
             4 => 3,
             5..=18 => i32::from(self.replay_version - 1),
             19 => 17,
-            _ => 18,
+            20 => 18,
+            _ => 19,
         });
         fight.web_events = Some(Vec::new());
         self.in_setup = false;

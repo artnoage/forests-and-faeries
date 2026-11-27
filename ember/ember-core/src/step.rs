@@ -64,6 +64,7 @@ pub enum BranchPredicate {
     Miss,
     TargetNotUndead,
     TargetNotUndeadAndNotElf,
+    TargetSizeAtMost(Size),
     SaveFailed,
     HasAdvantage,
 }
@@ -308,12 +309,16 @@ pub struct AttackTemplate {
     pub multiattack_group: Option<i8>,
     pub bonus_action: bool,
     pub save_attack: Option<(Ability, i16)>,
-    /// Index in `CreatureTemplate.gear` if tied to an equipped item.
+    /// Index in `CreatureTemplate.gear` (PC) or `CreatureTemplate.inventory` (NPC) if tied to an item.
     pub item: Option<u8>,
+    /// Advantage when the target is grappled by the attacker (e.g. Bugbear Warrior Light Hammer).
+    pub adv_if_grappled_by_source: bool,
     /// Additional unconditional damage riders (used by AI & compile checks).
     pub additional: Vec<(Dice, Dmg)>,
     /// On-hit condition save riders (used by compile checks).
     pub on_hit_paralyze: Option<(Ability, i16, bool, bool)>,
+    /// On-hit grapple rider `(escape_dc)` (used by compile checks).
+    pub on_hit_grapple: Option<Option<i16>>,
 }
 
 /// Caster-side spell grant: payment and cast level live on the creature, not the spell.
@@ -393,8 +398,12 @@ pub struct CreatureTemplate {
     pub immune_grappled: bool,
     /// Equipped items `(id, hand_slots)` for heroes.
     pub gear: Vec<(String, f32)>,
-    /// Spare thrown item counts `(gear_index, count)`.
+    /// Spare thrown item counts `(gear_index, count)` for heroes.
     pub spares: Vec<(u8, u8)>,
+    /// NPC inventory item counts `(item_id, count)` (e.g. thrown weapons).
+    pub inventory: Vec<(String, u16)>,
+    pub athletics_mod: i16,
+    pub acrobatics_mod: i16,
     pub attacks: Vec<AttackTemplate>,
     pub multiattack: Vec<Vec<String>>,
     // Class / monster traits & features
@@ -408,6 +417,7 @@ pub struct CreatureTemplate {
     pub improved_critical: bool,
     pub remarkable_athlete: bool,
     pub sorcerer: bool,
+    pub abduct: bool,
     pub stench_dc: Option<i16>,
     pub undead_fortitude: Option<(i16, DmgMask)>,
     pub caster: Option<CasterTemplate>,

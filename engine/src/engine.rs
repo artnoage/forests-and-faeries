@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 18;
+pub const CURRENT_RULE_VERSION: i32 = 19;
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2323,7 +2323,10 @@ impl Fight {
     }
 
     pub(crate) fn benefits_from_dodge(&self, u: usize) -> bool {
-        self.units[u].dodge && !self.units[u].incapacitated() && self.speed_of(u) > 0
+        self.units[u].dodge
+            && !self.units[u].incapacitated()
+            && !(self.rule_version >= 19 && self.units[u].is_grappled())
+            && self.speed_of(u) > 0
     }
 
     pub(crate) fn lose_dodge_if_ineligible(&mut self, u: usize) {
@@ -3922,6 +3925,7 @@ impl Fight {
             self.units[src].grappling.push(tgt);
         }
         self.units[tgt].add_status(St::Grappled);
+        self.lose_dodge_if_ineligible(tgt);
     }
 
     /// Free release of `tgt` by `src` (`grappling.release`).
@@ -4727,6 +4731,79 @@ mod srd_level_tests {
             f.make_unconscious(0);
             f.heal(0, 5);
             assert_eq!(f.benefits_from_dodge(0), version == 12);
+        }
+    }
+
+    #[test]
+    fn dodge_ends_when_grappled_in_rule_19_but_persists_in_rules_17_and_18() {
+        use crate::trace::RollMode;
+        for version in [17, 18, 19] {
+            let mut f = fight(
+                &["......"],
+                &[("guy", (2, 0)), ("bugbear_warrior-1", (1, 0)), ("bugbear_warrior-2", (3, 0))],
+            );
+            f.set_rule_version(version);
+            f.units[0].action = 1;
+            f.execute_action(0, &Act::Dodge);
+            assert!(f.units[0].dodge && f.benefits_from_dodge(0));
+
+            // Before being grappled, Bugbear 1's Grab attack roll still has Disadvantage
+            // in all versions (17, 18, 19).
+            let grab_idx = f.units[1].t.attacks.iter().position(|a| a.name == "grab").unwrap();
+            let (adv0, dis0) = f.advantage(1, 0, &f.units[1].t.attacks[grab_idx]);
+            assert_eq!(Fight::mode_of(adv0, dis0), RollMode::Disadvantage);
+
+            // Grab hits: force a hit roll (d20d [17, 12] -> 12+4=16 >= AC 16) + 2d6 damage [3, 3]
+            f.trace = Trace::web_replay_draws(vec![
+                crate::tape::Ev::Draw {
+                    who: "bugbear_warrior-1".into(),
+                    tag: "attack".into(),
+                    sides: 20,
+                    mode: "d".into(),
+                    v: crate::tape::DrawVal::Two([17, 12]),
+                    expr: None,
+                },
+                crate::tape::Ev::Draw {
+                    who: "bugbear_warrior-1".into(),
+                    tag: "damage".into(),
+                    sides: 6,
+                    mode: "n".into(),
+                    v: crate::tape::DrawVal::One(3),
+                    expr: None,
+                },
+                crate::tape::Ev::Draw {
+                    who: "bugbear_warrior-1".into(),
+                    tag: "damage".into(),
+                    sides: 6,
+                    mode: "n".into(),
+                    v: crate::tape::DrawVal::One(3),
+                    expr: None,
+                },
+            ]);
+            f.units[1].action = 1;
+            f.execute_action(1, &Act::Attack { atk: grab_idx, target: 0, reaction: false });
+            assert_eq!(f.trace.remaining(), 0);
+            assert!(f.units[0].is_grappled());
+
+            // In rule 19, Grappled sets Speed to 0 so Dodge is lost immediately;
+            // in rules 17 and 18, Dodge persists byte-identically.
+            let expect_dodge = version < 19;
+            assert_eq!(f.units[0].dodge, expect_dodge, "version {version} dodge status");
+            assert_eq!(f.benefits_from_dodge(0), expect_dodge, "version {version} benefits_from_dodge");
+
+            // Bugbear 2's follow-up attack rolls Normal in v19 and Disadvantage in v17/v18.
+            let (adv2, dis2) = f.advantage(2, 0, &f.units[2].t.attacks[grab_idx]);
+            assert_eq!(
+                Fight::mode_of(adv2, dis2),
+                if expect_dodge { RollMode::Disadvantage } else { RollMode::Normal },
+                "version {version} follow-up attack roll mode"
+            );
+
+            // Releasing the grapple does not restore Dodge once lost in rule 19.
+            f.release_grapple(1, 0);
+            assert!(!f.units[0].is_grappled());
+            assert_eq!(f.units[0].dodge, expect_dodge, "version {version} after release");
+            assert_eq!(f.benefits_from_dodge(0), expect_dodge, "version {version} benefits after release");
         }
     }
 

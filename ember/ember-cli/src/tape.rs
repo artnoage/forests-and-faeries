@@ -1,4 +1,4 @@
-//! Strict supplied-draw rule-18 JSONL tape verifier.
+//! Strict supplied-draw rule-19 JSONL tape verifier.
 //!
 //! Checks every `hdr`, `start`, `draw` (who/tag/sides/mode/v + face range),
 //! `turn` (strict FIFO `Event::TurnStarted` alignment), `dec` (bidirectional
@@ -146,6 +146,16 @@ pub struct ReplayDiff {
     pub preceding_state: Option<StateDigest>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct ChooserRec {
+    #[serde(default)]
+    heroes: Option<String>,
+    #[serde(default)]
+    monsters: Option<String>,
+    #[serde(default)]
+    units: BTreeMap<String, String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 struct HeaderRec {
     version: u32,
@@ -156,9 +166,27 @@ struct HeaderRec {
     #[serde(default)]
     prefer: Vec<String>,
     #[serde(default)]
+    chooser: Option<ChooserRec>,
+    #[serde(default)]
     map: Option<Vec<String>>,
     #[serde(default)]
     stats: BTreeMap<String, HeaderStat>,
+}
+
+fn is_external_actor(hdr: &HeaderRec, fight: &Fight, who: &str) -> bool {
+    let Some(c) = &hdr.chooser else {
+        return false;
+    };
+    if let Some(mode) = c.units.get(who) {
+        return mode == "external";
+    }
+    let Some(uid) = fight.unit_by_key(who) else {
+        return false;
+    };
+    match fight.unit(uid).team {
+        ember_core::Team::Heroes => c.heroes.as_deref() == Some("external"),
+        ember_core::Team::Monsters => c.monsters.as_deref() == Some("external"),
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -805,11 +833,11 @@ pub fn verify_tape(
         jsonl_line: events[0].0,
         seed: 0,
         tape_sha256: tape_sha256.clone(),
-        expected: "valid rule-18 header".into(),
+        expected: "valid rule-19 header".into(),
         got: e.to_string(),
         preceding_state: None,
     })?;
-    if hdr.version != 18 {
+    if hdr.version != 19 {
         return Err(ReplayDiff {
             kind: "version".into(),
             first_diff_decision: 0,
@@ -817,7 +845,7 @@ pub fn verify_tape(
             jsonl_line: events[0].0,
             seed: hdr.seed,
             tape_sha256,
-            expected: "version == 18".into(),
+            expected: "version == 19".into(),
             got: format!("version == {}", hdr.version),
             preceding_state: None,
         });
@@ -1628,7 +1656,8 @@ pub fn verify_tape(
                         last_state,
                     ));
                 };
-                if dec_who != aj.who || dec_chosen != aj.a {
+                let external = is_external_actor(&hdr, &fight, &aj.who);
+                if dec_who != aj.who || (!external && dec_chosen != aj.a) {
                     return Err(make_diff(
                         "decision_action_mismatch",
                         decisions_checked,
@@ -1721,7 +1750,8 @@ pub fn verify_tape(
                     )
                 })?;
                 if let Some((dec_ln, dec_who, dec_chosen)) = pending_turn_dec.take() {
-                    if dec_who != ej.who || dec_chosen != "none" {
+                    let external = is_external_actor(&hdr, &fight, &ej.who);
+                    if dec_who != ej.who || (!external && dec_chosen != "none") {
                         return Err(make_diff(
                             "decision_endturn_mismatch",
                             decisions_checked,
@@ -1805,7 +1835,9 @@ pub fn verify_tape(
                 if got_winner != endj.winner
                     || fight.round() != endj.round
                     || fight.finished() != endj.finished
-                    || (endj.decisions > 0 && endj.decisions != decisions_checked)
+                    || (endj.decisions > 0
+                        && endj.decisions != decisions_checked
+                        && endj.decisions != actions_checked)
                 {
                     return Err(make_diff(
                         "end_mismatch",

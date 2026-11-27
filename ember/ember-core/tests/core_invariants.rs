@@ -174,6 +174,9 @@ fn build_test_db() -> Arc<ContentDb> {
         immune_grappled: false,
         gear: vec![("longsword".into(), 1.0)],
         spares: vec![],
+        inventory: vec![],
+        athletics_mod: 3,
+        acrobatics_mod: 2,
         attacks: vec![AttackTemplate {
             name: "longsword".into(),
             ability_id: sword_id,
@@ -195,8 +198,10 @@ fn build_test_db() -> Arc<ContentDb> {
             bonus_action: false,
             save_attack: None,
             item: Some(0),
+            adv_if_grappled_by_source: false,
             additional: vec![],
             on_hit_paralyze: None,
+            on_hit_grapple: None,
         }],
         multiattack: vec![],
         fighter: true,
@@ -209,6 +214,7 @@ fn build_test_db() -> Arc<ContentDb> {
         improved_critical: false,
         remarkable_athlete: false,
         sorcerer: false,
+        abduct: false,
         stench_dc: None,
         undead_fortitude: None,
         caster: None,
@@ -252,6 +258,9 @@ fn build_test_db() -> Arc<ContentDb> {
         immune_grappled: false,
         gear: vec![],
         spares: vec![],
+        inventory: vec![],
+        athletics_mod: 3,
+        acrobatics_mod: 2,
         attacks: vec![AttackTemplate {
             name: "bite".into(),
             ability_id: bite_id,
@@ -273,8 +282,10 @@ fn build_test_db() -> Arc<ContentDb> {
             bonus_action: false,
             save_attack: None,
             item: None,
+            adv_if_grappled_by_source: false,
             additional: vec![],
             on_hit_paralyze: None,
+            on_hit_grapple: None,
         }],
         multiattack: vec![],
         fighter: false,
@@ -287,6 +298,7 @@ fn build_test_db() -> Arc<ContentDb> {
         improved_critical: false,
         remarkable_athlete: false,
         sorcerer: false,
+        abduct: false,
         stench_dc: None,
         undead_fortitude: None,
         caster: None,
@@ -806,4 +818,244 @@ fn rejected_supplied_draw_on_reaction_preserves_prompt_and_allows_retry() {
     assert_eq!(good_src.cursor(), 2);
     assert!(!ok_sink.events.is_empty());
     assert!(matches!(out.phase, FightPhase::AwaitingAction(UnitId(0))));
+}
+
+#[test]
+fn dodge_ends_when_grappled_in_ember_core_rule_19() {
+    use ember_core::effect::{EffectExpiry, EffectKind};
+    use ember_core::step::ResourceKind;
+    use ember_core::types::AbilityId;
+    let mut db = (*build_test_db()).clone();
+    let dodge_ab_id = AbilityId(db.abilities.len() as u16);
+    db.ability_by_key.insert("dodge".into(), dodge_ab_id);
+    db.abilities.push(AbilityDef {
+        id: dodge_ab_id,
+        key: "dodge".into(),
+        name: "Dodge".into(),
+        is_spell: false,
+        base_level: 0,
+        cost: ActionCost::Action,
+        concentration: false,
+        targeting: TargetMode::SelfOnly,
+        steps: smallvec::smallvec![
+            Step::ApplyEffect {
+                kind: EffectKind::Dodge,
+                expiry: EffectExpiry::StartOfBearerTurn,
+                concentration: false,
+                to_self: true,
+                unless_immune_poisoned: false,
+                unless_immune_paralyzed: false,
+            },
+            Step::ModifyResource {
+                resource: ResourceKind::Action,
+                delta: -1,
+            },
+        ],
+    });
+    let grab_id = AbilityId(db.abilities.len() as u16);
+    db.ability_by_key.insert("grappler::grab".into(), grab_id);
+    db.abilities.push(AbilityDef {
+        id: grab_id,
+        key: "grappler::grab".into(),
+        name: "Grab".into(),
+        is_spell: false,
+        base_level: 0,
+        cost: ActionCost::Action,
+        concentration: false,
+        targeting: TargetMode::SingleCreature { range_ft: 10, max_range_ft: 10 },
+        steps: smallvec::smallvec![
+            Step::AttackRoll {
+                kind: AttackKind::WeaponMelee,
+                range_ft: 10,
+                melee_type: true,
+                bonus_override: Some(4),
+                tag: "attack".into(),
+            },
+            Step::RollDamage {
+                dice: Dice::new(2, 6, 2),
+                dmg_type: Dmg::Bludgeoning,
+                slot: 0,
+                tag: "damage".into(),
+                upcast_extra_dice: 0,
+                savage: false,
+                gwf: false,
+                double_on_crit: true,
+                combine_with_base: false,
+                empowerable: false,
+            },
+            Step::Branch {
+                predicate: BranchPredicate::Hit,
+                then_steps: vec![
+                    Step::ApplyDamage {
+                        slot: 0,
+                        half_if_saved: false,
+                        kill_at_zero: false,
+                        graze_ability_mod: false,
+                    },
+                    Step::Branch {
+                        predicate: BranchPredicate::TargetSizeAtMost(Size::Medium),
+                        then_steps: vec![Step::ApplyEffect {
+                            kind: EffectKind::Grappled { escape_dc: Some(12) },
+                            expiry: EffectExpiry::Manual,
+                            concentration: false,
+                            to_self: false,
+                            unless_immune_poisoned: false,
+                            unless_immune_paralyzed: false,
+                        }],
+                        else_steps: vec![],
+                    },
+                ],
+                else_steps: vec![],
+            },
+        ],
+    });
+    let grappler_tid = TemplateId(db.templates.len() as u16);
+    let mut grappler_tmpl = db.templates[1].clone();
+    grappler_tmpl.id = grappler_tid;
+    grappler_tmpl.key = "grappler".into();
+    grappler_tmpl.name = "Grappler".into();
+    grappler_tmpl.undead = false;
+    grappler_tmpl.ac = 14;
+    grappler_tmpl.melee_reach_ft = Some(10);
+    grappler_tmpl.attacks = vec![AttackTemplate {
+        name: "grab".into(),
+        ability_id: grab_id,
+        melee_type: true,
+        ranged: false,
+        thrown: false,
+        range_ft: 10,
+        max_range_ft: 10,
+        to_hit: 4,
+        damage: Dice::new(2, 6, 2),
+        damage_type: Dmg::Bludgeoning,
+        ability: AttackAbility::Fixed,
+        versatile: None,
+        savage: false,
+        gwf: false,
+        graze: false,
+        sap: false,
+        multiattack_group: None,
+        bonus_action: false,
+        save_attack: None,
+        item: None,
+        adv_if_grappled_by_source: false,
+        additional: vec![],
+        on_hit_paralyze: None,
+        on_hit_grapple: Some(Some(12)),
+    }];
+    db.template_by_key.insert("grappler".into(), grappler_tid);
+    db.templates.push(grappler_tmpl);
+    db.recompute_hash();
+    let db = Arc::new(db);
+
+    let spec = EncounterSpec {
+        units: vec!["hero".into(), "grappler-1".into(), "grappler-2".into()],
+        placements: vec![
+            Placement { id: "hero".into(), x: 3, y: 3 },
+            Placement { id: "grappler-1".into(), x: 2, y: 3 },
+            Placement { id: "grappler-2".into(), x: 4, y: 3 },
+        ],
+        map_rows: Some(vec!["........".into(); 6]),
+        max_rounds: 10,
+    };
+    let mut fight = Fight::new(db, &spec, 1, 77).unwrap();
+    let mut sink = VecSink::default();
+
+    // Initiative order: hero (20+20=40) -> grappler-1 (15) -> grappler-2 (10)
+    let mut init = SuppliedDraws::new(vec![
+        DrawRecord { who: "hero".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(20) },
+        DrawRecord { who: "grappler-1".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(15) },
+        DrawRecord { who: "grappler-2".into(), tag: "initiative".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(10) },
+    ]);
+    fight.start_with_dice(&mut init, &mut sink).unwrap();
+
+    let hero = fight.unit_by_key("hero").unwrap();
+    let g1 = fight.unit_by_key("grappler-1").unwrap();
+    let g2 = fight.unit_by_key("grappler-2").unwrap();
+
+    // Hero takes Dodge and ends turn.
+    let dodge_id = fight
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|a| a.action_key == "dodge")
+        .expect("hero dodge")
+        .id;
+    fight.apply(dodge_id, &mut sink).unwrap();
+    assert!(fight.benefits_from_dodge(hero));
+    assert_eq!(fight.state_digest().units[0].bst, vec!["dodge"]);
+    fight.end_turn(&mut sink).unwrap();
+
+    // Grappler 1 Grabs hero: attack roll MUST still be Disadvantage (d20d [17, 12] -> 12+4=16 hits AC 16).
+    let grab1 = fight
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|a| a.action_key == "attack:grab:>hero")
+        .expect("g1 grab")
+        .id;
+    let mut g1_draws = SuppliedDraws::new(vec![
+        DrawRecord { who: "grappler-1".into(), tag: "attack".into(), sides: 20, mode: RollMode::Disadvantage, val: DrawVal::Two([17, 12]) },
+        DrawRecord { who: "grappler-1".into(), tag: "damage".into(), sides: 6, mode: RollMode::Normal, val: DrawVal::One(3) },
+        DrawRecord { who: "grappler-1".into(), tag: "damage".into(), sides: 6, mode: RollMode::Normal, val: DrawVal::One(4) },
+    ]);
+    fight.apply_with_dice(grab1, &mut g1_draws, &mut sink).unwrap();
+    assert_eq!(g1_draws.cursor(), 3);
+    assert!(fight.is_grappled_by(hero, g1));
+    assert!(!fight.benefits_from_dodge(hero), "Dodge must end immediately when grappled");
+    assert!(fight.state_digest().units[0].bst.is_empty(), "dodge must be removed from bst");
+    assert_eq!(fight.state_digest().units[0].st, vec!["grappled"]);
+    fight.end_turn(&mut sink).unwrap();
+
+    // Grappler 2 attacks hero: MUST roll Normal (d20n), NOT Disadvantage!
+    let grab2 = fight
+        .legal_actions(Observer::Full)
+        .into_iter()
+        .find(|a| a.action_key == "attack:grab:>hero")
+        .expect("g2 grab")
+        .id;
+    let mut g2_draws = SuppliedDraws::new(vec![
+        DrawRecord { who: "grappler-2".into(), tag: "attack".into(), sides: 20, mode: RollMode::Normal, val: DrawVal::One(5) },
+        DrawRecord { who: "grappler-2".into(), tag: "damage".into(), sides: 6, mode: RollMode::Normal, val: DrawVal::One(2) },
+        DrawRecord { who: "grappler-2".into(), tag: "damage".into(), sides: 6, mode: RollMode::Normal, val: DrawVal::One(2) },
+    ]);
+    fight.apply_with_dice(grab2, &mut g2_draws, &mut sink).unwrap();
+    assert_eq!(g2_draws.cursor(), 3);
+    let _ = g2;
+
+    // Releasing the grapple does not restore Dodge.
+    fight.release_grapple(g1, hero);
+    assert!(!fight.benefits_from_dodge(hero));
+    assert!(fight.state_digest().units[0].bst.is_empty());
+}
+
+#[test]
+fn round_limit_opens_closing_turn_and_phase_reports_finished() {
+    let db = build_test_db();
+    let mut spec = oa_spec();
+    spec.max_rounds = 1;
+    let mut fight = Fight::new(db, &spec, 7, 88).unwrap();
+    let mut sink = VecSink::default();
+    fight.start(&mut sink).unwrap();
+    assert_eq!(fight.round(), 0);
+    // End hero's turn (round 0 -> monster-1), then end monster-1's turn (round 0 -> round 1, hero).
+    fight.end_turn(&mut sink).unwrap();
+    assert_eq!(fight.round(), 0);
+    let turns_before = sink
+        .events
+        .iter()
+        .filter(|e| matches!(e, ember_core::Event::TurnStarted { .. }))
+        .count();
+    assert_eq!(turns_before, 2);
+
+    fight.end_turn(&mut sink).unwrap();
+    assert_eq!(fight.round(), 1);
+    assert!(!fight.finished(), "round limit leaves finished=false and winner=None");
+    assert_eq!(fight.winner(), None);
+    // Closing turn at round == max_rounds must still open (matching Natural20 & engine/),
+    // while phase() reports Finished so no further action is accepted.
+    let last_turn = sink.events.iter().rev().find_map(|e| match e {
+        ember_core::Event::TurnStarted { unit, round } => Some((*unit, *round)),
+        _ => None,
+    });
+    assert_eq!(last_turn, Some((UnitId(0), 1)));
+    assert!(matches!(fight.phase(), FightPhase::Finished(_)));
 }
