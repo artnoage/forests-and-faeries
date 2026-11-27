@@ -76,6 +76,8 @@ pub struct PathCompute<'a> {
     grid: &'a Grid,
     pub(crate) solid_wall_corners: bool,
     pub(crate) incorporeal: bool,
+    /// Footprint side length in 5-ft squares (1 = Tiny/Small/Medium, 2 = Large, 3 = Huge).
+    pub(crate) token_size: u8,
     prone: bool,
     /// `is_flying()`: difficult terrain costs 1 (`base_move_cost`).
     flying: bool,
@@ -94,6 +96,7 @@ impl<'a> PathCompute<'a> {
             grid,
             solid_wall_corners: false,
             incorporeal: false,
+            token_size: 1,
             prone,
             flying,
             occupied,
@@ -137,10 +140,87 @@ impl<'a> PathCompute<'a> {
         cost
     }
 
+    /// Terrain passability for a multi-square footprint (`s x s`, no squeezing).
+    /// TODO(multi-square-squeeze-block): squeeze edges are disallowed until upstream
+    /// squeeze footprint semantics are resolved on Natural20 issue #6.
+    #[inline]
+    fn footprint_passable(&self, x: i32, y: i32, s: i32) -> bool {
+        if x < 0 || y < 0 || x + s > self.grid.w || y + s > self.grid.h {
+            return false;
+        }
+        if self.incorporeal {
+            return true;
+        }
+        for ox in 0..s {
+            for oy in 0..s {
+                if self.grid.is_wall(x + ox, y + oy) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    #[inline]
+    fn footprint_difficult(&self, x: i32, y: i32, s: i32) -> bool {
+        for ox in 0..s {
+            for oy in 0..s {
+                let cx = x + ox;
+                let cy = y + oy;
+                if self.occupied.get(self.grid.index(cx, cy))
+                    || (self.incorporeal && self.grid.is_wall(cx, cy))
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// `get_neighbors(x, y)` without doors or hazards, in natural20's order
-    /// (the static part is precomputed in `Grid::neighbours`).
+    /// (the static part is precomputed in `Grid::neighbours` for 1x1 movers).
     fn neighbours(&self, x: i32, y: i32, out: &mut Vec<(Cell, f64)>) {
         out.clear();
+        if self.token_size > 1 {
+            let s = i32::from(self.token_size);
+            if !self.footprint_passable(x, y, s) {
+                return;
+            }
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if !self.footprint_passable(nx, ny, s) {
+                        continue;
+                    }
+                    if dx != 0 && dy != 0 {
+                        let ax_ok = self.footprint_passable(nx, y, s);
+                        let ay_ok = self.footprint_passable(x, ny, s);
+                        let clear = if self.solid_wall_corners {
+                            ax_ok && ay_ok
+                        } else {
+                            ax_ok || ay_ok
+                        };
+                        if !clear {
+                            continue;
+                        }
+                    }
+                    let difficult = self.footprint_difficult(nx, ny, s);
+                    let mut cost = if difficult && (!self.flying || self.incorporeal) { 2.0 } else { 1.0 };
+                    if self.prone {
+                        cost += 1.0;
+                    }
+                    if dx != 0 && dy != 0 {
+                        cost += 0.1;
+                    }
+                    out.push(((nx, ny), cost));
+                }
+            }
+            return;
+        }
         if self.incorporeal {
             for nx in x - 1..=x + 1 {
                 for ny in y - 1..=y + 1 {

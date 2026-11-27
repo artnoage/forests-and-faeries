@@ -109,6 +109,27 @@ def monster_ids():
 
 
 @lru_cache(maxsize=None)
+def _token_size(content):
+    pool = _pool()
+    if hasattr(pool, 'token_size'):
+        return int(pool.token_size(content))
+    doc = _read(ROOT.parent / 'engine' / 'content' / 'srd' / f'{content}.json')
+    return {'tiny': 1, 'small': 1, 'medium': 1, 'large': 2, 'huge': 3}.get(doc.get('size', 'medium'), 1)
+
+
+def _unit_content(uid):
+    if uid in hero_ids():
+        return uid
+    content, sep, suffix = uid.rpartition('-')
+    return content if sep and suffix.isdigit() else uid
+
+
+def _footprint_cells(uid, x, y):
+    sz = _token_size(_unit_content(uid))
+    return [(x + ox, y + oy) for ox in range(sz) for oy in range(sz)]
+
+
+@lru_cache(maxsize=None)
 def _hero_sheet(content):
     pool = _pool()
     if hasattr(pool, 'hero_sheet'):
@@ -225,7 +246,11 @@ class Level:
         orig_party = list(self.preset['party'])
         orig_at = dict(self.preset.get('placements') or {})
         new_placements = {uid: pos for uid, pos in orig_at.items() if uid not in orig_party}
-        occupied = {tuple(pos) for pos in new_placements.values() if pos is not None}
+        occupied = {
+            cell
+            for uid, pos in new_placements.items() if pos is not None
+            for cell in _footprint_cells(uid, int(pos[0]), int(pos[1]))
+        }
 
         # Preserve squares of heroes that stayed in the party, reuse vacated hero slots first.
         orig_by_base = {_hero_sheet(h)['base_id']: orig_at.get(h) for h in orig_party}
@@ -325,11 +350,12 @@ class Level:
         occupied = set()
         for item in self.suggested_placements():
             x, y = item['x'], item['y']
-            if not (0 <= x < width and 0 <= y < height) or self.rows[y][x] in ('H', 'T'):
-                raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: {item["id"]} not on floor at {(x, y)}')
-            if (x, y) in occupied:
-                raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: duplicate placement at {(x, y)}')
-            occupied.add((x, y))
+            for cx, cy in _footprint_cells(item['id'], x, y):
+                if not (0 <= cx < width and 0 <= cy < height) or self.rows[cy][cx] in ('H', 'T'):
+                    raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: {item["id"]} not on floor at {(cx, cy)}')
+                if (cx, cy) in occupied:
+                    raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: duplicate placement at {(cx, cy)}')
+                occupied.add((cx, cy))
         return []
 
     def view(self):

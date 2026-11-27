@@ -524,8 +524,12 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
     assert hdr17['version'] == 17
     assert hdr17['n20_commit'] == 'ef91112bf07b933734bff12a94d7e724ca8f3fee'
 
-    # Explicit rule 18 and rule 19 both stamp the current Natural20 reference pin.
-    for rv in (18, 19):
+    # Explicit rule 18 and rule 19 preserve the c0025a88 pin; rule 20 stamps the current Natural20 reference pin.
+    for rv, expected_commit in (
+        (18, 'c0025a887a77b54a1f62152cc971497461d76e9a'),
+        (19, 'c0025a887a77b54a1f62152cc971497461d76e9a'),
+        (20, ember_rs.NATURAL20_COMMIT),
+    ):
         env_v = ember_rs.BatchEnv(n_slots=1, catalog=[row], threads=1, rule_version=rv)
         assert env_v.rule_version == rv
         env_v.reset([0], spec, ctrl)
@@ -533,7 +537,7 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
         env_v.record(0, str(tape_v))
         hdr_v = json.loads(tape_v.read_text(encoding='utf-8').splitlines()[0])
         assert hdr_v['version'] == rv
-        assert hdr_v['n20_commit'] == ember_rs.NATURAL20_COMMIT
+        assert hdr_v['n20_commit'] == expected_commit
 
     # Rule-17 content/srd directory containing the 09bec740 curogana.json (burning_hands)
     # loads cleanly for rule_version=17 and is rejected for rule_version=18.

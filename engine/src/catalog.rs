@@ -31,7 +31,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use crate::content::ContentPool;
-use crate::layout::{auto_place, TRIES};
+use crate::layout::{auto_place_sized, TRIES};
 use crate::map::{builtin_map, Grid, Pos};
 use crate::spec::{EncounterSpec, MAX_CREATURES};
 use crate::tape::Placement;
@@ -55,10 +55,11 @@ pub struct Entry {
     pub grid: Arc<Grid>,
     pub rows: Vec<String>,
     /// Unit ids in registration order (heroes, then monsters), their content
-    /// ids, sides (0 heroes, 1 monsters) and fixed squares.
+    /// ids, sides (0 heroes, 1 monsters), footprint sizes (1/2/3) and fixed squares.
     pub units: Vec<String>,
     pub contents: Vec<String>,
     pub sides: Vec<u8>,
+    pub sizes: Vec<u8>,
     pub fixed: Vec<Option<Pos>>,
     pub layout: LayoutRule,
     pub max_rounds: Option<i32>,
@@ -186,9 +187,12 @@ impl Entry {
         if !sides.contains(&0) || !sides.contains(&1) {
             return Err("at least one hero and one monster".into());
         }
+        let mut sizes = Vec::with_capacity(units.len());
+        let mut fixed_occ: Vec<Option<usize>> = vec![None; grid.cells()];
         for (i, uid) in units.iter().enumerate() {
             let tid = pool.tid(&contents[i]).ok_or_else(|| format!("unknown content id {:?}", contents[i]))?;
-            if pool.template(tid).pc != (sides[i] == 0) {
+            let tmpl = pool.template(tid);
+            if tmpl.pc != (sides[i] == 0) {
                 return Err(format!("{uid}: content {:?} is on the wrong side", contents[i]));
             }
             if pool.unit_tid(uid) != Some(tid) {
@@ -197,14 +201,26 @@ impl Entry {
             if units[..i].contains(uid) {
                 return Err(format!("duplicate unit id {uid:?}"));
             }
+            let sz = tmpl.token_size;
+            sizes.push(sz);
             if let Some(p) = fixed[i] {
-                if !grid.in_bounds(p.0, p.1) || grid.is_wall(p.0, p.1) || fixed[..i].contains(&Some(p)) {
-                    return Err(format!("{uid} must stand on a free floor square, not {p:?}"));
+                for dx in 0..i32::from(sz) {
+                    for dy in 0..i32::from(sz) {
+                        let (cx, cy) = (p.0 + dx, p.1 + dy);
+                        if !grid.in_bounds(cx, cy) || grid.is_wall(cx, cy) {
+                            return Err(format!("{uid} must stand on a free {sz}x{sz} floor footprint, not {p:?} (blocked at ({cx}, {cy}))"));
+                        }
+                        let idx = grid.index(cx, cy);
+                        if let Some(other) = fixed_occ[idx] {
+                            return Err(format!("{uid} at {p:?} overlaps {} at ({cx}, {cy})", units[other]));
+                        }
+                        fixed_occ[idx] = Some(i);
+                    }
                 }
             }
         }
         let rows = rows_of(&grid);
-        let entry = Entry { id: id.to_string(), map_name, grid, rows, units, contents, sides, fixed, layout, max_rounds, raw: row.to_string() };
+        let entry = Entry { id: id.to_string(), map_name, grid, rows, units, contents, sides, sizes, fixed, layout, max_rounds, raw: row.to_string() };
         entry.place(0)?; // a row that cannot be placed fails at load time
         Ok(entry)
     }
@@ -218,7 +234,7 @@ impl Entry {
                 let mut found = None;
                 for k in 0..8u64 {
                     let seed = if k == 0 { layout_seed } else { layout_seed ^ k.wrapping_mul(0x9E37_79B9_7F4A_7C15) };
-                    match auto_place(&self.grid, &self.sides, &self.fixed, seed, require_sight, tries) {
+                    match auto_place_sized(&self.grid, &self.sides, &self.sizes, &self.fixed, seed, require_sight, tries) {
                         Ok((pos, z)) => {
                             let mut j = z.to_json();
                             j["require_sight"] = Value::Bool(require_sight);

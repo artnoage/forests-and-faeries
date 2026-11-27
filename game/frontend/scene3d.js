@@ -1425,9 +1425,27 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     stepPuffs.push({ mesh: s, mat: m, born: performance.now() });
   }
 
+  const unitSize = u => Math.max(1, Number(u?.token_size) || 1);
+  const unitCenter = u => {
+    const off = (unitSize(u) - 1) * 0.5;
+    return { x: u.x + off, z: u.y + off };
+  };
+  const unitOccupies = (u, x, y) => {
+    const s = unitSize(u);
+    return x >= u.x && y >= u.y && x < u.x + s && y < u.y + s;
+  };
+  const unitCells = (u, x = u.x, y = u.y) => {
+    const s = unitSize(u);
+    const out = [];
+    for (let ox = 0; ox < s; ox++) for (let oy = 0; oy < s; oy++) out.push([x + ox, y + oy]);
+    return out;
+  };
+
   function labelHeight(unit) {
     const ck = resolveCastKey(unit);
-    return ck ? (ck === 'goblin' ? 1.38 : ck === 'goblin_boss' ? 1.48 : 1.66) : 1.56;
+    const base = ck ? (ck === 'goblin' ? 1.38 : ck === 'goblin_boss' ? 1.48 : 1.66) : 1.56;
+    const sz = unitSize(unit);
+    return sz > 1 ? base + 0.55 * (sz - 1) : base;
   }
 
   const isInvisibleShimmer = u => {
@@ -1945,8 +1963,10 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   function makeUnit(unit) {
     const known = ['fighter', 'mage', 'goblin', 'skeleton'], base = unit.model?.base || unit.kind;
     const fallbackKind = known.includes(base) ? base : (unit.team === 'heroes' ? 'fighter' : 'goblin');
+    const sz = unitSize(unit);
+    const center = unitCenter(unit);
     const root = new THREE.Group(); figures.add(root);
-    root.position.set(unit.x, 0.04, unit.y);
+    root.position.set(center.x, 0.04, center.z);
     root.userData.unitId = unit.id;
     root.userData.unitKind = unit.kind;
 
@@ -1956,14 +1976,19 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     const castKey = resolveCastKey(unit);
     const ownMaterials = [];
     const contactShadow = castKey !== 'will_o_wisp' ? ring(root, planeGeometry, contactMaterial, 0.002) : null;
-    if (contactShadow) contactShadow.scale.set(0.97, 0.97, 1);
-    const plinth = mesh(root, cylinder, material(unit.team === 'heroes' ? '#255a61' : '#6e493a', 0.25, 0.65), 0, 0.055, 0, 0.365, 0.09, 0.365);
+    if (contactShadow) contactShadow.scale.set(0.97 * sz, 0.97 * sz, 1);
+    const plinth = mesh(root, cylinder, material(unit.team === 'heroes' ? '#255a61' : '#6e493a', 0.25, 0.65), 0, 0.055, 0, 0.365 * sz, 0.09, 0.365 * sz);
     plinth.userData.unitId = unit.id;
     const plinthRing = ring(root, ringGeometry, glow(unit.team === 'heroes' ? '#6bd4cf' : '#e09a70'), 0.105);
-    plinthRing.scale.setScalar(0.86);
+    plinthRing.scale.setScalar(0.86 * sz);
     const active = ring(root, activeGeometry, glow('#ffdb86'), 0.023); active.visible = false;
     const target = ring(root, geometry('target-ring', () => new THREE.RingGeometry(0.49, 0.54, 48)), glow('#fa856e'), 0.026); target.visible = false;
     const inspect = ring(root, geometry('inspect-ring', () => new THREE.RingGeometry(0.55, 0.585, 48)), glow('#b8f6ee', 0.8), 0.028); inspect.visible = false;
+    if (sz > 1) {
+      active.scale.setScalar(sz);
+      target.scale.setScalar(sz);
+      inspect.scale.setScalar(sz);
+    }
     const markGroups = {};
 
     const ambientFx = buildUnitAmbientFx(unit, castKey);
@@ -1992,6 +2017,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       parts.right.push(mesh(body, sphere, cloth, 0.22, 0.72, 0, 0.09, 0.16, 0.09));
       parts.left.push(mesh(body, sphere, cloth, -0.22, 0.72, 0, 0.09, 0.16, 0.09));
       parts.blade.push(mesh(body, box, steel, 0.32, 0.85, -0.1, 0.04, 0.55, 0.08));
+      if (sz > 1) body.scale.setScalar(sz * 0.82);
       rig = rigCharacter(body, parts, fallbackKind);
     }
 
@@ -2000,7 +2026,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     root.add(nameSprite);
     // Pointer picking hits this invisible cylinder, never the (CPU-skinned) figure.
     const picker = new THREE.Mesh(geometry('picker', () => new THREE.CylinderGeometry(0.4, 0.4, 1.3, 10)), pickMaterial);
-    picker.position.y = 0.65; picker.userData.unitId = unit.id; picker.name = 'unit-picker';
+    picker.position.y = sz > 1 ? 0.88 : 0.65;
+    if (sz > 1) picker.scale.set(sz, 1.35, sz);
+    picker.userData.unitId = unit.id; picker.name = 'unit-picker';
     root.add(picker);
     const downRing = ring(root, geometry('down-ring', () => new THREE.RingGeometry(0.4, 0.47, 40)), glow('#ff5a4a', 0.85), 0.03);
     downRing.visible = false;
@@ -2008,14 +2036,19 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     deadRing.visible = false;
     const stableRing = ring(root, geometry('down-ring', () => new THREE.RingGeometry(0.4, 0.47, 40)), glow('#5fd6c4', 0.85), 0.03);
     stableRing.visible = false;
+    if (sz > 1) {
+      downRing.scale.setScalar(sz);
+      deadRing.scale.setScalar(sz);
+      stableRing.scale.setScalar(sz);
+    }
 
     const entry = {
       root, body, rig, name: nameSprite, labelY: lY, active, target, inspect, picker, downRing, deadRing, stableRing,
       contactShadow, plinth, plinthRing, shimmerFx: null,
       markGroups, ownMaterials, ambientFx, castKey: castInst ? castKey : null,
       data: { ...unit },
-      start: new THREE.Vector3(unit.x, 0.04, unit.y),
-      end: new THREE.Vector3(unit.x, 0.04, unit.y),
+      start: new THREE.Vector3(center.x, 0.04, center.z),
+      end: new THREE.Vector3(center.x, 0.04, center.z),
       moveStart: 0, moveEnd: 0, targetYaw: body.rotation.y,
     };
     applyUnitState(entry, unit);
@@ -2161,8 +2194,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       if (!entry) { entry = makeUnit(data); units.set(data.id, entry); }
       if (entry.data.x !== data.x || entry.data.y !== data.y) {
         const singleStep = !options.snap && !options.ordered && Math.abs(entry.data.x - data.x) + Math.abs(entry.data.y - data.y) === 1;
-        entry.start.set(entry.data.x, 0.04, entry.data.y);
-        entry.end.set(data.x, 0.04, data.y);
+        const fromC = unitCenter(entry.data), toC = unitCenter(data);
+        entry.start.set(fromC.x, 0.04, fromC.z);
+        entry.end.set(toC.x, 0.04, toC.z);
         entry.moveStart = now;
         entry.moveEnd = !reducedMotion && singleStep ? now + 300 : 0;
         if (entry.moveEnd) entry.root.position.copy(entry.start);
@@ -2182,7 +2216,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     // If a living figure stands on the same square as a fallen hero (corpse or OA knockout),
     // nudge the collapsed hero neatly aside so the standing figure stays centered and legible.
     const livingCells = new Set();
-    for (const entry of units.values()) if (entry.data.alive !== false) livingCells.add(`${entry.data.x},${entry.data.y}`);
+    for (const entry of units.values()) if (entry.data.alive !== false) {
+      for (const [cx, cy] of unitCells(entry.data)) livingCells.add(`${cx},${cy}`);
+    }
     for (const entry of units.values()) {
       const sharedDown = entry.data.alive === false && entry.data.team === 'heroes' && livingCells.has(`${entry.data.x},${entry.data.y}`);
       const ox = sharedDown ? 0.24 : 0, oz = sharedDown ? -0.22 : 0;
@@ -2226,15 +2262,27 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       if (action.target_id) targetIds.add(action.target_id);
     }
     for (const data of nextState.units || []) {
-      if (data.alive !== false && data.invisible_to_heroes && attackSquares.has(`${data.x},${data.y}`)) {
+      if (data.alive !== false && data.invisible_to_heroes && unitCells(data).some(([cx, cy]) => attackSquares.has(`${cx},${cy}`))) {
         targetIds.add(data.id);
       }
     }
     if (nextState.phase === 'setup' && options.setupFigure) {
+      const roster = nextState.setup?.roster || [];
+      const fig = roster.find(u => u.id === options.setupFigure);
+      const figSz = unitSize(fig);
+      const occupiedSetup = new Set();
+      for (const p of nextState.setup?.placements || []) {
+        if (p.id === options.setupFigure) continue;
+        const other = roster.find(u => u.id === p.id);
+        for (const [cx, cy] of unitCells(other, p.x, p.y)) occupiedSetup.add(`${cx},${cy}`);
+      }
       for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
-        if (!blocked(map, x, y) && !(nextState.setup?.placements || []).some(p => p.id !== options.setupFigure && p.x === x && p.y === y)) {
-          destinations.add(`${x},${y}`);
+        let ok = true;
+        for (let ox = 0; ox < figSz && ok; ox++) for (let oy = 0; oy < figSz && ok; oy++) {
+          const cx = x + ox, cy = y + oy;
+          if (cx >= map.width || cy >= map.height || blocked(map, cx, cy) || occupiedSetup.has(`${cx},${cy}`)) ok = false;
         }
+        if (ok) destinations.add(`${x},${y}`);
       }
     }
     const drawDestSet = (set, fillHex, rimHex, fillAlpha = 0.25, rimAlpha = 0.88) => {
@@ -2337,7 +2385,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     for (const x of [x0, x1]) for (const z of [z0, z1]) for (const y of [-0.85, 1.45]) pts.push(new THREE.Vector3(x, y, z));
     if (!box) {
       for (const unit of state?.units || []) {
-        for (const offset of [-0.55, 0.55]) pts.push(new THREE.Vector3(unit.x + offset, 1.62, unit.y));
+        const c = unitCenter(unit), span = 0.55 * unitSize(unit);
+        for (const offset of [-span, span]) pts.push(new THREE.Vector3(c.x + offset, 1.62 + 0.4 * (unitSize(unit) - 1), c.z));
       }
     }
     const distance = fitDistance(direction, target, pts, box ? 5.6 : 7.2, 0.9);
@@ -2384,22 +2433,25 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         || allUnits.find(x => x.alive !== false)
         || allUnits[0];
       if (u) {
+        const uc = unitCenter(u);
         const foes = allUnits.filter(f => f.alive !== false && f.team !== u.team);
         let lookDx = u.team === 'heroes' ? 1 : -1, lookDz = 0;
         if (foes.length) {
           const foe = foes.reduce((best, f) => {
-            const d = (f.x - u.x) ** 2 + (f.y - u.y) ** 2;
+            const fc = unitCenter(f);
+            const d = (fc.x - uc.x) ** 2 + (fc.z - uc.z) ** 2;
             return d < best.d ? { f, d } : best;
           }, { f: foes[0], d: Infinity }).f;
-          const vx = foe.x - u.x, vz = foe.y - u.y;
+          const fc = unitCenter(foe);
+          const vx = fc.x - uc.x, vz = fc.z - uc.z;
           const len = Math.hypot(vx, vz) || 1;
           lookDx = vx / len; lookDz = vz / len;
         }
         // Target slightly ahead of the hero toward their adversary at chest height
         const target = new THREE.Vector3(
-          THREE.MathUtils.clamp(u.x + lookDx * 0.75, 0, width - 1),
+          THREE.MathUtils.clamp(uc.x + lookDx * 0.75, 0, width - 1),
           0.74,
-          THREE.MathUtils.clamp(u.y + lookDz * 0.75, 0, height - 1),
+          THREE.MathUtils.clamp(uc.z + lookDz * 0.75, 0, height - 1),
         );
         // Place camera behind & slightly offset over the hero's shoulder at dramatic low elevation!
         const sideX = -lookDz * 0.52, sideZ = lookDx * 0.52;
@@ -2421,9 +2473,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       if (alive.length) {
         const box = {
           x0: Math.max(-0.7, Math.min(...alive.map(u => u.x)) - 1.8),
-          x1: Math.min(width - 0.3, Math.max(...alive.map(u => u.x)) + 1.8),
+          x1: Math.min(width - 0.3, Math.max(...alive.map(u => u.x + unitSize(u) - 1)) + 1.8),
           z0: Math.max(-0.7, Math.min(...alive.map(u => u.y)) - 1.8),
-          z1: Math.min(height - 0.3, Math.max(...alive.map(u => u.y)) + 1.8),
+          z1: Math.min(height - 0.3, Math.max(...alive.map(u => u.y + unitSize(u) - 1)) + 1.8),
         };
         const dir = new THREE.Vector3(Math.sin(curAz) * 0.82, 0.72, Math.cos(curAz) * 0.82).normalize();
         const { pos, target } = computeBoardFit(dir, box, 0.52);
@@ -2474,7 +2526,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       ? new THREE.Vector3(0.54, 0.82, 1.13).normalize()
       : curOff.normalize();
     const targetDist = Math.min(Math.max(curDist, 5.8), 9.2);
-    const target = new THREE.Vector3(u.x, 0.58, u.y);
+    const uc = unitCenter(u);
+    const target = new THREE.Vector3(uc.x, 0.58, uc.z);
     const pos = target.clone().addScaledVector(dir, targetDist);
     glideCameraTo(pos, target, 460);
   }
@@ -3229,8 +3282,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       const hx = Math.floor(hitPoint.x + 0.5), hy = Math.floor(hitPoint.z + 0.5);
       if (hx >= 0 && hy >= 0 && hx < width && hy < height) {
         setHoverBoardCell(hx, hy);
-        const u = (state.units || []).find(item => item.x === hx && item.y === hy && item.alive !== false)
-          || (state.units || []).find(item => item.x === hx && item.y === hy && item.team === 'heroes');
+        const u = (state.units || []).find(item => unitOccupies(item, hx, hy) && item.alive !== false)
+          || (state.units || []).find(item => unitOccupies(item, hx, hy) && item.team === 'heroes');
         const obj = (state.objects || []).find(o => !o.destroyed && footprintContains(o, hx, hy));
         const hk = `c:${hx}:${hy}:${u?.id || obj?.id || ''}:${event.clientX >> 2}:${event.clientY >> 2}`;
         if (hk !== lastHoverKey) { lastHoverKey = hk; onHover({ x: hx, y: hy, unitId: u?.id || obj?.id || null, clientX: event.clientX, clientY: event.clientY }); }
@@ -3269,8 +3322,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
     const x = Math.floor(hitPoint.x + 0.5), y = Math.floor(hitPoint.z + 0.5);
     if (x < 0 || y < 0 || x >= width || y >= height) return;
-    const unit = (state.units || []).find(u => u.x === x && u.y === y && u.alive !== false)
-      || (state.units || []).find(u => u.x === x && u.y === y && u.team === 'heroes');
+    const unit = (state.units || []).find(u => unitOccupies(u, x, y) && u.alive !== false)
+      || (state.units || []).find(u => unitOccupies(u, x, y) && u.team === 'heroes');
     const object = (state.objects || []).find(o => !o.destroyed && footprintContains(o, x, y));
     onCell?.(x, y, unit?.id || object?.id);
   }

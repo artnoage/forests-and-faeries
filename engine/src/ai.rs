@@ -60,6 +60,7 @@ pub struct MoveCache {
     valid: bool,
     prone: bool,
     flying: bool,
+    token_size: u8,
     targets: Vec<Pos>,
     mask: crate::map::Bits,
     /// By cell: the destination's `min_steps_to_multiple`, once computed.
@@ -153,6 +154,16 @@ impl Fight {
     pub fn observe_enemies(&mut self, u: usize) -> Observed {
         let mut enemies = Vec::new();
         let upos = self.units[u].pos;
+        let token_size = self.units[u].t.token_size;
+        let mut multi_pc = if token_size > 1 {
+            let mut pc = PathCompute::new(&self.grid, self.units[u].prone(), self.units[u].t.fly, self.occupied_mask(u));
+            pc.incorporeal = self.incorporeal(u);
+            pc.solid_wall_corners = self.rule_version >= 8;
+            pc.token_size = token_size;
+            Some(pc)
+        } else {
+            None
+        };
         for o in 0..self.units.len() {
             if o == u || !self.can_see(u, o) {
                 continue;
@@ -161,9 +172,14 @@ impl Fight {
                 continue;
             }
             let opos = self.units[o].pos;
-            // compute_path(ignore_opposing=True): only walls block, so a path
-            // exists within one component; it has >= 2 cells unless same cell.
-            let ok = (self.incorporeal(u) || self.reachable(upos, opos)) && upos != opos;
+            // compute_path(ignore_opposing=True): for 1x1 only walls block, so a
+            // path exists within one component; for Large+ creatures `PathCompute`
+            // tests whether the creature's own footprint can reach `opos`.
+            let ok = if let Some(pc) = multi_pc.as_mut() {
+                upos != opos && pc.compute_path(upos, opos).is_some_and(|p| p.len() >= 2)
+            } else {
+                (self.incorporeal(u) || self.reachable(upos, opos)) && upos != opos
+            };
             enemies.push((o, opos, ok));
         }
         if self.rule_version >= 17 {
@@ -281,6 +297,25 @@ impl Fight {
         }
     }
 
+    /// Whether `u` can make a blind weapon attack at `target` square (`unseen_targets.blind_attack_issue`).
+    pub(crate) fn can_blind_attack_from_unit(&self, u: usize, target: Pos, range_ft: i32) -> bool {
+        if self.units[u].t.token_size == 1 {
+            return self.can_blind_attack_square(self.units[u].pos, target, range_ft);
+        }
+        if self.unit_occupies(u, target)
+            || !self.grid.in_bounds(target.0, target.1)
+            || self.grid.is_wall(target.0, target.1)
+            || self.dist_to_square(u, target) * 5 > range_ft
+        {
+            return false;
+        }
+        if self.rule_version >= 15 {
+            self.unit_cells(u).any(|c| !self.grid.is_wall(c.0, c.1) && self.grid.corner_wall_grade(c, target) < 4)
+        } else {
+            self.unit_cells(u).any(|c| self.grid.line_of_effect(c, target))
+        }
+    }
+
     /// `unseen_targets.blind_attack_variants`: per attack the creature can
     /// make now (not a save attack), one variant per sensed square of a
     /// non-ally (first entry per square) that passes `blind_attack_issue`:
@@ -291,7 +326,6 @@ impl Fight {
             return;
         }
         let unit = &self.units[u];
-        let here = unit.pos;
         for (ai, def) in unit.t.attacks.iter().enumerate() {
             if def.save_attack.is_some() || !self.can_attack(u, ai) || !self.attack_available(u, ai) {
                 continue;
@@ -302,7 +336,7 @@ impl Fight {
                     continue;
                 }
                 seen.push(square);
-                if self.can_blind_attack_square(here, square, def.range_max) {
+                if self.can_blind_attack_from_unit(u, square, def.range_max) {
                     out.push(Act::BlindAttack { atk: ai, square, heard });
                 }
             }
@@ -510,11 +544,11 @@ impl Fight {
             let t = &self.units[tgt];
             let auto = matches!(ab, crate::content::Ability::Str | crate::content::Ability::Dex)
                 && t.has(crate::engine::St::Paralyzed);
-            save_fail_chance(dc, t.save_mod(ab) + self.save_cover(self.units[src].pos, tgt, ab), auto)
+            save_fail_chance(dc, t.save_mod(ab) + self.save_cover_from_unit(src, tgt, ab), auto)
         } else {
             let (adv, dis) = self.advantage(src, tgt, def);
             let mode = Fight::mode_of(adv, dis);
-            let ac = self.attack_ac(self.units[src].pos, tgt);
+            let ac = self.attack_ac_from_unit(src, tgt);
             prob_at_least(20, plus_string_modifier(to_hit), ac, mode)
         };
         let avg = if def.no_damage {
@@ -662,7 +696,7 @@ impl Fight {
                 extra += expected(d.count, d.sides, d.modifier);
             }
             for &t in &opponents {
-                let ac = self.attack_ac(self.units[u].pos, t);
+                let ac = self.attack_ac_from_unit(u, t);
                 let hit = prob_at_least(20, plus_string_modifier(to_hit), ac, crate::trace::RollMode::Normal);
                 let hit_adv = prob_at_least(20, plus_string_modifier(to_hit), ac, crate::trace::RollMode::Advantage);
                 best = best.max(hit * dmg);
@@ -702,17 +736,33 @@ impl Fight {
             distances[i] = 0;
             queue.push_back(i);
         }
+        let sz = self.units[u].t.token_size;
         while let Some(i) = queue.pop_front() {
             let (x, y) = self.grid.pos_of(i);
             for nx in x - 1..=x + 1 {
                 for ny in y - 1..=y + 1 {
-                    if !self.grid.in_bounds(nx, ny) || (!self.incorporeal(u) && self.grid.is_wall(nx, ny)) || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny))) {
-                        continue;
-                    }
-                    let j = self.grid.index(nx, ny);
-                    if distances[j] == u16::MAX && !occupied.get(j) {
-                        distances[j] = distances[i] + 1;
-                        queue.push_back(j);
+                    if sz == 1 {
+                        if !self.grid.in_bounds(nx, ny) || (!self.incorporeal(u) && self.grid.is_wall(nx, ny)) || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny))) {
+                            continue;
+                        }
+                        let j = self.grid.index(nx, ny);
+                        if distances[j] == u16::MAX && !occupied.get(j) {
+                            distances[j] = distances[i] + 1;
+                            queue.push_back(j);
+                        }
+                    } else {
+                        if !self.footprint_terrain_clear(u, (nx, ny))
+                            || (self.rule_version >= 5 && !self.step_clears_corner(u, (x, y), (nx, ny)))
+                        {
+                            continue;
+                        }
+                        let j = self.grid.index(nx, ny);
+                        if distances[j] == u16::MAX
+                            && !self.unit_cells_at(u, (nx, ny)).any(|c| occupied.get(self.grid.index(c.0, c.1)))
+                        {
+                            distances[j] = distances[i] + 1;
+                            queue.push_back(j);
+                        }
                     }
                 }
             }
@@ -749,6 +799,7 @@ impl Fight {
         let upos = self.units[u].pos;
         let prone = self.units[u].prone();
         let flying = self.units[u].t.fly;
+        let token_size = self.units[u].t.token_size;
         let mask = self.occupied_mask(u);
 
         // build_move_scores
@@ -779,10 +830,11 @@ impl Fight {
         // result is cached across decisions while that context is unchanged
         // (a creature moves one square per decision with the same targets).
         let mut cache = std::mem::take(&mut self.move_cache);
-        if !(cache.valid && cache.prone == prone && cache.flying == flying && cache.targets == targets && cache.mask == mask) {
+        if !(cache.valid && cache.prone == prone && cache.flying == flying && cache.token_size == token_size && cache.targets == targets && cache.mask == mask) {
             cache.valid = true;
             cache.prone = prone;
             cache.flying = flying;
+            cache.token_size = token_size;
             cache.targets.clone_from(&targets);
             cache.mask.clone_from(&mask);
             cache.pursuit.clear();
@@ -796,8 +848,13 @@ impl Fight {
             let mut occupied = crate::map::Bits::new(self.grid.cells());
             for (i, other) in self.units.iter().enumerate() {
                 if i != u && self.token_at(other.pos) == Some(i)
-                    && (self.rule_version < 6 || !self.passable(u, other.pos)) {
-                    occupied.set(self.grid.index(other.pos.0, other.pos.1));
+                    && (self.rule_version < 6 || !self.unit_can_pass_other(u, i))
+                {
+                    for c in self.unit_cells(i) {
+                        if self.grid.in_bounds(c.0, c.1) {
+                            occupied.set(self.grid.index(c.0, c.1));
+                        }
+                    }
                 }
             }
             if exploring {
@@ -813,7 +870,13 @@ impl Fight {
                     .map(|a| a.range).max().unwrap_or(5)).max(5);
                 let mut landings = crate::map::Bits::new(self.grid.cells());
                 for (i, unit) in self.units.iter().enumerate() {
-                    if i != u && self.token_at(unit.pos) == Some(i) { landings.set(self.grid.index(unit.pos.0, unit.pos.1)); }
+                    if i != u && self.token_at(unit.pos) == Some(i) {
+                        for c in self.unit_cells(i) {
+                            if self.grid.in_bounds(c.0, c.1) {
+                                landings.set(self.grid.index(c.0, c.1));
+                            }
+                        }
+                    }
                 }
                 if cache.pursuit.is_empty() || cache.occupied != occupied || cache.landings != landings || cache.reach != reach {
                     let goals: Vec<_> = (0..self.grid.cells()).filter(|&i| !landings.get(i)).map(|i| self.grid.pos_of(i))
@@ -851,6 +914,7 @@ impl Fight {
         let mut pc = PathCompute::new(&grid, prone, flying, mask);
         pc.incorporeal = self.incorporeal(u);
         pc.solid_wall_corners = self.rule_version >= 8;
+        pc.token_size = token_size;
         if !targets.is_empty() && has_moves {
             let paths = pc.compute_paths_to_multiple(upos, &targets);
             for (dest, path) in targets.iter().zip(paths.iter()) {
@@ -1014,7 +1078,6 @@ impl Fight {
                 }
                 Act::NpcTeleport { idx, dest } => {
                     let def = &self.units[u].t.teleports[*idx];
-                    let origin = self.units[u].pos;
                     let enemies: Vec<usize> = self
                         .opponents_of(u)
                         .into_iter()
@@ -1025,12 +1088,12 @@ impl Fight {
                     } else {
                         let cur_min = enemies
                             .iter()
-                            .map(|&e| self.square_distance(origin, self.units[e].pos) * 5)
+                            .map(|&e| self.dist(u, e) * 5)
                             .min()
                             .unwrap();
                         let new_min = enemies
                             .iter()
-                            .map(|&e| self.square_distance(*dest, self.units[e].pos) * 5)
+                            .map(|&e| self.dist_at(u, *dest, e) * 5)
                             .min()
                             .unwrap();
                         let hp_frac = self.units[u].hp as f64 / self.max_hp_of(u).max(1) as f64;
@@ -1047,7 +1110,7 @@ impl Fight {
                             } else if has_action && cur_min > 5 && new_min <= 5 {
                                 let weakest = enemies
                                     .iter()
-                                    .filter(|&&e| self.square_distance(*dest, self.units[e].pos) * 5 <= 5)
+                                    .filter(|&&e| self.dist_at(u, *dest, e) * 5 <= 5)
                                     .map(|&e| self.units[e].hp)
                                     .min()
                                     .unwrap_or(100);

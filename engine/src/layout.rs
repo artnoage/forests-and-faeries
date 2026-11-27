@@ -63,14 +63,31 @@ pub fn diameter(grid: &Grid, floor: &[Pos]) -> i32 {
 }
 
 /// `any_hero_sees_monster`: some placed hero has line of sight to some
-/// placed monster.
+/// placed monster (1x1 footprints).
 pub fn any_hero_sees_monster(grid: &Grid, sides: &[u8], pos: &[Option<Pos>]) -> bool {
+    let sizes = vec![1u8; sides.len()];
+    any_hero_sees_monster_sized(grid, sides, &sizes, pos)
+}
+
+/// Multi-square `any_hero_sees_monster`: some cell of a placed hero has line of
+/// sight to some cell of a placed monster.
+pub fn any_hero_sees_monster_sized(grid: &Grid, sides: &[u8], sizes: &[u8], pos: &[Option<Pos>]) -> bool {
     for (h, hp) in pos.iter().enumerate() {
         let (Some(hp), 0) = (hp, sides[h]) else { continue };
+        let hs = i32::from(sizes.get(h).copied().unwrap_or(1));
         for (m, mp) in pos.iter().enumerate() {
-            if let (Some(mp), 1) = (mp, sides[m]) {
-                if grid.layout_los(*hp, *mp) {
-                    return true;
+            let (Some(mp), 1) = (mp, sides[m]) else { continue };
+            let ms = i32::from(sizes.get(m).copied().unwrap_or(1));
+            for hdx in 0..hs {
+                for hdy in 0..hs {
+                    let hc = (hp.0 + hdx, hp.1 + hdy);
+                    for mdx in 0..ms {
+                        for mdy in 0..ms {
+                            if grid.layout_los(hc, (mp.0 + mdx, mp.1 + mdy)) {
+                                return true;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -78,10 +95,8 @@ pub fn any_hero_sees_monster(grid: &Grid, sides: &[u8], pos: &[Option<Pos>]) -> 
     false
 }
 
-/// Place every unplaced creature (`fixed[i] == None`; `sides[i]` 0 heroes,
-/// 1 monsters) by the zone rule. Returns every creature's square (fixed ones
-/// unchanged) and the layout. Errors as natural20 does: not enough free
-/// floor, or no layout in `tries` attempts.
+/// Place every unplaced 1x1 creature (`fixed[i] == None`; `sides[i]` 0 heroes,
+/// 1 monsters) by the zone rule.
 pub fn auto_place(
     grid: &Grid,
     sides: &[u8],
@@ -90,7 +105,24 @@ pub fn auto_place(
     require_sight: bool,
     tries: usize,
 ) -> Result<(Vec<Pos>, ZoneLayout), String> {
+    let sizes = vec![1u8; sides.len()];
+    auto_place_sized(grid, sides, &sizes, fixed, seed, require_sight, tries)
+}
+
+/// Place every unplaced creature (`fixed[i] == None`; `sides[i]` 0 heroes,
+/// 1 monsters; `sizes[i]` footprint side length 1/2/3) by the zone rule.
+/// When every unit has size 1 this follows the exact historical 1x1 path and RNG stream.
+pub fn auto_place_sized(
+    grid: &Grid,
+    sides: &[u8],
+    sizes: &[u8],
+    fixed: &[Option<Pos>],
+    seed: u64,
+    require_sight: bool,
+    tries: usize,
+) -> Result<(Vec<Pos>, ZoneLayout), String> {
     assert_eq!(sides.len(), fixed.len());
+    assert_eq!(sides.len(), sizes.len());
     let mut floor: Vec<Pos> = Vec::new();
     for x in 0..grid.w {
         for y in 0..grid.h {
@@ -101,14 +133,56 @@ pub fn auto_place(
     }
     let n = grid.cells();
     let mut fixed_cell = vec![false; n];
-    for p in fixed.iter().flatten() {
-        fixed_cell[grid.index(p.0, p.1)] = true;
+    for (i, p) in fixed.iter().enumerate() {
+        let Some(p) = p else { continue };
+        let sz = i32::from(sizes[i].max(1));
+        for dx in 0..sz {
+            for dy in 0..sz {
+                let (cx, cy) = (p.0 + dx, p.1 + dy);
+                if !grid.in_bounds(cx, cy) || grid.is_wall(cx, cy) {
+                    return Err(format!("fixed unit {i} does not fit {sz}x{sz} floor at {p:?}"));
+                }
+                let idx = grid.index(cx, cy);
+                if fixed_cell[idx] {
+                    return Err(format!("fixed unit {i} overlaps another creature at ({cx}, {cy})"));
+                }
+                fixed_cell[idx] = true;
+            }
+        }
     }
     let todo: [Vec<usize>; 2] = [0u8, 1].map(|s| (0..sides.len()).filter(|&i| sides[i] == s && fixed[i].is_none()).collect());
     let free = floor.iter().filter(|p| !fixed_cell[grid.index(p.0, p.1)]).count();
-    if todo[0].len() + todo[1].len() > free {
+    let needed_cells: usize = todo
+        .iter()
+        .flat_map(|v| v.iter())
+        .map(|&u| {
+            let s = usize::from(sizes[u].max(1));
+            s * s
+        })
+        .sum();
+    if needed_cells > free {
         return Err("not enough free floor for every creature".into());
     }
+    let fits = |p: Pos, sz: u8, taken: &[bool]| -> bool {
+        let s = i32::from(sz.max(1));
+        for dx in 0..s {
+            for dy in 0..s {
+                let (cx, cy) = (p.0 + dx, p.1 + dy);
+                if !grid.in_bounds(cx, cy) || grid.is_wall(cx, cy) || taken[grid.index(cx, cy)] {
+                    return false;
+                }
+            }
+        }
+        true
+    };
+    let mark = |p: Pos, sz: u8, taken: &mut [bool]| {
+        let s = i32::from(sz.max(1));
+        for dx in 0..s {
+            for dy in 0..s {
+                taken[grid.index(p.0 + dx, p.1 + dy)] = true;
+            }
+        }
+    };
     let far = diameter(grid, &floor);
     let need = 8.max((far + 1) / 2).min(far);
     let mut rng = FastRng::new(seed);
@@ -129,36 +203,77 @@ pub fn auto_place(
         for (side, anchor) in [(1usize, a), (0usize, b)] {
             let count = todo[side].len();
             let dist = grid.bfs(anchor);
-            // sorted((d, c) for c, d in dist.items() if c not in taken)
-            let mut avail: Vec<(i32, Pos)> = floor
-                .iter()
-                .filter_map(|&p| {
-                    let i = grid.index(p.0, p.1);
-                    (dist[i] >= 0 && !taken[i]).then_some((dist[i], p))
-                })
-                .collect();
-            avail.sort();
-            let want = (2 * count).min(avail.len());
-            let mut r = 1;
-            while avail.iter().filter(|(d, _)| *d <= r).count() < want {
-                r += 1;
+            let all_unit = todo[side].iter().all(|&u| sizes[u] <= 1);
+            if all_unit {
+                // sorted((d, c) for c, d in dist.items() if c not in taken)
+                let mut avail: Vec<(i32, Pos)> = floor
+                    .iter()
+                    .filter_map(|&p| {
+                        let i = grid.index(p.0, p.1);
+                        (dist[i] >= 0 && !taken[i]).then_some((dist[i], p))
+                    })
+                    .collect();
+                avail.sort();
+                let want = (2 * count).min(avail.len());
+                let mut r = 1;
+                while avail.iter().filter(|(d, _)| *d <= r).count() < want {
+                    r += 1;
+                }
+                let mut ball: Vec<Pos> = avail.iter().filter(|(d, _)| *d <= r).map(|&(_, p)| p).collect();
+                if ball.len() < count {
+                    ok = false;
+                    break;
+                }
+                // random.sample(ball, count): partial Fisher-Yates
+                for k in 0..count {
+                    let j = k + below(&mut rng, ball.len() - k);
+                    ball.swap(k, j);
+                }
+                ball.truncate(count);
+                for p in &ball {
+                    taken[grid.index(p.0, p.1)] = true;
+                }
+                chosen[side] = ball;
+                radius[side] = r;
+            } else {
+                // Multi-square side: place larger footprints first so smaller creatures
+                // cannot fragment 2x2/3x3 spots, reserving all occupied cells per pick.
+                let mut order: Vec<usize> = (0..count).collect();
+                order.sort_by_key(|&idx| (std::cmp::Reverse(sizes[todo[side][idx]]), idx));
+                let mut picks = vec![(0, 0); count];
+                let mut side_r = 1;
+                for (placed_n, &idx) in order.iter().enumerate() {
+                    let sz = sizes[todo[side][idx]];
+                    let mut avail: Vec<(i32, Pos)> = floor
+                        .iter()
+                        .filter_map(|&p| {
+                            let i = grid.index(p.0, p.1);
+                            (dist[i] >= 0 && fits(p, sz, &taken)).then_some((dist[i], p))
+                        })
+                        .collect();
+                    if avail.is_empty() {
+                        ok = false;
+                        break;
+                    }
+                    avail.sort();
+                    let rem = count - placed_n;
+                    let want = (2 * rem).min(avail.len());
+                    let mut r = 1;
+                    while avail.iter().filter(|(d, _)| *d <= r).count() < want {
+                        r += 1;
+                    }
+                    let ball: Vec<Pos> = avail.iter().filter(|(d, _)| *d <= r).map(|&(_, p)| p).collect();
+                    let pick = ball[below(&mut rng, ball.len())];
+                    picks[idx] = pick;
+                    mark(pick, sz, &mut taken);
+                    side_r = side_r.max(r);
+                }
+                if !ok {
+                    break;
+                }
+                chosen[side] = picks;
+                radius[side] = side_r;
             }
-            let mut ball: Vec<Pos> = avail.iter().filter(|(d, _)| *d <= r).map(|&(_, p)| p).collect();
-            if ball.len() < count {
-                ok = false;
-                break;
-            }
-            // random.sample(ball, count): partial Fisher-Yates
-            for k in 0..count {
-                let j = k + below(&mut rng, ball.len() - k);
-                ball.swap(k, j);
-            }
-            ball.truncate(count);
-            for p in &ball {
-                taken[grid.index(p.0, p.1)] = true;
-            }
-            chosen[side] = ball;
-            radius[side] = r;
         }
         if !ok {
             continue;
@@ -168,7 +283,7 @@ pub fn auto_place(
                 pos[u] = Some(p);
             }
         }
-        if !require_sight || any_hero_sees_monster(grid, sides, &pos) {
+        if !require_sight || any_hero_sees_monster_sized(grid, sides, sizes, &pos) {
             let layout = ZoneLayout { seed, anchors: [a, b], radius: [radius[1], radius[0]], min_anchor_distance: need };
             return Ok((pos.into_iter().map(Option::unwrap).collect(), layout));
         }

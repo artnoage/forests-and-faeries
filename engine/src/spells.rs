@@ -351,7 +351,7 @@ impl Fight {
 
     /// `expected_dpr(creature, against)`.
     pub fn expected_dpr(&self, c: usize, against: Option<usize>) -> f64 {
-        let ac = against.map_or(15, |a| self.attack_ac(self.units[c].pos, a));
+        let ac = against.map_or(15, |a| self.attack_ac_from_unit(c, a));
         self.expected_round_damage(c, ac)
     }
 
@@ -561,8 +561,9 @@ impl Fight {
     }
 
     fn force_strike_position(&self, target: usize, pos: Pos) -> Option<Pos> {
-        let target_pos = self.units[target].pos;
-        if self.square_distance(pos, target_pos) <= 1 && (self.rule_version < 7 || self.clear_effect(pos, target_pos)) {
+        if self.dist_to_square(target, pos) <= 1
+            && (self.rule_version < 7 || self.unit_cells(target).any(|sq| self.clear_effect(pos, sq)))
+        {
             Some(pos)
         } else {
             self.landing_square(target, pos, Some(4))
@@ -1112,7 +1113,7 @@ impl Fight {
         let ObjKind::Force { pos, .. } = obj.kind else { return Vec::new() };
         let src = obj.source;
         (0..self.units.len())
-            .filter(|&c| !self.units[c].dead() && self.opposing(src, c) && self.square_distance(pos, self.units[c].pos) <= 5
+            .filter(|&c| !self.units[c].dead() && self.opposing(src, c) && self.dist_to_square(c, pos) <= 5
                 && (self.rule_version < 6 || !self.units[c].hidden() || self.can_see(src, c))
                 && (self.rule_version < 7 || self.force_strike_position(c, pos).is_some()))
             .collect()
@@ -1395,7 +1396,7 @@ impl Fight {
                     return POINTLESS;
                 }
                 let modifier = self.units[u].t.caster.as_ref().map_or(0, |k| k.spell_attack);
-                let ac = self.attack_ac(self.units[u].pos, t);
+                let ac = self.attack_ac_from_unit(u, t);
                 let wk = self.kind_for_spell(u, c.spell, WeaponKind::spell_ranged(60));
                 let (adv, dis) = self.advantage_flags(u, t, wk);
                 let mode = Fight::mode_of(adv, dis);
@@ -1691,7 +1692,7 @@ impl Fight {
                 let Some(force) = self.active_force(u) else { return POINTLESS };
                 let ObjKind::Force { pos, .. } = self.objs[force as usize].kind else { return POINTLESS };
                 let enemies: Vec<_> = (0..self.units.len()).filter(|&t| self.opposing(u, t) && self.units[t].conscious() && self.can_see(u, t)).collect();
-                let nearest = |p| enemies.iter().map(|&t| self.square_distance(p, self.units[t].pos)).min().unwrap_or(0);
+                let nearest = |p| enemies.iter().map(|&t| self.dist_to_square(t, p)).min().unwrap_or(0);
                 let gain = nearest(pos) - nearest(*to);
                 if gain > 0 { gain as f64 / 10.0 } else { POINTLESS }
             }
@@ -2931,29 +2932,30 @@ impl Fight {
 
     /// `landing_square(map, creature, origin, max_squares)`.
     fn landing_square(&self, t: usize, origin: Pos, max_squares: Option<i32>) -> Option<Pos> {
-        let (sx, sy) = self.units[t].pos;
         let distances = max_squares.filter(|_| self.rule_version >= 7).map(|_| self.grid.bfs(origin));
         let mut best: Option<((i32, i32, i32, i32), Pos)> = None;
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                let (x, y) = (sx + dx, sy + dy);
-                if (dx == 0 && dy == 0) || x < 0 || y < 0 || x >= self.grid.w || y >= self.grid.h {
-                    continue;
-                }
-                if self.rule_version >= 7 && (!self.clear_effect((x, y), (sx, sy)) || self.grid.is_wall(x, y)) { continue; }
-                let gap = self.square_distance(origin, (x, y));
-                if let Some(dist) = &distances {
-                    if !(0..=max_squares.unwrap()).contains(&dist[self.grid.index(x, y)]) { continue; }
-                }
-                if let Some(m) = max_squares {
-                    if gap > m {
+        for (sx, sy) in self.unit_cells(t) {
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    let (x, y) = (sx + dx, sy + dy);
+                    if self.unit_occupies(t, (x, y)) || x < 0 || y < 0 || x >= self.grid.w || y >= self.grid.h {
                         continue;
                     }
-                }
-                let busy = if self.token_at((x, y)).is_some() { 1 } else { 0 };
-                let key = (busy, gap, y, x);
-                if best.map_or(true, |b| key < b.0) {
-                    best = Some((key, (x, y)));
+                    if self.rule_version >= 7 && (!self.clear_effect((x, y), (sx, sy)) || self.grid.is_wall(x, y)) { continue; }
+                    let gap = self.square_distance(origin, (x, y));
+                    if let Some(dist) = &distances {
+                        if !(0..=max_squares.unwrap()).contains(&dist[self.grid.index(x, y)]) { continue; }
+                    }
+                    if let Some(m) = max_squares {
+                        if gap > m {
+                            continue;
+                        }
+                    }
+                    let busy = if self.token_at((x, y)).is_some() { 1 } else { 0 };
+                    let key = (busy, gap, y, x);
+                    if best.map_or(true, |b| key < b.0) {
+                        best = Some((key, (x, y)));
+                    }
                 }
             }
         }

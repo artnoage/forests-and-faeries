@@ -128,7 +128,9 @@
    "harpy": 28,
    "sea_hag": 29,
    "will_o_wisp": 30,
-   "vesper": 31
+   "vesper": 31,
+   "ogre": 32,
+   "owlbear": 33
   },
   "classes": {
    "fighter": 0,
@@ -170,7 +172,10 @@
    "thorn_burst": 28,
    "death_glare": 29,
    "shock": 30,
-   "consume_life": 31
+   "consume_life": 31,
+   "greatclub": 32,
+   "javelin": 33,
+   "rend": 34
   },
   "mechanics": {
    "great_weapon_fighting": 0,

@@ -44,21 +44,27 @@ pub const POTENTIAL_SCALE: f64 = 0.3;
 
 /// Default engine rule version for [`BatchEnv`] / [`Game::new`]: pinned to 17
 /// so live trainers and ladder evaluations keep exact r4 parity until newer
-/// rules (18: Vesper / 2024 updates; 19: Dodge ends when grappled) are
-/// requested explicitly via `rule_version=18` or `rule_version=19`.
+/// rules (18: Vesper / 2024 updates; 19: Dodge ends when grappled; 20:
+/// multi-square Large/Huge footprints + Ogre & Owlbear) are requested
+/// explicitly via `rule_version=18`, `19`, or `20`.
 pub const DEFAULT_BATCH_RULE_VERSION: i32 = 17;
 
 /// The natural20 commit whose rules this engine mirrors (written into the
-/// header of rule-18+ tapes the environment records).
+/// header of rule-20+ tapes the environment records).
 pub const NATURAL20_COMMIT: &str = include_str!("../reference/NATURAL20_COMMIT");
 
 /// The natural20 commit for rule-17 (r4 First Aid baseline) tapes.
 pub const NATURAL20_COMMIT_RULE_17: &str = "ef91112bf07b933734bff12a94d7e724ca8f3fee";
 
+/// The natural20 commit for rule-18 and rule-19 (Vesper + Dodge-ends-on-grapple) tapes.
+pub const NATURAL20_COMMIT_RULE_18_19: &str = "c0025a887a77b54a1f62152cc971497461d76e9a";
+
 /// Return the Natural20 reference commit corresponding to `rule_version`.
 pub fn natural20_commit_for_rule_version(version: i32) -> &'static str {
     if version < 18 {
         NATURAL20_COMMIT_RULE_17
+    } else if version < 20 {
+        NATURAL20_COMMIT_RULE_18_19
     } else {
         NATURAL20_COMMIT.trim()
     }
@@ -232,11 +238,36 @@ pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, cross
     if budget < if crossings_only { 2 } else { 1 } {
         return Vec::new();
     }
-    if crossings_only && !DIRECTIONS.iter().any(|&(dx, dy)| f.token_at((start.0 + dx, start.1 + dy)).is_some()) {
-        return Vec::new();
+    let sz = u.t.token_size;
+    if crossings_only {
+        let near_token = if sz == 1 {
+            DIRECTIONS.iter().any(|&(dx, dy)| f.token_at((start.0 + dx, start.1 + dy)).is_some())
+        } else {
+            DIRECTIONS.iter().any(|&(dx, dy)| {
+                f.unit_cells_at(a, (start.0 + dx, start.1 + dy))
+                    .any(|c| f.token_at(c).is_some_and(|o| o != a))
+            })
+        };
+        if !near_token {
+            return Vec::new();
+        }
     }
-    let hidden = |p| masked != 0 && f.token_at(p).is_some_and(|o| masked & (1 << o) != 0);
-    let free = |p| hidden(p) || f.placeable(a, p);
+    let hidden = |p: Pos| {
+        masked != 0 && if sz == 1 {
+            f.token_at(p).is_some_and(|o| masked & (1 << o) != 0)
+        } else {
+            f.unit_cells_at(a, p).any(|c| f.token_at(c).is_some_and(|o| masked & (1 << o) != 0))
+        }
+    };
+    let free = |p: Pos| {
+        if masked == 0 {
+            f.placeable(a, p)
+        } else if sz == 1 {
+            hidden(p) || f.placeable(a, p)
+        } else {
+            f.placeable_ignoring_masked(a, p, masked)
+        }
+    };
     let mut best = vec![i32::MAX; g.cells()];
     let mut parent = vec![start; g.cells()];
     let mut frontier = BinaryHeap::new();
@@ -295,7 +326,14 @@ pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, cross
         }
         for (dx, dy) in DIRECTIONS {
             let q = (p.0 + dx, p.1 + dy);
-            if !g.in_bounds(q.0, q.1) || (!hidden(q) && !f.passable(a, q)) {
+            let step_ok = if masked == 0 {
+                g.in_bounds(q.0, q.1) && f.passable(a, q)
+            } else if sz == 1 {
+                g.in_bounds(q.0, q.1) && (hidden(q) || f.passable(a, q))
+            } else {
+                f.passable_ignoring_masked(a, q, masked)
+            };
+            if !step_ok {
                 continue;
             }
             if f.rule_version >= 5 {
@@ -303,7 +341,11 @@ pub(crate) fn movement_paths_with_budget(f: &Fight, a: usize, masked: u32, cross
             } else if u.t.pc && dx != 0 && dy != 0 && !(free((p.0 + dx, p.1)) && free((p.0, p.1 + dy))) {
                 continue;
             }
-            let next = cost + if hidden(q) { 1 + u.prone() as i32 } else { f.step_cost(a, q) };
+            let next = cost + if masked != 0 && hidden(q) && (sz == 1 || !f.difficult_ignoring_masked(a, q, masked)) {
+                1 + u.prone() as i32
+            } else {
+                f.step_cost(a, q)
+            };
             let idx = g.index(q.0, q.1);
             if next > budget || next >= best[idx] || f.step_toward_fear(a, p, q) {
                 continue;
@@ -382,6 +424,7 @@ impl Game {
             return Err("dice_seed must be below 2**63".into());
         }
         let mut fight = Fight::on_map(pool, entry.grid.clone(), &entry.units, &placed.placements, max_rounds, Trace::free(spec.dice_seed))?;
+        fight.validate_rule_version(version)?;
         fight.set_rule_version(version);
         let start_hp = fight.units.iter().map(|u| u.hp).collect();
         let env = Env::new(fight, Control { teams, external_units }, cfg.scores);
@@ -676,6 +719,7 @@ impl Game {
         }
         let e = &self.entry;
         let mut fight = Fight::on_map(pool, e.grid.clone(), &e.units, &self.placed.placements, self.max_rounds, Trace::recording(self.spec.dice_seed))?;
+        fight.validate_rule_version(self.env.fight.rule_version())?;
         fight.set_rule_version(self.env.fight.rule_version());
         let control = self.env.control().clone();
         let mut env = Env::new(fight, control.clone(), true);

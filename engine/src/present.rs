@@ -32,7 +32,19 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 21;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 22;
+
+pub(crate) fn web_replay_rule_version(replay_version: u8) -> i32 {
+    match replay_version {
+        1..=3 => i32::from(replay_version),
+        4 => 3,
+        5..=18 => i32::from(replay_version - 1),
+        19 => 17,
+        20 => 18,
+        21 => 19,
+        _ => 20,
+    }
+}
 const MAX_LOG: usize = 180;
 const MAX_TIMELINE: usize = 64;
 const MAX_EFFECTS: usize = 96;
@@ -248,7 +260,7 @@ impl WebArena {
         Self::with_trace(level, Trace::web_replay_draws(draws), revision, csrf_token, encounter_token, version)
     }
 
-    fn with_trace(
+    pub(crate) fn with_trace(
         mut level: LevelInput,
         trace: Trace,
         revision: i64,
@@ -297,6 +309,16 @@ impl WebArena {
                 name: display_name.clone(),
                 t,
             });
+        }
+        let min_check_version = web_replay_rule_version(replay_version);
+        for ru in &roster {
+            let min = Fight::min_rule_version_for_template(ru.t);
+            if min_check_version < min {
+                return Err(format!(
+                    "{} ({}) requires web replay_version >= 22 (rule_version >= {min}), got replay_version {replay_version} (rule_version {min_check_version})",
+                    ru.id, ru.t.id
+                ));
+            }
         }
 
         let placements = level.suggested_placements.clone();
@@ -479,8 +501,17 @@ impl WebArena {
             if !self.grid.in_bounds(x, y) {
                 return Err("Placement coordinates must be in-bounds integers.".to_string());
             }
-            if self.grid.is_wall(x, y) || !seen_cells.insert((x, y)) {
-                return Err("Figures must occupy distinct native walkable cells.".to_string());
+            let sz = i32::from(self.roster[self.roster_by_id[uid]].t.token_size);
+            for ox in 0..sz {
+                for oy in 0..sz {
+                    let (cx, cy) = (x + ox, y + oy);
+                    if !self.grid.in_bounds(cx, cy) {
+                        return Err("Placement coordinates must be in-bounds integers.".to_string());
+                    }
+                    if self.grid.is_wall(cx, cy) || !seen_cells.insert((cx, cy)) {
+                        return Err("Figures must occupy distinct native walkable cells.".to_string());
+                    }
+                }
             }
             parsed.push(Placement { id: uid.to_string(), x, y });
         }
@@ -503,8 +534,17 @@ impl WebArena {
             if !self.grid.in_bounds(p.x, p.y) {
                 return Err("Placement coordinates must be in-bounds integers.".to_string());
             }
-            if self.grid.is_wall(p.x, p.y) || !seen_cells.insert((p.x, p.y)) {
-                return Err("Figures must occupy distinct native walkable cells.".to_string());
+            let sz = i32::from(self.roster[self.roster_by_id[&p.id]].t.token_size);
+            for ox in 0..sz {
+                for oy in 0..sz {
+                    let (cx, cy) = (p.x + ox, p.y + oy);
+                    if !self.grid.in_bounds(cx, cy) {
+                        return Err("Placement coordinates must be in-bounds integers.".to_string());
+                    }
+                    if self.grid.is_wall(cx, cy) || !seen_cells.insert((cx, cy)) {
+                        return Err("Figures must occupy distinct native walkable cells.".to_string());
+                    }
+                }
             }
         }
         Ok(())
@@ -664,14 +704,7 @@ impl WebArena {
             crate::engine::MAX_ROUNDS,
             self.trace_init.clone(),
         )?;
-        fight.set_rule_version(match self.replay_version {
-            1..=3 => i32::from(self.replay_version),
-            4 => 3,
-            5..=18 => i32::from(self.replay_version - 1),
-            19 => 17,
-            20 => 18,
-            _ => 19,
-        });
+        fight.set_rule_version(web_replay_rule_version(self.replay_version));
         fight.web_events = Some(Vec::new());
         self.in_setup = false;
         self.fight_to_roster = fight_to_roster;
@@ -2737,7 +2770,7 @@ impl WebArena {
                 let visible_conscious_squares: HashSet<Pos> = if self.replay_version >= 19 {
                     (0..f.units.len())
                         .filter(|&u| u != actor && f.units[u].conscious() && f.can_see(actor, u))
-                        .map(|u| f.units[u].pos)
+                        .flat_map(|u| f.unit_cells(u))
                         .collect()
                 } else {
                     HashSet::new()
@@ -2757,24 +2790,25 @@ impl WebArena {
                         if def.save_immune && f.units[t].save_immune_to.contains(&(actor, def.name)) {
                             continue;
                         }
-                        visible_target_squares.insert(f.units[t].pos);
+                        visible_target_squares.extend(f.unit_cells(t));
                         non_spell.push(Act::Attack { atk: ai, target: t, reaction: false });
                     }
                     if self.replay_version >= 19 {
                         if def.save_attack.is_none() && !def.no_damage {
                             let here = f.units[actor].pos;
+                            let span = i32::from(f.units[actor].t.token_size) - 1;
                             let reach_sq = (def.range_max / 5).max(1);
                             let x0 = (here.0 - reach_sq).max(0);
-                            let x1 = (here.0 + reach_sq).min(self.grid.w - 1);
+                            let x1 = (here.0 + span + reach_sq).min(self.grid.w - 1);
                             let y0 = (here.1 - reach_sq).max(0);
-                            let y1 = (here.1 + reach_sq).min(self.grid.h - 1);
+                            let y1 = (here.1 + span + reach_sq).min(self.grid.h - 1);
                             for y in y0..=y1 {
                                 for x in x0..=x1 {
                                     let sq = (x, y);
                                     if visible_target_squares.contains(&sq) || visible_conscious_squares.contains(&sq) {
                                         continue;
                                     }
-                                    if f.can_blind_attack_square(here, sq, def.range_max) {
+                                    if f.can_blind_attack_from_unit(actor, sq, def.range_max) {
                                         non_spell.push(Act::BlindAttack { atk: ai, square: sq, heard: false });
                                     }
                                 }
@@ -2782,14 +2816,13 @@ impl WebArena {
                         }
                     } else if let Some(ref s_list) = sensed {
                         if def.save_attack.is_none() {
-                            let here = f.units[actor].pos;
                             let mut seen = Vec::new();
                             for &(sq, heard) in s_list {
                                 if seen.contains(&sq) {
                                     continue;
                                 }
                                 seen.push(sq);
-                                if f.can_blind_attack_square(here, sq, def.range_max) {
+                                if f.can_blind_attack_from_unit(actor, sq, def.range_max) {
                                     non_spell.push(Act::BlindAttack { atk: ai, square: sq, heard });
                                 }
                             }
@@ -3713,6 +3746,22 @@ impl WebArena {
         if let Some((x, y)) = position {
             m.insert("x".into(), json!(x));
             m.insert("y".into(), json!(y));
+            if self.replay_version >= 22 {
+                let sz = i32::from(ru.t.token_size);
+                let mut cells = Vec::with_capacity((sz * sz) as usize);
+                for ox in 0..sz {
+                    for oy in 0..sz {
+                        cells.push([x + ox, y + oy]);
+                    }
+                }
+                m.insert("cells".into(), json!(cells));
+            }
+        }
+        if self.replay_version >= 22 {
+            m.insert("token_size".into(), json!(ru.t.token_size));
+            if ru.t.climb_speed > 0 {
+                m.insert("climb_speed".into(), json!(ru.t.climb_speed));
+            }
         }
         m.insert("content".into(), json!(ru.content));
         m.insert("dead".into(), json!(false));
@@ -3776,6 +3825,22 @@ impl WebArena {
         if include_pos {
             m.insert("x".into(), json!(unit.pos.0));
             m.insert("y".into(), json!(unit.pos.1));
+            if self.replay_version >= 22 {
+                let sz = i32::from(ru.t.token_size);
+                let mut cells = Vec::with_capacity((sz * sz) as usize);
+                for ox in 0..sz {
+                    for oy in 0..sz {
+                        cells.push([unit.pos.0 + ox, unit.pos.1 + oy]);
+                    }
+                }
+                m.insert("cells".into(), json!(cells));
+            }
+        }
+        if self.replay_version >= 22 {
+            m.insert("token_size".into(), json!(ru.t.token_size));
+            if ru.t.climb_speed > 0 {
+                m.insert("climb_speed".into(), json!(ru.t.climb_speed));
+            }
         }
         m.insert("content".into(), json!(ru.content));
         m.insert("dead".into(), json!(unit.dead()));
@@ -4751,7 +4816,7 @@ mod tests {
         let raw_draws = live.recorded_draws();
         let parsed_draws: Vec<crate::tape::Ev> = raw_draws.iter().map(parse_draw_json).collect::<Result<_, _>>().unwrap();
         let mut replay = WebArena::with_versioned_replay_draws(
-            level, parsed_draws, 0, "csrf".into(), "enc".into(), 19,
+            level, parsed_draws, 0, "csrf".into(), "enc".into(), CURRENT_WEB_REPLAY_VERSION,
         ).unwrap();
         let r_init = replay.state();
         assert_eq!(replay.wire(r_init), initial_wire);

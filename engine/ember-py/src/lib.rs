@@ -309,6 +309,13 @@ impl ContentPool {
         Ok((t.id, t.base_id, t.level, t.name))
     }
 
+    /// Grid footprint side length in 5-ft squares (1 = Tiny/Small/Medium, 2 = Large, 3 = Huge).
+    fn token_size(&self, content: &str) -> PyResult<u8> {
+        let t = self.pool.tid(content).map(|id| self.pool.template(id))
+            .ok_or_else(|| verr(format!("unknown content {content}")))?;
+        Ok(t.token_size)
+    }
+
     #[getter]
     fn monsters(&self) -> Vec<String> {
         self.ids().into_iter().filter(|i| !self.pool.template(self.pool.tid(i).unwrap()).pc).collect()

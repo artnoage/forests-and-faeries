@@ -208,6 +208,16 @@ pub fn size_rank(size: &str) -> Option<u8> {
     }
 }
 
+/// Grid footprint side length in 5-ft squares (`Entity.token_size()`).
+pub fn token_size_for(size: &str) -> Option<u8> {
+    match size {
+        "tiny" | "small" | "medium" => Some(1),
+        "large" => Some(2),
+        "huge" => Some(3),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Condition {
     Paralyzed,
@@ -583,10 +593,14 @@ pub struct Template {
     pub name: &'static str,
     pub size: &'static str,
     pub size_rank: u8,
+    /// Footprint width/height in 5-ft squares (1 = Tiny/Small/Medium, 2 = Large, 3 = Huge).
+    pub token_size: u8,
     pub pc: bool,
     pub ac: i32,
     pub max_hp: i32,
     pub speed: i32,
+    /// Climb speed in feet (0 when the creature has no Climb speed).
+    pub climb_speed: i32,
     pub fly: bool,
     pub hover: bool,
     /// STR, DEX, CON, INT, WIS, CHA.
@@ -1141,6 +1155,8 @@ pub struct ContentDoc {
     pub ac: i32,
     pub max_hp: i32,
     pub speed: i32,
+    #[serde(default)]
+    pub climb_speed: i32,
     pub fly: bool,
     #[serde(default)]
     pub hover: bool,
@@ -1252,9 +1268,9 @@ impl Template {
         if d.pc != (d.side == "heroes") || !matches!(d.side.as_str(), "heroes" | "monsters") {
             return Err(format!("side {:?} with pc {}", d.side, d.pc));
         }
-        if !matches!(d.size.as_str(), "tiny" | "small" | "medium") {
-            return Err(format!("size {:?}: only 1x1 creatures (Tiny, Small, Medium) are supported", d.size));
-        }
+        let token_size = token_size_for(&d.size).ok_or_else(|| {
+            format!("size {:?}: only Tiny, Small, Medium, Large, and Huge creatures are supported", d.size)
+        })?;
         let srank = size_rank(&d.size).unwrap_or(2);
         if d.tags.object {
             return Err("objects are not creatures".into());
@@ -1296,10 +1312,12 @@ impl Template {
             name: intern(&d.name),
             size: intern(&d.size),
             size_rank: srank,
+            token_size,
             pc: d.pc,
             ac: d.ac,
             max_hp: d.max_hp,
             speed: d.speed,
+            climb_speed: d.climb_speed,
             fly: d.fly,
             hover: d.hover,
             abil,

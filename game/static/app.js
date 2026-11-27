@@ -366,7 +366,35 @@
   const canAct = () => !!state?.can_act && !busy && !watching;
   const objects = () => Array.isArray(state?.objects) ? state.objects : [];
   const targets = () => [...(state?.units || []), ...objects().filter(o => !o.destroyed)];
-  const atCell = (obj, x, y) => x >= obj.x && y >= obj.y && x < obj.x + (obj.width || 1) && y < obj.y + (obj.depth || 1);
+  const unitSize = obj => Math.max(1, Number(obj?.token_size) || 1);
+  const unitCellsOf = (obj, x = obj.x, y = obj.y) => {
+    const sz = unitSize(obj);
+    const out = [];
+    for (let ox = 0; ox < sz; ox++) for (let oy = 0; oy < sz; oy++) out.push([x + ox, y + oy]);
+    return out;
+  };
+  const atCell = (obj, x, y) => x >= obj.x && y >= obj.y && x < obj.x + (obj.width || unitSize(obj)) && y < obj.y + (obj.depth || unitSize(obj));
+  function placementFits(figureId, x, y) {
+    if (!state?.map) return false;
+    const roster = state.setup?.roster || [];
+    const fig = roster.find(u => u.id === figureId);
+    const sz = unitSize(fig);
+    const occupied = new Set();
+    for (const p of state.setup?.placements || []) {
+      if (p.id === figureId) continue;
+      const other = roster.find(u => u.id === p.id);
+      for (const [cx, cy] of unitCellsOf(other, p.x, p.y)) occupied.add(`${cx},${cy}`);
+    }
+    for (let ox = 0; ox < sz; ox++) {
+      for (let oy = 0; oy < sz; oy++) {
+        const cx = x + ox, cy = y + oy;
+        if (cx < 0 || cy < 0 || cx >= state.map.width || cy >= state.map.height) return false;
+        const ch = state.map.tiles[cy]?.[cx];
+        if (ch === '#' || ch === 'T' || occupied.has(`${cx},${cy}`)) return false;
+      }
+    }
+    return true;
+  }
   const actions = () => Array.isArray(state?.actions) ? state.actions : [];
   const displayRound = () => (Number(state?.round) || 0) + 1;
 
@@ -1038,7 +1066,7 @@
         base.push(`<rect class="${cls}" x="${x}" y="${y}" width="1" height="1"/>`);
         if (wall) continue;
         let isLeg = legal.some(a => isTargeted(a, x, y));
-        if (setup && setupFigure && !state.setup.placements.some(p => p.id !== setupFigure && p.x === x && p.y === y)) isLeg = true;
+        if (setup && setupFigure && placementFits(setupFigure, x, y)) isLeg = true;
         const isAtk = !setup && isLeg && legal[0]?.kind !== 'move';
         const tab = focusCell.x === x && focusCell.y === y ? 0 : -1;
         const unit = targets().find(u => atCell(u, x, y) && u.alive !== false);
@@ -1048,17 +1076,21 @@
         cells.push(`<g class="tile${isLeg ? ' is-legal' : ''}${isAtk ? ' target-tile' : ''}${previewSet.has(x + ',' + y) ? ' is-preview' : ''}" data-x="${x}" data-y="${y}" role="button" tabindex="${tab}" aria-label="${escape(label)}"><rect class="tile-face" x="${x}" y="${y}" width="1" height="1"/><rect class="focus-ring" x="${x + 0.05}" y="${y + 0.05}" width=".9" height=".9"/></g>`);
       }
     }
-    const livingCells = new Set((state.units || []).filter(u => u.alive !== false).map(u => `${u.x},${u.y}`));
+    const livingCells = new Set();
+    for (const u of state.units || []) {
+      if (u.alive !== false) for (const [cx, cy] of unitCellsOf(u)) livingCells.add(`${cx},${cy}`);
+    }
     const sortedUnits = [...(state.units || [])]
-      .filter(u => u.alive !== false || u.team === 'heroes' || !livingCells.has(`${u.x},${u.y}`))
+      .filter(u => u.alive !== false || u.team === 'heroes' || !unitCellsOf(u).some(([cx, cy]) => livingCells.has(`${cx},${cy}`)))
       .sort((a, b) => (a.alive === false ? 0 : 1) - (b.alive === false ? 0 : 1));
     const unitTokens = sortedUnits.map(u => {
-      const cx = u.x + 0.5, cy = u.y + 0.5, life = lifeText(u), inv = invisibleTag(u);
+      const sz = unitSize(u);
+      const cx = u.x + sz * 0.5, cy = u.y + sz * 0.5, life = lifeText(u), inv = invisibleTag(u);
       const words = String(u.name || u.id).split(/[\s_-]+/).filter(Boolean);
       const initial = escape(words.length > 1
         ? words.map(w => (/^\d+$/.test(w) ? w : w[0].toUpperCase())).join('').slice(0, 3)
         : words.join('').slice(0, 2));
-      return `<g class="token ${u.team === 'heroes' ? 'hero' : 'monster'}${u.alive ? '' : ' down'}${isInvisibleAny(u) ? ' invisible-heard' : ''}${u.id === state.turn_id ? ' active' : ''}" data-unit="${escape(u.id)}" role="button" aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${inv ? ', ' + inv : ''}${life ? ', ' + life : ''}`)}"><circle cx="${cx}" cy="${cy}" r=".34"/><text x="${cx}" y="${cy + 0.1}">${initial}</text></g>`;
+      return `<g class="token ${u.team === 'heroes' ? 'hero' : 'monster'}${u.alive ? '' : ' down'}${isInvisibleAny(u) ? ' invisible-heard' : ''}${u.id === state.turn_id ? ' active' : ''}" data-unit="${escape(u.id)}" role="button" aria-label="${escape(`${u.name}, ${u.hp}/${u.max_hp} HP${inv ? ', ' + inv : ''}${life ? ', ' + life : ''}`)}"><circle cx="${cx}" cy="${cy}" r="${(0.34 * sz).toFixed(2)}"/><text x="${cx}" y="${cy + 0.1}">${initial}</text></g>`;
     }).join('');
     board.setAttribute('viewBox', `0 0 ${map.width} ${map.height}`);
     board.innerHTML = `<g pointer-events="none">${base.join('')}</g>${cells.join('')}${unitTokens}`;
@@ -2160,10 +2192,10 @@
     if (!state || busy) return;
     if (state.phase === 'setup') {
       if (setupFigure) {
-        if (['#', 'T'].includes(state.map.tiles[y]?.[x]) || state.setup.placements.some(p => p.id !== setupFigure && p.x === x && p.y === y)) return;
+        if (!placementFits(setupFigure, x, y)) return;
         configure([...state.setup.placements.filter(p => p.id !== setupFigure), { id: setupFigure, x, y }]);
       } else {
-        const u = unitId ? state.units.find(i => i.id === unitId) : state.units.find(i => i.x === x && i.y === y);
+        const u = unitId ? state.units.find(i => i.id === unitId) : state.units.find(i => atCell(i, x, y));
         if (u) { setupFigure = u.id; render(); }
       }
       return;

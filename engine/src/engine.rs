@@ -18,7 +18,43 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 19;
+pub const CURRENT_RULE_VERSION: i32 = 20;
+
+/// Zero-allocation iterator over a creature's `s x s` grid cells in Natural20
+/// `Map.entity_squares_at_pos` order (`ox` outer `0..s`, `oy` inner `0..s`).
+#[derive(Clone, Copy, Debug)]
+pub struct UnitCells {
+    x0: i32,
+    y0: i32,
+    s: i32,
+    ox: i32,
+    oy: i32,
+}
+
+impl UnitCells {
+    #[inline]
+    pub fn new(anchor: Pos, size: u8) -> Self {
+        Self { x0: anchor.0, y0: anchor.1, s: i32::from(size.max(1)), ox: 0, oy: 0 }
+    }
+}
+
+impl Iterator for UnitCells {
+    type Item = Pos;
+
+    #[inline]
+    fn next(&mut self) -> Option<Pos> {
+        if self.ox >= self.s {
+            return None;
+        }
+        let p = (self.x0 + self.ox, self.y0 + self.oy);
+        self.oy += 1;
+        if self.oy >= self.s {
+            self.oy = 0;
+            self.ox += 1;
+        }
+        Some(p)
+    }
+}
 
 /// natural20 `entity.statuses` entries used in the scenario.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -709,8 +745,10 @@ impl Fight {
             let tid = pool.unit_tid(id).ok_or_else(|| format!("unit {id}: no such content"))?;
             let t: &'static Template = &pool.templates[tid as usize];
             let p = placements.iter().find(|p| &p.id == id).ok_or_else(|| format!("no placement for {id}"))?;
-            if g.is_wall(p.x, p.y) {
-                return Err(format!("{id} placed on a wall or off the map at ({}, {})", p.x, p.y));
+            for (cx, cy) in UnitCells::new((p.x, p.y), t.token_size) {
+                if g.is_wall(cx, cy) {
+                    return Err(format!("{id} placed on a wall or off the map at ({}, {})", p.x, p.y));
+                }
             }
             if units.iter().any(|u: &Unit| u.id == *id) {
                 return Err(format!("unit {id} twice"));
@@ -798,11 +836,13 @@ impl Fight {
         }
         let mut occ = vec![None; g.cells()];
         for (i, u) in units.iter().enumerate() {
-            let c = g.index(u.pos.0, u.pos.1);
-            if let Some(o) = occ[c] {
-                return Err(format!("{} and {} on the same square", units[o as usize].id, u.id));
+            for (cx, cy) in UnitCells::new(u.pos, u.t.token_size) {
+                let c = g.index(cx, cy);
+                if let Some(o) = occ[c] {
+                    return Err(format!("{} and {} on the same square", units[o as usize].id, u.id));
+                }
+                occ[c] = Some(i as u8);
             }
-            occ[c] = Some(i as u8);
         }
         Ok(Fight {
             pool,
@@ -872,6 +912,60 @@ impl Fight {
         self.units[a].team != self.units[b].team
     }
 
+    #[inline]
+    pub fn unit_cells_at(&self, u: usize, anchor: Pos) -> UnitCells {
+        UnitCells::new(anchor, self.units[u].t.token_size)
+    }
+
+    #[inline]
+    pub fn unit_cells(&self, u: usize) -> UnitCells {
+        let unit = &self.units[u];
+        UnitCells::new(unit.pos, unit.t.token_size)
+    }
+
+    #[inline]
+    pub fn unit_occupies(&self, u: usize, p: Pos) -> bool {
+        let unit = &self.units[u];
+        let s = i32::from(unit.t.token_size);
+        if s == 1 {
+            unit.pos == p
+        } else {
+            p.0 >= unit.pos.0 && p.0 < unit.pos.0 + s && p.1 >= unit.pos.1 && p.1 < unit.pos.1 + s
+        }
+    }
+
+    /// Terrain-only footprint check (`s x s` in bounds and wall-free unless incorporeal).
+    /// TODO(multi-square-squeeze-block): squeeze footprints are disallowed until Natural20 issue #6.
+    #[inline]
+    pub(crate) fn footprint_terrain_clear(&self, u: usize, anchor: Pos) -> bool {
+        let s = i32::from(self.units[u].t.token_size);
+        if anchor.0 < 0 || anchor.1 < 0 || anchor.0 + s > self.grid.w || anchor.1 + s > self.grid.h {
+            return false;
+        }
+        if self.incorporeal(u) {
+            return true;
+        }
+        for ox in 0..s {
+            for oy in 0..s {
+                if self.grid.is_wall(anchor.0 + ox, anchor.1 + oy) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    #[inline]
+    pub(crate) fn unit_can_pass_other(&self, mover: usize, other: usize) -> bool {
+        if self.incorporeal(mover) || other == mover || !self.opposing(other, mover) || self.units[other].incapacitated() {
+            return true;
+        }
+        if self.creature_space_rules && self.units[other].t.size == "tiny" {
+            return true;
+        }
+        self.units[other].t.size_rank.abs_diff(self.units[mover].t.size_rank) >= 2
+    }
+
     /// Light level at `pos` (0 = Darkness, 1 = Dim Light, 2 = Bright Light),
     /// including 10-ft Dim Light shed by creatures outlined by `Faerie Fire` or
     /// `Starry Wisp` (SRD 5.2.1, rules v18+).
@@ -883,26 +977,88 @@ impl Fight {
         let lit = (0..self.units.len()).any(|o| {
             !self.units[o].dead()
                 && (self.has_effect(o, EffKey::FaerieFire) || self.has_effect(o, EffKey::StarryWisp))
-                && self.square_distance(self.units[o].pos, pos) * 5 <= 10
+                && self.dist_to_square(o, pos) * 5 <= 10
         });
         if lit { 1 } else { 0 }
     }
 
-    /// Check the effect path and the observer's senses at the target square.
+    /// Check the effect path and the observer's senses at the target square (`Map.can_see_square`).
     pub(crate) fn sees_lit_square(&self, observer: usize, pos: Pos) -> bool {
         let u = &self.units[observer];
+        if u.t.token_size == 1 {
+            if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.effective_light_level(pos) == 0 {
+                let senses = u.t.darkvision.max(u.t.blindsight).max(u.t.truesight);
+                if self.square_distance(u.pos, pos) * 5 > senses { return false; }
+            }
+            return self.clear_sight(u.pos, pos);
+        }
+        if self.unit_occupies(observer, pos) {
+            return true;
+        }
+        let mut has_los = false;
+        let mut sighting_dist = 0;
+        for p1 in self.unit_cells(observer) {
+            if !self.grid.in_bounds(p1.0, p1.1) {
+                continue;
+            }
+            if self.clear_sight(p1, pos) {
+                has_los = true;
+                sighting_dist = self.square_distance(p1, pos);
+            }
+        }
+        if !has_los {
+            return false;
+        }
         if self.rule_version >= 9 && self.grid.in_bounds(pos.0, pos.1) && self.effective_light_level(pos) == 0 {
             let senses = u.t.darkvision.max(u.t.blindsight).max(u.t.truesight);
-            if self.square_distance(u.pos, pos) * 5 > senses { return false; }
+            if sighting_dist * 5 > senses {
+                return false;
+            }
         }
-        self.clear_sight(u.pos, pos)
+        true
+    }
+
+    pub(crate) fn units_clear_sight(&self, a: usize, b: usize) -> bool {
+        if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
+            return self.clear_sight(self.units[a].pos, self.units[b].pos);
+        }
+        for p1 in self.unit_cells(a) {
+            if !self.grid.in_bounds(p1.0, p1.1) { continue; }
+            for p2 in self.unit_cells(b) {
+                if !self.grid.in_bounds(p2.0, p2.1) { continue; }
+                if self.clear_sight(p1, p2) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub(crate) fn sees_hider_clearly(&self, observer: usize, hider: usize) -> bool {
-        let pos = self.units[hider].pos;
-        if self.rule_version < 11 { return self.sees_lit_square(observer, pos); }
-        self.effective_light_level(pos) > 0 && self.sees_lit_square(observer, pos)
-            && self.grid.corner_wall_grade(self.units[observer].pos, pos) < 3
+        let oa = self.units[observer].t.token_size;
+        let ob = self.units[hider].t.token_size;
+        if oa == 1 && ob == 1 {
+            let pos = self.units[hider].pos;
+            if self.rule_version < 11 { return self.sees_lit_square(observer, pos); }
+            return self.effective_light_level(pos) > 0 && self.sees_lit_square(observer, pos)
+                && self.grid.corner_wall_grade(self.units[observer].pos, pos) < 3;
+        }
+        if self.rule_version < 11 {
+            return self.unit_cells(hider).any(|pos| self.sees_lit_square(observer, pos));
+        }
+        for p1 in self.unit_cells(observer) {
+            if !self.grid.in_bounds(p1.0, p1.1) { continue; }
+            for p2 in self.unit_cells(hider) {
+                if !self.grid.in_bounds(p2.0, p2.1) { continue; }
+                if self.effective_light_level(p2) > 0
+                    && self.clear_sight(p1, p2)
+                    && self.grid.corner_wall_grade(p1, p2) < 3
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub(crate) fn reveal_exposed_hiders(&mut self) {
@@ -944,25 +1100,78 @@ impl Fight {
         if a == b {
             return true;
         }
-        if self.units[b].invisible() {
-            let negated = self.rule_version >= 18
-                && (self.has_effect(b, EffKey::FaerieFire)
-                    || self.has_effect(b, EffKey::StarryWisp)
-                    || self.has_effect(a, EffKey::SeeInvisibility));
-            if !negated {
-                let sense = self.units[a].t.blindsight.max(self.units[a].t.truesight);
-                if !(sense > 0 && self.dist(a, b) * 5 <= sense && self.clear_sight(self.units[a].pos, self.units[b].pos)) {
+        if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
+            if self.units[b].invisible() {
+                let negated = self.rule_version >= 18
+                    && (self.has_effect(b, EffKey::FaerieFire)
+                        || self.has_effect(b, EffKey::StarryWisp)
+                        || self.has_effect(a, EffKey::SeeInvisibility));
+                if !negated {
+                    let sense = self.units[a].t.blindsight.max(self.units[a].t.truesight);
+                    if !(sense > 0 && self.dist(a, b) * 5 <= sense && self.clear_sight(self.units[a].pos, self.units[b].pos)) {
+                        return false;
+                    }
+                }
+            }
+            if let Some(stealth) = self.units[b].hidden_stealth {
+                let sense = self.units[a].t.blindsight;
+                if self.units[a].t.passive_perception < stealth && !(sense > 0 && self.dist(a, b) * 5 <= sense) {
                     return false;
                 }
             }
+            return self.sees_lit_square(a, self.units[b].pos);
         }
+        self.can_see_multisquare(a, b)
+    }
+
+    /// Multi-square `Map.can_see` mirror (`natural20/map.py:2116-2195`): iterates
+    /// `entity_1_squares x entity_2_squares` (`ox` outer, `oy` inner), takes max
+    /// illumination across visible pairs, and overwrites `sighting_distance` with
+    /// the last visible pair (tracked as item #3 in `NATURAL20_ISSUES_FOR_JOSEPH.md`).
+    fn can_see_multisquare(&self, a: usize, b: usize) -> bool {
         if let Some(stealth) = self.units[b].hidden_stealth {
             let sense = self.units[a].t.blindsight;
             if self.units[a].t.passive_perception < stealth && !(sense > 0 && self.dist(a, b) * 5 <= sense) {
                 return false;
             }
         }
-        self.sees_lit_square(a, self.units[b].pos)
+        let mut has_los = false;
+        let mut max_light = 0u8;
+        let mut sighting_dist = 0i32;
+        for p1 in self.unit_cells(a) {
+            if !self.grid.in_bounds(p1.0, p1.1) { continue; }
+            for p2 in self.unit_cells(b) {
+                if !self.grid.in_bounds(p2.0, p2.1) { continue; }
+                if !self.clear_sight(p1, p2) { continue; }
+                has_los = true;
+                max_light = max_light.max(self.effective_light_level(p2));
+                sighting_dist = self.square_distance(p1, p2);
+            }
+        }
+        if !has_los {
+            return false;
+        }
+        let dist_ft = sighting_dist * 5;
+        let ua = &self.units[a];
+        if self.units[b].invisible() {
+            let negated = self.rule_version >= 18
+                && (self.has_effect(b, EffKey::FaerieFire)
+                    || self.has_effect(b, EffKey::StarryWisp)
+                    || self.has_effect(a, EffKey::SeeInvisibility));
+            if !negated {
+                let sense = ua.t.blindsight.max(ua.t.truesight);
+                if !(sense > 0 && dist_ft <= sense) {
+                    return false;
+                }
+            }
+        }
+        if self.rule_version >= 9 && max_light == 0 {
+            let senses = ua.t.darkvision.max(ua.t.blindsight).max(ua.t.truesight);
+            if dist_ft > senses {
+                return false;
+            }
+        }
+        true
     }
 
     /// True if `u` has the Restrained condition (direct status or `restrained_override`, e.g. Entangle).
@@ -1026,8 +1235,53 @@ impl Fight {
     }
 
     #[inline]
+    pub(crate) fn footprint_chebyshev(pa: Pos, sa: i32, pb: Pos, sb: i32) -> i32 {
+        let dx = (pb.0 - (pa.0 + sa - 1)).max(pa.0 - (pb.0 + sb - 1)).max(0);
+        let dy = (pb.1 - (pa.1 + sa - 1)).max(pa.1 - (pb.1 + sb - 1)).max(0);
+        dx.max(dy)
+    }
+
+    #[inline]
     pub fn dist(&self, a: usize, b: usize) -> i32 {
-        self.square_distance(self.units[a].pos, self.units[b].pos)
+        let (ua, ub) = (&self.units[a], &self.units[b]);
+        let (sa, sb) = (ua.t.token_size, ub.t.token_size);
+        if sa == 1 && sb == 1 {
+            return self.square_distance(ua.pos, ub.pos);
+        }
+        self.dist_at(a, ua.pos, b)
+    }
+
+    #[inline]
+    pub fn dist_at(&self, a: usize, anchor_a: Pos, b: usize) -> i32 {
+        let sa = self.units[a].t.token_size;
+        let ub = &self.units[b];
+        let sb = ub.t.token_size;
+        if sa == 1 && sb == 1 {
+            return self.square_distance(anchor_a, ub.pos);
+        }
+        if self.rule_version >= 6 {
+            return Self::footprint_chebyshev(anchor_a, i32::from(sa), ub.pos, i32::from(sb));
+        }
+        let mut best = i32::MAX;
+        for ca in UnitCells::new(anchor_a, sa) {
+            for cb in UnitCells::new(ub.pos, sb) {
+                best = best.min(distance(ca, cb));
+            }
+        }
+        best
+    }
+
+    #[inline]
+    pub fn dist_to_square(&self, u: usize, p: Pos) -> i32 {
+        let unit = &self.units[u];
+        let s = unit.t.token_size;
+        if s == 1 {
+            return self.square_distance(unit.pos, p);
+        }
+        if self.rule_version >= 6 {
+            return Self::footprint_chebyshev(unit.pos, i32::from(s), p, 1);
+        }
+        UnitCells::new(unit.pos, s).map(|c| distance(c, p)).min().unwrap_or(0)
     }
 
     /// SRD square-grid ranges count the shortest sequence of adjacent squares.
@@ -1040,13 +1294,60 @@ impl Fight {
     }
 
     #[inline]
+    pub(crate) fn within_reach_at(&self, a: usize, anchor_a: Pos, b: usize, feet: i32) -> bool {
+        if self.units[a].t.token_size == 1 && self.units[b].t.token_size == 1 {
+            return self.within_reach(anchor_a, self.units[b].pos, feet);
+        }
+        self.dist_at(a, anchor_a, b) * 5 <= feet
+    }
+
+    #[inline]
+    pub(crate) fn within_reach_footprints(&self, a: Pos, sa: u8, b: Pos, sb: u8, feet: i32) -> bool {
+        if sa == 1 && sb == 1 {
+            return self.within_reach(a, b, feet);
+        }
+        if self.rule_version >= 6 {
+            Self::footprint_chebyshev(a, i32::from(sa), b, i32::from(sb)) * 5 <= feet
+        } else {
+            UnitCells::new(a, sa)
+                .any(|ca| UnitCells::new(b, sb).any(|cb| within_melee(ca, cb, feet)))
+        }
+    }
+
+    /// Minimum engine rule version required by a creature template.
+    /// Multi-square footprints (token_size > 1) and the SRD 5.2.1 Ogre/Owlbear
+    /// pack require rule version 20+.
+    #[inline]
+    pub fn min_rule_version_for_template(t: &Template) -> i32 {
+        if t.token_size > 1 || matches!(t.base_id, "ogre" | "owlbear") {
+            20
+        } else {
+            1
+        }
+    }
+
+    /// Validate that every unit in this fight is supported by `version`.
+    pub fn validate_rule_version(&self, version: i32) -> Result<(), String> {
+        for u in &self.units {
+            let min = Self::min_rule_version_for_template(u.t);
+            if version < min {
+                return Err(format!(
+                    "{} ({}) requires rule_version >= {min}, got {version}",
+                    u.id, u.t.id
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[inline]
     pub fn token_at(&self, p: Pos) -> Option<usize> {
         if !self.grid.in_bounds(p.0, p.1) {
             return None;
         }
         let top = self.occ[self.grid.index(p.0, p.1)]? as usize;
         if self.rule_version >= 8 && self.units[top].dead() {
-            return self.units.iter().position(|unit| unit.pos == p && !unit.dead());
+            return self.units.iter().enumerate().position(|(i, unit)| !unit.dead() && self.unit_occupies(i, p));
         }
         Some(top)
     }
@@ -1075,9 +1376,8 @@ impl Fight {
         self.known_cover(origin, target, 0)
     }
 
-    pub(crate) fn known_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
-        if self.rule_version < 11 { return self.known_point_cover(origin, target, hidden); }
-        let pos = self.units[target].pos;
+    #[inline]
+    fn single_pair_cover(&self, origin: Pos, pos: Pos, hidden: u32) -> i32 {
         let grade = self.grid.corner_cover_grade(origin, pos, |p| {
             self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
         });
@@ -1089,23 +1389,67 @@ impl Fight {
         }
     }
 
+    /// Mirrors `natural20/utils/ac_utils.py:39-69`: accumulates `max_ac` across
+    /// `source_squares x target_squares` and returns on the first pair with LOS
+    /// (tracked as item #1 in `NATURAL20_ISSUES_FOR_JOSEPH.md`).
+    fn known_cover_squares(&self, src_cells: UnitCells, target: usize, hidden: u32) -> i32 {
+        let mut max_ac = 0;
+        for s_pos in src_cells {
+            if !self.grid.in_bounds(s_pos.0, s_pos.1) { continue; }
+            for t_pos in self.unit_cells(target) {
+                if !self.grid.in_bounds(t_pos.0, t_pos.1) { continue; }
+                max_ac = max_ac.max(self.single_pair_cover(s_pos, t_pos, hidden));
+                if self.clear_sight(s_pos, t_pos) {
+                    return max_ac;
+                }
+            }
+        }
+        max_ac
+    }
+
+    pub(crate) fn known_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
+        if self.rule_version < 11 { return self.known_point_cover(origin, target, hidden); }
+        if self.units[target].t.token_size == 1 {
+            return self.single_pair_cover(origin, self.units[target].pos, hidden);
+        }
+        self.known_cover_squares(UnitCells::new(origin, 1), target, hidden)
+    }
+
+    pub(crate) fn known_cover_from_unit(&self, src: usize, target: usize, hidden: u32) -> i32 {
+        if self.rule_version < 11 { return self.known_point_cover(self.units[src].pos, target, hidden); }
+        if self.units[src].t.token_size == 1 && self.units[target].t.token_size == 1 {
+            return self.single_pair_cover(self.units[src].pos, self.units[target].pos, hidden);
+        }
+        self.known_cover_squares(self.unit_cells(src), target, hidden)
+    }
+
     pub(crate) fn known_point_cover(&self, origin: Pos, target: usize, hidden: u32) -> i32 {
         if self.rule_version < 9 { return 0; }
-        let (walls, creatures) = self.grid.cover_rays(origin, self.units[target].pos, |p| {
-            self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
-        });
-        if walls == 15 {
-            let pos = self.units[target].pos;
-            let visible = if self.rule_version >= 11 { self.clear_effect(origin, pos) } else { self.clear_sight(origin, pos) };
-            if !visible { return 0; }
+        let single = |pos: Pos| {
+            let (walls, creatures) = self.grid.cover_rays(origin, pos, |p| {
+                self.token_at(p).is_some_and(|u| hidden & (1 << u) == 0)
+            });
+            if walls == 15 {
+                let visible = if self.rule_version >= 11 { self.clear_effect(origin, pos) } else { self.clear_sight(origin, pos) };
+                if !visible { return 0; }
+            }
+            if walls.count_ones() >= 3 { 5 }
+            else if (walls | creatures).count_ones() >= 2 { 2 }
+            else { 0 }
+        };
+        if self.units[target].t.token_size == 1 {
+            return single(self.units[target].pos);
         }
-        if walls.count_ones() >= 3 { 5 }
-        else if (walls | creatures).count_ones() >= 2 { 2 }
-        else { 0 }
+        // Mirror `Map.directional_cover(origin, target_pos, point_origin=True)` on the target anchor.
+        single(self.units[target].pos)
     }
 
     pub(crate) fn attack_ac(&self, origin: Pos, target: usize) -> i32 {
         self.armor_class(target) + self.cover_bonus_from(origin, target)
+    }
+
+    pub(crate) fn attack_ac_from_unit(&self, src: usize, target: usize) -> i32 {
+        self.armor_class(target) + self.known_cover_from_unit(src, target, 0)
     }
 
     /// Annotate the roll at resolution, while the target, cover and reaction AC are known.
@@ -1123,6 +1467,10 @@ impl Fight {
 
     pub(crate) fn save_cover(&self, origin: Pos, target: usize, ability: Ability) -> i32 {
         if ability == Ability::Dex { self.cover_bonus_from(origin, target) } else { 0 }
+    }
+
+    pub(crate) fn save_cover_from_unit(&self, src: usize, target: usize, ability: Ability) -> i32 {
+        if ability == Ability::Dex { self.known_cover_from_unit(src, target, 0) } else { 0 }
     }
 
     pub(crate) fn point_save_cover(&self, origin: Pos, target: usize, ability: Ability) -> i32 {
@@ -1147,7 +1495,16 @@ impl Fight {
     }
 
     pub(crate) fn step_clears_corner(&self, u: usize, from: Pos, to: Pos) -> bool {
-        self.incorporeal(u) || self.grid.clears_corner(from, to)
+        if self.incorporeal(u) {
+            return true;
+        }
+        if self.units[u].t.token_size == 1 {
+            return self.grid.clears_corner(from, to);
+        }
+        if from.0 == to.0 || from.1 == to.1 {
+            return true;
+        }
+        self.footprint_terrain_clear(u, (to.0, from.1)) && self.footprint_terrain_clear(u, (from.0, to.1))
     }
 
     pub(crate) fn shadow_can_hide(&self, u: usize) -> bool {
@@ -1155,34 +1512,69 @@ impl Fight {
         self.rule_version >= 9 && unit.t.shadow_stealth.is_some() && self.grid.light_level(unit.pos) < 2
     }
 
-    /// `Map.passable(entity, x, y, battle)` for a 1x1 creature (no squeezing).
+    /// `Map.passable(entity, x, y, battle, allow_squeeze=False)`.
+    /// TODO(multi-square-squeeze-block): squeezing is disallowed until Natural20 issue #6.
     pub fn passable(&self, u: usize, p: Pos) -> bool {
-        if self.incorporeal(u) { return self.grid.in_bounds(p.0, p.1); }
-        if self.grid.is_wall(p.0, p.1) {
+        let s = self.units[u].t.token_size;
+        if s == 1 {
+            if self.incorporeal(u) { return self.grid.in_bounds(p.0, p.1); }
+            if self.grid.is_wall(p.0, p.1) {
+                return false;
+            }
+            if let Some(o) = self.token_at(p) {
+                if !self.unit_can_pass_other(u, o) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        self.passable_ignoring_masked(u, p, 0)
+    }
+
+    pub(crate) fn passable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
+        if !self.footprint_terrain_clear(u, p) {
             return false;
         }
-        if let Some(o) = self.token_at(p) {
-            if o != u
-                && self.opposing(o, u)
-                && !self.units[o].incapacitated()
-                && !(self.creature_space_rules && self.units[o].t.size == "tiny")
-                && self.units[o].t.size_rank.abs_diff(self.units[u].t.size_rank) < 2
-            {
-                return false;
+        if self.incorporeal(u) {
+            return true;
+        }
+        for c in self.unit_cells_at(u, p) {
+            if let Some(o) = self.token_at(c) {
+                if (masked & (1 << o)) == 0 && !self.unit_can_pass_other(u, o) {
+                    return false;
+                }
             }
         }
         true
     }
 
-    /// Current rules permit ending movement on remains.
+    /// Current rules permit ending movement on remains; no squeezing for multi-square units.
+    /// TODO(multi-square-squeeze-block): squeezing is disallowed until Natural20 issue #6.
     pub fn placeable(&self, u: usize, p: Pos) -> bool {
-        if !self.passable(u, p) {
+        if self.units[u].t.token_size == 1 {
+            if !self.passable(u, p) {
+                return false;
+            }
+            return match self.token_at(p) {
+                Some(o) => o == u,
+                None => true,
+            };
+        }
+        self.placeable_ignoring_masked(u, p, 0)
+    }
+
+    pub(crate) fn placeable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
+        if !self.passable_ignoring_masked(u, p, masked) {
             return false;
         }
-        match self.token_at(p) {
-            Some(o) => o == u,
-            None => true,
+        for c in self.unit_cells_at(u, p) {
+            if let Some(o) = self.token_at(c) {
+                if o != u && (masked & (1 << o)) == 0 {
+                    return false;
+                }
+            }
         }
+        true
     }
 
     fn difficult_occupant(&self, u: usize, o: usize) -> bool {
@@ -1190,15 +1582,35 @@ impl Fight {
             && (!self.creature_space_rules || (!self.allies(u, o) && self.units[o].t.size != "tiny"))
     }
 
-    /// Occupied or zone difficult terrain under the tape's ruleset.
+    /// Occupied or zone difficult terrain under the tape's ruleset (`Map.difficult_terrain`).
     pub fn difficult(&self, u: usize, p: Pos) -> bool {
-        if self.is_entangle_square(p) {
-            return true;
+        if self.units[u].t.token_size == 1 {
+            if self.is_entangle_square(p) {
+                return true;
+            }
+            return match self.token_at(p) {
+                Some(o) => self.difficult_occupant(u, o),
+                None => false,
+            };
         }
-        match self.token_at(p) {
-            Some(o) => self.difficult_occupant(u, o),
-            None => false,
+        self.difficult_ignoring_masked(u, p, 0)
+    }
+
+    pub(crate) fn difficult_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
+        for c in self.unit_cells_at(u, p) {
+            if self.unit_occupies(u, c) {
+                continue;
+            }
+            if self.is_entangle_square(c) {
+                return true;
+            }
+            if let Some(o) = self.token_at(c) {
+                if (masked & (1 << o)) == 0 && self.difficult_occupant(u, o) {
+                    return true;
+                }
+            }
         }
+        false
     }
 
     /// `Battle.enemy_in_melee_range(source)`.
@@ -1223,7 +1635,7 @@ impl Fight {
         false
     }
 
-    /// `UndeadArena.enemy_within(entity, squares)` (Chebyshev).
+    /// `UndeadArena.enemy_within(entity, squares)` / `GeneralArena.enemy_within` (anchor Chebyshev).
     pub fn enemy_within(&self, s: usize, squares: i32) -> bool {
         let (x, y) = self.units[s].pos;
         self.units.iter().enumerate().any(|(o, u)| {
@@ -2088,7 +2500,9 @@ impl Fight {
             }
         }
         // Dragged grappled targets trail behind the mover (move_action.py:207-231).
-        if self.units[src].is_grappling() {
+        // TODO(multi-square-drag-block): Large+ grappler drag is blocked until
+        // Natural20 issue #6 resolves trailing-square overlap.
+        if self.units[src].is_grappling() && self.units[src].t.token_size == 1 {
             let dragged = self.units[src].grappling.clone();
             for (i, t) in dragged.into_iter().enumerate() {
                 let lag = i + 1;
@@ -2114,14 +2528,39 @@ impl Fight {
     /// `Map.move_to`.
     pub(crate) fn move_to(&mut self, u: usize, dest: Pos) {
         let from = self.units[u].pos;
-        let fi = self.grid.index(from.0, from.1);
-        let di = self.grid.index(dest.0, dest.1);
-        if self.rule_version >= 7 && self.occ[fi] == Some(u as u8) {
-            // An interrupted legal crossing can temporarily share a creature's square.
-            self.occ[fi] = self.units.iter().enumerate().find(|(i, unit)| *i != u && unit.pos == from && (self.rule_version < 8 || !unit.dead())).map(|(i, _)| i as u8);
-        } else if self.rule_version < 7 { self.occ[fi] = None; }
-        if self.rule_version < 8 || !self.units[u].dead() { self.occ[di] = Some(u as u8); }
+        let sz = self.units[u].t.token_size;
+        if sz == 1 {
+            let fi = self.grid.index(from.0, from.1);
+            let di = self.grid.index(dest.0, dest.1);
+            if self.rule_version >= 7 && self.occ[fi] == Some(u as u8) {
+                // An interrupted legal crossing can temporarily share a creature's square.
+                self.occ[fi] = self.units.iter().enumerate().find(|(i, unit)| *i != u && self.unit_occupies(*i, from) && (self.rule_version < 8 || !unit.dead())).map(|(i, _)| i as u8);
+            } else if self.rule_version < 7 { self.occ[fi] = None; }
+            if self.rule_version < 8 || !self.units[u].dead() { self.occ[di] = Some(u as u8); }
+            self.units[u].pos = dest;
+            if dest != from { self.reveal_exposed_hiders(); }
+            return;
+        }
+        for c in UnitCells::new(from, sz) {
+            if !self.grid.in_bounds(c.0, c.1) { continue; }
+            let ci = self.grid.index(c.0, c.1);
+            if self.rule_version >= 7 && self.occ[ci] == Some(u as u8) {
+                self.occ[ci] = self.units.iter().enumerate()
+                    .find(|(i, unit)| *i != u && self.unit_occupies(*i, c) && (self.rule_version < 8 || !unit.dead()))
+                    .map(|(i, _)| i as u8);
+            } else if self.rule_version < 7 {
+                self.occ[ci] = None;
+            }
+        }
         self.units[u].pos = dest;
+        if self.rule_version < 8 || !self.units[u].dead() {
+            for c in UnitCells::new(dest, sz) {
+                if self.grid.in_bounds(c.0, c.1) {
+                    let ci = self.grid.index(c.0, c.1);
+                    self.occ[ci] = Some(u as u8);
+                }
+            }
+        }
         if dest != from { self.reveal_exposed_hiders(); }
     }
 
@@ -2159,7 +2598,7 @@ impl Fight {
                     continue;
                 }
                 let Some(reach) = self.units[e].t.melee_ft else { continue };
-                if self.within_reach(self.units[e].pos, p, reach) {
+                if self.within_reach_at(mover, p, e, reach) {
                     entered[e] = true;
                 } else if entered[e] {
                     left.push((e, index));
@@ -2586,7 +3025,7 @@ impl Fight {
             if def.breaks_invisibility {
                 self.resolve_trigger(src, HookEv::AttackResolved);
             }
-            let cover = self.save_cover(self.units[src].pos, tgt, ab);
+            let cover = self.save_cover_from_unit(src, tgt, ab);
             let total = self.save_with_dc(tgt, ab, dc, false, cover, false, false, false).0;
             if total >= dc {
                 if def.save_immune {
@@ -2667,7 +3106,7 @@ impl Fight {
             if let Some(ally) = self.redirect_window(src, tgt, face, total, true, self.units[src].pos) {
                 tgt = ally;
             }
-            let ac = self.attack_ac(self.units[src].pos, tgt);
+            let ac = self.attack_ac_from_unit(src, tgt);
             dismiss = self.resolve_trigger(tgt, HookEv::AfterAttackRollTarget);
             if self.units[tgt].t.pc {
                 self.units[tgt].pools_init = true;
@@ -2872,7 +3311,7 @@ impl Fight {
                     if (not_undead && tt.undead) || (not_elf && tt.elf) {
                         continue;
                     }
-                    let cover = self.save_cover(self.units[src].pos, tgt, ability);
+                    let cover = self.save_cover_from_unit(src, tgt, ability);
                     let total = self.save_with_dc(tgt, ability, dc, false, cover, false, false, false).0;
                     if total < dc {
                         effects.push(HitEffect::Condition(condition));
@@ -3061,7 +3500,7 @@ impl Fight {
                 HitEffect::Push { distance } => {
                     if !self.units[tgt].dead() {
                         let dest = self.push_square_dist(tgt, self.units[src].pos, &[], distance);
-                        if dest != self.units[tgt].pos && self.token_at(dest).map_or(true, |o| o == tgt) {
+                        if dest != self.units[tgt].pos && self.placeable(tgt, dest) {
                             self.move_to(tgt, dest);
                             self.prune_grapples_around(tgt);
                         }
@@ -3153,7 +3592,7 @@ impl Fight {
     fn do_blind_attack(&mut self, src: usize, atk: usize, square: Pos) {
         self.notes.blind_attacks += 1;
         let occupant = (0..self.units.len())
-            .find(|&o| o != src && self.units[o].pos == square && !self.units[o].dead() && !self.can_see(src, o));
+            .find(|&o| o != src && self.unit_occupies(o, square) && !self.units[o].dead() && !self.can_see(src, o));
         if let Some(o) = occupant {
             self.do_attack_inner(src, atk, o, false, false, Some(o));
             return;
@@ -3231,7 +3670,7 @@ impl Fight {
             return None;
         }
         let t = &self.units[tgt];
-        if !t.conscious() || t.incapacitated() || !t.has_reaction() {
+        if !t.conscious() || t.incapacitated() || !t.has_reaction() || t.t.token_size != 1 {
             return None;
         }
         let would_hit = if face == 1 {
@@ -3252,6 +3691,7 @@ impl Fight {
                     && self.allies(tgt, o)
                     && !x.dead()
                     && x.conscious()
+                    && x.t.token_size == 1
                     && (spec.ally_sizes.is_empty() || spec.ally_sizes.contains(&x.t.size))
                     && self.dist(tgt, o) * 5 <= spec.range
             })
@@ -3550,12 +3990,25 @@ impl Fight {
         for g in grapplers {
             self.release_grapple(g, u);
         }
+        let sz = self.units[u].t.token_size;
         let unit = &mut self.units[u];
         unit.add_status(St::Dead);
         if self.rule_version >= 8 {
-            let cell = self.grid.index(pos.0, pos.1);
-            if self.occ[cell] == Some(u as u8) {
-                self.occ[cell] = self.units.iter().position(|other| other.pos == pos && !other.dead()).map(|i| i as u8);
+            if sz == 1 {
+                let cell = self.grid.index(pos.0, pos.1);
+                if self.occ[cell] == Some(u as u8) {
+                    self.occ[cell] = self.units.iter().enumerate().position(|(i, other)| !other.dead() && self.unit_occupies(i, pos)).map(|i| i as u8);
+                }
+            } else {
+                for c in UnitCells::new(pos, sz) {
+                    if !self.grid.in_bounds(c.0, c.1) { continue; }
+                    let cell = self.grid.index(c.0, c.1);
+                    if self.occ[cell] == Some(u as u8) {
+                        self.occ[cell] = self.units.iter().enumerate()
+                            .position(|(i, other)| !other.dead() && self.unit_occupies(i, c))
+                            .map(|i| i as u8);
+                    }
+                }
             }
         }
         self.end_rage_if_incapacitated(u);
@@ -4179,7 +4632,7 @@ impl Fight {
         }
         let (ox, oy) = self.units[u].pos;
         let (hx, hy) = self.units[harpy].pos;
-        let cur_dist = (ox - hx).abs().max((oy - hy).abs());
+        let cur_dist = self.dist(u, harpy);
         let mut best: Option<Vec<Pos>> = None;
         let mut best_key: Option<(i32, i32, i32, i32)> = None;
         for dx in -1..=1 {
@@ -4191,7 +4644,7 @@ impl Fight {
                 if !self.grid.in_bounds(nx, ny) {
                     continue;
                 }
-                let nd = (nx - hx).abs().max((ny - hy).abs());
+                let nd = self.dist_at(u, (nx, ny), harpy);
                 if nd >= cur_dist {
                     continue;
                 }
@@ -5045,5 +5498,265 @@ mod srd_level_tests {
         assert_eq!(choices(&mut f), [(1,true,3),(1,false,3),(2,false,4)].into_iter().collect());
         f.units[0].last_slot_turn = Some((f.round, f.turn_idx));
         assert_eq!(choices(&mut f), [(1,true,3)].into_iter().collect());
+    }
+
+    #[test]
+    fn multisquare_ogre_and_owlbear_rules_and_pins() {
+        use crate::batch::{natural20_commit_for_rule_version, DEFAULT_BATCH_RULE_VERSION, NATURAL20_COMMIT_RULE_17, NATURAL20_COMMIT_RULE_18_19};
+        let pool = ContentPool::global();
+        let ogre_t = pool.template(pool.tid("ogre").expect("ogre loaded"));
+        let owlbear_t = pool.template(pool.tid("owlbear").expect("owlbear loaded"));
+        assert_eq!(ogre_t.token_size, 2);
+        assert_eq!(ogre_t.climb_speed, 0);
+        assert_eq!(ogre_t.max_hp, 68);
+        assert_eq!(ogre_t.ac, 11);
+        assert_eq!(ogre_t.speed, 40);
+        assert_eq!(owlbear_t.token_size, 2);
+        assert_eq!(owlbear_t.climb_speed, 40);
+        assert_eq!(owlbear_t.max_hp, 59);
+        assert_eq!(owlbear_t.ac, 13);
+        assert_eq!(owlbear_t.speed, 40);
+        assert_eq!(DEFAULT_BATCH_RULE_VERSION, 17);
+        assert_eq!(natural20_commit_for_rule_version(17), NATURAL20_COMMIT_RULE_17);
+        assert_eq!(natural20_commit_for_rule_version(18), NATURAL20_COMMIT_RULE_18_19);
+        assert_eq!(natural20_commit_for_rule_version(19), NATURAL20_COMMIT_RULE_18_19);
+        assert_ne!(natural20_commit_for_rule_version(20), NATURAL20_COMMIT_RULE_18_19);
+
+        // 2x2 occupancy, distance, move_to, opportunity attacks, partial-area deduplication, blind attack, death cleanup
+        let open = [
+            "........",
+            "........",
+            "........",
+            "........",
+            "........",
+            "........",
+        ];
+        let mut f = fight(&open, &[("ogre-1", (3, 2)), ("guy", (5, 2))]);
+        for c in [(3, 2), (3, 3), (4, 2), (4, 3)] {
+            assert_eq!(f.token_at(c), Some(0));
+            assert!(f.unit_occupies(0, c));
+        }
+        assert_eq!(f.dist(0, 1), 1);
+        // Stepping west from (3,2) to (2,2) leaves Guy's 5-ft reach (2..3 vs 5) -> OA at index 1
+        assert_eq!(f.opportunity_attacks(0, &[(3, 2), (2, 2)]), vec![(1, 1)]);
+        // Stepping south from (3,2) to (3,3) stays within 5 ft of Guy at (5,2) (4,3 is Chebyshev 1 from 5,2) -> no OA
+        assert!(f.opportunity_attacks(0, &[(3, 2), (3, 3)]).is_empty());
+        // Partial-area touching 1 corner or all 4 corners hits Ogre exactly once
+        assert_eq!(f.creatures_in_squares(&[(4, 3)], None), vec![0]);
+        assert_eq!(f.creatures_in_squares(&[(3, 2), (3, 3), (4, 2), (4, 3)], None), vec![0]);
+        // Moving updates all 4 cells cleanly
+        f.move_to(0, (2, 2));
+        assert_eq!(f.token_at((4, 2)), None);
+        assert_eq!(f.token_at((4, 3)), None);
+        assert_eq!(f.token_at((2, 2)), Some(0));
+        assert_eq!(f.token_at((2, 3)), Some(0));
+        // Large grappler drag is blocked (TODO(multi-square-drag-block))
+        f.move_to(0, (3, 2));
+        f.units[0].grappling.push(1);
+        f.units[1].grappled_by.push((0, None));
+        f.units[0].movement = 40;
+        f.commit_move_segment(0, vec![(3, 2), (2, 2)]);
+        assert_eq!(f.units[0].pos, (2, 2));
+        assert_eq!(f.units[1].pos, (5, 2));
+        // Killing Ogre clears all 4 cells from occ
+        f.make_dead(0);
+        for c in [(2, 2), (2, 3), (3, 2), (3, 3)] {
+            assert_eq!(f.token_at(c), None);
+        }
+
+        // Squeeze block vs 2-wide doorway (TODO(multi-square-squeeze-block))
+        let wall_1 = [
+            "HHH.HHH",
+            ".......",
+            ".......",
+            ".......",
+        ];
+        let f1 = fight(&wall_1, &[("ogre-1", (2, 1)), ("guy", (0, 1))]);
+        assert!(!f1.passable(0, (3, 0)));
+        assert!(!f1.placeable(0, (3, 0)));
+        let wall_2 = [
+            "HH..HHH",
+            ".......",
+            ".......",
+            ".......",
+        ];
+        let f2 = fight(&wall_2, &[("ogre-1", (2, 1)), ("guy", (0, 1))]);
+        assert!(f2.passable(0, (2, 0)));
+        assert!(f2.placeable(0, (2, 0)));
+
+        // Rule-20 minimum enforced on game creation, replay, and web replay
+        assert!(f1.validate_rule_version(17).is_err());
+        assert!(f1.validate_rule_version(18).is_err());
+        assert!(f1.validate_rule_version(19).is_err());
+        assert!(f1.validate_rule_version(20).is_ok());
+
+        // Catalog fixed-footprint validation and multi-square zone auto-placement
+        {
+            use crate::catalog::Entry;
+            let room10x8: Vec<String> = std::iter::once("HHHHHHHHHH".to_string())
+                .chain((0..6).map(|_| "H........H".to_string()))
+                .chain(std::iter::once("HHHHHHHHHH".to_string()))
+                .collect();
+            let bad_wall = serde_json::json!({
+                "id": "bad-ogre-wall",
+                "map": {"name": "room", "rows": room10x8},
+                "party": ["guy"],
+                "roster": ["ogre"],
+                "layout": {"rule": "fixed", "placements": [
+                    {"id": "guy", "x": 1, "y": 1},
+                    {"id": "ogre-1", "x": 8, "y": 3},
+                ]}
+            });
+            assert!(Entry::from_json(&bad_wall, pool).is_err(), "wall-clipping Ogre must be rejected");
+
+            let bad_overlap = serde_json::json!({
+                "id": "bad-ogre-overlap",
+                "map": {"name": "room", "rows": room10x8},
+                "party": ["guy"],
+                "roster": ["ogre"],
+                "layout": {"rule": "fixed", "placements": [
+                    {"id": "guy", "x": 4, "y": 4},
+                    {"id": "ogre-1", "x": 3, "y": 3},
+                ]}
+            });
+            assert!(Entry::from_json(&bad_overlap, pool).is_err(), "hero inside Ogre far corner must be rejected");
+
+            for monster in ["ogre", "owlbear"] {
+                let row = serde_json::json!({
+                    "id": format!("zone-{monster}"),
+                    "map": {"name": "room", "rows": room10x8},
+                    "party": ["guy", "elion"],
+                    "roster": [monster],
+                    "layout": {"rule": "zone", "require_sight": true},
+                });
+                let entry = Entry::from_json(&row, pool).expect("zone entry valid");
+                for seed in 0..32u64 {
+                    let placed = entry.place(seed).expect("zone placement succeeds");
+                    let fg = Fight::on_map(pool, entry.grid.clone(), &entry.units, &placed.placements, 30, Trace::free(seed));
+                    assert!(fg.is_ok(), "{monster} seed {seed}: {:?}", fg.err());
+                }
+            }
+
+            // BatchEnv/Game rejects rule < 20 for Ogre/Owlbear
+            use crate::batch::{EnvConfig, EpisodeSpec, Game};
+            use crate::env::Controller;
+            let good_fixed = serde_json::json!({
+                "id": "good-ogre",
+                "map": {"name": "room", "rows": room10x8},
+                "party": ["guy"],
+                "roster": ["ogre"],
+                "layout": {"rule": "fixed", "placements": [
+                    {"id": "guy", "x": 1, "y": 1},
+                    {"id": "ogre-1", "x": 4, "y": 3},
+                ]}
+            });
+            let entry = std::sync::Arc::new(Entry::from_json(&good_fixed, pool).unwrap());
+            let spec = EpisodeSpec { encounter: "good-ogre".into(), map_seed: 0, layout_seed: 0, dice_seed: 7, offset_x: 0, offset_y: 0 };
+            let cfg = EnvConfig { scores: false, health: true, max_rounds: 30, standing_weight: 0.5, max_steps: 256 };
+            for bad_ver in [17, 18, 19] {
+                assert!(
+                    Game::with_rule_version(&entry, &spec, [Controller::External, Controller::Native], &[], &cfg, pool, bad_ver).is_err(),
+                    "rule {bad_ver} must reject Ogre"
+                );
+            }
+            assert!(Game::with_rule_version(&entry, &spec, [Controller::External, Controller::Native], &[], &cfg, pool, 20).is_ok());
+
+            // v5 observation: full 2x2 enemy footprint + threat plane + reach at (6, 3)
+            use crate::encode::{Obs, Objective, Version, CELLS, N, R, S};
+            use crate::env::{Control, Env};
+            let obs_room = [
+                "HHHHHHHHHH",
+                "H........H",
+                "H........H",
+                "H........H",
+                "H........H",
+                "H........H",
+                "H........H",
+                "HHHHHHHHHH",
+            ];
+            let mut f_obs = Fight::on_map(
+                pool,
+                Grid::shared(&obs_room).unwrap(),
+                &["guy".into(), "ogre-1".into()],
+                &[Placement { id: "guy".into(), x: 6, y: 3 }, Placement { id: "ogre-1".into(), x: 4, y: 3 }],
+                30,
+                Trace::free(1),
+            ).unwrap();
+            f_obs.set_rule_version(20);
+            let mut env = Env::new(
+                f_obs,
+                Control { teams: [Controller::External, Controller::External], external_units: vec![] },
+                false,
+            );
+            if env.decision().unwrap().actor == 1 {
+                let end_row = env.decision().unwrap().legal.iter().position(|a| matches!(a, Act::EndTurn)).unwrap();
+                env.step(end_row).unwrap();
+            }
+            assert_eq!(env.decision().unwrap().actor, 0);
+            let obs = Obs::of_version(&env, Some(0), (0, 0), &Objective::default(), Version::V5).unwrap();
+            let enemy_ch = 7usize;
+            let threat_ch = 11usize;
+            let path_ch = 13usize;
+            for (x, y) in [(4usize, 3usize), (5, 3), (4, 4), (5, 4)] {
+                assert_eq!(obs.map[enemy_ch * CELLS + y * S + x], 1, "enemy plane missing ({x},{y})");
+                assert_eq!(obs.map[path_ch * CELLS + y * S + x], 255, "path plane walkable on ogre ({x},{y})");
+            }
+            assert!(obs.map[threat_ch * CELLS + 3 * S + 6] >= 1, "threat plane must cover hero at (6,3)");
+            // creature_rel[hero=0, ogre=1, IN_REACH=4] and [ogre=1, hero=0, IN_REACH=4]
+            assert_eq!(obs.creature_rel[(0 * N + 1) * R + 4], 1);
+            assert_eq!(obs.creature_rel[(1 * N + 0) * R + 4], 1);
+        }
+
+        // Web replay v21 omits token_size/cells/climb_speed (1x1) and rejects Large creatures; v22 includes them
+        use crate::present::{LevelInput, WebArena, CURRENT_WEB_REPLAY_VERSION};
+        use crate::tape::Placement;
+        assert_eq!(CURRENT_WEB_REPLAY_VERSION, 22);
+        let level_skel = LevelInput {
+            encounter_id: "test-skel".into(),
+            preset_id: "test-skel".into(),
+            theme: "woodland".into(),
+            map_name: "open".into(),
+            rows: open.iter().map(|s| s.to_string()).collect(),
+            scene: serde_json::json!({"props": []}),
+            level_view: serde_json::json!({}),
+            heroes: vec!["guy".into()],
+            monsters: vec![("skeleton-1".into(), "skeleton".into(), "Skeleton".into())],
+            suggested_placements: vec![
+                Placement { id: "guy".into(), x: 0, y: 0 },
+                Placement { id: "skeleton-1".into(), x: 3, y: 2 },
+            ],
+        };
+        let mut a21 = WebArena::with_trace(level_skel, Trace::web_free(7), 0, "c".into(), "e".into(), 21).unwrap();
+        let st21 = a21.start().unwrap();
+        let sk21 = st21["units"].as_array().unwrap().iter().find(|u| u["id"] == "skeleton-1").unwrap();
+        assert!(sk21.get("token_size").is_none());
+        assert!(sk21.get("cells").is_none());
+        assert!(sk21.get("climb_speed").is_none());
+
+        let level = LevelInput {
+            encounter_id: "test".into(),
+            preset_id: "test".into(),
+            theme: "woodland".into(),
+            map_name: "open".into(),
+            rows: open.iter().map(|s| s.to_string()).collect(),
+            scene: serde_json::json!({"props": []}),
+            level_view: serde_json::json!({}),
+            heroes: vec!["guy".into()],
+            monsters: vec![("owlbear-1".into(), "owlbear".into(), "Owlbear".into())],
+            suggested_placements: vec![
+                Placement { id: "guy".into(), x: 0, y: 0 },
+                Placement { id: "owlbear-1".into(), x: 3, y: 2 },
+            ],
+        };
+        assert!(
+            WebArena::with_trace(level.clone(), Trace::web_free(7), 0, "c".into(), "e".into(), 21).is_err(),
+            "web replay v21 must reject Owlbear"
+        );
+        let mut a22 = WebArena::with_trace(level, Trace::web_free(7), 0, "c".into(), "e".into(), 22).unwrap();
+        let st22 = a22.start().unwrap();
+        let owl22 = st22["units"].as_array().unwrap().iter().find(|u| u["id"] == "owlbear-1").unwrap();
+        assert_eq!(owl22["token_size"], 2);
+        assert_eq!(owl22["climb_speed"], 40);
+        assert_eq!(owl22["cells"], serde_json::json!([[3, 2], [3, 3], [4, 2], [4, 3]]));
     }
 }

@@ -326,7 +326,12 @@ impl Fight {
     /// Corpse tokens in an area (coverage count).
     fn corpses_in_squares(&self, squares: &[Pos], exclude: usize) -> u64 {
         if self.rule_version >= 8 {
-            return self.units.iter().enumerate().filter(|(i, unit)| *i != exclude && unit.dead() && squares.contains(&unit.pos)).count() as u64;
+            return self
+                .units
+                .iter()
+                .enumerate()
+                .filter(|(i, unit)| *i != exclude && unit.dead() && squares.iter().any(|&p| self.unit_occupies(*i, p)))
+                .count() as u64;
         }
         let mut found: Vec<usize> = Vec::new();
         for &p in squares {
@@ -347,7 +352,9 @@ impl Fight {
                 if Some(c) != exclude && !self.units[c].dead() && !found.contains(&c) { found.push(c); }
                 if self.rule_version >= 8 {
                     for (other, unit) in self.units.iter().enumerate() {
-                        if other != c && Some(other) != exclude && !unit.dead() && unit.pos == p && !found.contains(&other) { found.push(other); }
+                        if other != c && Some(other) != exclude && !unit.dead() && self.unit_occupies(other, p) && !found.contains(&other) {
+                            found.push(other);
+                        }
                     }
                 }
             }
@@ -1188,7 +1195,7 @@ impl Fight {
     pub(crate) fn ignores_blur(&self, attacker: usize, caster: usize) -> bool {
         let observer = &self.units[attacker];
         let range = observer.t.blindsight.max(observer.t.truesight);
-        range > 0 && self.feet(attacker, caster) <= range && self.clear_sight(observer.pos, self.units[caster].pos)
+        range > 0 && self.feet(attacker, caster) <= range && self.units_clear_sight(attacker, caster)
     }
 
     /// `cone_value(breather, ..., origin, aim, damage_type, dice, dc)`.
@@ -1575,21 +1582,24 @@ impl Fight {
     pub(crate) fn push_square_dist(&self, t: usize, from: Pos, reserved: &[Pos], d: i32) -> Pos {
         let (x, y) = self.units[t].pos;
         let (px, py) = from;
+        let eff = i32::from(self.units[t].t.token_size) - 1;
+        let in_x = (x..=x + eff).contains(&px);
+        let in_y = (y..=y + eff).contains(&py);
         let (mut ox, mut oy): (i32, i32) = (0, 0);
-        if px == x && py != y {
+        if in_x && !in_y {
             oy = if py < y { d } else { -d };
-        } else if py == y && px != x {
+        } else if in_y && !in_x {
             ox = if px < x { d } else { -d };
         } else if (px, py) == (x - 1, y - 1) {
             ox = d;
             oy = d;
-        } else if (px, py) == (x + 1, y - 1) {
+        } else if (px, py) == (x + eff + 1, y - 1) {
             ox = -d;
             oy = d;
-        } else if (px, py) == (x - 1, y + 1) {
+        } else if (px, py) == (x - 1, y + eff + 1) {
             ox = d;
             oy = -d;
-        } else if (px, py) == (x + 1, y + 1) {
+        } else if (px, py) == (x + eff + 1, y + eff + 1) {
             ox = -d;
             oy = -d;
         } else {
@@ -1611,12 +1621,17 @@ impl Fight {
         if ox == 0 && oy == 0 {
             return (x, y);
         }
+        let can_stop = |n: Pos| {
+            self.grid.in_bounds(n.0, n.1)
+                && self.placeable(t, n)
+                && (reserved.is_empty() || !self.unit_cells_at(t, n).any(|c| reserved.contains(&c)))
+        };
         let (sx, sy) = (ox.signum(), oy.signum());
         let mut best = (x, y);
         if ox == 0 {
             for step in 1..=oy.abs() {
                 let n = (x, y + step * sy);
-                if self.grid.in_bounds(n.0, n.1) && self.placeable(t, n) && !reserved.contains(&n) {
+                if can_stop(n) {
                     best = n;
                 } else {
                     break;
@@ -1625,7 +1640,7 @@ impl Fight {
         } else if oy == 0 {
             for step in 1..=ox.abs() {
                 let n = (x + step * sx, y);
-                if self.grid.in_bounds(n.0, n.1) && self.placeable(t, n) && !reserved.contains(&n) {
+                if can_stop(n) {
                     best = n;
                 } else {
                     break;
@@ -1636,7 +1651,7 @@ impl Fight {
             for step in 1..=max_steps {
                 let progress = step as f64 / max_steps as f64;
                 let n = (x + (ox as f64 * progress) as i32, y + (oy as f64 * progress) as i32);
-                if self.grid.in_bounds(n.0, n.1) && self.placeable(t, n) && !reserved.contains(&n) {
+                if can_stop(n) {
                     best = n;
                 } else {
                     break;

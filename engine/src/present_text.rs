@@ -78,6 +78,8 @@ pub fn creature_description(content: &str) -> &'static str {
         "specter" => "The angry spirit of a creature denied its rest.",
         "wight" => "An armored undead warrior that drains life with blade, bow and touch.",
         "zombie" => "A rotting corpse animated by necromancy that lurches toward the living.",
+        "ogre" => "A towering, hulking giant wielding an iron-banded greatclub and heavy javelins.",
+        "owlbear" => "A ferocious, feathered woodland predator with an owl's beak and a bear's claws.",
         _ => "",
     }
 }
@@ -88,6 +90,8 @@ pub fn creature_type_label(content: &str) -> &'static str {
         "goblin_minion" | "goblin_warrior" | "goblin_boss" => "Fey (goblinoid)",
         "animated_armor" => "Construct",
         "kobold_warrior" => "Dragon",
+        "ogre" => "Giant",
+        "owlbear" => "Monstrosity",
         _ => "Monster",
     }
 }
@@ -112,6 +116,8 @@ pub fn model_recipe(content: &str) -> Value {
         "goblin_minion" => json!({"base": "goblin", "tint": "#e6edcf", "scale": 0.9}),
         "goblin_warrior" => json!({"base": "goblin", "tint": "#ffffff", "scale": 1.0}),
         "goblin_boss" => json!({"base": "goblin", "tint": "#e0b8a8", "scale": 1.1}),
+        "ogre" => json!({"base": "goblin", "tint": "#8d8a78", "scale": 1.9}),
+        "owlbear" => json!({"base": "goblin", "tint": "#7d6044", "scale": 1.85}),
         _ => json!({}),
     }
 }
@@ -408,6 +414,16 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, r
             ("Necrotic Sword / Bow", "+4, 1d8+2 plus 1d8 necrotic. Two attacks per action."),
             ("Life Drain", "CON save or 1d8+2 necrotic and the HP maximum drops by that much."),
             ("Resists necrotic", "Takes half necrotic damage."),
+        ],
+        "ogre" => &[
+            ("Greatclub", "+6 to hit, 2d8+4 bludgeoning."),
+            ("Javelin", "+6 to hit, 2d6+4 piercing; melee 5 ft or thrown 30/120 ft. Carries three."),
+            ("Large (2x2)", "Occupies a 10-ft space. Speed 40 ft. Darkvision 60 ft."),
+        ],
+        "owlbear" => &[
+            ("Multiattack", "Makes two Rend attacks."),
+            ("Rend", "+7 to hit, 2d8+5 slashing."),
+            ("Large (2x2)", "Occupies a 10-ft space. Speed 40 ft, Climb 40 ft. Darkvision 60 ft."),
         ],
         _ => return None,
     };

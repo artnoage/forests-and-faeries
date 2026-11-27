@@ -661,3 +661,71 @@ def test_vesper_practice_party_picker_and_fey_presets(ff_app):
     })
     assert unk_bad.status_code == 400
 
+
+def test_multisquare_ogre_and_owlbear_web_arena_and_catalogue():
+    import ember_rs
+    from game.catalogue import CatalogueError, Level
+
+    pool = ember_rs.ContentPool()
+    assert 'ogre' in pool.monsters and 'owlbear' in pool.monsters
+    assert pool.token_size('ogre') == 2 and pool.token_size('owlbear') == 2
+    assert pool.token_size('guy') == 1 and pool.token_size('goblin_minion') == 1
+
+    rows = [
+        'HHHHHHHHHHHH',
+        'H..........H',
+        'H..........H',
+        'H..........H',
+        'H..........H',
+        'H..........H',
+        'H..........H',
+        'HHHHHHHHHHHH',
+    ]
+    enc = {'id': 'test_large', 'name': 'Test Large', 'theme': 'woodland', 'blurb': 'Large test'}
+    preset = {
+        'id': 'ogre_owlbear_test',
+        'name': 'Ogre & Owlbear',
+        'difficulty': 'Medium',
+        'blurb': 'Two Large monsters.',
+        'party': ['guy', 'elion'],
+        'roster': ['ogre', 'owlbear'],
+        'placements': {'guy': [2, 2], 'elion': [2, 4], 'ogre-1': [6, 2], 'owlbear-1': [6, 4]},
+    }
+    lvl = Level(enc, preset, rows, {'props': []}, 'open_test')
+    lvl.check()
+    # Adding a third hero via with_party must never collide with any of the 2x2 cells.
+    lvl3 = lvl.with_party(['guy', 'elion', 'vesper'], hero_level=3)
+    placed = {p['id']: (p['x'], p['y']) for p in lvl3.suggested_placements()}
+    large_cells = {(6 + ox, 2 + oy) for ox in range(2) for oy in range(2)} | {(6 + ox, 4 + oy) for ox in range(2) for oy in range(2)}
+    assert placed['vesper'] not in large_cells
+
+    # Overlapping a Large monster's non-anchor cell fails catalogue validation.
+    bad_preset = dict(preset, placements={'guy': [7, 3], 'elion': [2, 4], 'ogre-1': [6, 2], 'owlbear-1': [6, 4]})
+    with pytest.raises(CatalogueError):
+        Level(enc, bad_preset, rows, {'props': []}, 'open_test').check()
+
+    # WebArena v22 emits token_size, 4 cells, and Owlbear climb_speed=40; setup rejects footprint overlaps/walls.
+    arena = FFArena(lvl, seed=7)
+    st = arena.start()
+    by_id = {u['id']: u for u in st['units']}
+    assert by_id['ogre-1']['token_size'] == 2
+    assert by_id['ogre-1']['cells'] == [[6, 2], [6, 3], [7, 2], [7, 3]]
+    assert 'climb_speed' not in by_id['ogre-1']
+    assert by_id['owlbear-1']['token_size'] == 2
+    assert by_id['owlbear-1']['cells'] == [[6, 4], [6, 5], [7, 4], [7, 5]]
+    assert by_id['owlbear-1']['climb_speed'] == 40
+    assert 'Climb 40 ft' in str(by_id['owlbear-1']['sheet'])
+
+    arena_setup = FFArena(lvl, seed=7)
+    with pytest.raises(ValueError):
+        arena_setup.configure([
+            {'id': 'guy', 'x': 7, 'y': 3},
+            {'id': 'ogre-1', 'x': 6, 'y': 2},
+        ], 'ai')
+    with pytest.raises(ValueError):
+        arena_setup.configure([
+            {'id': 'guy', 'x': 2, 'y': 2},
+            {'id': 'ogre-1', 'x': 10, 'y': 2},  # x=11 is wall
+        ], 'ai')
+
+
