@@ -171,6 +171,9 @@ impl<'a> PathCompute<'a> {
             for oy in 0..s {
                 let cx = x + ox;
                 let cy = y + oy;
+                if cx < 0 || cy < 0 || cx >= self.grid.w || cy >= self.grid.h {
+                    continue;
+                }
                 if self.occupied.get(self.grid.index(cx, cy))
                     || (self.incorporeal && self.grid.is_wall(cx, cy))
                 {

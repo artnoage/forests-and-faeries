@@ -328,3 +328,96 @@ fn a_new_enemy_in_sight_stops_the_walk() {
     assert!(g.env.fight.can_see(0, 1));
     replays(&g);
 }
+
+/// Rule 21 `MoveMode::Dest` executes squeeze entry, transit, and exit paths all the
+/// way through 1-wide gaps (restoring the 2x2 footprint on exit) and replays cleanly.
+#[test]
+fn rule21_dest_squeeze_entry_exit_and_passthrough() {
+    use ember_rs::engine::St;
+    let squeeze_arena = [
+        "HHHHHHHHHH",
+        "H........H",
+        "H.HHH.HH.H",
+        "H.HHH.HH.H",
+        "H........H",
+        "H........H",
+        "HHHHHHHHHH",
+    ];
+    let e = fixed(&squeeze_arena, &[("guy", 5, 1)], &[("ogre-1", 4, 4)]);
+    let s = EpisodeSpec { encounter: "t".into(), map_seed: 0, layout_seed: 0, dice_seed: 13, offset_x: 0, offset_y: 0 };
+    let mut g = Game::with_rule_version(&e, &s, [EXT, EXT], &[], &cfg(), ContentPool::global(), 21).unwrap();
+    g.moves = MoveMode::Dest;
+    while g.env.fight.units[g.env.decision().unwrap().actor].id != "ogre-1" {
+        end_turn(&mut g);
+    }
+    let ogre = g.env.decision().unwrap().actor;
+    check_presented(&g);
+    // Enter the 1-wide gap: (4,4) -> (5,4) -> (5,3) costs 5 + 10 = 15 ft, ends squeezed with 25 ft left.
+    let enter = dest_row(&g, (5, 3));
+    g.step(enter, &cfg()).unwrap();
+    assert_eq!(g.env.fight.units[ogre].pos, (5, 3));
+    assert!(g.env.fight.units[ogre].has(St::Squeezed));
+    assert_eq!(g.env.fight.unit_cells(ogre).collect::<Vec<_>>(), vec![(5, 3)]);
+    assert_eq!(g.env.fight.units[ogre].movement, 25);
+    assert_eq!(g.info(&cfg()).moved, 2);
+
+    // While squeezed at (5,3), dest menu offers BOTH deeper squeeze (5,2) AND exiting back to open floor (4,4).
+    check_presented(&g);
+    let _deeper = dest_row(&g, (5, 2));
+    let exit = dest_row(&g, (4, 4));
+    g.step(exit, &cfg()).unwrap();
+    assert_eq!(g.env.fight.units[ogre].pos, (4, 4));
+    assert!(!g.env.fight.units[ogre].has(St::Squeezed));
+    assert_eq!(g.env.fight.unit_cells(ogre).collect::<Vec<_>>(), vec![(4, 4), (4, 5), (5, 4), (5, 5)]);
+    assert_eq!(g.env.fight.units[ogre].movement, 15, "exiting (5,3)->(5,4)->(4,4) costs 5+5=10 ft");
+    assert_eq!(g.info(&cfg()).moved, 2);
+    replays(&g);
+
+    // Single destination walk that enters, traverses a 1-wide squeeze gap, and exits unsqueezed on the far side.
+    // Place Guy at (7,5) (already in sight from (4,4)) so newly-seen-enemy interruption does not cut the walk.
+    let passthrough = [
+        "HHHHHHHHHH",
+        "H........H",
+        "H........H",
+        "H.HHH.HH.H",
+        "H........H",
+        "H........H",
+        "HHHHHHHHHH",
+    ];
+    let e2 = fixed(&passthrough, &[("guy", 7, 5)], &[("ogre-1", 4, 4)]);
+    let mut g2 = Game::with_rule_version(&e2, &s, [EXT, EXT], &[], &cfg(), ContentPool::global(), 21).unwrap();
+    g2.moves = MoveMode::Dest;
+    while g2.env.fight.units[g2.env.decision().unwrap().actor].id != "ogre-1" {
+        end_turn(&mut g2);
+    }
+    let ogre2 = g2.env.decision().unwrap().actor;
+    check_presented(&g2);
+    // (4,4) -> (5,4) [5] -> (5,3) [10, squeezed] -> (5,2) [10, squeezed] -> (5,1) [5, unsqueezed 2x2] = 30 ft!
+    let across = dest_row(&g2, (5, 1));
+    g2.step(across, &cfg()).unwrap();
+    assert_eq!(g2.env.fight.units[ogre2].pos, (5, 1));
+    assert!(!g2.env.fight.units[ogre2].has(St::Squeezed));
+    assert_eq!(g2.env.fight.unit_cells(ogre2).collect::<Vec<_>>(), vec![(5, 1), (5, 2), (6, 1), (6, 2)]);
+    assert_eq!(g2.env.fight.units[ogre2].movement, 10);
+    replays(&g2);
+
+    // Ally protection: Ogre next to ally Skeleton at (4,4) must NOT be offered landing at (4,3) on top of ally.
+    let open = [
+        "HHHHHHHHHH",
+        "H........H",
+        "H........H",
+        "H........H",
+        "H........H",
+        "H........H",
+        "HHHHHHHHHH",
+    ];
+    let e3 = fixed(&open, &[("guy", 1, 1)], &[("ogre-1", 5, 3), ("skeleton-1", 4, 4)]);
+    let mut g3 = Game::with_rule_version(&e3, &s, [EXT, EXT], &[], &cfg(), ContentPool::global(), 21).unwrap();
+    g3.moves = MoveMode::Dest;
+    while g3.env.fight.units[g3.env.decision().unwrap().actor].id != "ogre-1" {
+        end_turn(&mut g3);
+    }
+    let (_, kinds3) = g3.presented().unwrap();
+    assert!(!kinds3.iter().any(|k| matches!(k, RowKind::Walk(p) if p.last() == Some(&(4, 3)))),
+        "must not offer landing at (4,3) where unsqueezed 2x2 would overwrite ally at (4,4)");
+}

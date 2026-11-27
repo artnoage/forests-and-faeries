@@ -650,3 +650,50 @@ test('Practice preset classification grades both Vault Ogre fights while keeping
     assert.equal(bucketFor(vault, p), 'Classic', `original vault/${id} stays Classic`);
   }
 });
+
+test('2D and 3D unit footprint, hit-test, and center follow wire cells when squeezed and restore on exit', () => {
+  const pullBlock = (src, name) => {
+    const m = src.match(new RegExp(`\\n  const ${name} = [^\\n]*;`))
+      || src.match(new RegExp(`\\n  const ${name} = [^\\n]*\\{\\n[\\s\\S]*?\\n  \\};`));
+    assert.ok(m, `${name} present`);
+    return m[0];
+  };
+  const appSrc = read('static/app.js');
+  const app = Function(`"use strict"; ${['unitSize', 'unitCellsOf', 'atCell'].map(n => pullBlock(appSrc, n)).join('\n')}; return { unitSize, unitCellsOf, atCell };`)();
+  const sceneSrc = read('frontend/scene3d.js');
+  const scene = Function(`"use strict"; ${['unitSize', 'unitCells', 'unitEffectiveSize', 'unitCenter', 'unitOccupies'].map(n => pullBlock(sceneSrc, n)).join('\n')}; return { unitSize, unitCells, unitEffectiveSize, unitCenter, unitOccupies };`)();
+
+  const squeezedOgre = { id: 'ogre-1', x: 5, y: 3, token_size: 2, cells: [[5, 3]], conditions: ['squeezed'] };
+  const openOgre = { id: 'ogre-1', x: 4, y: 4, token_size: 2, cells: [[4, 4], [4, 5], [5, 4], [5, 5]], conditions: [] };
+
+  // 2D helpers: squeezed occupies only (5,3) and never hits wall (6,3) or neighboring cells.
+  assert.deepEqual(app.unitCellsOf(squeezedOgre), [[5, 3]]);
+  assert.equal(app.atCell(squeezedOgre, 5, 3), true);
+  assert.equal(app.atCell(squeezedOgre, 6, 3), false);
+  assert.equal(app.atCell(squeezedOgre, 5, 4), false);
+  assert.equal(app.atCell(squeezedOgre, 6, 4), false);
+  // 2D exit restores all four cells.
+  assert.deepEqual(app.unitCellsOf(openOgre), [[4, 4], [4, 5], [5, 4], [5, 5]]);
+  for (const [cx, cy] of openOgre.cells) assert.equal(app.atCell(openOgre, cx, cy), true);
+  assert.equal(app.atCell(openOgre, 6, 4), false);
+
+  // 3D helpers: squeezed occupies only (5,3), center is (5,3), effective size is 1.
+  assert.deepEqual(scene.unitCells(squeezedOgre), [[5, 3]]);
+  assert.equal(scene.unitEffectiveSize(squeezedOgre), 1);
+  assert.deepEqual(scene.unitCenter(squeezedOgre), { x: 5, z: 3 });
+  assert.equal(scene.unitOccupies(squeezedOgre, 5, 3), true);
+  assert.equal(scene.unitOccupies(squeezedOgre, 6, 3), false);
+  assert.equal(scene.unitOccupies(squeezedOgre, 5, 4), false);
+  assert.equal(scene.unitOccupies(squeezedOgre, 6, 4), false);
+  // 3D exit restores all four cells, center (4.5, 4.5), and effective size 2.
+  assert.deepEqual(scene.unitCells(openOgre), [[4, 4], [4, 5], [5, 4], [5, 5]]);
+  assert.equal(scene.unitEffectiveSize(openOgre), 2);
+  assert.deepEqual(scene.unitCenter(openOgre), { x: 4.5, z: 4.5 });
+  for (const [cx, cy] of openOgre.cells) assert.equal(scene.unitOccupies(openOgre, cx, cy), true);
+  assert.equal(scene.unitOccupies(openOgre, 6, 4), false);
+
+  // Setup-phase fallback (explicit placement coords without wire cells) still uses token_size.
+  const rosterOgre = { id: 'ogre-1', token_size: 2 };
+  assert.deepEqual(app.unitCellsOf(rosterOgre, 4, 4), [[4, 4], [4, 5], [5, 4], [5, 5]]);
+  assert.deepEqual(scene.unitCells(rosterOgre, 4, 4), [[4, 4], [4, 5], [5, 4], [5, 5]]);
+});

@@ -5,7 +5,7 @@
  "licence": "CC-BY-4.0",
  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License.",
  "provenance": {
-  "natural20_commit": "fe59bb83220a411783016f5450a5211afe4521b5",
+  "natural20_commit": "cc11193aaab2d9f9d9ae06c97342f8f533bd40ea",
   "exporter": "validation/export_content.py",
   "files": {
    "scenarios/general/campaign/game.yml": "d17569c7b7a99cfdedc84514d8c2bdaf4fafa9e690076e100d4748884d516361",

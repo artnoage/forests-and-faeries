@@ -1807,7 +1807,12 @@ impl Fight {
     #[inline(never)]
     pub(crate) fn placeable_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
         let base = self.units[u].t.token_size;
-        let sz = if self.rule_version >= 21 && base > 1 { base - 1 } else { base };
+        if self.rule_version < 21 || base <= 1 {
+            return self.placeable_with_size(u, p, masked, base);
+        }
+        let squeeze = !self.passable_with_size(u, p, masked, base)
+            && self.passable_with_size(u, p, masked, base - 1);
+        let sz = if squeeze { base - 1 } else { base };
         self.placeable_with_size(u, p, masked, sz)
     }
 
@@ -1851,7 +1856,7 @@ impl Fight {
     #[inline(never)]
     pub(crate) fn difficult_ignoring_masked(&self, u: usize, p: Pos, masked: u32) -> bool {
         for c in self.unit_cells_at(u, p) {
-            if self.unit_occupies(u, c) {
+            if !self.grid.in_bounds(c.0, c.1) || self.unit_occupies(u, c) {
                 continue;
             }
             if self.is_entangle_square(c) {
@@ -6287,5 +6292,47 @@ mod srd_level_tests {
         let st23 = a23.start().unwrap();
         let og23 = st23["units"].as_array().unwrap().iter().find(|u| u["id"] == "ogre-1").unwrap();
         assert_eq!(og23["cells"], serde_json::json!([[4, 4], [4, 5], [5, 4], [5, 5]]));
+
+        // 5. Edge squeeze (Claude audit #4): borderless floor reaching last row/col must never
+        //    panic in PathCompute::footprint_difficult or difficult_ignoring_masked, and must
+        //    match Natural20's legal squeeze for both Large (2x2 -> 1x1 at x=w-1/y=h-1) and
+        //    Huge (3x3 -> 2x2 at x=w-2/y=h-2, refused at x=w-1/y=h-1).
+        let borderless = [
+            "......",
+            "......",
+            "......",
+            "......",
+            "......",
+        ];
+        let mut fe = fight(&borderless, &[("ogre-1", (3, 2)), ("guy", (5, 4))]);
+        assert!(fe.requires_squeeze(0, (5, 2)));
+        assert!(fe.requires_squeeze(0, (3, 4)));
+        assert_eq!(fe.step_cost(0, (5, 2)), 2);
+        // Observe enemies & compute_path across the last column/row without panicking.
+        let mut pc = crate::path::PathCompute::new(&fe.grid, false, false, fe.occupied_mask(0));
+        pc.solid_wall_corners = true;
+        pc.token_size = 2;
+        pc.eff_size = 2;
+        pc.allow_squeeze = true;
+        let path_edge = pc.compute_path((3, 2), (5, 2)).expect("Large squeezes onto last col x=5");
+        assert_eq!(*path_edge.last().unwrap(), (5, 2));
+        let path_bottom = pc.compute_path((3, 2), (3, 4)).expect("Large squeezes onto last row y=4");
+        assert_eq!(*path_bottom.last().unwrap(), (3, 4));
+        fe.units[0].movement = 40;
+        fe.commit_move_segment(0, vec![(3, 2), (4, 2), (5, 2)]);
+        assert_eq!(fe.units[0].pos, (5, 2));
+        assert!(fe.units[0].squeezed());
+        assert_eq!(fe.unit_cells(0).collect::<Vec<_>>(), vec![(5, 2)]);
+
+        // Huge (3x3 -> 2x2) edge squeeze: fits at x=w-2 (4) and y=h-2 (3), refused at x=w-1 (5) / y=h-1 (4).
+        let mut pc_huge = crate::path::PathCompute::new(&fe.grid, false, false, fe.occupied_mask(0));
+        pc_huge.solid_wall_corners = true;
+        pc_huge.token_size = 3;
+        pc_huge.eff_size = 3;
+        pc_huge.allow_squeeze = true;
+        assert!(pc_huge.compute_path((1, 1), (4, 1)).is_some(), "Huge squeezes 3x3->2x2 at x=w-2");
+        assert!(pc_huge.compute_path((1, 1), (1, 3)).is_some(), "Huge squeezes 3x3->2x2 at y=h-2");
+        assert!(pc_huge.compute_path((1, 1), (5, 1)).is_none(), "Huge cannot fit 2x2 at x=w-1");
+        assert!(pc_huge.compute_path((1, 1), (1, 4)).is_none(), "Huge cannot fit 2x2 at y=h-1");
     }
 }

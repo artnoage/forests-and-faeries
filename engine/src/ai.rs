@@ -418,6 +418,7 @@ impl Fight {
     /// Rule >= 21 multi-square 1-step move candidates:
     /// `action_builder.py:440-441` and `player_character.py:1016` check
     /// `bidirectionally_passable(..., allow_squeeze=False)` and `placeable(..., squeeze=False)`.
+    /// Squeeze entry/exit moves are emitted by `movement_paths(..., crossings_only=true)`.
     #[cold]
     #[inline(never)]
     fn move_candidates_r21_large(&self, u: usize, out: &mut Vec<Act>) {

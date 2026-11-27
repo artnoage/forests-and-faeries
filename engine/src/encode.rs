@@ -3350,7 +3350,10 @@ fn sees_fear_source_from_multisquare(cx: &Ctx, a: usize, p: Pos) -> bool {
             if f.grid.los(p, src.pos) {
                 return true;
             }
-        } else if UnitCells::new(p, a_sz).any(|c1| f.unit_cells(s).any(|c2| f.grid.los(c1, c2))) {
+        } else if UnitCells::new(p, a_sz)
+            .filter(|c1| f.grid.in_bounds(c1.0, c1.1))
+            .any(|c1| f.unit_cells(s).any(|c2| f.grid.in_bounds(c2.0, c2.1) && f.grid.los(c1, c2)))
+        {
             return true;
         }
     }

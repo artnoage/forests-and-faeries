@@ -348,11 +348,12 @@ fn movement_paths_multisquare(f: &Fight, a: usize, masked: u32, crossings_only: 
     let g = &f.grid;
     let u = &f.units[a];
     let start = u.pos;
-    if budget < if crossings_only { 2 } else { 1 } {
+    let sz = u.t.token_size;
+    let r21_large = f.rule_version >= 21 && sz > 1;
+    if budget < if crossings_only && !r21_large { 2 } else { 1 } {
         return Vec::new();
     }
-    let sz = u.t.token_size;
-    if crossings_only {
+    if crossings_only && !r21_large {
         let near_token = if sz == 1 || f.rule_version >= 21 {
             // Mirrors `movement.py:282`: checks `battle_map.entity_at(start+dx, start+dy)`.
             DIRECTIONS.iter().any(|&(dx, dy)| {
@@ -369,6 +370,7 @@ fn movement_paths_multisquare(f: &Fight, a: usize, masked: u32, crossings_only: 
             return Vec::new();
         }
     }
+    let start_squeezed = r21_large && f.requires_squeeze(a, start);
     let hidden = |p: Pos| {
         masked != 0 && if sz == 1 {
             f.token_at(p).is_some_and(|o| masked & (1 << o) != 0)
@@ -428,7 +430,9 @@ fn movement_paths_multisquare(f: &Fight, a: usize, masked: u32, crossings_only: 
                 q = parent[idx];
                 path.push(q);
             }
-            if !crossings_only || path.len() > 2 {
+            let squeeze_step = r21_large && path.len() == 2
+                && (start_squeezed || f.requires_squeeze(a, p));
+            if !crossings_only || path.len() > 2 || squeeze_step {
                 path.reverse();
                 result.push(path);
             }
@@ -659,7 +663,10 @@ impl Game {
         };
         let state = |f: &Fight| {
             let u = &f.units[a];
-            let mut st: Vec<&'static str> = u.statuses.iter().map(|s| s.name()).collect();
+            let mut st: Vec<&'static str> = u.statuses.iter()
+                .filter(|&&s| s != crate::engine::St::Squeezed)
+                .map(|s| s.name())
+                .collect();
             st.sort_unstable();
             (u.hp, u.temp_hp, st)
         };

@@ -1426,19 +1426,38 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   }
 
   const unitSize = u => Math.max(1, Number(u?.token_size) || 1);
-  const unitCenter = u => {
-    const off = (unitSize(u) - 1) * 0.5;
-    return { x: u.x + off, z: u.y + off };
-  };
-  const unitOccupies = (u, x, y) => {
-    const s = unitSize(u);
-    return x >= u.x && y >= u.y && x < u.x + s && y < u.y + s;
-  };
-  const unitCells = (u, x = u.x, y = u.y) => {
+  const unitCells = (u, x = u?.x, y = u?.y) => {
+    if (u && x === u.x && y === u.y && Array.isArray(u.cells) && u.cells.length) {
+      return u.cells.map(([cx, cy]) => [cx, cy]);
+    }
     const s = unitSize(u);
     const out = [];
     for (let ox = 0; ox < s; ox++) for (let oy = 0; oy < s; oy++) out.push([x + ox, y + oy]);
     return out;
+  };
+  const unitEffectiveSize = u => {
+    if (Array.isArray(u?.cells) && u.cells.length) {
+      const xs = u.cells.map(([cx]) => cx), ys = u.cells.map(([, cy]) => cy);
+      return Math.max(1, Math.max(...xs) - Math.min(...xs) + 1, Math.max(...ys) - Math.min(...ys) + 1);
+    }
+    return unitSize(u);
+  };
+  const unitCenter = u => {
+    if (Array.isArray(u?.cells) && u.cells.length) {
+      let sx = 0, sz = 0;
+      for (const [cx, cy] of u.cells) { sx += cx; sz += cy; }
+      return { x: sx / u.cells.length, z: sz / u.cells.length };
+    }
+    const off = (unitSize(u) - 1) * 0.5;
+    return { x: u.x + off, z: u.y + off };
+  };
+  const unitOccupies = (u, x, y) => {
+    if (!u) return false;
+    if (Array.isArray(u.cells) && u.cells.length) {
+      return u.cells.some(([cx, cy]) => cx === x && cy === y);
+    }
+    const s = unitSize(u);
+    return x >= u.x && y >= u.y && x < u.x + s && y < u.y + s;
   };
 
   function labelHeight(unit) {
@@ -2078,6 +2097,16 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
   const stopCastListener = onCastLoaded(() => upgradeLoadedCast());
 
   function applyUnitState(entry, data) {
+    const effSz = unitEffectiveSize(data);
+    if (entry.contactShadow) entry.contactShadow.scale.set(0.97 * effSz, 0.97 * effSz, 1);
+    if (entry.plinth) entry.plinth.scale.set(0.365 * effSz, 0.09, 0.365 * effSz);
+    if (entry.plinthRing) entry.plinthRing.scale.setScalar(0.86 * effSz);
+    entry.active.scale.setScalar(effSz);
+    entry.target.scale.setScalar(effSz);
+    entry.inspect.scale.setScalar(effSz);
+    entry.downRing.scale.setScalar(effSz);
+    entry.deadRing.scale.setScalar(effSz);
+    entry.stableRing.scale.setScalar(effSz);
     entry.active.visible = Boolean(data.active && data.alive);
     entry.inspect.visible = data.id === inspectedId;
     // A hero at 0 HP keeps a Sanctuary ward (attackers still have to save), so its dome stays.
@@ -2111,7 +2140,7 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       entry.stableRing.visible = data.team === 'heroes' && stable;
       entry.deadRing.visible = data.team === 'heroes' && dead;
       entry.picker.visible = data.team === 'heroes';
-      entry.picker.scale.y = 0.22;
+      entry.picker.scale.set(effSz, 0.22, effSz);
       entry.picker.position.y = 0.14;
     } else {
       // Standing again (a new fight after a loss, a retry, or healing at 0 HP): the rig still
@@ -2124,8 +2153,8 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
       entry.stableRing.visible = false;
       entry.deadRing.visible = false;
       entry.picker.visible = true;
-      entry.picker.scale.y = 1;
-      entry.picker.position.y = 0.65;
+      entry.picker.scale.set(effSz, effSz > 1 ? 1.35 : 1, effSz);
+      entry.picker.position.y = effSz > 1 ? 0.88 : 0.65;
     }
 
     const invShimmer = isInvisibleShimmer(data);
@@ -2192,9 +2221,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
         removeUnit(entry); units.delete(data.id); entry = null;
       }
       if (!entry) { entry = makeUnit(data); units.set(data.id, entry); }
-      if (entry.data.x !== data.x || entry.data.y !== data.y) {
+      const fromC = unitCenter(entry.data), toC = unitCenter(data);
+      if (entry.data.x !== data.x || entry.data.y !== data.y || fromC.x !== toC.x || fromC.z !== toC.z) {
         const singleStep = !options.snap && !options.ordered && Math.abs(entry.data.x - data.x) + Math.abs(entry.data.y - data.y) === 1;
-        const fromC = unitCenter(entry.data), toC = unitCenter(data);
         entry.start.set(fromC.x, 0.04, fromC.z);
         entry.end.set(toC.x, 0.04, toC.z);
         entry.moveStart = now;
@@ -2385,8 +2414,9 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     for (const x of [x0, x1]) for (const z of [z0, z1]) for (const y of [-0.85, 1.45]) pts.push(new THREE.Vector3(x, y, z));
     if (!box) {
       for (const unit of state?.units || []) {
-        const c = unitCenter(unit), span = 0.55 * unitSize(unit);
-        for (const offset of [-span, span]) pts.push(new THREE.Vector3(c.x + offset, 1.62 + 0.4 * (unitSize(unit) - 1), c.z));
+        const eff = unitEffectiveSize(unit);
+        const c = unitCenter(unit), span = 0.55 * eff;
+        for (const offset of [-span, span]) pts.push(new THREE.Vector3(c.x + offset, 1.62 + 0.4 * (eff - 1), c.z));
       }
     }
     const distance = fitDistance(direction, target, pts, box ? 5.6 : 7.2, 0.9);
@@ -2471,11 +2501,12 @@ export function createViewer({ container, onCell, onHover, onCameraChange, onRea
     if (preset === 'skirmish' || preset === 'action') {
       const alive = (state?.units || []).filter(u => u.alive !== false);
       if (alive.length) {
+        const allCells = alive.flatMap(u => unitCells(u));
         const box = {
-          x0: Math.max(-0.7, Math.min(...alive.map(u => u.x)) - 1.8),
-          x1: Math.min(width - 0.3, Math.max(...alive.map(u => u.x + unitSize(u) - 1)) + 1.8),
-          z0: Math.max(-0.7, Math.min(...alive.map(u => u.y)) - 1.8),
-          z1: Math.min(height - 0.3, Math.max(...alive.map(u => u.y + unitSize(u) - 1)) + 1.8),
+          x0: Math.max(-0.7, Math.min(...allCells.map(([cx]) => cx)) - 1.8),
+          x1: Math.min(width - 0.3, Math.max(...allCells.map(([cx]) => cx)) + 1.8),
+          z0: Math.max(-0.7, Math.min(...allCells.map(([, cy]) => cy)) - 1.8),
+          z1: Math.min(height - 0.3, Math.max(...allCells.map(([, cy]) => cy)) + 1.8),
         };
         const dir = new THREE.Vector3(Math.sin(curAz) * 0.82, 0.72, Math.cos(curAz) * 0.82).normalize();
         const { pos, target } = computeBoardFit(dir, box, 0.52);

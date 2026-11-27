@@ -369,13 +369,22 @@
   const objects = () => Array.isArray(state?.objects) ? state.objects : [];
   const targets = () => [...(state?.units || []), ...objects().filter(o => !o.destroyed)];
   const unitSize = obj => Math.max(1, Number(obj?.token_size) || 1);
-  const unitCellsOf = (obj, x = obj.x, y = obj.y) => {
+  const unitCellsOf = (obj, x = obj?.x, y = obj?.y) => {
+    if (obj && x === obj.x && y === obj.y && Array.isArray(obj.cells) && obj.cells.length) {
+      return obj.cells.map(([cx, cy]) => [cx, cy]);
+    }
     const sz = unitSize(obj);
     const out = [];
     for (let ox = 0; ox < sz; ox++) for (let oy = 0; oy < sz; oy++) out.push([x + ox, y + oy]);
     return out;
   };
-  const atCell = (obj, x, y) => x >= obj.x && y >= obj.y && x < obj.x + (obj.width || unitSize(obj)) && y < obj.y + (obj.depth || unitSize(obj));
+  const atCell = (obj, x, y) => {
+    if (!obj) return false;
+    if (Array.isArray(obj.cells) && obj.cells.length) {
+      return obj.cells.some(([cx, cy]) => cx === x && cy === y);
+    }
+    return x >= obj.x && y >= obj.y && x < obj.x + (obj.width || unitSize(obj)) && y < obj.y + (obj.depth || unitSize(obj));
+  };
   function placementFits(figureId, x, y) {
     if (!state?.map) return false;
     const roster = state.setup?.roster || [];
@@ -1086,8 +1095,11 @@
       .filter(u => u.alive !== false || u.team === 'heroes' || !unitCellsOf(u).some(([cx, cy]) => livingCells.has(`${cx},${cy}`)))
       .sort((a, b) => (a.alive === false ? 0 : 1) - (b.alive === false ? 0 : 1));
     const unitTokens = sortedUnits.map(u => {
-      const sz = unitSize(u);
-      const cx = u.x + sz * 0.5, cy = u.y + sz * 0.5, life = lifeText(u), inv = invisibleTag(u);
+      const cells = unitCellsOf(u);
+      const xs = cells.map(([x]) => x), ys = cells.map(([, y]) => y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+      const sz = Math.max(1, maxX - minX + 1, maxY - minY + 1);
+      const cx = (minX + maxX + 1) * 0.5, cy = (minY + maxY + 1) * 0.5, life = lifeText(u), inv = invisibleTag(u);
       const words = String(u.name || u.id).split(/[\s_-]+/).filter(Boolean);
       const initial = escape(words.length > 1
         ? words.map(w => (/^\d+$/.test(w) ? w : w[0].toUpperCase())).join('').slice(0, 3)
