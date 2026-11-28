@@ -714,10 +714,13 @@ RECIPE_ALLOWED_KEYS = frozenset({
     'fighting_style', 'divine_order', 'metamagic', 'weapon_masteries',
     'class_equip_choice', 'bg_equip_choice', 'purchases',
     'equipped_armor', 'equipped_shield', 'equipped_weapons',
-    'class_cantrips', 'class_prepared', 'wizard_spellbook', 'evocation_savant',
+    'class_cantrips', 'class_prepared', 'wizard_spellbook', 'prior_spellbook', 'evocation_savant',
     'high_elf_cantrip', 'mi_cleric_cantrips', 'mi_cleric_spell',
     'mi_wizard_cantrips', 'mi_wizard_spell',
 })
+
+# Reaction spells cannot yet pay from a Magic Initiate free-cast pool in Rust (deferred to a future rule version).
+MI_WIZARD_EXCLUDED_L1 = frozenset({'shield'})
 
 NAME_RE = re.compile(r"^[A-Za-z0-9 '\-\.,]{1,32}$")
 
@@ -831,6 +834,7 @@ def builder_options() -> dict[str, Any]:
             'lists': list(sp['lists']),
             'combat': sp['combat'],
             'reaction': bool(sp.get('reaction')),
+            'mi_excluded': sid in MI_WIZARD_EXCLUDED_L1,
             'requires_diamond_50gp': bool(sp.get('requires_diamond_50gp')),
             'requires_holy_water': sid == 'protection_from_evil_and_good',
             'combat_note': '' if sp['combat'] else 'No effect in combat',
@@ -922,6 +926,11 @@ def validate_and_derive(
         err('recipe', f'Unexpected recipe fields: {", ".join(unknown)}.')
 
     # --- Identity ---
+    if 'version' in recipe and recipe['version'] is not None and type(recipe['version']) is not int:
+        err('version', 'version must be an integer.')
+    if 'id' in recipe and recipe['id'] is not None and (not isinstance(recipe['id'], str) or len(recipe['id']) > 64):
+        err('id', 'id must be a short string.')
+
     raw_name = recipe.get('name', '')
     name = raw_name.strip() if isinstance(raw_name, str) else ''
     if not name or not NAME_RE.match(name):
@@ -933,20 +942,21 @@ def validate_and_derive(
         level = 1
 
     class_id = recipe.get('class_id')
-    if class_id not in CLASSES:
+    if not isinstance(class_id, str) or class_id not in CLASSES:
         err('class_id', f'Unsupported class {class_id!r}.')
         raise BuilderError(errors)
     cls = CLASSES[class_id]
     is_caster = class_id in CASTER_CLASSES
 
-    model_key = recipe.get('model_key') or cls['default_model']
-    if model_key not in ALLOWED_MODEL_IDS:
+    raw_model = recipe.get('model_key')
+    model_key = cls['default_model'] if raw_model in (None, '') else raw_model
+    if not isinstance(model_key, str) or model_key not in ALLOWED_MODEL_IDS:
         err('model_key', f'Unsupported appearance {model_key!r}.')
         model_key = cls['default_model']
 
     # --- Species & Lineage ---
     species_id = recipe.get('species')
-    if species_id not in SPECIES:
+    if not isinstance(species_id, str) or species_id not in SPECIES:
         err('species', f'Unsupported species {species_id!r}.')
         raise BuilderError(errors)
     sp = SPECIES[species_id]
@@ -955,7 +965,7 @@ def validate_and_derive(
 
     lineage_id = recipe.get('lineage')
     if sp['lineages']:
-        if lineage_id not in sp['lineages']:
+        if not isinstance(lineage_id, str) or lineage_id not in sp['lineages']:
             err('lineage', f"Choose a supported lineage for {sp['name']}: {', '.join(sp['lineages'])}.")
             lineage_id = next(iter(sp['lineages']))
     else:
@@ -963,14 +973,15 @@ def validate_and_derive(
             err('lineage', f"{sp['name']} does not take a lineage.")
         lineage_id = None
 
-    size = recipe.get('size') or sp['sizes'][0]
-    if size not in sp['sizes']:
+    raw_size = recipe.get('size')
+    size = sp['sizes'][0] if raw_size in (None, '') else raw_size
+    if not isinstance(size, str) or size not in sp['sizes']:
         err('size', f"{sp['name']} size must be one of {', '.join(sp['sizes'])}.")
         size = sp['sizes'][0]
 
     # --- Background & Origin Feats ---
     bg_id = recipe.get('background')
-    if bg_id not in BACKGROUNDS:
+    if not isinstance(bg_id, str) or bg_id not in BACKGROUNDS:
         err('background', f'Unsupported background {bg_id!r}.')
         raise BuilderError(errors)
     bg = BACKGROUNDS[bg_id]
@@ -980,7 +991,7 @@ def validate_and_derive(
     feats: list[str] = [bg['feat']]
     versatile_feat = recipe.get('versatile_feat')
     if species_id == 'human':
-        if versatile_feat not in ORIGIN_FEATS:
+        if not isinstance(versatile_feat, str) or versatile_feat not in ORIGIN_FEATS:
             err('versatile_feat', 'Human Versatile requires choosing a supported Origin feat.')
         else:
             if ORIGIN_FEATS[versatile_feat]['caster_only'] and not is_caster:
@@ -994,7 +1005,7 @@ def validate_and_derive(
 
     # --- Ability Scores (Standard Array / Point Buy + Background ASI) ---
     method = recipe.get('ability_method', 'standard_array')
-    if method not in ('standard_array', 'point_buy'):
+    if not isinstance(method, str) or method not in ('standard_array', 'point_buy'):
         err('ability_method', 'ability_method must be "standard_array" or "point_buy".')
 
     base_raw = recipe.get('base_abilities')
@@ -1059,7 +1070,7 @@ def validate_and_derive(
     # --- Class-specific features (Fighting Style, Divine Order, Metamagic, Masteries) ---
     fighting_style = recipe.get('fighting_style')
     if class_id == 'fighter':
-        if fighting_style not in FIGHTING_STYLES:
+        if not isinstance(fighting_style, str) or fighting_style not in FIGHTING_STYLES:
             err('fighting_style', 'Fighter must choose Defense or Great Weapon Fighting.')
         else:
             feats.append(fighting_style)
@@ -1068,8 +1079,15 @@ def validate_and_derive(
 
     divine_order = recipe.get('divine_order')
     if class_id == 'cleric':
-        if divine_order not in DIVINE_ORDERS:
+        if not isinstance(divine_order, str) or divine_order not in DIVINE_ORDERS:
             err('divine_order', 'Cleric must choose Protector or Thaumaturge.')
+        elif divine_order == 'thaumaturge' and species_id == 'tiefling' and 'magic_initiate_cleric' in feats:
+            err(
+                'divine_order',
+                'Abyssal Tiefling with Magic Initiate (Cleric) and Thaumaturge requires 7 distinct Cleric cantrips '
+                '(Thaumaturgy + 2 Magic Initiate + 4 class), while Step 1 supports 6 (Light is excluded due to illumination rules). '
+                'Choose Protector, another background, or another species.',
+            )
     elif divine_order not in (None, ''):
         err('divine_order', 'Only Clerics choose a Divine Order.')
 
@@ -1082,7 +1100,7 @@ def validate_and_derive(
             err('metamagic', 'Level 2–3 Sorcerer must pick 2 distinct Metamagic options (Empowered Spell, Heightened Spell).')
         else:
             metamagic = mm_raw
-    elif recipe.get('metamagic'):
+    elif recipe.get('metamagic') not in (None, []):
         err('metamagic', 'Metamagic is available only to Level 2–3 Sorcerers.')
 
     weapon_masteries: list[str] = []
@@ -1093,7 +1111,7 @@ def validate_and_derive(
             err('weapon_masteries', f"{cls['name']} must choose {need_m} distinct mastery weapons from {', '.join(MASTERY_WEAPONS)}.")
         else:
             weapon_masteries = wm_raw
-    elif recipe.get('weapon_masteries'):
+    elif recipe.get('weapon_masteries') not in (None, []):
         err('weapon_masteries', 'Only Fighters and Barbarians choose Weapon Masteries.')
 
     # --- Skills (source-specific, no duplicates, Barbarian L3 reservation) ---
@@ -1117,14 +1135,14 @@ def validate_and_derive(
 
     species_skill = recipe.get('species_skill')
     if species_id == 'human':
-        if species_skill not in ALL_SKILLS:
+        if not isinstance(species_skill, str) or species_skill not in ALL_SKILLS:
             err('species_skill', 'Human Skillful requires choosing 1 skill proficiency.')
         elif species_skill in skills:
             err('species_skill', f'{species_skill} is already proficient; choose another skill for Skillful.')
         else:
             skills.append(species_skill)
     elif species_id == 'elf':
-        if species_skill not in sp['keen_senses_skills']:
+        if not isinstance(species_skill, str) or species_skill not in sp['keen_senses_skills']:
             err('species_skill', 'Elf Keen Senses must choose Insight, Perception, or Survival.')
         elif species_skill in skills:
             err('species_skill', f'{species_skill} is already proficient; choose another Keen Senses skill.')
@@ -1159,7 +1177,7 @@ def validate_and_derive(
             if primal_skill not in (None, ''):
                 err('primal_knowledge_skill', 'Primal Knowledge is gained at Barbarian level 3.')
         else:
-            if primal_skill not in CLASSES['barbarian']['skills']:
+            if not isinstance(primal_skill, str) or primal_skill not in CLASSES['barbarian']['skills']:
                 err('primal_knowledge_skill', 'Level 3 Barbarian must pick 1 Primal Knowledge skill from the Barbarian skill list.')
             elif primal_skill in skills:
                 err('primal_knowledge_skill', f'{primal_skill} is already proficient; leave or choose another Barbarian skill.')
@@ -1182,7 +1200,7 @@ def validate_and_derive(
                         err('expertise', f'Expertise requires proficiency in {s}.')
                     else:
                         expertise.append(s)
-        elif recipe.get('expertise'):
+        elif recipe.get('expertise') not in (None, []):
             err('expertise', 'Bard Expertise is gained at level 2.')
         if level >= 3:
             lore_raw = _clean_str_list(recipe.get('lore_skills'), 'lore_skills', errors, max_len=6)
@@ -1197,19 +1215,19 @@ def validate_and_derive(
                     else:
                         lore_skills.append(s)
                         skills.append(s)
-        elif recipe.get('lore_skills'):
+        elif recipe.get('lore_skills') not in (None, []):
             err('lore_skills', 'College of Lore Bonus Proficiencies are gained at level 3.')
     else:
-        if recipe.get('expertise'):
+        if recipe.get('expertise') not in (None, []):
             err('expertise', 'Only Level 2–3 Bards select Expertise here.')
-        if recipe.get('lore_skills'):
+        if recipe.get('lore_skills') not in (None, []):
             err('lore_skills', 'Only Level 3 College of Lore Bards select lore_skills.')
 
     # Wizard L2 Scholar (sheet-only Expertise)
     scholar_skill = recipe.get('scholar_skill')
     if class_id == 'wizard' and level >= 2:
-        if scholar_skill:
-            if scholar_skill not in CLASSES['wizard']['scholar_skills'] or scholar_skill not in skills:
+        if scholar_skill not in (None, ''):
+            if not isinstance(scholar_skill, str) or scholar_skill not in CLASSES['wizard']['scholar_skills'] or scholar_skill not in skills:
                 err('scholar_skill', 'Wizard Scholar must pick a proficient skill from Arcana, History, Investigation, Medicine, Nature, or Religion.')
             else:
                 expertise.append(scholar_skill)
@@ -1223,11 +1241,11 @@ def validate_and_derive(
 
     # --- Starting Equipment, Shop Purse & Ownership ---
     cls_pkg_key = recipe.get('class_equip_choice', 'A')
-    if cls_pkg_key not in cls['starting_equipment']:
+    if not isinstance(cls_pkg_key, str) or cls_pkg_key not in cls['starting_equipment']:
         err('class_equip_choice', f"Class starting equipment must be one of {', '.join(cls['starting_equipment'])}.")
         cls_pkg_key = 'A'
     bg_pkg_key = recipe.get('bg_equip_choice', 'A')
-    if bg_pkg_key not in bg['equipment']:
+    if not isinstance(bg_pkg_key, str) or bg_pkg_key not in bg['equipment']:
         err('bg_equip_choice', 'Background starting equipment must be A or B.')
         bg_pkg_key = 'A'
 
@@ -1275,7 +1293,7 @@ def validate_and_derive(
     if eq_armor == '':
         eq_armor = None
     if eq_armor is not None:
-        if eq_armor not in ARMORS:
+        if not isinstance(eq_armor, str) or eq_armor not in ARMORS:
             err('equipped_armor', f'Unsupported armor {eq_armor!r}.')
             eq_armor = None
         else:
@@ -1327,6 +1345,19 @@ def validate_and_derive(
         err('equipped_weapons', 'Step 1 allows at most 1 Light melee weapon equipped at a time (Two-Weapon Fighting is not yet in Practice).')
     if hand_slots > 2.0 + 1e-9:
         err('equipped_weapons', f'Equipped weapons and shield require {hand_slots:g} hand slots (maximum 2).')
+    for wid in valid_eq_weapons:
+        w = WEAPONS[wid]
+        if 'versatile' in w['properties'] and 'thrown' in w['properties']:
+            has_non_thrown_offhand = eq_shield or any(
+                'thrown' not in WEAPONS[other]['properties']
+                for other in valid_eq_weapons if other != wid
+            )
+            if not has_non_thrown_offhand:
+                err(
+                    'equipped_weapons',
+                    f"{w['name']} (Versatile + Thrown) requires an equipped Shield or non-thrown off-hand weapon in Step 1 "
+                    'so its thrown attack always uses the SRD 1d6 die (you still own it in your pack).',
+                )
 
     # --- Spells & Sources (caster classes only in Step 1) ---
     has_mi_cleric = 'magic_initiate_cleric' in feats
@@ -1345,8 +1376,9 @@ def validate_and_derive(
 
         # Species spells
         if species_id == 'elf' and lineage_id == 'high_elf':
-            he_c = recipe.get('high_elf_cantrip') or 'prestidigitation'
-            if he_c not in _spells_for_class('wizard', 0):
+            raw_he = recipe.get('high_elf_cantrip')
+            he_c = 'prestidigitation' if raw_he in (None, '') else raw_he
+            if not isinstance(he_c, str) or he_c not in _spells_for_class('wizard', 0):
                 err('high_elf_cantrip', 'High Elf lineage cantrip must be a supported Wizard cantrip.')
             else:
                 origin_cantrips.append(he_c)
@@ -1356,12 +1388,16 @@ def validate_and_derive(
                 origin_spell_ids.add('detect_magic')
                 inert_spell_reasons['detect_magic'] = 'No effect in combat (High Elf L3).'
         elif species_id == 'tiefling' and lineage_id == 'abyssal':
+            if recipe.get('high_elf_cantrip') not in (None, ''):
+                err('high_elf_cantrip', 'Only High Elves pick a High Elf lineage cantrip.')
             origin_cantrips.extend(['poison_spray', 'thaumaturgy'])
             origin_spell_ids.update(('poison_spray', 'thaumaturgy'))
             if level >= 3:
                 origin_l1_spells.append('ray_of_sickness')
                 origin_spell_ids.add('ray_of_sickness')
                 free_cast_sources.append(('ray_of_sickness', 'fiendish_legacy'))
+        elif recipe.get('high_elf_cantrip') not in (None, ''):
+            err('high_elf_cantrip', 'Only High Elves pick a High Elf lineage cantrip.')
 
         # Magic Initiate (Cleric)
         if has_mi_cleric:
@@ -1378,7 +1414,7 @@ def validate_and_derive(
                     else:
                         origin_cantrips.append(s)
                         origin_spell_ids.add(s)
-            if mic_s not in valid_c1:
+            if not isinstance(mic_s, str) or mic_s not in valid_c1:
                 err('mi_cleric_spell', 'Magic Initiate (Cleric) requires 1 supported Level 1 Cleric spell.')
             else:
                 if mic_s in origin_spell_ids:
@@ -1387,13 +1423,18 @@ def validate_and_derive(
                     origin_l1_spells.append(mic_s)
                     origin_spell_ids.add(mic_s)
                     free_cast_sources.append((mic_s, 'magic_initiate_cleric'))
+        else:
+            if recipe.get('mi_cleric_cantrips') not in (None, []):
+                err('mi_cleric_cantrips', 'mi_cleric_cantrips requires Magic Initiate (Cleric).')
+            if recipe.get('mi_cleric_spell') not in (None, ''):
+                err('mi_cleric_spell', 'mi_cleric_spell requires Magic Initiate (Cleric).')
 
         # Magic Initiate (Wizard)
         if has_mi_wizard:
             miw_c = _clean_str_list(recipe.get('mi_wizard_cantrips'), 'mi_wizard_cantrips', errors, max_len=4)
             miw_s = recipe.get('mi_wizard_spell')
             valid_w0 = set(_spells_for_class('wizard', 0))
-            valid_w1 = set(_spells_for_class('wizard', 1))
+            valid_w1 = set(_spells_for_class('wizard', 1)) - MI_WIZARD_EXCLUDED_L1
             if len(miw_c) != 2 or len(set(miw_c)) != 2 or any(s not in valid_w0 for s in miw_c):
                 err('mi_wizard_cantrips', 'Magic Initiate (Wizard) requires 2 distinct Wizard cantrips.')
             else:
@@ -1403,7 +1444,13 @@ def validate_and_derive(
                     else:
                         origin_cantrips.append(s)
                         origin_spell_ids.add(s)
-            if miw_s not in valid_w1:
+            if isinstance(miw_s, str) and miw_s in MI_WIZARD_EXCLUDED_L1:
+                err(
+                    'mi_wizard_spell',
+                    'Shield is excluded from Magic Initiate (Wizard) in Step 1 because reaction free-cast payment is '
+                    'deferred to a future rule version (the Wizard and Sorcerer classes can still cast Shield with spell slots).',
+                )
+            elif not isinstance(miw_s, str) or miw_s not in valid_w1:
                 err('mi_wizard_spell', 'Magic Initiate (Wizard) requires 1 supported Level 1 Wizard spell.')
             else:
                 if miw_s in origin_spell_ids:
@@ -1412,6 +1459,11 @@ def validate_and_derive(
                     origin_l1_spells.append(miw_s)
                     origin_spell_ids.add(miw_s)
                     free_cast_sources.append((miw_s, 'magic_initiate_wizard'))
+        else:
+            if recipe.get('mi_wizard_cantrips') not in (None, []):
+                err('mi_wizard_cantrips', 'mi_wizard_cantrips requires Magic Initiate (Wizard).')
+            if recipe.get('mi_wizard_spell') not in (None, ''):
+                err('mi_wizard_spell', 'mi_wizard_spell requires Magic Initiate (Wizard).')
 
         # Class Cantrips
         need_cantrips = cls['cantrip_counts'][level] + (1 if class_id == 'cleric' and divine_order == 'thaumaturge' else 0)
@@ -1457,18 +1509,55 @@ def validate_and_derive(
                     err('wizard_spellbook', 'At Level 3, at most 4 spellbook spells can be Level 2 (the first 8 spells learned at Levels 1–2 are Level 1).')
                 wizard_spellbook = sb_raw
             if level >= 3:
+                prior_sb: list[str] = []
+                if recipe.get('prior_spellbook') not in (None, []):
+                    prior_raw = _clean_str_list(recipe.get('prior_spellbook'), 'prior_spellbook', errors, max_len=12)
+                    valid_w1_sb = set(_spells_for_class('wizard', 1))
+                    if len(prior_raw) != 8 or len(set(prior_raw)) != 8 or any(s not in valid_w1_sb for s in prior_raw):
+                        err('prior_spellbook', 'prior_spellbook must contain the 8 distinct Level 1 Wizard spells known at Level 2.')
+                    else:
+                        prior_sb = prior_raw
+                        if wizard_spellbook and not set(prior_sb).issubset(wizard_spellbook):
+                            err('wizard_spellbook', 'Level 3 spellbook must retain all 8 spells from your Level 2 spellbook.')
+
                 ev_raw = _clean_str_list(recipe.get('evocation_savant'), 'evocation_savant', errors, max_len=4)
                 if len(ev_raw) != 2 or len(set(ev_raw)) != 2:
-                    err('evocation_savant', 'Level 3 Evoker must pick 2 distinct Wizard Evocation spells (levels 1–2) for Evocation Savant.')
+                    err('evocation_savant', 'Level 3 Evoker must pick 2 distinct newly added Wizard Evocation spells (levels 1–2) for Evocation Savant.')
                 else:
+                    ev_ok = True
                     for s in ev_raw:
                         if s not in valid_cls_leveled or SPELLS[s]['school'] != 'evocation':
                             err('evocation_savant', f'{s} is not a Level 1–2 Wizard Evocation spell.')
+                            ev_ok = False
                         elif s not in wizard_spellbook:
                             err('evocation_savant', f'Evocation Savant spell {SPELLS[s]["name"]} must be included in wizard_spellbook.')
-                    evocation_savant = ev_raw
-        elif recipe.get('wizard_spellbook') or recipe.get('evocation_savant'):
-            err('wizard_spellbook', 'Only the Wizard class has a spellbook / Evocation Savant.')
+                            ev_ok = False
+                        elif s in prior_sb:
+                            err('evocation_savant', f'{SPELLS[s]["name"]} was already in your Level 2 spellbook; Evocation Savant must add 2 newly learned Evocation spells.')
+                            ev_ok = False
+                    if ev_ok and wizard_spellbook:
+                        normal_sb = [s for s in wizard_spellbook if s not in ev_raw]
+                        l2_normal = sum(1 for s in normal_sb if SPELLS[s]['level'] == 2)
+                        if l2_normal > 2:
+                            err(
+                                'evocation_savant',
+                                'At Level 3, at most 2 non-Savant spellbook spells can be Level 2 '
+                                '(your 2 Evocation Savant spells must be newly added alongside your 2 regular Level 3 spells).',
+                            )
+                        else:
+                            evocation_savant = ev_raw
+            else:
+                if recipe.get('evocation_savant') not in (None, []):
+                    err('evocation_savant', 'Evocation Savant is gained at Wizard level 3.')
+                if recipe.get('prior_spellbook') not in (None, []):
+                    err('prior_spellbook', 'prior_spellbook applies only at Wizard level 3.')
+        else:
+            if recipe.get('wizard_spellbook') not in (None, []):
+                err('wizard_spellbook', 'Only the Wizard class has a spellbook / Evocation Savant.')
+            if recipe.get('evocation_savant') not in (None, []):
+                err('evocation_savant', 'Only the Wizard class has Evocation Savant.')
+            if recipe.get('prior_spellbook') not in (None, []):
+                err('prior_spellbook', 'Only the Wizard class has prior_spellbook.')
 
         # Class Prepared Spells
         need_prep = cls['prepared_counts'][level]
@@ -1504,10 +1593,12 @@ def validate_and_derive(
         always_prepared = []
         wizard_spellbook = []
         evocation_savant = []
-        for fld in ('class_cantrips', 'class_prepared', 'wizard_spellbook', 'evocation_savant',
-                    'high_elf_cantrip', 'mi_cleric_cantrips', 'mi_cleric_spell',
-                    'mi_wizard_cantrips', 'mi_wizard_spell'):
-            if recipe.get(fld):
+        for fld in ('class_cantrips', 'class_prepared', 'wizard_spellbook', 'prior_spellbook',
+                    'evocation_savant', 'mi_cleric_cantrips', 'mi_wizard_cantrips'):
+            if recipe.get(fld) not in (None, []):
+                err(fld, f"{cls['name']} does not use spell choices in Step 1.")
+        for fld in ('high_elf_cantrip', 'mi_cleric_spell', 'mi_wizard_spell'):
+            if recipe.get(fld) not in (None, ''):
                 err(fld, f"{cls['name']} does not use spell choices in Step 1.")
 
     if errors:

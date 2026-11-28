@@ -249,7 +249,7 @@ def create_app():
             derived = builder.validate_and_derive(data['recipe'], unit_id='custom_preview', validate_rust=True)
         except builder.BuilderError as err:
             return jsonify(valid=False, error=str(err), errors=err.errors), 400
-        except ValueError as err:
+        except (ValueError, TypeError) as err:
             return jsonify(valid=False, error=str(err), errors=[{'field': 'recipe', 'message': str(err)}]), 400
         return jsonify(valid=True, errors=[], warnings=derived['warnings'], summary=derived['summary'])
 

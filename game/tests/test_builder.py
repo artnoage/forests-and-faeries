@@ -208,7 +208,7 @@ def base_sorcerer(level=1, **overrides):
         'purchases': [{'id': 'diamond_50gp', 'qty': 1}],
         'equipped_armor': None,
         'equipped_shield': False,
-        'equipped_weapons': ['spear'],
+        'equipped_weapons': ['dagger'],
     }
     if level >= 2:
         r['metamagic'] = ['empowered_spell', 'heightened_spell']
@@ -350,13 +350,13 @@ def test_str_bounds_heavy_weapon_and_heavy_armor():
     assert ok13['summary']['ac'] == 17  # 16 + Defense +1
 
     # Splint Armor (200 GP): affordable with Fighter C (155 GP) + Soldier B (50 GP) = 205 GP
-    # Blocked at STR 14, allowed at STR 15
+    # Blocked at STR 14, allowed at STR 15 (pair with Quarterstaff, 2 SP)
     splint_recipe = base_fighter(
         class_equip_choice='C',
         bg_equip_choice='B',
-        purchases=[{'id': 'splint', 'qty': 1}, {'id': 'spear', 'qty': 1}],
+        purchases=[{'id': 'splint', 'qty': 1}, {'id': 'quarterstaff', 'qty': 1}],
         equipped_armor='splint',
-        equipped_weapons=['spear'],
+        equipped_weapons=['quarterstaff'],
         base_abilities={'str': 13, 'dex': 12, 'con': 15, 'int': 8, 'wis': 10, 'cha': 14},
         bg_asi={'str': 1, 'con': 2},
     )
@@ -368,7 +368,7 @@ def test_str_bounds_heavy_weapon_and_heavy_armor():
     ok15 = builder.validate_and_derive(splint_recipe)
     assert ok15['summary']['abilities']['str'] == 15
     assert ok15['summary']['ac'] == 18  # 17 + Defense +1
-    assert ok15['summary']['remaining_cp'] == 400  # 205 GP - 201 GP = 4 GP
+    assert ok15['summary']['remaining_cp'] == 480  # 205 GP - 200 GP 2 SP = 4 GP 8 SP
 
 
 def test_equipment_packs_cp_math_and_twf_cap():
@@ -691,3 +691,351 @@ def test_200_distinct_custom_hero_sessions_zero_intern_leak():
         assert arena.state()['units'][0]['name'] == f'Hero {i}'
     after = ember_rs.intern_table_size()
     assert after == before, f'intern table grew from {before} to {after} across 200 custom hero sessions'
+
+
+def test_unhashable_and_wrong_type_fields_return_400_and_preserve_session(ff_app):
+    client = ff_app.test_client()
+    initial = client.get('/api/state').get_json()
+    orig_csrf = initial['csrf_token']
+    orig_rev = initial['revision']
+
+    # Fuzz EVERY allowed recipe key across multiple class/species bases so every
+    # branch of validate_and_derive is hit with unhashable lists/dicts & bad scalars.
+    bases = [
+        base_fighter(level=3),
+        base_barbarian(level=3),
+        base_cleric(level=3),
+        base_wizard(level=3),
+        base_bard(level=3),
+    ]
+    bad_values = [[], {}, ['x'], {'k': 'v'}, 123, True]
+    for base in bases:
+        for key in sorted(builder.RECIPE_ALLOWED_KEYS):
+            for bad in bad_values:
+                if key == 'equipped_shield' and bad is True:
+                    continue
+                if key == 'version' and bad == 123:
+                    continue
+                if key in ('purchases', 'class_skills', 'skilled_skills', 'lore_skills',
+                           'expertise', 'metamagic', 'weapon_masteries', 'equipped_weapons',
+                           'class_cantrips', 'class_prepared', 'wizard_spellbook', 'prior_spellbook',
+                           'evocation_savant', 'mi_cleric_cantrips', 'mi_wizard_cantrips') and bad == []:
+                    continue
+                rec = copy.deepcopy(base)
+                rec[key] = bad
+                resp = post(client, '/api/builder/preview', initial, {'recipe': rec})
+                assert resp.status_code == 400, (
+                    f'/api/builder/preview {base["class_id"]}.{key}={bad!r} -> {resp.status_code} {resp.get_json()}'
+                )
+                body = resp.get_json()
+                assert body['valid'] is False and body['errors']
+
+    # Specifically verify Claude's listed fields on /api/new return 400 AND do NOT drop the caller's game
+    targeted = [
+        (base_fighter(level=1), 'class_id', []),
+        (base_fighter(level=1), 'species', {}),
+        (base_fighter(level=1), 'background', ['soldier']),
+        (base_wizard(level=1), 'lineage', {'x': 1}),
+        (base_fighter(level=1), 'model_key', ['guy']),
+        (base_fighter(level=1), 'class_equip_choice', {}),
+        (base_fighter(level=1), 'bg_equip_choice', []),
+        (base_fighter(level=1), 'equipped_armor', ['chain_mail']),
+        (base_cleric(level=1), 'mi_cleric_spell', ['bless']),
+        (base_wizard(level=1), 'mi_wizard_spell', {}),
+        (base_wizard(level=3), 'scholar_skill', []),
+        (base_barbarian(level=3), 'primal_knowledge_skill', {}),
+    ]
+    for base, field, bad in targeted:
+        rec = copy.deepcopy(base)
+        rec[field] = bad
+        resp = post(client, '/api/new', initial, {
+            'encounter': 'crypt',
+            'preset': 'bone_patrol',
+            'party': ['custom:0'],
+            'custom_heroes': [rec],
+        })
+        assert resp.status_code == 400, f'/api/new {field}={bad!r} -> {resp.status_code}'
+        # Caller's active session must remain intact (same CSRF token & revision, never 410/reset)
+        after = client.get('/api/state').get_json()
+        assert after['csrf_token'] == orig_csrf, f'/api/new dropped session on {field}={bad!r}'
+        assert after['revision'] == orig_rev, f'/api/new altered revision on {field}={bad!r}'
+
+
+# ---------------------------------------------------------------------------
+# 7. Codex 16:33 Audit Fixes (MI Shield, Thrown Spear, Evocation Savant, Tiefling+Acolyte+Thaumaturge)
+# ---------------------------------------------------------------------------
+
+def test_codex_audit_1633_four_rules_fixes():
+    # 1. Magic Initiate (Wizard) excludes Shield (reaction free cast not yet supported in Rust),
+    #    while Wizard & Sorcerer characters can still learn and cast Shield normally with spell slots.
+    with pytest.raises(builder.BuilderError) as e_mi_sh:
+        builder.validate_and_derive(base_wizard(
+            level=1,
+            mi_wizard_spell='shield',
+            class_prepared=['burning_hands', 'mage_armor', 'magic_missile', 'thunderwave'],
+        ))
+    assert any(x['field'] == 'mi_wizard_spell' and 'Shield' in x['message'] for x in e_mi_sh.value.errors)
+    assert builder.builder_options()['spells']['shield']['mi_excluded'] is True
+    # Normal Wizard preparing Shield with slots still succeeds
+    ok_wiz = builder.validate_and_derive(base_wizard(level=1))
+    assert 'shield' in ok_wiz['content_doc']['spellcasting']['reaction_spells']
+
+    # 2. Versatile + Thrown Spear requires a Shield or non-thrown off-hand weapon so thrown Spear
+    #    always uses SRD 1d6 (never 1d8 from empty off-hand or after throwing an off-hand Dagger).
+    with pytest.raises(builder.BuilderError) as e_sp_alone:
+        builder.validate_and_derive(base_fighter(equipped_weapons=['spear'], equipped_shield=False))
+    assert any(x['field'] == 'equipped_weapons' and '1d6' in x['message'] for x in e_sp_alone.value.errors)
+
+    # Spear + thrown Dagger still rejected (throwing Dagger frees off-hand mid-combat)
+    with pytest.raises(builder.BuilderError) as e_sp_dag:
+        builder.validate_and_derive(base_sorcerer(equipped_weapons=['spear', 'dagger']))
+    assert any(x['field'] == 'equipped_weapons' and '1d6' in x['message'] for x in e_sp_dag.value.errors)
+
+    # Spear + Shield (bought for 10 GP from Fighter A + Soldier A 18 GP) -> ALLOWED, 1d6 melee & 1d6 thrown!
+    sp_shield = builder.validate_and_derive(base_fighter(
+        purchases=[{'id': 'shield', 'qty': 1}],
+        equipped_shield=True,
+        equipped_weapons=['spear'],
+    ))
+    spear_atks = [a for a in sp_shield['content_doc']['attacks'] if a['name'] == 'spear']
+    assert len(spear_atks) == 2
+    assert all(a['damage'].startswith('1d6') for a in spear_atks)
+
+    # Spear + non-thrown off-hand (Quarterstaff, 2 SP) -> ALLOWED, 1d6 melee & 1d6 thrown!
+    sp_staff = builder.validate_and_derive(base_sorcerer(
+        purchases=[{'id': 'quarterstaff', 'qty': 1}],
+        equipped_weapons=['spear', 'quarterstaff'],
+    ))
+    sorc_spear = [a for a in sp_staff['content_doc']['attacks'] if a['name'] == 'spear']
+    assert len(sorc_spear) == 2 and all(a['damage'].startswith('1d6') for a in sorc_spear)
+
+    # 3. Evocation Savant MUST add 2 newly learned Evocations (cannot tag already-known L1 spells to
+    #    smuggle 4 non-evocation L2 spells, or tag spells from saved L2 prior_spellbook).
+    l2_wiz = base_wizard(level=2)
+    l2_sb = list(l2_wiz['wizard_spellbook'])
+    assert builder.validate_and_derive(l2_wiz)['summary']['level'] == 2
+
+    # (a) Codex exact stateless reproducer: retain 8 L1 spells + add 4 non-evocation L2 spells,
+    #     tag existing burning_hands + magic_missile as Evocation Savant -> REJECTED!
+    cheat_stateless = base_wizard(
+        level=3,
+        wizard_spellbook=l2_sb + ['blur', 'dragons_breath', 'see_invisibility', 'invisibility'],
+        evocation_savant=['burning_hands', 'magic_missile'],
+        class_prepared=['mage_armor', 'magic_missile', 'shield', 'blur', 'invisibility', 'see_invisibility'],
+    )
+    with pytest.raises(builder.BuilderError) as e_ev1:
+        builder.validate_and_derive(cheat_stateless)
+    assert any(x['field'] == 'evocation_savant' for x in e_ev1.value.errors)
+
+    # (b) Saved L2 -> L3 transition with prior_spellbook: adding 2 L1 non-evocations + 2 L2 non-evocations
+    #     and tagging already-known L1 evocations as Savant -> REJECTED!
+    l2_alt_sb = ['burning_hands', 'mage_armor', 'magic_missile', 'shield', 'thunderwave', 'chromatic_orb', 'ray_of_sickness', 'protection_from_evil_and_good']
+    cheat_l2_l3 = base_wizard(
+        level=3,
+        prior_spellbook=l2_alt_sb,
+        wizard_spellbook=l2_alt_sb + ['detect_magic', 'disguise_self', 'blur', 'invisibility'],
+        evocation_savant=['burning_hands', 'magic_missile'],
+        class_prepared=['mage_armor', 'magic_missile', 'shield', 'blur', 'invisibility', 'thunderwave'],
+    )
+    with pytest.raises(builder.BuilderError) as e_ev2:
+        builder.validate_and_derive(cheat_l2_l3)
+    assert any(x['field'] == 'evocation_savant' and 'already in your Level 2 spellbook' in x['message'] for x in e_ev2.value.errors)
+
+    # (c) Legitimate saved L2 -> L3 path: retain all 8 L2 spells + 2 normal L3 (blur, invisibility) +
+    #     2 NEW Evocation Savant spells (scorching_ray, shatter) -> ACCEPTED!
+    legit_l2_l3 = base_wizard(
+        level=3,
+        prior_spellbook=l2_sb,
+        wizard_spellbook=l2_sb + ['blur', 'invisibility', 'scorching_ray', 'shatter'],
+        evocation_savant=['scorching_ray', 'shatter'],
+    )
+    assert builder.validate_and_derive(legit_l2_l3)['summary']['level'] == 3
+
+    # 4. Abyssal Tiefling + Acolyte + Thaumaturge explicitly gated (needs 7 Cleric cantrips, Step 1 has 6),
+    #    while Abyssal Tiefling + Acolyte + Protector and Abyssal Tiefling + Criminal + Thaumaturge succeed.
+    bad_tief_thau = base_cleric(
+        level=1,
+        species='tiefling',
+        lineage='abyssal',
+        species_skill=None,
+        versatile_feat=None,
+        divine_order='thaumaturge',
+        mi_cleric_cantrips=['guidance', 'resistance'],
+        class_cantrips=['sacred_flame', 'spare_the_dying', 'mending', 'thaumaturgy'],
+    )
+    with pytest.raises(builder.BuilderError) as e_tief:
+        builder.validate_and_derive(bad_tief_thau)
+    assert any(x['field'] == 'divine_order' and '7 distinct Cleric cantrips' in x['message'] for x in e_tief.value.errors)
+
+    ok_tief_prot = base_cleric(
+        level=1,
+        species='tiefling',
+        lineage='abyssal',
+        species_skill=None,
+        versatile_feat=None,
+        divine_order='protector',
+        mi_cleric_cantrips=['guidance', 'resistance'],
+        class_cantrips=['sacred_flame', 'spare_the_dying', 'mending'],
+    )
+    assert builder.validate_and_derive(ok_tief_prot)['summary']['species_label'] == 'Tiefling (Abyssal Legacy)'
+
+    ok_tief_crim_thau = base_cleric(
+        level=1,
+        species='tiefling',
+        lineage='abyssal',
+        species_skill=None,
+        versatile_feat=None,
+        background='criminal',
+        bg_asi={'con': 2, 'dex': 1},
+        divine_order='thaumaturge',
+        class_cantrips=['sacred_flame', 'spare_the_dying', 'guidance', 'mending'],
+        mi_cleric_cantrips=[],
+        mi_cleric_spell=None,
+    )
+    assert builder.validate_and_derive(ok_tief_crim_thau)['summary']['level'] == 1
+
+
+def test_every_offered_origin_class_combination_is_completable_l1_to_l3():
+    """Exhaustively prove zero uncompletable dead-end combinations remain across Step 1."""
+    checked = 0
+    for cid, cls in builder.CLASSES.items():
+        is_caster = cid in builder.CASTER_CLASSES
+        orders = list(builder.DIVINE_ORDERS) if cid == 'cleric' else [None]
+        for sid, sp in builder.SPECIES.items():
+            if sp['caster_only'] and not is_caster:
+                continue
+            lineages = list(sp['lineages']) if sp['lineages'] else [None]
+            for lin in lineages:
+                for bid, bg in builder.BACKGROUNDS.items():
+                    if bg['caster_only'] and not is_caster:
+                        continue
+                    vfeats = (
+                        [f for f, fi in builder.ORIGIN_FEATS.items() if f != bg['feat'] and (is_caster or not fi['caster_only'])]
+                        if sid == 'human' else [None]
+                    )
+                    for vf in vfeats:
+                        for order in orders:
+                            feats = [bg['feat']] + ([vf] if vf else [])
+                            # Skip the explicitly gated Abyssal Tiefling + MI(Cleric) + Thaumaturge combination
+                            if cid == 'cleric' and order == 'thaumaturge' and sid == 'tiefling' and 'magic_initiate_cleric' in feats:
+                                continue
+                            # Construct a clean legal L3 build (strictest level for slots/cantrips/skills/spells)
+                            base_ab = dict(cls['recommended_array'])
+                            # Align bg_asi with class casting ability if possible, else first two bg abilities
+                            cast_ab = cls.get('casting_ability')
+                            ab1 = cast_ab if (cast_ab and cast_ab in bg['abilities']) else bg['abilities'][0]
+                            ab2 = next(a for a in bg['abilities'] if a != ab1)
+                            # Ensure cross-list attack parity if caster: casting ability gets highest score (15)
+                            if is_caster and base_ab[cast_ab] < 15:
+                                high_ab = max(base_ab, key=lambda a: base_ab[a])
+                                base_ab[cast_ab], base_ab[high_ab] = base_ab[high_ab], base_ab[cast_ab]
+                            bg_asi = {ab1: 2, ab2: 1}
+
+                            # Skills
+                            taken = list(bg['skills'])
+                            cls_sk = [s for s in cls['skills'] if s not in taken][:cls['skill_count']]
+                            taken.extend(cls_sk)
+                            sp_sk = None
+                            if sid == 'human':
+                                pool = [s for s in builder.ALL_SKILLS if s not in taken and (cid != 'barbarian' or s not in cls['skills'])]
+                                sp_sk = pool[0]
+                                taken.append(sp_sk)
+                            elif sid == 'elf':
+                                sp_sk = next(s for s in sp['keen_senses_skills'] if s not in taken)
+                                taken.append(sp_sk)
+                            skd_sk = []
+                            if 'skilled' in feats:
+                                pool = [s for s in builder.ALL_SKILLS if s not in taken and (cid != 'barbarian' or s not in cls['skills'])]
+                                skd_sk = pool[:3]
+                                taken.extend(skd_sk)
+                            primal_sk = None
+                            if cid == 'barbarian':
+                                primal_sk = next(s for s in cls['skills'] if s not in taken)
+                                taken.append(primal_sk)
+                            expertise = taken[:2] if cid == 'bard' else []
+                            lore_sk = [s for s in builder.ALL_SKILLS if s not in taken][:3] if cid == 'bard' else []
+                            scholar_sk = next((s for s in cls['scholar_skills'] if s in taken), None) if cid == 'wizard' else None
+
+                            # Spells
+                            origin_ids: set[str] = set()
+                            he_c = None
+                            if sid == 'elf' and lin == 'high_elf':
+                                he_c = 'prestidigitation'
+                                origin_ids.update(('prestidigitation', 'detect_magic'))
+                            elif sid == 'tiefling' and lin == 'abyssal':
+                                origin_ids.update(('poison_spray', 'thaumaturgy', 'ray_of_sickness'))
+                            always_p = set(cls.get('always_prepared_l3', ()))
+                            mic_c, mic_s = [], None
+                            if 'magic_initiate_cleric' in feats:
+                                c0 = [s for s in builder._spells_for_class('cleric', 0) if s not in origin_ids]
+                                mic_c = c0[:2]
+                                origin_ids.update(mic_c)
+                                c1 = [s for s in builder._spells_for_class('cleric', 1) if s not in origin_ids and s not in always_p]
+                                mic_s = c1[0]
+                                origin_ids.add(mic_s)
+                            miw_c, miw_s = [], None
+                            if 'magic_initiate_wizard' in feats:
+                                w0 = [s for s in builder._spells_for_class('wizard', 0) if s not in origin_ids and s != 'mending']
+                                miw_c = w0[:2]
+                                origin_ids.update(miw_c)
+                                w1 = [s for s in builder._spells_for_class('wizard', 1)
+                                      if s not in origin_ids and s not in always_p and s not in builder.MI_WIZARD_EXCLUDED_L1]
+                                miw_s = w1[0]
+                                origin_ids.add(miw_s)
+                            cls_c0, cls_prep, wiz_sb, ev_sav = [], [], [], []
+                            if is_caster:
+                                need_c0 = cls['cantrip_counts'][3] + (1 if cid == 'cleric' and order == 'thaumaturge' else 0)
+                                cls_c0 = [s for s in builder._spells_for_class(cid, 0) if s not in origin_ids][:need_c0]
+                                l1 = builder._spells_for_class(cid, 1)
+                                l2 = builder._spells_for_class(cid, 2)
+                                if cid == 'wizard':
+                                    ev_sav = ['scorching_ray', 'shatter']
+                                    norm_l2 = [s for s in l2 if s not in ev_sav][:2]
+                                    wiz_sb = l1[:8] + norm_l2 + ev_sav
+                                    cls_prep = [s for s in wiz_sb if s not in origin_ids and s not in always_p][:cls['prepared_counts'][3]]
+                                else:
+                                    cls_prep = [s for s in (l1 + l2) if s not in origin_ids and s not in always_p][:cls['prepared_counts'][3]]
+
+                            rec = {
+                                'name': 'Combo Hero',
+                                'level': 3,
+                                'class_id': cid,
+                                'species': sid,
+                                'lineage': lin,
+                                'background': bid,
+                                'bg_asi_mode': '2_1',
+                                'bg_asi': bg_asi,
+                                'ability_method': 'standard_array',
+                                'base_abilities': base_ab,
+                                'class_skills': cls_sk,
+                                'species_skill': sp_sk,
+                                'versatile_feat': vf,
+                                'skilled_skills': skd_sk,
+                                'primal_knowledge_skill': primal_sk,
+                                'expertise': expertise,
+                                'lore_skills': lore_sk,
+                                'scholar_skill': scholar_sk,
+                                'fighting_style': 'defense' if cid == 'fighter' else None,
+                                'divine_order': order,
+                                'metamagic': ['empowered_spell', 'heightened_spell'] if cid == 'sorcerer' else [],
+                                'weapon_masteries': list(builder.MASTERY_WEAPONS[:cls['weapon_mastery_count']]) if cid in ('fighter', 'barbarian') else [],
+                                'class_equip_choice': 'A',
+                                'bg_equip_choice': 'A',
+                                'purchases': [],
+                                'equipped_armor': None,
+                                'equipped_shield': False,
+                                'equipped_weapons': [],
+                                'class_cantrips': cls_c0,
+                                'class_prepared': cls_prep,
+                                'wizard_spellbook': wiz_sb,
+                                'evocation_savant': ev_sav,
+                                'high_elf_cantrip': he_c,
+                                'mi_cleric_cantrips': mic_c,
+                                'mi_cleric_spell': mic_s,
+                                'mi_wizard_cantrips': miw_c,
+                                'mi_wizard_spell': miw_s,
+                            }
+                            res = builder.validate_and_derive(rec, validate_rust=False)
+                            assert res['summary']['level'] == 3
+                            checked += 1
+    assert checked >= 120, f'Expected >=120 valid origin/class combinations, checked {checked}'

@@ -2857,7 +2857,7 @@
     metamagic: 'class', weapon_masteries: 'class',
     class_equip_choice: 'equipment', bg_equip_choice: 'equipment', purchases: 'equipment',
     equipped_armor: 'equipment', equipped_shield: 'equipment', equipped_weapons: 'equipment',
-    class_cantrips: 'spells', class_prepared: 'spells', wizard_spellbook: 'spells', evocation_savant: 'spells',
+    class_cantrips: 'spells', class_prepared: 'spells', wizard_spellbook: 'spells', prior_spellbook: 'spells', evocation_savant: 'spells',
   };
   const CASTER_SET = new Set(['cleric', 'wizard', 'sorcerer', 'bard']);
   const ABIL_IDS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
@@ -2948,6 +2948,7 @@
       class_cantrips: [],
       class_prepared: [],
       wizard_spellbook: [],
+      prior_spellbook: [],
       evocation_savant: [],
       high_elf_cantrip: null,
       mi_cleric_cantrips: [],
@@ -3037,7 +3038,13 @@
 
     // Class options
     r.fighting_style = r.class_id === 'fighter' ? (builderOptions.fighting_styles[r.fighting_style] ? r.fighting_style : 'defense') : null;
-    r.divine_order = r.class_id === 'cleric' ? (builderOptions.divine_orders[r.divine_order] ? r.divine_order : 'protector') : null;
+    if (r.class_id === 'cleric') {
+      const thauBlocked = r.species === 'tiefling' && feats.includes('magic_initiate_cleric');
+      r.divine_order = (builderOptions.divine_orders[r.divine_order] && !(thauBlocked && r.divine_order === 'thaumaturge'))
+        ? r.divine_order : 'protector';
+    } else {
+      r.divine_order = null;
+    }
     r.metamagic = (r.class_id === 'sorcerer' && r.level >= 2) ? ['empowered_spell', 'heightened_spell'] : [];
     if (r.class_id === 'fighter' || r.class_id === 'barbarian') {
       const needM = cls.weapon_mastery_count;
@@ -3145,11 +3152,16 @@
       let slots = r.equipped_shield ? 1.0 : 0.0;
       let lights = 0;
       const picked = [];
-      for (const id of Object.keys(owned)) {
-        if (!canWep(id)) continue;
+      const isVersThrown = w => w.properties.includes('versatile') && w.properties.includes('thrown');
+      const candidates = Object.keys(owned).filter(canWep).sort((a, b) => Number(isVersThrown(wepsById.get(a))) - Number(isVersThrown(wepsById.get(b))));
+      for (const id of candidates) {
         const w = wepsById.get(id);
         if (w.properties.includes('light') && lights >= 1) continue;
         if (slots + w.hand_slots > 2.0 + 1e-9) continue;
+        if (isVersThrown(w)) {
+          const hasNonThrownOffhand = r.equipped_shield || picked.some(pid => !wepsById.get(pid).properties.includes('thrown'));
+          if (!hasNonThrownOffhand) continue;
+        }
         picked.push(id);
         slots += w.hand_slots;
         if (w.properties.includes('light')) lights++;
@@ -3207,8 +3219,12 @@
       r.mi_cleric_cantrips = []; r.mi_cleric_spell = null;
     }
     if (feats.includes('magic_initiate_wizard')) {
-      const w0 = spellsFor('wizard', 0), w1 = spellsFor('wizard', 1);
-      r.mi_wizard_cantrips = pickFrom(r.mi_wizard_cantrips, w0.filter(s => !s.combat).concat(w0.filter(s => s.combat)), 2, originUsed);
+      const w0Raw = spellsFor('wizard', 0);
+      const w0Ordered = w0Raw.filter(s => !s.combat && s.id !== 'mending')
+        .concat(w0Raw.filter(s => s.combat))
+        .concat(w0Raw.filter(s => s.id === 'mending'));
+      const w1 = spellsFor('wizard', 1).filter(s => !s.mi_excluded);
+      r.mi_wizard_cantrips = pickFrom(r.mi_wizard_cantrips, w0Ordered, 2, originUsed);
       r.mi_wizard_cantrips.forEach(s => originUsed.add(s));
       const avoidL1 = new Set([...originUsed, ...alwaysPrep]);
       r.mi_wizard_spell = pickFrom(r.mi_wizard_spell ? [r.mi_wizard_spell] : ['magic_missile'], w1, 1, avoidL1)[0] || null;
@@ -3228,36 +3244,52 @@
 
     if (r.class_id === 'wizard') {
       const needSb = cls.spellbook_counts[String(r.level)];
-      const sbKeep = (r.wizard_spellbook || []).filter(s => clsLeveled.some(x => x.id === s));
-      let l2Cnt = sbKeep.filter(s => builderOptions.spells[s]?.level === 2).length;
-      const sb = [];
-      for (const s of sbKeep) {
-        if (sb.includes(s)) continue;
-        if (builderOptions.spells[s]?.level === 2 && sb.filter(x => builderOptions.spells[x]?.level === 2).length >= 4) continue;
-        sb.push(s);
-      }
-      // Prefer filling L2 slots at L3 (up to 4) then L1
+      const l1Ids = new Set(clsL1.map(x => x.id));
+      const prior = (r.level >= 3 && Array.isArray(r.prior_spellbook) && r.prior_spellbook.length === 8)
+        ? r.prior_spellbook.filter(s => l1Ids.has(s)) : [];
+      r.prior_spellbook = prior.length === 8 ? prior : [];
+      const priorSet = new Set(r.prior_spellbook);
       if (r.level >= 3) {
-        for (const spObj of clsL2) {
-          if (sb.length >= needSb || l2Cnt >= 4) break;
-          if (!sb.includes(spObj.id)) { sb.push(spObj.id); l2Cnt++; }
+        const allEv = [...clsL2.filter(s => s.school === 'evocation'), ...clsL1.filter(s => s.school === 'evocation')]
+          .filter(s => !priorSet.has(s.id));
+        const curEv = (r.evocation_savant || []).filter(id => allEv.some(s => s.id === id) && !priorSet.has(id));
+        r.evocation_savant = pickFrom(curEv, allEv, 2, priorSet);
+        const evSet = new Set(r.evocation_savant);
+        const normal = [...r.prior_spellbook];
+        let l2Normal = 0;
+        const sbKeep = (r.wizard_spellbook || []).filter(s => clsLeveled.some(x => x.id === s) && !evSet.has(s) && !priorSet.has(s));
+        for (const s of sbKeep) {
+          if (normal.length >= 10 || normal.includes(s)) continue;
+          const isL2 = builderOptions.spells[s]?.level === 2;
+          if (isL2 && l2Normal >= 2) continue;
+          normal.push(s);
+          if (isL2) l2Normal++;
         }
-      }
-      for (const spObj of clsL1) {
-        if (sb.length >= needSb) break;
-        if (!sb.includes(spObj.id)) sb.push(spObj.id);
-      }
-      r.wizard_spellbook = sb.slice(0, needSb);
-      if (r.level >= 3) {
-        const evPool = r.wizard_spellbook.map(id => builderOptions.spells[id]).filter(s => s && s.school === 'evocation');
-        r.evocation_savant = pickFrom(r.evocation_savant, evPool, 2, new Set());
+        for (const spObj of clsL2) {
+          if (normal.length >= 10 || l2Normal >= 2) break;
+          if (!normal.includes(spObj.id) && !evSet.has(spObj.id)) { normal.push(spObj.id); l2Normal++; }
+        }
+        for (const spObj of clsL1) {
+          if (normal.length >= 10) break;
+          if (!normal.includes(spObj.id) && !evSet.has(spObj.id)) normal.push(spObj.id);
+        }
+        r.wizard_spellbook = [...normal.slice(0, 10), ...r.evocation_savant].slice(0, needSb);
       } else {
+        const sb = [];
+        for (const s of (r.wizard_spellbook || [])) {
+          if (l1Ids.has(s) && !sb.includes(s)) sb.push(s);
+        }
+        for (const spObj of clsL1) {
+          if (sb.length >= needSb) break;
+          if (!sb.includes(spObj.id)) sb.push(spObj.id);
+        }
+        r.wizard_spellbook = sb.slice(0, needSb);
         r.evocation_savant = [];
       }
       const sbObjs = r.wizard_spellbook.map(id => builderOptions.spells[id]).filter(Boolean);
       r.class_prepared = pickFrom(r.class_prepared, sbObjs, cls.prepared_counts[String(r.level)], prepAvoid);
     } else {
-      r.wizard_spellbook = []; r.evocation_savant = [];
+      r.wizard_spellbook = []; r.prior_spellbook = []; r.evocation_savant = [];
       r.class_prepared = pickFrom(r.class_prepared, clsLeveled, cls.prepared_counts[String(r.level)], prepAvoid);
     }
     return r;
@@ -3333,6 +3365,9 @@
       prevPreview = existing.summary || null;
       if (mode === 'levelup') {
         const nextLv = Math.min(3, fromLevel + 1);
+        if (recipe.class_id === 'wizard' && fromLevel === 2 && nextLv === 3 && Array.isArray(existing.recipe.wizard_spellbook) && existing.recipe.wizard_spellbook.length === 8) {
+          recipe.prior_spellbook = [...existing.recipe.wizard_spellbook];
+        }
         recipe.level = nextLv;
         recipe = reconcileRecipe(recipe, { resetEquip: false });
         startTab = CASTER_SET.has(recipe.class_id) ? 'spells' : 'class';
@@ -3493,8 +3528,8 @@
           <div class="builder-pill-row">${spellsFor('wizard', 0).map(s => `<button type="button" class="builder-pill ${(r.mi_wizard_cantrips || []).includes(s.id) ? 'is-selected' : ''}" data-toggle-list="mi_wizard_cantrips" data-val="${s.id}" data-max="2">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
         </div>
         <div class="builder-field">
-          <div class="builder-field-head"><span class="builder-label">Magic Initiate (Wizard) · Level 1 Spell</span><span class="builder-hint">1 free cast/Long Rest + castable with slots</span></div>
-          <div class="builder-pill-row">${spellsFor('wizard', 1).map(s => `<button type="button" class="builder-pill ${r.mi_wizard_spell === s.id ? 'is-selected' : ''}" data-set-field="mi_wizard_spell" data-val="${s.id}">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
+          <div class="builder-field-head"><span class="builder-label">Magic Initiate (Wizard) · Level 1 Spell</span><span class="builder-hint">1 free cast/Long Rest + castable with slots (Shield excluded from Magic Initiate in Step 1)</span></div>
+          <div class="builder-pill-row">${spellsFor('wizard', 1).filter(s => !s.mi_excluded).map(s => `<button type="button" class="builder-pill ${r.mi_wizard_spell === s.id ? 'is-selected' : ''}" data-set-field="mi_wizard_spell" data-val="${s.id}">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
         </div>`);
       }
 
@@ -3600,9 +3635,13 @@
         </div>`);
       }
       if (r.class_id === 'cleric') {
+        const thauBlocked = r.species === 'tiefling' && feats.includes('magic_initiate_cleric');
         blocks.push(`<div class="builder-field">
-          <div class="builder-field-head"><span class="builder-label">Divine Order</span></div>
-          <div class="builder-grid two-col">${Object.values(builderOptions.divine_orders).map(d => `<button type="button" class="builder-card ${r.divine_order === d.id ? 'is-selected' : ''}" data-set-divine="${d.id}"><strong>${escape(d.name)}</strong><small>${escape(d.summary)}</small></button>`).join('')}</div>
+          <div class="builder-field-head"><span class="builder-label">Divine Order</span>${thauBlocked ? '<span class="builder-hint">Thaumaturge requires 7 Cleric cantrips with Abyssal Tiefling + Acolyte (Step 1 has 6)</span>' : ''}</div>
+          <div class="builder-grid two-col">${Object.values(builderOptions.divine_orders).map(d => {
+            const dis = thauBlocked && d.id === 'thaumaturge';
+            return `<button type="button" class="builder-card ${r.divine_order === d.id ? 'is-selected' : ''}" data-set-divine="${d.id}" ${dis ? 'disabled' : ''}><strong>${escape(d.name)}</strong><small>${escape(dis ? 'Unavailable with Abyssal Tiefling + Acolyte in Step 1.' : d.summary)}</small></button>`;
+          }).join('')}</div>
         </div>`);
       }
       if (r.class_id === 'fighter' || r.class_id === 'barbarian') {
@@ -3778,9 +3817,11 @@
             const on = eqWepSet.has(w.id);
             const profOk = wepProfs.has(w.category);
             const strOk = !w.properties.includes('heavy') || fin.str >= 13;
+            const versThrown = w.properties.includes('versatile') && w.properties.includes('thrown');
+            const hasOffhand = r.equipped_shield || (r.equipped_weapons || []).some(other => other !== w.id && !shopWeps.find(sw => sw.id === other)?.properties?.includes('thrown'));
             const dis = !on && (!profOk || !strOk);
             const spareNote = w.properties.includes('thrown') && owned[w.id] > 1 ? ` (+${owned[w.id] - 1} spares)` : '';
-            const lockNote = !profOk ? ' · not prof.' : !strOk ? ' · needs STR 13' : '';
+            const lockNote = !profOk ? ' · not prof.' : !strOk ? ' · needs STR 13' : (versThrown && !hasOffhand ? ' · needs Shield/off-hand' : '');
             return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-toggle-wep="${w.id}" ${dis ? 'disabled' : ''}>${escape(w.name)}${spareNote}${lockNote}</button>`;
           }).join('') : '<span class="builder-hint">No equippable melee weapons owned (buy one below or fight unarmed).</span>'}</div>
         </div>
@@ -3828,19 +3869,21 @@
 
       if (r.class_id === 'wizard') {
         const needSb = cls.spellbook_counts[String(r.level)];
+        const priorSet = new Set(r.level >= 3 && Array.isArray(r.prior_spellbook) ? r.prior_spellbook : []);
         const pool = [...spellsFor('wizard', 1), ...(maxSpLv >= 2 ? spellsFor('wizard', 2) : [])];
         blocks.push(`<div class="builder-field">
-          <div class="builder-field-head"><span class="builder-label">Wizard Spellbook (${(r.wizard_spellbook || []).length}/${needSb})</span><span class="builder-hint">${r.level === 3 ? 'At most 4 Level 2 spells in book' : 'Level 1 Wizard spells'}</span></div>
+          <div class="builder-field-head"><span class="builder-label">Wizard Spellbook (${(r.wizard_spellbook || []).length}/${needSb})</span><span class="builder-hint">${r.level === 3 ? 'At most 2 Level 2 spells outside Evocation Savant (+ up to 2 Level 2 Evocation Savant picks)' : 'Level 1 Wizard spells'}</span></div>
           <div class="builder-pill-row">${pool.map(s => {
             const on = (r.wizard_spellbook || []).includes(s.id);
-            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-toggle-sb="${s.id}">Lv${s.level} ${escape(s.name)}${spellBadgesHtml(s)}</button>`;
+            const lockedPrior = priorSet.has(s.id);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''} ${lockedPrior ? 'is-locked' : ''}" data-toggle-sb="${s.id}" ${lockedPrior ? 'disabled' : ''}>Lv${s.level} ${escape(s.name)}${lockedPrior ? '<span class="builder-badge">Lv1–2</span>' : ''}${spellBadgesHtml(s)}</button>`;
           }).join('')}</div>
         </div>`);
         if (r.level >= 3) {
-          const evPool = (r.wizard_spellbook || []).map(id => builderOptions.spells[id]).filter(s => s && s.school === 'evocation');
+          const evPool = (r.wizard_spellbook || []).map(id => builderOptions.spells[id]).filter(s => s && s.school === 'evocation' && !priorSet.has(s.id));
           blocks.push(`<div class="builder-field">
-            <div class="builder-field-head"><span class="builder-label">Evocation Savant (${(r.evocation_savant || []).length}/2 Evocation Spells)</span><span class="builder-hint">Must be in your spellbook</span></div>
-            <div class="builder-pill-row">${evPool.map(s => `<button type="button" class="builder-pill ${(r.evocation_savant || []).includes(s.id) ? 'is-selected' : ''}" data-toggle-list="evocation_savant" data-val="${s.id}" data-max="2">${escape(s.name)}</button>`).join('')}</div>
+            <div class="builder-field-head"><span class="builder-label">Evocation Savant (${(r.evocation_savant || []).length}/2 New Evocation Spells)</span><span class="builder-hint">2 newly added Level 1–2 Wizard Evocations (not already known at Lv 2)</span></div>
+            <div class="builder-pill-row">${evPool.map(s => `<button type="button" class="builder-pill ${(r.evocation_savant || []).includes(s.id) ? 'is-selected' : ''}" data-toggle-list="evocation_savant" data-val="${s.id}" data-max="2">Lv${s.level} ${escape(s.name)}</button>`).join('')}</div>
           </div>`);
         }
         const sbObjs = (r.wizard_spellbook || []).map(id => builderOptions.spells[id]).filter(Boolean);
@@ -4189,6 +4232,7 @@
     } else if (b.dataset.toggleSb) {
       const val = b.dataset.toggleSb;
       updateBuilderRecipe(r => {
+        if (r.level >= 3 && Array.isArray(r.prior_spellbook) && r.prior_spellbook.includes(val)) return;
         const max = builderOptions.classes.wizard.spellbook_counts[String(r.level)];
         const arr = Array.isArray(r.wizard_spellbook) ? [...r.wizard_spellbook] : [];
         const i = arr.indexOf(val);
