@@ -1,0 +1,26 @@
+{
+ "version": 1,
+ "map": {
+  "name": "tall_farm",
+  "display_name": "Tobin's Farm",
+  "rows": [
+   "HHHHHHHHHHHHHHHH",
+   "H..............H",
+   "H..............H",
+   "H...H....H..T..H",
+   "HH.HHH.HHH.....H",
+   "H..............H",
+   "H..............H",
+   "HH.HHH.HHH.....H",
+   "H...H....H..T..H",
+   "H..............H",
+   "H..............H",
+   "HHHHHHHHHHHHHHHH"
+  ]
+ },
+ "scene": {
+  "theme": "woodland",
+  "wall_height": 0.8,
+  "props": []
+ }
+}

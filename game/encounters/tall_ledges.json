@@ -1,0 +1,85 @@
+{
+ "id": "tall_ledges",
+ "name": "The Nest Ledges",
+ "order": 33,
+ "map": "tall_ledges",
+ "theme": "woodland",
+ "blurb": "Cliff ledges over a drop, a nest on the wide shelf, and rocks above for singers.",
+ "presets": [
+  {
+   "id": "tc4_the_mother_of_the_nest",
+   "name": "The Mother of the Nest",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "Two owlbears guard a nest on the widest ledge, and harpies sing from the rocks above.",
+   "party": [
+    "chruna_l2",
+    "guy_l2",
+    "elion_l2",
+    "vesper_l2",
+    "ilyra"
+   ],
+   "roster": [
+    "owlbear",
+    "owlbear",
+    "harpy",
+    "harpy"
+   ],
+   "placements": {
+    "chruna_l2": [
+     4,
+     5
+    ],
+    "guy_l2": [
+     4,
+     6
+    ],
+    "elion_l2": [
+     3,
+     5
+    ],
+    "vesper_l2": [
+     2,
+     6
+    ],
+    "ilyra": [
+     1,
+     5
+    ],
+    "owlbear-1": [
+     11,
+     5
+    ],
+    "owlbear-2": [
+     12,
+     7
+    ],
+    "harpy-1": [
+     10,
+     1
+    ],
+    "harpy-2": [
+     12,
+     2
+    ]
+   },
+   "story": "claude-tall-country",
+   "balance": {
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.325,
+     "native_wins": 65,
+     "monster_wins": 135,
+     "no_winner_at_round_cap": 0,
+     "errors": 0,
+     "mean_rounds": 7.47,
+     "max_round_seen": 16,
+     "mean_heroes_down": 3.89,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4178bfa wheel = public 1a2f4d0 engine (rule 21, web replay v23, Natural20 cc11193a)",
+     "measured": "2026-11-28"
+    }
+   }
+  }
+ ]
+}

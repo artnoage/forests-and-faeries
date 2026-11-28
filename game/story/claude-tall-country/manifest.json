@@ -1,0 +1,412 @@
+{
+ "version": 1,
+ "id": "claude-tall-country",
+ "title": "The Tall Country",
+ "subtitle": "North of the singing wood the land climbs into high pasture, and the walls there were built for people three times our height.",
+ "tagline": "Ogres in the valley, owlbears in the orchard, and a goblin with a cart-chain. Five chapters.",
+ "style": "story.css",
+ "map": {
+  "image": "media/map.webp",
+  "width": 1536,
+  "height": 1024,
+  "alt": "A hand-drawn map of the Tall Country: Harrowdale in the valley, Tobin's farm, the giants' orchard, the bridge over the gorge, the nest ledges and the high hall on the ridge",
+  "route": [
+   [
+    0.2,
+    0.88
+   ],
+   [
+    0.3,
+    0.8
+   ],
+   [
+    0.356,
+    0.64
+   ],
+   [
+    0.42,
+    0.6
+   ],
+   [
+    0.445,
+    0.47
+   ],
+   [
+    0.54,
+    0.54
+   ],
+   [
+    0.63,
+    0.445
+   ],
+   [
+    0.7,
+    0.4
+   ],
+   [
+    0.8,
+    0.385
+   ],
+   [
+    0.76,
+    0.3
+   ],
+   [
+    0.8,
+    0.2
+   ],
+   [
+    0.846,
+    0.13
+   ]
+  ]
+ },
+ "prologue": "prologue",
+ "epilogue": "epilogue",
+ "ending_note": "The fires are out in the high hall. Every chapter stays open: play any of them again.",
+ "chapters": [
+  {
+   "id": "c1",
+   "title": "The Broken Fence",
+   "place": "Tobin's Farm",
+   "encounter": "tall_farm",
+   "preset": "tc1_the_broken_fence",
+   "blurb": "An ogre at dusk, keeping an appointment, with goblin torches running ahead of it.",
+   "node": [
+    0.356,
+    0.64
+   ],
+   "before": "c1-before",
+   "after": "c1-after"
+  },
+  {
+   "id": "c2",
+   "title": "Feathers in the Briar",
+   "place": "The Giants' Orchard",
+   "encounter": "tall_orchard",
+   "preset": "tc2_feathers_in_the_briar",
+   "blurb": "Something nests in the giant orchard, and the wasps are already coming.",
+   "node": [
+    0.445,
+    0.47
+   ],
+   "before": "c2-before",
+   "after": "c2-after"
+  },
+  {
+   "id": "c3",
+   "title": "The Toll of the Giant-Road",
+   "place": "The Gorge Bridge",
+   "encounter": "tall_bridge",
+   "preset": "tc3_the_giant_road_toll",
+   "blurb": "Bugbears keep the gate, an ogre keeps the bugbears, and the toll is one of us.",
+   "node": [
+    0.63,
+    0.445
+   ],
+   "before": "c3-before",
+   "after": "c3-after"
+  },
+  {
+   "id": "c4",
+   "title": "The Mother of the Nest",
+   "place": "The Nest Ledges",
+   "encounter": "tall_ledges",
+   "preset": "tc4_the_mother_of_the_nest",
+   "blurb": "Two owlbears guard a nest on the widest ledge, and harpies sing from the rocks above.",
+   "node": [
+    0.8,
+    0.385
+   ],
+   "before": "c4-before",
+   "after": "c4-after"
+  },
+  {
+   "id": "c5",
+   "title": "Skarrow's Hall",
+   "place": "The High Hall",
+   "encounter": "tall_hall",
+   "preset": "tc5_skarrows_hall",
+   "blurb": "Two collared ogres, a goblin on a giant's throne, and a torch they all watch.",
+   "node": [
+    0.846,
+    0.13
+   ],
+   "before": "c5-before",
+   "after": "c5-after"
+  }
+ ],
+ "scenes": {
+  "prologue": {
+   "shots": [
+    {
+     "title": "The Tall Country",
+     "image": "media/stills/p1.webp",
+     "text": "Above Harrowdale the road climbs into the Tall Country, where the giants built their houses and their walls, and then went away.",
+     "audio": "media/voice/p1.mp3",
+     "motion": "zoom-in"
+    },
+    {
+     "video": "media/clips/p2.mp4",
+     "poster": "media/stills/p2.webp",
+     "text": "For a hundred years nothing came down from up there but weather. This autumn the ogres came down. Twice in a month.",
+     "audio": "media/voice/p2.mp3"
+    },
+    {
+     "video": "media/clips/p3.mp4",
+     "poster": "media/stills/p3.webp",
+     "text": "The reeve of Harrowdale paid us to find out why, and to make it stop. I am Mara, and I kept this account, because nobody else would.",
+     "audio": "media/voice/p3.mp3"
+    }
+   ],
+   "music": "media/music/high.mp3",
+   "music_volume": 0.22
+  },
+  "c1-before": {
+   "shots": [
+    {
+     "title": "Chapter 1 · The Broken Fence",
+     "video": "media/clips/c1a.mp4",
+     "poster": "media/stills/c1a.webp",
+     "text": "We waited at Tobin's farm, which the ogre had visited twice already. It came a third time, at dusk, as if keeping an appointment.",
+     "audio": "media/voice/c1a.mp3"
+    },
+    {
+     "video": "media/clips/c1b.mp4",
+     "poster": "media/stills/c1b.webp",
+     "text": "It was not alone. Goblins ran ahead of it with torches, the way dogs run ahead of a hunter.",
+     "audio": "media/voice/c1b.mp3"
+    },
+    {
+     "video": "media/clips/c1c.mp4",
+     "poster": "media/stills/c1c.webp",
+     "text": "Ilyra said the pens were our friend. A thing that size cannot follow you through a gap meant for sheep.",
+     "audio": "media/voice/c1c.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c1-after": {
+   "shots": [
+    {
+     "image": "media/stills/c1d.webp",
+     "text": "The ogre wore an iron collar, and the skin under it was burned. Ogres do not put collars on each other.",
+     "audio": "media/voice/c1d.mp3",
+     "motion": "zoom-in"
+    },
+    {
+     "video": "media/clips/c1e.mp4",
+     "poster": "media/stills/c1e.webp",
+     "text": "The goblins' torches smelled of pitch from the high hall's stores. Someone up there was driving the big ones down.",
+     "audio": "media/voice/c1e.mp3"
+    }
+   ],
+   "music": "media/music/high.mp3",
+   "music_volume": 0.22
+  },
+  "c2-before": {
+   "shots": [
+    {
+     "title": "Chapter 2 · Feathers in the Briar",
+     "video": "media/clips/c2a.mp4",
+     "poster": "media/stills/c2a.webp",
+     "text": "The quickest way up the ridge goes through the giants' orchard. The trees still fruit, and the fruit is the size of a barrel.",
+     "audio": "media/voice/c2a.mp3"
+    },
+    {
+     "video": "media/clips/c2b.mp4",
+     "poster": "media/stills/c2b.webp",
+     "text": "Something nests there now. Chruna found feathers as long as her arm, and fur caught in the briars beside them.",
+     "audio": "media/voice/c2b.mp3"
+    },
+    {
+     "video": "media/clips/c2c.mp4",
+     "poster": "media/stills/c2c.webp",
+     "text": "Vesper said owlbears hate noise. Then he started playing anyway, because the wasps were already coming.",
+     "audio": "media/voice/c2c.mp3"
+    }
+   ],
+   "music": "media/music/orchard.mp3",
+   "music_volume": 0.2
+  },
+  "c2-after": {
+   "shots": [
+    {
+     "video": "media/clips/c2d.mp4",
+     "poster": "media/stills/c2d.webp",
+     "text": "The owlbear had a chain on its leg too, snapped short. It had pulled free of something and come here to hide.",
+     "audio": "media/voice/c2d.mp3"
+    },
+    {
+     "video": "media/clips/c2e.mp4",
+     "poster": "media/stills/c2e.webp",
+     "text": "Beyond the orchard the giant-road begins. Chruna said whoever chains owlbears will be waiting on it.",
+     "audio": "media/voice/c2e.mp3"
+    }
+   ],
+   "music": "media/music/high.mp3",
+   "music_volume": 0.22
+  },
+  "c3-before": {
+   "shots": [
+    {
+     "title": "Chapter 3 · The Toll of the Giant-Road",
+     "video": "media/clips/c3a.mp4",
+     "poster": "media/stills/c3a.webp",
+     "text": "Halfway up, the giant-road crosses a gorge on a bridge built for giants. Someone has put a gate on it and a sign that says TOLL.",
+     "audio": "media/voice/c3a.mp3"
+    },
+    {
+     "video": "media/clips/c3b.mp4",
+     "poster": "media/stills/c3b.webp",
+     "text": "Bugbears keep the gate. An ogre keeps the bugbears. The toll, they told us, was everything we carried and one of us.",
+     "audio": "media/voice/c3b.mp3"
+    },
+    {
+     "video": "media/clips/c3c.mp4",
+     "poster": "media/stills/c3c.webp",
+     "text": "Curogana asked whether the ogre could be paid in lightning. Guy said we would find out.",
+     "audio": "media/voice/c3c.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c3-after": {
+   "shots": [
+    {
+     "image": "media/stills/c3d.webp",
+     "text": "The bugbears kept a ledger. Sheep, carts, travellers, and in a column of its own: ogres, delivered to Skarrow.",
+     "audio": "media/voice/c3d.mp3",
+     "motion": "pan-right"
+    },
+    {
+     "video": "media/clips/c3e.mp4",
+     "poster": "media/stills/c3e.webp",
+     "text": "Skarrow. Every name led back to him, and to the smoke on the ridge.",
+     "audio": "media/voice/c3e.mp3"
+    }
+   ],
+   "music": "media/music/high.mp3",
+   "music_volume": 0.22
+  },
+  "c4-before": {
+   "shots": [
+    {
+     "title": "Chapter 4 · The Mother of the Nest",
+     "video": "media/clips/c4a.mp4",
+     "poster": "media/stills/c4a.webp",
+     "text": "Below the hall the cliff is all ledges, and on the widest ledge two owlbears had made a nest. They were not chained. They were guarding something.",
+     "audio": "media/voice/c4a.mp3"
+    },
+    {
+     "video": "media/clips/c4b.mp4",
+     "poster": "media/stills/c4b.webp",
+     "text": "Harpies sat on the rocks above them and sang. Whatever they sing, you want to walk toward it, and the ledge is narrow.",
+     "audio": "media/voice/c4b.mp3"
+    },
+    {
+     "video": "media/clips/c4c.mp4",
+     "poster": "media/stills/c4c.webp",
+     "text": "Ilyra tied us together on the narrow part. Guy said it was the most romantic thing anyone had done for him in years.",
+     "audio": "media/voice/c4c.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c4-after": {
+   "shots": [
+    {
+     "video": "media/clips/c4d.mp4",
+     "poster": "media/stills/c4d.webp",
+     "text": "In the nest were cubs, and a goblin snare. Skarrow had been taking the young to make the parents fight for him.",
+     "audio": "media/voice/c4d.mp3"
+    },
+    {
+     "video": "media/clips/c4e.mp4",
+     "poster": "media/stills/c4e.webp",
+     "text": "Elion cut the snare and left the cubs where they were. Above us the doors of the high hall stood open. They were twenty feet tall.",
+     "audio": "media/voice/c4e.mp3"
+    }
+   ],
+   "music": "media/music/orchard.mp3",
+   "music_volume": 0.2
+  },
+  "c5-before": {
+   "shots": [
+    {
+     "title": "Chapter 5 · Skarrow's Hall",
+     "video": "media/clips/c5a.mp4",
+     "poster": "media/stills/c5a.webp",
+     "text": "The high hall was built for giants, and Skarrow had filled it with chains. Two ogres stood in it, collared, with braziers behind them.",
+     "audio": "media/voice/c5a.mp3"
+    },
+    {
+     "video": "media/clips/c5b.mp4",
+     "poster": "media/stills/c5b.webp",
+     "text": "Skarrow was the smallest thing in the room, and he sat on a throne he could have slept in. He held a cart-chain and a torch, and the ogres watched the torch.",
+     "audio": "media/voice/c5b.mp3"
+    },
+    {
+     "video": "media/clips/c5c.mp4",
+     "poster": "media/stills/c5c.webp",
+     "text": "He told us the valley would be his by midwinter. I told him the valley had hired us.",
+     "audio": "media/voice/c5c.mp3"
+    }
+   ],
+   "music": "media/music/dread.mp3",
+   "music_volume": 0.2
+  },
+  "c5-after": {
+   "shots": [
+    {
+     "video": "media/clips/c5d.mp4",
+     "poster": "media/stills/c5d.webp",
+     "text": "When Skarrow fell, the ogres stood still for a long time. Then Chruna broke their collars, and they walked out into the snow and up into the hills, and did not look back.",
+     "audio": "media/voice/c5d.mp3"
+    },
+    {
+     "video": "media/clips/c5e.mp4",
+     "poster": "media/stills/c5e.webp",
+     "text": "We put out the fires. The hall was quiet in a way it had not been for a hundred years.",
+     "audio": "media/voice/c5e.mp3"
+    }
+   ],
+   "music": "media/music/ending.mp3",
+   "music_volume": 0.24
+  },
+  "epilogue": {
+   "shots": [
+    {
+     "video": "media/clips/e1.mp4",
+     "poster": "media/stills/e1.webp",
+     "text": "No ogre came down to Harrowdale that winter. Tobin mended his gate, and made it wider, just in case.",
+     "audio": "media/voice/e1.mp3"
+    },
+    {
+     "video": "media/clips/e2.mp4",
+     "poster": "media/stills/e2.webp",
+     "text": "In spring Elion went back to the orchard and found tracks in the mud, small ones beside big ones.",
+     "audio": "media/voice/e2.mp3"
+    },
+    {
+     "video": "media/clips/e3.mp4",
+     "poster": "media/stills/e3.webp",
+     "text": "The Tall Country goes on further north than anyone has walked. That, the reeve said, is a job for next year.",
+     "audio": "media/voice/e3.mp3"
+    },
+    {
+     "title": "The Tall Country",
+     "image": "media/stills/e4.webp",
+     "text": "The end.",
+     "motion": "zoom-in",
+     "duration": 6
+    }
+   ],
+   "music": "media/music/ending.mp3",
+   "music_volume": 0.24
+  }
+ }
+}

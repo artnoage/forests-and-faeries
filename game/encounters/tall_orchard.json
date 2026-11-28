@@ -1,0 +1,85 @@
+{
+ "id": "tall_orchard",
+ "name": "The Giants' Orchard",
+ "order": 31,
+ "map": "tall_orchard",
+ "theme": "woodland",
+ "blurb": "Apple trees planted for giants, fruit the size of barrels, briars in the shade.",
+ "presets": [
+  {
+   "id": "tc2_feathers_in_the_briar",
+   "name": "Feathers in the Briar",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Something nests in the giant orchard, and the wasps are already coming.",
+   "party": [
+    "mara",
+    "chruna_l2",
+    "vesper_l2",
+    "elion_l2"
+   ],
+   "roster": [
+    "owlbear",
+    "giant_wasp",
+    "giant_wasp",
+    "giant_wasp",
+    "giant_wasp"
+   ],
+   "placements": {
+    "mara": [
+     2,
+     4
+    ],
+    "chruna_l2": [
+     2,
+     3
+    ],
+    "elion_l2": [
+     1,
+     5
+    ],
+    "vesper_l2": [
+     1,
+     6
+    ],
+    "owlbear-1": [
+     13,
+     3
+    ],
+    "giant_wasp-1": [
+     13,
+     1
+    ],
+    "giant_wasp-2": [
+     13,
+     7
+    ],
+    "giant_wasp-3": [
+     11,
+     1
+    ],
+    "giant_wasp-4": [
+     11,
+     9
+    ]
+   },
+   "story": "claude-tall-country",
+   "balance": {
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.585,
+     "native_wins": 117,
+     "monster_wins": 83,
+     "no_winner_at_round_cap": 0,
+     "errors": 0,
+     "mean_rounds": 7.91,
+     "max_round_seen": 15,
+     "mean_heroes_down": 2.31,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4178bfa wheel = public 1a2f4d0 engine (rule 21, web replay v23, Natural20 cc11193a)",
+     "measured": "2026-11-28"
+    }
+   }
+  }
+ ]
+}

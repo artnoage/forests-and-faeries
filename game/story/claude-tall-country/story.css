@@ -1,0 +1,32 @@
+/* The Tall Country (Story mode, Claude's giant-country tale): granite, bracken and hearth-fire over the shared story shell. */
+.story-layer[data-story="claude-tall-country"] {
+  background: radial-gradient(circle at 50% 18%, #2c3138 0%, #121518 72%);
+}
+.story-layer[data-story="claude-tall-country"] .story-head { border-bottom-color: rgba(214, 170, 120, 0.25); }
+.story-layer[data-story="claude-tall-country"] .story-head h1 { color: #f0e6d2; letter-spacing: 0.03em; }
+.story-layer[data-story="claude-tall-country"] .story-head p { color: #c9b89a; font-style: italic; }
+.story-layer[data-story="claude-tall-country"] .story-map { border: 2px solid #5a5048; box-shadow: 0 22px 60px rgba(0, 0, 0, 0.75), inset 0 0 40px rgba(60, 45, 30, 0.35); background: #e0d6bc; }
+.story-layer[data-story="claude-tall-country"] .story-route polyline { stroke: rgba(150, 60, 30, 0.75); stroke-width: 3; stroke-dasharray: 2 9; }
+.story-layer[data-story="claude-tall-country"] .story-node { font-family: var(--font-display); background: #efe8d6; border-color: #4a4038; color: #2e2822; }
+.story-layer[data-story="claude-tall-country"] .story-node.is-open { background: #f2c66e; border-color: #8a3a1c; }
+.story-layer[data-story="claude-tall-country"] .story-node.is-done { background: #c8d4b0; border-color: #4a5a3a; }
+.story-layer[data-story="claude-tall-country"] .story-node.is-locked { background: #bdb6a6; border-color: #6a6258; color: #4e4840; }
+.story-layer[data-story="claude-tall-country"] .story-node-label { color: #2e2822; text-shadow: 0 0 3px #f3ecd8, 0 0 6px #f3ecd8, 0 0 9px #f3ecd8; }
+.story-layer[data-story="claude-tall-country"] .story-marker { background: #8a3a1c; box-shadow: 0 0 10px rgba(255, 200, 120, 0.9); }
+.story-layer[data-story="claude-tall-country"] .story-panel {
+  background: linear-gradient(180deg, #f0ead8, #e0d6bc); color: #2e2822; border: 1px solid #7a6a58;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+.story-layer[data-story="claude-tall-country"] .story-panel .eyebrow { color: #8a3a1c; }
+.story-layer[data-story="claude-tall-country"] .story-panel h2 { color: #2e2822; }
+.story-layer[data-story="claude-tall-country"] .story-place { color: #6a5434; }
+.story-layer[data-story="claude-tall-country"] .story-blurb { color: #3e362e; }
+.story-layer[data-story="claude-tall-country"] .story-party { color: #3e4a5a; }
+.story-layer[data-story="claude-tall-country"] .story-the-end { color: #8a3a1c; }
+.story-layer[data-story="claude-tall-country"] .story-panel-foot { border-top-color: rgba(74, 64, 56, 0.3); }
+.story-layer[data-story="claude-tall-country"] .story-panel .button.quiet { background: rgba(255, 252, 240, 0.55); color: #2e2822; border-color: rgba(74, 64, 56, 0.45); }
+.story-layer[data-story="claude-tall-country"] .story-panel .button.danger { color: #8a2b1b; }
+.story-layer[data-story="claude-tall-country"] .scene-caption { background: linear-gradient(180deg, rgba(14, 14, 16, 0) 0%, rgba(14, 14, 16, 0.74) 40%, rgba(10, 10, 12, 0.9) 100%); }
+.story-layer[data-story="claude-tall-country"] .scene-title { color: #f0e6d2; letter-spacing: 0.04em; }
+.story-layer[data-story="claude-tall-country"] .scene-label { color: #e8b27a; }
+.story-layer[data-story="claude-tall-country"] .scene-text { color: #f6f1e6; font-size: clamp(16px, 1.8vw, 20px); }

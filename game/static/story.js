@@ -1,7 +1,7 @@
 /* Forests and Faeries story mode: the shared shell (docs/STORY_MODE.md).
  *
- * A story lives in story/<id>/ and is described by story/<id>/manifest.json: eight
- * chapters (each an ordinary catalogue level), a world map with a node per chapter,
+ * A story lives in story/<id>/ and is described by story/<id>/manifest.json: three to
+ * twelve chapters (each an ordinary catalogue level), a world map with a node per chapter,
  * and the scenes shown before and after each chapter. This file draws the map and
  * plays the scenes (the default renderer), or hands a full-viewport container to the
  * story's own ES module (manifest "module"). Fights start through the ordinary
@@ -16,8 +16,13 @@
     { id: 'claude', label: 'Story — Claude' },
     { id: 'gemini', label: 'Story — Gemini' },
     { id: 'claude-faery', label: 'Faery tale — Claude' },
+    { id: 'claude-tall-country', label: 'Giant tale — Claude' },
   ];
-  const CHAPTERS = 8;
+  // A story has MIN_CHAPTERS..MAX_CHAPTERS chapters (its manifest says how many); 8 until it has loaded.
+  const MIN_CHAPTERS = 3, MAX_CHAPTERS = 12;
+  const chapterCounts = new Map();   // id -> number of chapters in the loaded manifest
+  const chaptersOf = id => chapterCounts.get(id) ?? 8;
+  const NUMBER_WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
   const SOUND_KEY = 'ff-story-sound';
   const base = new URL('./', window.location.href);
   // The release stamps <html data-release>; a changed file then gets a new address, so a
@@ -46,7 +51,7 @@
     let saved = null;
     try { saved = JSON.parse(readStore(`ff-story-${id}`) || 'null'); } catch { saved = null; }
     const completed = Array.isArray(saved?.completed)
-      ? [...new Set(saved.completed.filter(i => Number.isInteger(i) && i >= 0 && i < CHAPTERS))].sort((a, b) => a - b) : [];
+      ? [...new Set(saved.completed.filter(i => Number.isInteger(i) && i >= 0 && i < chaptersOf(id)))].sort((a, b) => a - b) : [];
     const data = saved?.data && typeof saved.data === 'object' && !Array.isArray(saved.data) ? saved.data : {};
     return { v: 1, completed, data };
   }
@@ -59,8 +64,8 @@
       isComplete: i => progressOf(id).completed.includes(i),
       // A chapter is open when it is the first or its predecessor is won.
       isUnlocked: i => i === 0 || progressOf(id).completed.includes(i - 1),
-      // The first chapter not yet won (CHAPTERS when the story is finished).
-      current: () => { const done = progressOf(id).completed; let i = 0; while (i < CHAPTERS && done.includes(i)) i++; return i; },
+      // The first chapter not yet won (the chapter count when the story is finished).
+      current: () => { const done = progressOf(id).completed, n = chaptersOf(id); let i = 0; while (i < n && done.includes(i)) i++; return i; },
       complete: i => { const p = progressOf(id); if (!p.completed.includes(i)) p.completed.push(i); p.completed.sort((a, b) => a - b); saveProgress(id, p); },
       getData: key => progressOf(id).data[key],
       setData: (key, value) => { const p = progressOf(id); p.data[key] = value; saveProgress(id, p); },
@@ -97,7 +102,9 @@
           const res = await fetch(storyURL(id, 'manifest.json'), { cache: 'no-cache', credentials: 'same-origin', redirect: 'error' });
           if (!res.ok) return null;
           const m = await res.json();
-          return m && m.version === 1 && Array.isArray(m.chapters) && m.chapters.length === CHAPTERS ? m : null;
+          const ok = m && m.version === 1 && Array.isArray(m.chapters) && m.chapters.length >= MIN_CHAPTERS && m.chapters.length <= MAX_CHAPTERS;
+          if (ok) chapterCounts.set(id, m.chapters.length);
+          return ok ? m : null;
         } catch { return null; }
       })());
     }
@@ -114,8 +121,8 @@
       if (!m) { status.textContent = 'Coming soon'; continue; }
       card.querySelector('[data-story-title]').textContent = m.title || story.label;
       if (m.tagline) card.querySelector('[data-story-desc]').textContent = m.tagline;
-      const done = progressOf(story.id).completed.length;
-      status.textContent = done >= CHAPTERS ? 'Finished · play any chapter again' : done ? `${done} of ${CHAPTERS} chapters won` : 'Eight chapters';
+      const done = progressOf(story.id).completed.length, n = chaptersOf(story.id);
+      status.textContent = done >= n ? 'Finished · play any chapter again' : done ? `${done} of ${n} chapters won` : `${NUMBER_WORDS[n] || n} chapters`;
     }
   }
 
@@ -327,7 +334,7 @@
   function renderMap({ selected = null, moveFrom = null } = {}) {
     if (!active) return;
     const m = active.manifest, prog = active.progress;
-    const current = prog.current();
+    const current = prog.current(), CHAPTERS = m.chapters.length;
     const done = current >= CHAPTERS;
     const pick = selected ?? Math.min(current, CHAPTERS - 1);
     const map = m.map || {};
@@ -375,7 +382,7 @@
   }
 
   function renderPanel(i) {
-    const m = active.manifest, prog = active.progress, c = m.chapters[i];
+    const m = active.manifest, prog = active.progress, c = m.chapters[i], CHAPTERS = m.chapters.length;
     const panel = $('story-panel');
     if (!panel || !c) return;
     for (const n of layer.querySelectorAll('.story-node')) n.classList.toggle('is-selected', Number(n.dataset.chapter) === i);
@@ -414,7 +421,7 @@
   }
 
   async function afterWin(i) {
-    const m = active.manifest, c = m.chapters[i];
+    const m = active.manifest, c = m.chapters[i], CHAPTERS = m.chapters.length;
     const story = active;
     if (c?.after) await playScene(c.after, { label: `Chapter ${i + 1}` });
     if (active !== story) return;

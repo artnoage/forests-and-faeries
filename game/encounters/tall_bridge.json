@@ -1,0 +1,95 @@
+{
+ "id": "tall_bridge",
+ "name": "The Giant-Road Bridge",
+ "order": 32,
+ "map": "tall_bridge",
+ "theme": "woodland",
+ "blurb": "A bridge three cells wide over a gorge, and a toll gate at its far end.",
+ "presets": [
+  {
+   "id": "tc3_the_giant_road_toll",
+   "name": "The Toll of the Giant-Road",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "Bugbears keep the gate, an ogre keeps the bugbears, and the toll is one of us.",
+   "party": [
+    "guy_l2",
+    "curogana_l2",
+    "ilyra",
+    "mara",
+    "vesper_l2"
+   ],
+   "roster": [
+    "ogre",
+    "bugbear_warrior",
+    "bugbear_warrior",
+    "bugbear_warrior",
+    "bugbear_warrior",
+    "bugbear_warrior"
+   ],
+   "placements": {
+    "guy_l2": [
+     4,
+     5
+    ],
+    "mara": [
+     4,
+     4
+    ],
+    "curogana_l2": [
+     2,
+     6
+    ],
+    "ilyra": [
+     2,
+     4
+    ],
+    "vesper_l2": [
+     3,
+     6
+    ],
+    "ogre-1": [
+     14,
+     4
+    ],
+    "bugbear_warrior-1": [
+     12,
+     5
+    ],
+    "bugbear_warrior-2": [
+     12,
+     6
+    ],
+    "bugbear_warrior-3": [
+     12,
+     4
+    ],
+    "bugbear_warrior-4": [
+     16,
+     6
+    ],
+    "bugbear_warrior-5": [
+     16,
+     3
+    ]
+   },
+   "story": "claude-tall-country",
+   "balance": {
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.46,
+     "native_wins": 92,
+     "monster_wins": 108,
+     "no_winner_at_round_cap": 0,
+     "errors": 0,
+     "mean_rounds": 9.15,
+     "max_round_seen": 31,
+     "mean_heroes_down": 3.81,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4178bfa wheel = public 1a2f4d0 engine (rule 21, web replay v23, Natural20 cc11193a)",
+     "measured": "2026-11-28"
+    }
+   }
+  }
+ ]
+}

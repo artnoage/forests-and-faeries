@@ -2468,7 +2468,7 @@
         ? 'Classic fights (ungraded)'
         : `${selectedDifficulty} levels`;
     $('start-screen-subtitle').textContent = startStep === 'mode'
-      ? 'Practice any graded fight on its own, or play a story: eight fights on a world map, told between the battles.'
+      ? 'Practice any graded fight on its own, or play a story: its fights on a world map, told between the battles.'
       : startStep === 'difficulty'
       ? 'Pick a difficulty across 36 agent-graded fights — from quick skirmishes to levels none of our agents beat.'
       : selectedDifficulty === 'Unbeatable'
@@ -2742,7 +2742,7 @@
 
   // --- How to play: the encounters part comes from the catalogue -----------------------
   function renderHelpEncounters() {
-    $('help-encounters').innerHTML = catalogue.map(group => {
+    $('help-encounters').innerHTML = catalogue.filter(group => group.presets?.length).map(group => {
       const tag = p => isLegacyPreset(group, p) ? 'classic, ungraded' : p.difficulty.toLowerCase();
       return `<li><b>${escape(group.name)}.</b> ${escape(group.blurb)} Levels: ${group.presets.map(p => `${escape(p.name)} (${escape(tag(p))})`).join(', ')}.</li>`;
     }).join('');

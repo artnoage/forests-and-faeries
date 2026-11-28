@@ -1,0 +1,123 @@
+{
+ "id": "tall_hall",
+ "name": "Skarrow's Hall",
+ "order": 34,
+ "map": "tall_hall",
+ "theme": "forged_hall",
+ "blurb": "A hall built for giants: pillars like tree trunks, a throne, and doors twenty feet tall.",
+ "presets": [
+  {
+   "id": "tc5_skarrows_hall",
+   "name": "Skarrow's Hall",
+   "difficulty": "Hard",
+   "hero_level": 2,
+   "blurb": "Two collared ogres, a goblin on a giant's throne, and a torch they all watch.",
+   "party": [
+    "mara",
+    "guy_l2",
+    "curogana_l2",
+    "vesper_l2",
+    "chruna_l2"
+   ],
+   "roster": [
+    "ogre",
+    "ogre",
+    "goblin_boss",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior"
+   ],
+   "names": {
+    "goblin_boss-1": "Skarrow"
+   },
+   "placements": {
+    "mara": [
+     8,
+     11
+    ],
+    "guy_l2": [
+     9,
+     11
+    ],
+    "chruna_l2": [
+     10,
+     11
+    ],
+    "curogana_l2": [
+     7,
+     12
+    ],
+    "vesper_l2": [
+     10,
+     12
+    ],
+    "ogre-1": [
+     5,
+     5
+    ],
+    "ogre-2": [
+     11,
+     5
+    ],
+    "goblin_boss-1": [
+     8,
+     2
+    ],
+    "goblin_warrior-1": [
+     2,
+     2
+    ],
+    "goblin_warrior-2": [
+     15,
+     2
+    ],
+    "goblin_warrior-3": [
+     6,
+     2
+    ],
+    "goblin_warrior-4": [
+     11,
+     2
+    ],
+    "goblin_warrior-5": [
+     7,
+     1
+    ],
+    "goblin_warrior-6": [
+     10,
+     1
+    ],
+    "goblin_warrior-7": [
+     1,
+     4
+    ],
+    "goblin_warrior-8": [
+     16,
+     4
+    ]
+   },
+   "story": "claude-tall-country",
+   "balance": {
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.255,
+     "native_wins": 51,
+     "monster_wins": 149,
+     "no_winner_at_round_cap": 0,
+     "errors": 0,
+     "mean_rounds": 6.97,
+     "max_round_seen": 18,
+     "mean_heroes_down": 4.31,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4178bfa wheel = public 1a2f4d0 engine (rule 21, web replay v23, Natural20 cc11193a)",
+     "measured": "2026-11-28"
+    }
+   }
+  }
+ ]
+}

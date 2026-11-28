@@ -1,0 +1,105 @@
+{
+ "id": "tall_farm",
+ "name": "Tobin's Farm",
+ "order": 30,
+ "map": "tall_farm",
+ "theme": "woodland",
+ "blurb": "A hill farm under the ridge: stone sheep pens with gaps too narrow for anything big.",
+ "presets": [
+  {
+   "id": "tc1_the_broken_fence",
+   "name": "The Broken Fence",
+   "difficulty": "Medium",
+   "hero_level": 2,
+   "blurb": "An ogre at dusk, keeping an appointment, with goblin torches running ahead of it.",
+   "party": [
+    "mara",
+    "guy_l2",
+    "ilyra",
+    "elion_l2"
+   ],
+   "roster": [
+    "ogre",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior",
+    "goblin_warrior"
+   ],
+   "placements": {
+    "mara": [
+     4,
+     5
+    ],
+    "guy_l2": [
+     4,
+     6
+    ],
+    "elion_l2": [
+     2,
+     5
+    ],
+    "ilyra": [
+     2,
+     6
+    ],
+    "ogre-1": [
+     12,
+     5
+    ],
+    "goblin_warrior-1": [
+     11,
+     2
+    ],
+    "goblin_warrior-2": [
+     11,
+     9
+    ],
+    "goblin_warrior-3": [
+     14,
+     4
+    ],
+    "goblin_warrior-4": [
+     14,
+     7
+    ],
+    "goblin_warrior-5": [
+     13,
+     1
+    ],
+    "goblin_warrior-6": [
+     13,
+     10
+    ],
+    "goblin_warrior-7": [
+     10,
+     3
+    ],
+    "goblin_warrior-8": [
+     10,
+     8
+    ]
+   },
+   "story": "claude-tall-country",
+   "balance": {
+    "story_measure": {
+     "games": 200,
+     "native_hero_win_rate": 0.69,
+     "native_wins": 138,
+     "monster_wins": 62,
+     "no_winner_at_round_cap": 0,
+     "errors": 0,
+     "mean_rounds": 8.79,
+     "max_round_seen": 19,
+     "mean_heroes_down": 2.06,
+     "method": "web game server path (suggested layout), engine native AI on both sides, seeds 0-199, win = every monster down",
+     "engine": "ember-rs 4178bfa wheel = public 1a2f4d0 engine (rule 21, web replay v23, Natural20 cc11193a)",
+     "measured": "2026-11-28"
+    }
+   }
+  }
+ ]
+}

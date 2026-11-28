@@ -4,7 +4,7 @@
 
 A story directory without a manifest is fine: the start screen shows "coming soon".
 The checks cover the contract the browser shell (``static/story.js``) relies on:
-eight chapters that name real public catalogue levels, a map node for each, scenes
+three to twelve chapters that name real public catalogue levels, a map node for each, scenes
 that exist, and media files that the server and the release will actually serve.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ if __package__ in (None, ''):
 
 from game.assets import STORY_ROOT, STORY_ID, story_files, story_path  # noqa: E402
 
-CHAPTERS = 8
+MIN_CHAPTERS, MAX_CHAPTERS = 3, 12   # static/story.js accepts the same range
 MAX_STORY_BYTES = 40 * 1024 * 1024
 MAX_FILE_BYTES = 12 * 1024 * 1024
 IMAGE = ('.webp', '.avif')
@@ -128,8 +128,8 @@ def check(story_id, levels=None):
             problems.append(f'{where}: map route must be a list of [x, y] fractions')
 
     chapters = manifest.get('chapters')
-    if not isinstance(chapters, list) or len(chapters) != CHAPTERS:
-        problems.append(f'{where}: exactly {CHAPTERS} chapters are required')
+    if not isinstance(chapters, list) or not MIN_CHAPTERS <= len(chapters) <= MAX_CHAPTERS:
+        problems.append(f'{where}: {MIN_CHAPTERS} to {MAX_CHAPTERS} chapters are required')
         chapters = chapters if isinstance(chapters, list) else []
     if levels is None:
         from game import catalogue

@@ -3,7 +3,8 @@
 The start screen offers three modes:
 
 - **Practice**: the graded fights one at a time, exactly as before (difficulty, then level);
-- **Story — Claude** and **Story — Gemini**: two stories, each with eight chapters on a world map and scenes between the fights.
+- **Story — Claude** and **Story — Gemini**: two stories, each with eight chapters on a world map and scenes between the fights;
+- **Faery tale — Claude** (eight chapters) and **Giant tale — Claude** (The Tall Country, five chapters with the 2×2 Ogre and Owlbear and parties of four or five), built the same way.
 
 Each chapter of a story is an ordinary catalogue level, started through the normal server path (`/api/new`, the suggested layout, monsters played by the engine). Nothing carries over between fights: no hit points, loot or level-ups. A story raises its heroes' level by choosing levels whose parties are higher-level.
 
@@ -80,7 +81,7 @@ Only files in the release can be served, and the release contains only the files
 }
 ```
 
-- `chapters`: exactly **eight**, in order. `encounter` and `preset` name a public catalogue level (`game/encounters/<encounter>.json`). Optional: `hero_level` (1–3, overrides the preset's party level), `seed` (a fixed fight), `place`, `blurb`, `before` and `after` (scene ids).
+- `chapters`: **three to twelve**, in order (the first three stories have eight, The Tall Country five). `encounter` and `preset` name a public catalogue level (`game/encounters/<encounter>.json`). Optional: `hero_level` (1–3, overrides the preset's party level), `seed` (a fixed fight), `place`, `blurb`, `before` and `after` (scene ids).
 - `node`: the chapter's point on the map, as `[x, y]` fractions of the map image (0 = left/top, 1 = right/bottom). `map.route` optionally draws the path through extra points; without it the path joins the nodes.
 - `scenes`: by id. A shot has an `image` (WebP or AVIF) or a `video` (MP4 or WebM, with an optional `poster`), and may carry a `title` (a title card), `speaker`, `text`, narration `audio`, a `duration` in seconds (otherwise the narration's length, or a reading time from the text) and a `motion` for stills (`zoom-in`, the default, `zoom-out`, `pan-left`, `pan-right`, `pan-up`, `pan-down`, `none`). A narrated shot must carry its `text`: every scene has to work with sound off. A video shot may carry narration too; the shot moves on when both have ended. For audio, MP3 plays in every current browser, including open-source Chromium builds without AAC; for video, H.264 MP4 is the widest choice, and a browser that cannot play it shows the `poster` with the caption and narration.
 - `prologue` plays the first time a player opens the story; `epilogue` after the last chapter's `after` scene. Both can be replayed from the map.

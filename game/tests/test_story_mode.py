@@ -108,7 +108,7 @@ def test_the_example_manifest_passes_and_mistakes_are_named(story_root):
     assert stories.check('demo') == []
     assert stories.check('nothing-here') == []
     broken = example_manifest()
-    broken['chapters'] = broken['chapters'][:7]
+    broken['chapters'] = broken['chapters'][:2]
     broken['scenes']['intro']['shots'][0]['image'] = 'media/absent.webp'
     broken['scenes']['intro']['shots'][0]['text'] = ''
     broken['scenes']['outro']['shots'][0]['motion'] = 'spin'
@@ -117,9 +117,35 @@ def test_the_example_manifest_passes_and_mistakes_are_named(story_root):
     broken['chapters'][1]['node'] = [1.5, 0]
     write(story_root / 'demo' / 'manifest.json', json.dumps(broken))
     problems = ' | '.join(stories.check('demo'))
-    for needle in ('exactly 8 chapters', 'media/absent.webp is missing', 'carry their text', 'motion must be',
+    for needle in ('3 to 12 chapters are required', 'media/absent.webp is missing', 'carry their text', 'motion must be',
                    'prologue names an unknown scene', 'not a public catalogue level', 'node must be'):
         assert needle in problems, needle
+
+
+def test_a_story_may_have_five_chapters(story_root):
+    five = example_manifest()
+    five['chapters'] = five['chapters'][:5]
+    write(story_root / 'demo' / 'manifest.json', json.dumps(five))
+    assert stories.check('demo') == []
+    five['chapters'] = five['chapters'] * 3
+    for n, chapter in enumerate(five['chapters']):
+        chapter['id'] = f'c{n + 1}'
+    write(story_root / 'demo' / 'manifest.json', json.dumps(five))
+    assert any('3 to 12 chapters' in p for p in stories.check('demo'))
+
+
+def test_the_tall_country_is_five_story_only_chapters():
+    from game import catalogue
+    manifest = stories.load('claude-tall-country')
+    assert manifest is not None and manifest['title'] == 'The Tall Country' and len(manifest['chapters']) == 5
+    levels = catalogue.load(include_private=False)
+    for chapter in manifest['chapters']:
+        level = levels[(chapter['encounter'], chapter['preset'])]
+        assert level.preset['story'] == 'claude-tall-country'
+        assert level.preset['balance']['story_measure']['games'] == 200
+        assert level.preset['balance']['story_measure']['no_winner_at_round_cap'] == 0
+    practice = {(g['id'], p['id']) for g in catalogue.catalogue_view() for p in g['presets']}
+    assert not any(c['preset'] == p for c in manifest['chapters'] for _, p in practice)
 
 
 def test_every_committed_story_manifest_passes():
@@ -129,11 +155,13 @@ def test_every_committed_story_manifest_passes():
 def test_the_page_offers_practice_and_both_stories():
     html = (STATIC / 'index.html').read_text(encoding='utf-8')
     for marker in ('id="mode-step"', 'data-mode="practice"', 'data-story="claude"', 'data-story="gemini"', 'data-story="claude-faery"',
+                   'data-story="claude-tall-country"',
                    'id="story-layer"', 'id="story-result-actions"', 'id="practice-result-actions"', 'src="./story.js?v='):
         assert marker in html, marker
     assert html.index('src="./app.js') < html.index('src="./story.js')
     shell = (STATIC / 'story.js').read_text(encoding='utf-8')
     assert "{ id: 'claude', label: 'Story — Claude' }" in shell and "{ id: 'gemini', label: 'Story — Gemini' }" in shell
     assert "{ id: 'claude-faery', label: 'Faery tale — Claude' }" in shell
+    assert "{ id: 'claude-tall-country', label: 'Giant tale — Claude' }" in shell
     assert 'localStorage' in shell and 'try {' in shell
     assert 'story.js' in assets.PAGE_FILES
