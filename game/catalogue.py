@@ -189,7 +189,7 @@ def validate_rows(rows, name='map'):
 class Level:
     """One playable preset of one encounter."""
 
-    def __init__(self, encounter, preset, rows, scene, map_name):
+    def __init__(self, encounter, preset, rows, scene, map_name, custom_heroes=None):
         self.encounter = encounter
         self.encounter_id = encounter['id']
         self.preset = preset
@@ -199,6 +199,8 @@ class Level:
         self.rows = list(rows)
         self.scene = scene
         self.map_name = map_name
+        self.custom_heroes = list(custom_heroes or [])
+        self._custom_by_id = {ch['unit_id']: ch for ch in self.custom_heroes}
         self.units = list(preset['party']) + self._monster_ids()
         self.names = self._names()
         self._rust_json = None
@@ -213,27 +215,38 @@ class Level:
             preset[field] = {keys.get(uid, uid): value for uid, value in self.preset.get(field, {}).items()}
         return Level(self.encounter, preset, self.rows, self.scene, self.map_name)
 
-    def with_party(self, party_bases, hero_level=None):
-        """Return a Practice variant using the requested hero base IDs (unique, 1..6)."""
+    def with_party(self, party_bases, hero_level=None, custom_heroes=None):
+        """Return a Practice variant using built-in hero base IDs and/or custom SRD recipes (1..6 total)."""
         if self.preset.get('story'):
             raise ValueError('Story chapters use their fixed party.')
-        if not isinstance(party_bases, list) or not (1 <= len(party_bases) <= 6):
-            raise ValueError('party must be a list of 1 to 6 hero ids.')
-        if any(not isinstance(h, str) for h in party_bases):
-            raise ValueError('party entries must be hero id strings.')
+
+        built_custom: list[dict] = []
+        if custom_heroes is not None:
+            from game import builder
+            if not isinstance(custom_heroes, list) or not (1 <= len(custom_heroes) <= 6):
+                raise ValueError('custom_heroes must be a list of 1 to 6 hero recipes.')
+            for idx, recipe in enumerate(custom_heroes, start=1):
+                uid = f'custom_{idx}'
+                derived = builder.validate_and_derive(recipe, unit_id=uid, validate_rust=True)
+                built_custom.append(derived['custom_hero_input'])
+
+        if party_bases is None:
+            if not built_custom:
+                raise ValueError('party must be a list of 1 to 6 hero ids.')
+            party_tokens = [f'custom:{i}' for i in range(len(built_custom))]
+        else:
+            if not isinstance(party_bases, list) or not (1 <= len(party_bases) <= 6):
+                raise ValueError('party must be a list of 1 to 6 hero ids.')
+            if any(not isinstance(h, str) for h in party_bases):
+                raise ValueError('party entries must be hero id strings.')
+            party_tokens = list(party_bases)
+            if built_custom and not any(tok.startswith('custom:') for tok in party_tokens):
+                party_tokens.extend(f'custom:{i}' for i in range(len(built_custom)))
+
+        if not (1 <= len(party_tokens) <= 6):
+            raise ValueError('party must contain 1 to 6 heroes total.')
+
         valid_bases = {h['base_id'] for h in practice_heroes()}
-        seen = set()
-        bases = []
-        for raw in party_bases:
-            base = _hero_sheet(raw)['base_id'] if raw in hero_ids() else raw
-            if base not in valid_bases:
-                raise ValueError(f'Unknown hero {raw!r}.')
-            if base in seen:
-                raise ValueError(f'Duplicate hero {base!r} in party.')
-            seen.add(base)
-            bases.append(base)
-        if len(bases) + len(self.preset['roster']) > MAX_CREATURES:
-            raise ValueError(f'At most {MAX_CREATURES} creatures allowed.')
         if hero_level is not None:
             if type(hero_level) is not int or hero_level not in (1, 2, 3):
                 raise ValueError('Hero level must be 1, 2 or 3.')
@@ -241,7 +254,39 @@ class Level:
         else:
             preset_lvl = self.preset.get('hero_level')
             chosen_level = int(preset_lvl) if preset_lvl in (1, 2, 3) else _hero_sheet(self.preset['party'][0])['level']
-        new_party = [_hero_sheet(f'{base}_l{chosen_level}')['content'] for base in bases]
+
+        seen_bases = set()
+        seen_custom = set()
+        ordered_entries: list[tuple[str | None, str]] = []  # (builtin_base_or_None, unit_id/content)
+        used_custom_inputs: list[dict] = []
+        for raw in party_tokens:
+            if raw.startswith('custom:'):
+                idx_s = raw[len('custom:'):]
+                if not idx_s.isdigit():
+                    raise ValueError(f'Invalid custom hero slot {raw!r}.')
+                idx = int(idx_s)
+                if not (0 <= idx < len(built_custom)):
+                    raise ValueError(f'Custom hero slot {raw!r} out of range.')
+                if idx in seen_custom:
+                    raise ValueError(f'Duplicate custom hero slot {raw!r} in party.')
+                seen_custom.add(idx)
+                ch = built_custom[idx]
+                used_custom_inputs.append(ch)
+                ordered_entries.append((None, ch['unit_id']))
+            else:
+                base = _hero_sheet(raw)['base_id'] if raw in hero_ids() else raw
+                if base not in valid_bases:
+                    raise ValueError(f'Unknown hero {raw!r}.')
+                if base in seen_bases:
+                    raise ValueError(f'Duplicate hero {base!r} in party.')
+                seen_bases.add(base)
+                ordered_entries.append((base, _hero_sheet(f'{base}_l{chosen_level}')['content']))
+
+        if built_custom and len(seen_custom) != len(built_custom):
+            raise ValueError('Every supplied custom hero must be referenced in party.')
+        new_party = [cid for _, cid in ordered_entries]
+        if len(new_party) + len(self.preset['roster']) > MAX_CREATURES:
+            raise ValueError(f'At most {MAX_CREATURES} creatures allowed.')
 
         orig_party = list(self.preset['party'])
         orig_at = dict(self.preset.get('placements') or {})
@@ -252,13 +297,13 @@ class Level:
             for cell in _footprint_cells(uid, int(pos[0]), int(pos[1]))
         }
 
-        # Preserve squares of heroes that stayed in the party, reuse vacated hero slots first.
+        # Preserve squares of built-in heroes that stayed in the party, reuse vacated hero slots first.
         orig_by_base = {_hero_sheet(h)['base_id']: orig_at.get(h) for h in orig_party}
-        free_slots = [orig_at[h] for h in orig_party if h in orig_at and _hero_sheet(h)['base_id'] not in seen]
+        free_slots = [orig_at[h] for h in orig_party if h in orig_at and _hero_sheet(h)['base_id'] not in seen_bases]
         hero_coords = []
         pending = []
-        for base, content in zip(bases, new_party):
-            pos = orig_by_base.get(base)
+        for base, content in ordered_entries:
+            pos = orig_by_base.get(base) if base is not None else None
             if pos is not None and tuple(pos) not in occupied:
                 new_placements[content] = list(pos)
                 occupied.add(tuple(pos))
@@ -295,7 +340,7 @@ class Level:
                 hero_coords.append(found)
 
         preset = dict(self.preset, party=new_party, hero_level=chosen_level, placements=new_placements)
-        out = Level(self.encounter, preset, self.rows, self.scene, self.map_name)
+        out = Level(self.encounter, preset, self.rows, self.scene, self.map_name, custom_heroes=used_custom_inputs)
         out.check()
         return out
 
@@ -333,7 +378,7 @@ class Level:
 
     def check(self):
         validate_rows(self.rows, f'{self.encounter_id}/{self.preset_id}')
-        heroes, monsters = hero_ids(), monster_ids()
+        heroes, monsters = hero_ids() | set(self._custom_by_id), monster_ids()
         party = list(self.preset['party'])
         roster = list(self.preset['roster'])
         if not party or any(h not in heroes for h in party):
@@ -350,13 +395,27 @@ class Level:
         occupied = set()
         for item in self.suggested_placements():
             x, y = item['x'], item['y']
-            for cx, cy in _footprint_cells(item['id'], x, y):
+            cells = [(x, y)] if item['id'] in self._custom_by_id else _footprint_cells(item['id'], x, y)
+            for cx, cy in cells:
                 if not (0 <= cx < width and 0 <= cy < height) or self.rows[cy][cx] in ('H', 'T'):
                     raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: {item["id"]} not on floor at {(cx, cy)}')
                 if (cx, cy) in occupied:
                     raise CatalogueError(f'{self.encounter_id}/{self.preset_id}: duplicate placement at {(cx, cy)}')
                 occupied.add((cx, cy))
         return []
+
+    def _party_entry_view(self, hero_id):
+        if hero_id in self._custom_by_id:
+            ch = self._custom_by_id[hero_id]
+            doc = ch['doc']
+            return {
+                'content': hero_id,
+                'base_id': ch['model_key'],
+                'level': sum(doc['classes'].values()),
+                'name': doc['name'],
+                'custom': True,
+            }
+        return dict(_hero_sheet(hero_id))
 
     def view(self):
         preset = self.preset
@@ -369,7 +428,7 @@ class Level:
                 'map': {'name': self.map_name, 'width': len(self.rows[0]), 'height': len(self.rows)},
                 'hero_level': preset.get('hero_level'),
                 **({'story': preset['story']} if preset.get('story') else {}),
-                'party': [dict(_hero_sheet(h)) for h in preset['party']],
+                'party': [self._party_entry_view(h) for h in preset['party']],
                 'roster': [{'content': c, 'name': _title(c), 'count': n} for c, n in roster.items()]}
 
     def to_rust_json(self):
@@ -390,6 +449,8 @@ class Level:
                 'monsters': monsters,
                 'suggested_placements': self.suggested_placements(),
             }
+            if self.custom_heroes:
+                payload['custom_heroes'] = self.custom_heroes
             self._rust_json = json.dumps(payload)
         return self._rust_json
 

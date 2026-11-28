@@ -306,7 +306,7 @@ impl ContentPool {
     fn hero_sheet(&self, content: &str) -> PyResult<(&str, &str, i32, &str)> {
         let t = self.pool.tid(content).map(|id| self.pool.template(id))
             .filter(|t| t.pc).ok_or_else(|| verr(format!("unknown hero {content}")))?;
-        Ok((t.id, t.base_id, t.level, t.name))
+        Ok((&t.id, &t.base_id, t.level, &t.name))
     }
 
     /// Grid footprint side length in 5-ft squares (1 = Tiny/Small/Medium, 2 = Large, 3 = Huge).
@@ -1361,6 +1361,19 @@ impl WebGame {
     }
 }
 
+#[pyfunction]
+fn validate_custom_hero_doc(doc_json: &str) -> PyResult<()> {
+    let doc: ember::content::ContentDoc =
+        serde_json::from_str(doc_json).map_err(|e| verr(format!("invalid custom hero doc: {e}")))?;
+    ember::content::Template::from_custom_doc(&doc).map_err(verr)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn intern_table_size() -> usize {
+    ember::content::intern_count()
+}
+
 #[pymodule]
 fn ember_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = m.py();
@@ -1383,5 +1396,7 @@ fn ember_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Snapshot>()?;
     m.add_class::<WebGame>()?;
     m.add_function(wrap_pyfunction!(place, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_custom_hero_doc, m)?)?;
+    m.add_function(wrap_pyfunction!(intern_table_size, m)?)?;
     Ok(())
 }

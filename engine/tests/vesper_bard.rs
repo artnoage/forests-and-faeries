@@ -48,7 +48,7 @@ fn vesper_l1_l2_l3_srd_5_2_1_sheets_and_traits() {
         (l3, 3, 21, 16, 4, 0, 3),
     ] {
         assert_eq!(t.level, lvl);
-        assert_eq!(t.base_id, "vesper");
+        assert_eq!(t.base_id.as_ref(), "vesper");
         assert_eq!(t.max_hp, hp);
         assert_eq!(t.ac, 14);
         assert_eq!(t.abil, [8, 14, 12, 10, 14, 17]);
@@ -163,6 +163,7 @@ fn see_invisibility_replaces_burning_hands_only_at_v18_and_shows_per_active_hero
             Placement { id: "vesper".into(), x: 1, y: 2 },
             Placement { id: "will_o_wisp-1".into(), x: 5, y: 1 },
         ],
+        custom_heroes: Vec::new(),
     };
     let mut game = WebArena::new(level, 5, 0, "csrf".into(), "enc".into()).unwrap();
     assert_eq!(CURRENT_WEB_REPLAY_VERSION, 24);
@@ -193,6 +194,7 @@ fn see_invisibility_replaces_burning_hands_only_at_v18_and_shows_per_active_hero
             Placement { id: "guy".into(), x: 2, y: 1 },
             Placement { id: "will_o_wisp-1".into(), x: 5, y: 1 },
         ],
+        custom_heroes: Vec::new(),
     };
     // Keep AI monster_control so invisible_to_heroes is active!
     let mut arena = WebArena::new(level2, 7, 0, "csrf".into(), "enc".into()).unwrap();
@@ -800,6 +802,7 @@ fn ray_of_sickness_presentation_is_version_gated_on_replay_v20() {
             Placement { id: "mara".into(), x: 2, y: 1 },
             Placement { id: "green_hag-1".into(), x: 4, y: 1 },
         ],
+        custom_heroes: Vec::new(),
     };
 
     let placements_json = json!([
@@ -935,6 +938,7 @@ fn web_v21_ends_dodge_when_grappled_while_v20_preserves_rule_18() {
             Placement { id: "bugbear_warrior-1".into(), x: 1, y: 1 },
             Placement { id: "bugbear_warrior-2".into(), x: 3, y: 1 },
         ],
+        custom_heroes: Vec::new(),
     };
 
     // Initiative: Guy acts first (20 -> 25), Bugbear 1 second (15 -> 17), Bugbear 2 third (10 -> 12).

@@ -697,3 +697,22 @@ test('2D and 3D unit footprint, hit-test, and center follow wire cells when sque
   assert.deepEqual(app.unitCellsOf(rosterOgre, 4, 4), [[4, 4], [4, 5], [5, 4], [5, 5]]);
   assert.deepEqual(scene.unitCells(rosterOgre, 4, 4), [[4, 4], [4, 5], [5, 4], [5, 5]]);
 });
+
+test('Practice Character Builder UI hooks, storage key, and custom-hero portrait resolution', () => {
+  const html = read('static/index.html');
+  const appSrc = read('static/app.js');
+  assert.ok(html.includes('id="open-builder-btn"'), 'Create Hero button present in Practice party bar');
+  assert.ok(html.includes('id="builder-dialog"'), 'Builder dialog present in index.html');
+  assert.ok(!/\bstyle\s*=/.test(html), 'No inline style attributes in index.html');
+  assert.ok(appSrc.includes("'ff-custom-heroes-v1'"), 'Versioned custom hero localStorage key present');
+  assert.ok(appSrc.includes('builder/options') && appSrc.includes('builder/preview'), 'Builder API endpoints wired');
+  assert.ok(appSrc.includes('opts.story ? { party: null, custom_heroes: null }'), 'Story launches never send custom_heroes');
+
+  // Verify portraitSymbol respects explicit model_key (base_id) on custom heroes
+  const m = appSrc.match(/const HERO_MODEL_PORTRAIT = \{[\s\S]*?\};\s*function portraitSymbol\(unit\) \{[\s\S]*?\n  \}/);
+  assert.ok(m, 'HERO_MODEL_PORTRAIT + portraitSymbol present');
+  const portraitSymbol = Function(`"use strict"; ${m[0]}; return portraitSymbol;`)();
+  assert.equal(portraitSymbol({ team: 'heroes', base_id: 'guy', class: 'bard', name: 'Tamsin' }), 'fighter');
+  assert.equal(portraitSymbol({ team: 'heroes', base_id: 'vesper', class: 'fighter', name: 'Toren' }), 'bard');
+  assert.equal(portraitSymbol({ team: 'heroes', base_id: 'ilyra', class: 'cleric', name: 'Sera' }), 'mage');
+});

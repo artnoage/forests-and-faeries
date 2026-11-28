@@ -364,7 +364,7 @@ impl Fight {
 
     /// `spell_ai.damage_multiplier`.
     pub fn damage_multiplier(&self, t: usize, dt: Dmg) -> f64 {
-        let tt = self.units[t].t;
+        let tt = &self.units[t].t;
         if tt.immune & dt.bit() != 0 {
             return 0.0;
         }
@@ -383,7 +383,7 @@ impl Fight {
 
     /// `ai_estimates.damage_multiplier` (multiplicative form).
     pub(crate) fn damage_multiplier_est(&self, t: usize, dt: Dmg) -> f64 {
-        let tt = self.units[t].t;
+        let tt = &self.units[t].t;
         if tt.immune & dt.bit() != 0 {
             return 0.0;
         }
@@ -606,7 +606,7 @@ impl Fight {
 
     fn is_sorcerer_spell(&self, caster: usize, spell: SpellId) -> bool {
         let u = &self.units[caster];
-        if self.rule_version < 18 && u.t.id == "curogana" && spell == SpellId::BurningHands {
+        if self.rule_version < 18 && &*u.t.id == "curogana" && spell == SpellId::BurningHands {
             return true;
         }
         u.t.caster.as_ref().is_some_and(|c| c.sorcerer_spells.contains(&spell))
@@ -1350,7 +1350,7 @@ impl Fight {
                     return POINTLESS;
                 }
                 let base = unit.t.ac;
-                let gain = mage_armor_ac(unit.t) - base;
+                let gain = mage_armor_ac(&unit.t) - base;
                 if gain <= 0 {
                     return POINTLESS;
                 }

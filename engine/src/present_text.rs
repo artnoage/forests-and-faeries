@@ -449,3 +449,265 @@ pub(crate) fn unit_sheet_for_replay(content: &str, pc: bool, hp: i32, ac: i32, r
         "spells": [],
     }))
 }
+
+/// Concise SRD 5.2.1 combat summary for custom hero inspect sheets.
+pub fn spell_short_summary(key: &str) -> &'static str {
+    match key {
+        "sacred_flame" => "Cantrip. 60 ft, DEX save or 1d8 radiant (ignores cover).",
+        "spare_the_dying" => "Cantrip. 15 ft, stabilise a dying creature.",
+        "sorcerous_burst" => "Cantrip. 120 ft spell attack, 1d8 chosen damage; an 8 explodes into another d8.",
+        "firebolt" => "Cantrip. 120 ft spell attack, 1d10 fire.",
+        "ray_of_frost" => "Cantrip. 60 ft spell attack, 1d8 cold and -10 ft speed until your next turn.",
+        "acid_splash" => "Cantrip. 5-ft sphere within 60 ft, DEX save or 1d6 acid.",
+        "poison_spray" => "Cantrip. 30 ft spell attack, 1d12 poison.",
+        "vicious_mockery" => "Cantrip. 60 ft, WIS save or 1d6 psychic and Disadvantage on its next attack.",
+        "starry_wisp" => "Cantrip. 60 ft spell attack, 1d8 radiant; outlines target and cancels Invisible.",
+        "bless" => "Level 1, concentration. Up to 3 allies add 1d4 to attacks and saves.",
+        "command" => "Level 1. 60 ft, WIS save or fall Prone (Grovel).",
+        "cure_wounds" => "Level 1. Touch: heal 2d8 + spellcasting modifier.",
+        "guiding_bolt" => "Level 1. 120 ft spell attack, 4d6 radiant; next attack against target has Advantage.",
+        "healing_word" => "Level 1, bonus action. 60 ft: heal 2d4 + spellcasting modifier.",
+        "protection_from_evil_and_good" => "Level 1, concentration (uses Holy Water). Aberrations/Fey/Undead etc. have Disadvantage against target.",
+        "sanctuary" => "Level 1, bonus action. Attackers must make a WIS save before targeting the warded creature.",
+        "shield_of_faith" => "Level 1, bonus action, concentration. +2 AC.",
+        "burning_hands" => "Level 1. 15-ft cone, DEX save, 3d6 fire (half on success).",
+        "chromatic_orb" => "Level 1. 90 ft spell attack, 3d8 damage of a chosen type (leaps on matching dice).",
+        "mage_armor" => "Level 1. Touch unarmored creature: base AC becomes 13 + DEX.",
+        "magic_missile" => "Level 1. 120 ft: three 1d4+1 force darts that automatically hit.",
+        "ray_of_sickness" => "Level 1. 60 ft spell attack, 2d8 poison and Poisoned until end of your next turn.",
+        "shield" => "Level 1, reaction (automatic): +5 AC against the triggering hit.",
+        "thunderwave" => "Level 1. 15-ft cube, CON save, 2d8 thunder and 10-ft push (half on success).",
+        "faerie_fire" => "Level 1, concentration. 20-ft cube: DEX save or outlined, cancels Invisible, attacks have Advantage.",
+        "aid" => "Level 2. Up to 3 allies raise max and current HP by 5.",
+        "lesser_restoration" => "Level 2, bonus action. Touch: end Paralyzed or Poisoned.",
+        "spiritual_weapon" => "Level 2, bonus action, concentration. Force weapon strikes for 1d8 + spellcasting modifier force.",
+        "blur" => "Level 2, concentration. Attackers have Disadvantage unless they use Blindsight or Truesight.",
+        "dragons_breath" => "Level 2, bonus action, concentration. Willing creature exhales a 15-ft cone of 3d6 elemental damage.",
+        "invisibility" => "Level 2, concentration. Touch: target becomes Invisible until it attacks or casts a spell.",
+        "scorching_ray" => "Level 2. 120 ft: three fire rays, 2d6 fire each.",
+        "see_invisibility" => "Level 2 (1 hour, no concentration). See Invisible creatures and objects clearly.",
+        "shatter" => "Level 2. 10-ft sphere within 60 ft, CON save, 3d8 thunder (half on success).",
+        _ => "",
+    }
+}
+
+/// Build a completely data-driven inspect sheet for a Practice custom hero,
+/// derived from its actual `Template`, `ContentDoc`, and builder metadata
+/// (never reusing built-in hero hardcoded strings).
+pub(crate) fn custom_hero_sheet(
+    meta: &crate::present::CustomHeroMeta,
+    t: &crate::content::Template,
+    hp: i32,
+    ac: i32,
+) -> Value {
+    let mut stats_parts: Vec<String> = Vec::new();
+    if !meta.species_label.is_empty() {
+        stats_parts.push(meta.species_label.clone());
+    }
+    if !meta.background_label.is_empty() {
+        stats_parts.push(meta.background_label.clone());
+    }
+    stats_parts.push(format!(
+        "STR {} DEX {} CON {} INT {} WIS {} CHA {}",
+        t.abil[0], t.abil[1], t.abil[2], t.abil[3], t.abil[4], t.abil[5]
+    ));
+    if let Some(c) = &t.caster {
+        stats_parts.push(format!("Spell save DC {}, attack {:+}", c.dc, c.spell_attack));
+    }
+    if t.darkvision > 0 {
+        stats_parts.push(format!("Darkvision {} ft", t.darkvision));
+    }
+    if t.resist & crate::content::Dmg::Poison.bit() != 0 {
+        stats_parts.push("Poison Resistance".to_string());
+    }
+    stats_parts.push(format!("HP {hp} · AC {ac} · Speed {} ft", t.speed));
+    let stats = stats_parts.join(" · ");
+
+    let mut features: Vec<Value> = Vec::new();
+    for def in t.attacks.iter().filter(|a| !a.thrown) {
+        let mut detail = format!("{:+}, {} {}", def.to_hit, def.damage.text(), def.damage_type.name());
+        if let Some(thrown_def) = t.attacks.iter().find(|a| a.thrown && a.name == def.name) {
+            detail.push_str(&format!("; thrown {}/{} ft", thrown_def.range, thrown_def.range_max));
+        }
+        if def.range > 5 && !def.ranged {
+            detail.push_str(&format!("; reach {} ft", def.range));
+        }
+        if let Some(g) = def.graze {
+            detail.push_str(&format!(". Mastery: Graze deals {} damage on a miss", g.max(0)));
+        }
+        if def.sap {
+            detail.push_str(". Mastery: Sap gives target Disadvantage on its next attack");
+        }
+        if def.cleave {
+            detail.push_str(". Mastery: Cleave grants one free attack on an adjacent second foe within reach");
+        }
+        detail.push('.');
+        features.push(json!({"name": title_words(def.name), "text": detail}));
+    }
+
+    let doc = &meta.doc;
+    for f in &doc.features {
+        let fid = f.id.as_str();
+        let text: String = match fid {
+            "second_wind" => format!(
+                "Bonus action: regain {}+{} HP. {} {}.",
+                t.second_wind_die.text(),
+                t.fighter_level,
+                t.second_wind_uses,
+                if t.second_wind_uses == 1 { "use" } else { "uses" }
+            ),
+            "action_surge" => format!(
+                "Take one extra action this turn (except Magic). {} {}.",
+                t.action_surge_uses,
+                if t.action_surge_uses == 1 { "use" } else { "uses" }
+            ),
+            "improved_critical" => "Champion: critical hits on a natural 19 or 20.".into(),
+            "remarkable_athlete" => "Advantage on Initiative and Athletics; after a critical hit, move up to half your speed without provoking Opportunity Attacks.".into(),
+            "great_weapon_fighting" => "Treat any 1 or 2 on a two-handed or versatile-in-two-hands melee weapon damage die as a 3.".into(),
+            "defense" => "+1 AC while wearing armor.".into(),
+            "savage_attacker" => "Once per turn on a weapon hit, roll the weapon's damage dice twice and use either roll.".into(),
+            "alert" => format!("+{0} to Initiative (Initiative Swap is sheet-only in Practice).", t.prof_bonus),
+            "skilled" => "Proficiency in three chosen skills (3-skill subset of SRD skills or tools).".into(),
+            "channel_divinity" => {
+                let uses = t.caster.as_ref().map_or(0, |c| c.channel_divinity);
+                format!("{uses} {} (Divine Spark, Turn Undead{}).", if uses == 1 { "use" } else { "uses" }, if t.preserve_life { ", Preserve Life" } else { "" })
+            }
+            "divine_spark" => {
+                let wis_mod = crate::content::ability_mod(t.abil[4]);
+                format!("Channel Divinity (30 ft): heal 1d8+{wis_mod} HP, or CON save vs 1d8+{wis_mod} radiant/necrotic damage.")
+            }
+            "channel_divinity_turn_undead" => "Channel Divinity (30 ft): undead make a WIS save or are Frightened, Incapacitated, and flee.".into(),
+            "preserve_life" => {
+                let pool = 5 * t.caster.as_ref().map_or(t.level, |c| c.level);
+                format!("Channel Divinity (30 ft): divide {pool} HP among Bloodied allies up to half their max HP.")
+            }
+            "disciple_of_life" => "Healing spells cast with a spell slot restore an extra 2 + slot level HP.".into(),
+            "divine_order" => {
+                if let Some(order) = f.params.get("order").and_then(|v| v.as_str()) {
+                    if order == "thaumaturge" {
+                        "Thaumaturge: +1 Cleric cantrip (+WIS to Arcana/Religion is sheet-only in Practice).".into()
+                    } else {
+                        "Protector: Heavy armor and Martial weapon training.".into()
+                    }
+                } else {
+                    "Cleric Divine Order applied.".into()
+                }
+            }
+            "innate_sorcery" => {
+                let uses = t.caster.as_ref().map_or(0, |c| c.innate_sorcery);
+                format!("Bonus action, {uses} uses: +1 spell save DC and Advantage on Sorcerer spell attacks for 1 minute.")
+            }
+            "font_of_magic" => {
+                let sp = t.caster.as_ref().map_or(0, |c| c.sorcery_points);
+                format!("{sp} Sorcery Points (Metamagic and slot conversions).")
+            }
+            "metamagic" => {
+                let opts = t.caster.as_ref().map(|c| {
+                    c.metamagic.iter().map(|m| title_words(m.key())).collect::<Vec<_>>().join(", ")
+                }).unwrap_or_default();
+                format!("Known Metamagic: {opts}.")
+            }
+            "draconic_resilience" => format!("+{} max HP and unarmored AC 10 + DEX + CHA.", t.level),
+            "potent_cantrip" => "Missed cantrip attacks and saved cantrips still deal half damage with no additional effect.".into(),
+            "evocation_savant" => "Added two Evocation spells (levels 1–2) to the spellbook.".into(),
+            "rage" => format!(
+                "Bonus action, {} {}: B/P/S resistance, +{} STR melee damage, Advantage on STR checks/saves, no spells.",
+                t.rage_uses,
+                if t.rage_uses == 1 { "use" } else { "uses" },
+                t.rage_damage
+            ),
+            "reckless_attack" => "Before first attack roll on turn: Advantage on STR attacks until next turn, and attacks against you have Advantage.".into(),
+            "danger_sense" => "Advantage on Dexterity saving throws unless Incapacitated.".into(),
+            "frenzy" => format!("Path of the Berserker: while raging and reckless, first STR hit of the turn deals +{}d6 extra damage.", t.rage_damage),
+            "unarmored_defense_barbarian" => "Unarmored AC 10 + DEX + CON (shield permitted).".into(),
+            "primal_knowledge" => "Extra Barbarian skill proficiency (using STR for five skills while raging is sheet-only in Practice).".into(),
+            "bardic_inspiration" => format!(
+                "Bonus action, {} {} ({}, Long Rest): grant an ally within 60 ft a {} die for 1 hour.",
+                t.bardic_inspiration_uses,
+                if t.bardic_inspiration_uses == 1 { "use" } else { "uses" },
+                t.bardic_inspiration_die.text(),
+                t.bardic_inspiration_die.text()
+            ),
+            "cutting_words" => format!(
+                "College of Lore reaction (spends 1 Bardic Inspiration): subtract {} from an enemy attack or damage roll within 60 ft.",
+                t.bardic_inspiration_die.text()
+            ),
+            "expertise" => {
+                if meta.expertise.is_empty() {
+                    "Double proficiency bonus on two chosen proficient skills.".into()
+                } else {
+                    let list = meta.expertise.iter().map(|s| title_words(s)).collect::<Vec<_>>().join(" and ");
+                    format!("Double proficiency bonus in {list}.")
+                }
+            }
+            "jack_of_all_trades" => "+1 to non-proficient ability checks (excluding Initiative).".into(),
+            "bonus_proficiencies" => {
+                if meta.bonus_proficiencies.is_empty() {
+                    "College of Lore: three extra skill proficiencies.".into()
+                } else {
+                    let list = meta.bonus_proficiencies.iter().map(|s| title_words(s)).collect::<Vec<_>>().join(", ");
+                    format!("College of Lore bonus skill proficiencies: {list}.")
+                }
+            }
+            "fey_ancestry" => "Advantage on saving throws to avoid or end the Charmed condition.".into(),
+            "fiendish_legacy" => "Abyssal Legacy: Poison Resistance, Poison Spray cantrip, and at level 3 Ray of Sickness (1 free cast per Long Rest).".into(),
+            "magic_initiate_cleric" => "Magic Initiate (Cleric): 2 Cleric cantrips and 1 Level 1 Cleric spell (1 free cast per Long Rest).".into(),
+            "magic_initiate_wizard" => "Magic Initiate (Wizard): 2 Wizard cantrips and 1 Level 1 Wizard spell (1 free cast per Long Rest).".into(),
+            "resourceful" => "Heroic Inspiration on Long Rest (sheet-only in Practice).".into(),
+            "trance" => "4-hour meditative Long Rest (sheet-only in Practice).".into(),
+            "ritual_adept" => "Ritual spellcasting outside combat (sheet-only in Practice).".into(),
+            "arcane_recovery" => "Recover spell slots on a Short Rest (sheet-only in Practice).".into(),
+            "scholar" => "Skill Expertise recorded on sheet (sheet-only in Practice).".into(),
+            "otherworldly_presence" => "Knows Thaumaturgy cantrip (no effect in combat).".into(),
+            "spellcasting" | "martial_archetype" | "divine_domain" | "sorcerer_subclass"
+            | "wizard_subclass" | "primal_path" | "bard_subclass" | "draconic_spells"
+            | "weapon_mastery" | "skillful" | "versatile" | "keen_senses" | "elven_lineage" => continue,
+            _ => String::new(),
+        };
+        features.push(json!({"name": title_words(fid), "text": text}));
+    }
+
+    if !meta.owned_equipment.is_empty() || !meta.coins_label.is_empty() {
+        let mut gear_text = meta.owned_equipment.join(", ");
+        if !meta.coins_label.is_empty() {
+            if !gear_text.is_empty() {
+                gear_text.push_str(" · ");
+            }
+            gear_text.push_str(&meta.coins_label);
+        }
+        features.push(json!({"name": "Equipment & Coins", "text": gear_text}));
+    }
+
+    for note in &meta.notes {
+        features.push(json!({"name": "Practice Note", "text": note}));
+    }
+
+    let mut spells: Vec<Value> = Vec::new();
+    if let Some(sc) = &doc.spellcasting {
+        let free_set: std::collections::HashSet<&str> = sc.free_casts.iter().map(|f| f.spell.as_str()).collect();
+        for sid in sc.spells.iter().chain(sc.reaction_spells.iter()) {
+            let mut txt = spell_short_summary(sid).to_string();
+            if free_set.contains(sid.as_str()) {
+                if !txt.is_empty() {
+                    txt.push(' ');
+                }
+                txt.push_str("One free cast.");
+            }
+            spells.push(json!({"name": spell_display_name(sid), "text": txt}));
+        }
+        for sid in &sc.inert_spells {
+            let reason = meta
+                .inert_spell_reasons
+                .get(sid)
+                .map(|s| s.as_str())
+                .unwrap_or("No effect in combat.");
+            spells.push(json!({"name": spell_display_name(sid), "text": reason}));
+        }
+    }
+
+    json!({
+        "stats": stats,
+        "features": features,
+        "spells": spells,
+    })
+}

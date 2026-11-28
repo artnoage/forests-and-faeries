@@ -165,6 +165,7 @@ fn breath_cast_offers_five_human_elements_and_one_native_recipient_row() {
         scene: json!({"props": []}), level_view: json!({"id": "breath", "preset": "test"}),
         heroes: vec!["curogana".into()], monsters: vec![("zombie-1".into(), "zombie".into(), "Zombie".into())],
         suggested_placements: roster.iter().map(|&(id, (x, y))| Placement { id: id.into(), x, y }).collect(),
+        custom_heroes: Vec::new(),
     };
     let mut arena = WebArena::new(level, 2, 0, "csrf".into(), "enc".into()).unwrap();
     let mut state = arena.start().unwrap();

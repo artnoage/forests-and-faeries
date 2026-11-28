@@ -613,9 +613,9 @@ impl EncIds {
         let v = &pool.vocab;
         let id = |section: &str, name: &str| v.id(section, name).map_or(-1, |x| x as i16);
         EncIds {
-            kind: pool.templates.iter().map(|t| id("creatures", t.base_id)).collect(),
-            character: pool.templates.iter().map(|t| if t.pc { id("characters", t.base_id) } else { -1 }).collect(),
-            attack: pool.templates.iter().map(|t| t.attacks.iter().map(|a| id("attacks", a.name)).collect()).collect(),
+            kind: pool.iter_templates().map(|t| id("creatures", &t.base_id)).collect(),
+            character: pool.iter_templates().map(|t| if t.pc { id("characters", &t.base_id) } else { -1 }).collect(),
+            attack: pool.iter_templates().map(|t| t.attacks.iter().map(|a| id("attacks", a.name)).collect()).collect(),
             spell: SpellId::ALL.iter().map(|s| id("spells", s.key())).collect(),
             action: ACTION_KINDS.map(|k| id("action_kinds", k)),
         }
@@ -638,7 +638,7 @@ impl EncIds {
     /// in the vocabulary (the loader checks the content side).
     pub fn missing(&self, pool: &ContentPool) -> Vec<String> {
         let mut out = Vec::new();
-        for (i, t) in pool.templates.iter().enumerate() {
+        for (i, t) in pool.iter_templates().enumerate() {
             if self.kind[i] < 0 {
                 out.push(format!("creatures.{}", t.id));
             }
@@ -1113,7 +1113,7 @@ fn encode_rows(
     if ox < 0 || oy < 0 || ox + g.w > S as i32 || oy + g.h > S as i32 {
         return Err(format!("a {}x{} map does not fit the {S}x{S} canvas at offset ({ox}, {oy})", g.w, g.h));
     }
-    let ids = EncIds::of(f.pool);
+    let ids = EncIds::of(&f.pool);
     let actor = pending.map(|d| d.actor);
     let v2 = out.version != Version::V1;
     SCRATCH.with(|cell| {
@@ -1873,7 +1873,7 @@ fn attacks_per_action(f: &Fight, u: usize) -> i32 {
 /// `ember-gen-v4`: damaging attacks per Attack action (excludes non-damaging
 /// multiattack slots such as Mummy's Dreadful Glare or Dryad's Charm Monster).
 fn attacks_per_action_v4(f: &Fight, u: usize) -> i32 {
-    let t = f.units[u].t;
+    let t = &f.units[u].t;
     t.multiattack
         .iter()
         .map(|combo| {
@@ -1969,7 +1969,7 @@ fn encode_creatures(cx: &Ctx, out: &mut ObsSlot) {
 fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
     let f = cx.f;
     let u = &f.units[i];
-    let t = u.t;
+    let t = &u.t;
     // relation
     row[ci!("is_actor")] = b(Some(i) == cx.actor);
     row[ci!("ally")] = b(!cx.enemy(i));
@@ -2176,7 +2176,7 @@ fn creature_row(cx: &Ctx, i: usize, row: &mut [f32]) {
     }
     row[ci!("has_ranged_attack")] = b(ranged_attack);
     if t.pc {
-        row[ci!("level_div5")] = pc_level(t, cx.version) as f32 / 5.0;
+        row[ci!("level_div5")] = pc_level(&t, cx.version) as f32 / 5.0;
     }
     // initiative
     let pos = cx.sc.order_pos[i];
@@ -2350,7 +2350,7 @@ fn encode_relations(cx: &Ctx, out: &mut [u8]) {
 fn creature_row_v2(cx: &Ctx, i: usize, row: &mut [f32]) {
     let f = cx.f;
     let u = &f.units[i];
-    let t = u.t;
+    let t = &u.t;
     let sc = cx.sc;
     // fear and curse
     row[ci!("cursed")] = b(u.cursed);
@@ -2417,7 +2417,7 @@ fn creature_row_v2(cx: &Ctx, i: usize, row: &mut [f32]) {
 fn creature_row_v4(cx: &Ctx, i: usize, row: &mut [f32]) {
     let f = cx.f;
     let u = &f.units[i];
-    let t = u.t;
+    let t = &u.t;
     row[ci!("size_tiny")] = b(t.size == "tiny");
     row[ci!("charmed")] = b(u.has(St::Charmed));
     row[ci!("grappled")] = b(u.has(St::Grappled));
@@ -2469,7 +2469,7 @@ fn creature_row_v4(cx: &Ctx, i: usize, row: &mut [f32]) {
 fn creature_row_v5(cx: &Ctx, i: usize, row: &mut [f32]) {
     let f = cx.f;
     let u = &f.units[i];
-    let t = u.t;
+    let t = &u.t;
     row[ci!("bard")] = b(t.bard);
     row[ci!("bardic_inspiration_div5")] = if t.bard { u.bardic_inspiration_count as f32 / 5.0 } else { 0.0 };
     row[ci!("fx_bardic_inspiration")] = b(f.has_effect(i, EffKey::BardicInspiration));
@@ -2607,7 +2607,7 @@ fn encode_global(cx: &Ctx, env: &Env, obj: &Objective, g: &mut [f32]) {
             dpr[side] += cx.sc.dpr[i];
         }
         if u.t.pc {
-            let level = pc_level(u.t, cx.version);
+            let level = pc_level(&u.t, cx.version);
             heroes += 1;
             levels += level;
             lo = lo.min(level);

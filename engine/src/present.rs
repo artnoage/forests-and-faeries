@@ -22,7 +22,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use crate::content::{ContentPool, SpellId, Template};
+use crate::content::{ContentDoc, ContentPool, PoolRef, SpellId, Template, TemplateRef};
 use crate::effects::{EffKey, MarkSlot, ObjKind};
 use crate::engine::{Act, Fight, St};
 use crate::map::{Grid, Pos};
@@ -63,6 +63,50 @@ fn cell_label(p: Pos) -> String {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CustomHeroInput {
+    pub unit_id: String,
+    pub model_key: String,
+    pub description: String,
+    pub class_id: String,
+    #[serde(default)]
+    pub subclass_id: Option<String>,
+    pub species_label: String,
+    pub background_label: String,
+    #[serde(default)]
+    pub expertise: Vec<String>,
+    #[serde(default)]
+    pub bonus_proficiencies: Vec<String>,
+    #[serde(default)]
+    pub owned_equipment: Vec<String>,
+    #[serde(default)]
+    pub coins_label: String,
+    #[serde(default)]
+    pub notes: Vec<String>,
+    #[serde(default)]
+    pub inert_spell_reasons: BTreeMap<String, String>,
+    pub doc: Value,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CustomHeroMeta {
+    pub model_key: String,
+    pub description: String,
+    pub class_id: String,
+    pub subclass_id: Option<String>,
+    pub species_label: String,
+    pub background_label: String,
+    pub expertise: Vec<String>,
+    pub bonus_proficiencies: Vec<String>,
+    pub owned_equipment: Vec<String>,
+    pub coins_label: String,
+    pub notes: Vec<String>,
+    pub inert_spell_reasons: BTreeMap<String, String>,
+    pub doc: Arc<ContentDoc>,
+}
+
+const ALLOWED_CUSTOM_MODELS: &[&str] = &["guy", "mara", "elion", "curogana", "ilyra", "chruna", "vesper"];
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LevelInput {
     pub encounter_id: String,
     pub preset_id: String,
@@ -75,6 +119,8 @@ pub struct LevelInput {
     /// `(unit_id, content_id, display_name)`
     pub monsters: Vec<(String, String, String)>,
     pub suggested_placements: Vec<Placement>,
+    #[serde(default)]
+    pub custom_heroes: Vec<CustomHeroInput>,
 }
 
 #[derive(Clone, Debug)]
@@ -83,7 +129,8 @@ struct RosterUnit {
     content: String,
     team: &'static str, // "heroes" | "monsters"
     name: String,
-    t: &'static Template,
+    t: TemplateRef,
+    custom: Option<CustomHeroMeta>,
 }
 
 #[derive(Clone, Debug)]
@@ -118,6 +165,7 @@ struct InterruptedMove {
 pub struct WebArena {
     level: LevelInput,
     replay_version: u8,
+    pool: PoolRef,
     grid: Arc<Grid>,
     roster: Vec<RosterUnit>,
     roster_by_id: HashMap<String, usize>,
@@ -281,27 +329,72 @@ impl WebArena {
                 }
             }
         }
-        let pool = ContentPool::global();
+        let mut custom_map: HashMap<String, CustomHeroMeta> = HashMap::new();
+        let pool: PoolRef = if level.custom_heroes.is_empty() {
+            PoolRef::from_static(ContentPool::global())
+        } else {
+            if level.custom_heroes.len() > 6 {
+                return Err("at most 6 custom heroes per encounter".to_string());
+            }
+            let mut extras: Vec<(ContentDoc, Template)> = Vec::with_capacity(level.custom_heroes.len());
+            for ch in &level.custom_heroes {
+                if !ALLOWED_CUSTOM_MODELS.contains(&ch.model_key.as_str()) {
+                    return Err(format!("custom hero {}: unsupported model_key {:?}", ch.unit_id, ch.model_key));
+                }
+                if custom_map.contains_key(&ch.unit_id) {
+                    return Err(format!("duplicate custom hero unit_id {:?}", ch.unit_id));
+                }
+                let doc: ContentDoc = serde_json::from_value(ch.doc.clone())
+                    .map_err(|e| format!("custom hero {}: invalid content doc: {e}", ch.unit_id))?;
+                if doc.id != ch.unit_id {
+                    return Err(format!("custom hero unit_id {:?} differs from doc.id {:?}", ch.unit_id, doc.id));
+                }
+                let tmpl = Template::from_custom_doc(&doc)?;
+                let doc_arc = Arc::new(doc.clone());
+                custom_map.insert(
+                    ch.unit_id.clone(),
+                    CustomHeroMeta {
+                        model_key: ch.model_key.clone(),
+                        description: ch.description.clone(),
+                        class_id: ch.class_id.clone(),
+                        subclass_id: ch.subclass_id.clone(),
+                        species_label: ch.species_label.clone(),
+                        background_label: ch.background_label.clone(),
+                        expertise: ch.expertise.clone(),
+                        bonus_proficiencies: ch.bonus_proficiencies.clone(),
+                        owned_equipment: ch.owned_equipment.clone(),
+                        coins_label: ch.coins_label.clone(),
+                        notes: ch.notes.clone(),
+                        inert_spell_reasons: ch.inert_spell_reasons.clone(),
+                        doc: doc_arc,
+                    },
+                );
+                extras.push((doc, tmpl));
+            }
+            ContentPool::global().with_extra_templates(extras)?
+        };
         let grid = Arc::new(Grid::from_rows(&level.rows)?);
         let mut roster = Vec::new();
         let mut roster_by_id = HashMap::new();
 
         for hero in &level.heroes {
             let tid = pool.unit_tid(hero).ok_or_else(|| format!("unknown hero {hero}"))?;
-            let t = &pool.templates[tid as usize];
+            let t = pool.template_ref(tid);
             let idx = roster.len();
             roster_by_id.insert(hero.clone(), idx);
+            let custom = custom_map.remove(hero);
             roster.push(RosterUnit {
                 id: hero.clone(),
                 content: t.id.to_string(),
                 team: "heroes",
                 name: t.name.to_string(),
                 t,
+                custom,
             });
         }
         for (uid, content, display_name) in &level.monsters {
             let tid = pool.unit_tid(uid).ok_or_else(|| format!("unknown monster {uid}"))?;
-            let t = &pool.templates[tid as usize];
+            let t = pool.template_ref(tid);
             let idx = roster.len();
             roster_by_id.insert(uid.clone(), idx);
             roster.push(RosterUnit {
@@ -310,11 +403,12 @@ impl WebArena {
                 team: "monsters",
                 name: display_name.clone(),
                 t,
+                custom: None,
             });
         }
         let min_check_version = web_replay_rule_version(replay_version);
         for ru in &roster {
-            let min = Fight::min_rule_version_for_template(ru.t);
+            let min = Fight::min_rule_version_for_template(&ru.t);
             if min_check_version < min {
                 return Err(format!(
                     "{} ({}) requires web replay_version >= 22 (rule_version >= {min}), got replay_version {replay_version} (rule_version {min_check_version})",
@@ -327,6 +421,7 @@ impl WebArena {
         let mut arena = WebArena {
             level,
             replay_version,
+            pool,
             grid,
             roster,
             roster_by_id,
@@ -698,8 +793,8 @@ impl WebArena {
             }
         }
 
-        let mut fight = Fight::on_map(
-            ContentPool::global(),
+        let mut fight = Fight::on_map_pool(
+            self.pool.clone(),
             Arc::clone(&self.grid),
             &unit_ids,
             &ordered_placements,
@@ -3731,23 +3826,42 @@ impl WebArena {
         m.insert("ac".into(), json!(ac));
         m.insert("alive".into(), json!(true));
         m.insert("active".into(), json!(false));
-        m.insert("description".into(), json!(present_text::creature_description(ru.t.base_id)));
-        m.insert("conditions".into(), json!([]));
-        m.insert("controlled_by".into(), json!(controlled_by));
-        m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
-        m.insert("initiative".into(), json!(null));
-        if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
-            let lvl = ru.t.level;
-            let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
+        if let Some(ref cm) = ru.custom {
+            m.insert("description".into(), json!(cm.description));
+            m.insert("conditions".into(), json!([]));
+            m.insert("controlled_by".into(), json!(controlled_by));
+            m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
+            m.insert("initiative".into(), json!(null));
             if self.replay_version >= 2 {
-                m.insert("base_id".into(), json!(ru.t.base_id));
+                m.insert("base_id".into(), json!(cm.model_key));
             }
+            let lvl = ru.t.level;
             let mut classes = Map::new();
-            classes.insert(cls.to_string(), json!(lvl));
+            classes.insert(cm.class_id.clone(), json!(lvl));
             m.insert("level".into(), json!(lvl));
             m.insert("classes".into(), Value::Object(classes));
-            m.insert("class".into(), json!(cls));
-            m.insert("subclass".into(), json!(sub));
+            m.insert("class".into(), json!(cm.class_id));
+            m.insert("subclass".into(), json!(cm.subclass_id));
+            m.insert("custom".into(), json!(true));
+        } else {
+            m.insert("description".into(), json!(present_text::creature_description(&ru.t.base_id)));
+            m.insert("conditions".into(), json!([]));
+            m.insert("controlled_by".into(), json!(controlled_by));
+            m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
+            m.insert("initiative".into(), json!(null));
+            if let Some((_, cls, sub)) = present_text::hero_class_meta(&ru.t.base_id) {
+                let lvl = ru.t.level;
+                let sub = if lvl < 3 { None } else { match &*ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
+                if self.replay_version >= 2 {
+                    m.insert("base_id".into(), json!(&*ru.t.base_id));
+                }
+                let mut classes = Map::new();
+                classes.insert(cls.to_string(), json!(lvl));
+                m.insert("level".into(), json!(lvl));
+                m.insert("classes".into(), Value::Object(classes));
+                m.insert("class".into(), json!(cls));
+                m.insert("subclass".into(), json!(sub));
+            }
         }
         if let Some((x, y)) = position {
             m.insert("x".into(), json!(x));
@@ -3771,10 +3885,16 @@ impl WebArena {
         }
         m.insert("content".into(), json!(ru.content));
         m.insert("dead".into(), json!(false));
-        m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
+        let model_id: &str = ru.custom.as_ref().map(|c| c.model_key.as_str()).unwrap_or(&ru.t.base_id);
+        m.insert("model".into(), present_text::model_recipe(model_id));
         m.insert("marks".into(), if ru.content == "ghast" { json!(["stench"]) } else { json!([]) });
         m.insert("str_loss".into(), json!(0));
-        if let Some(sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version) {
+        let sheet = if let Some(ref cm) = ru.custom {
+            Some(present_text::custom_hero_sheet(cm, &ru.t, hp, ac))
+        } else {
+            present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version)
+        };
+        if let Some(sheet) = sheet {
             m.insert("sheet".into(), sheet);
         }
         Value::Object(m)
@@ -3804,7 +3924,11 @@ impl WebArena {
         m.insert("ac".into(), json!(ac));
         m.insert("alive".into(), json!(unit.conscious()));
         m.insert("active".into(), json!(Some(u) == actor));
-        m.insert("description".into(), json!(present_text::creature_description(ru.t.base_id)));
+        if let Some(ref cm) = ru.custom {
+            m.insert("description".into(), json!(cm.description));
+        } else {
+            m.insert("description".into(), json!(present_text::creature_description(&ru.t.base_id)));
+        }
         m.insert("conditions".into(), json!(conds));
         if self.concealed_from_heroes(u) {
             m.insert("hidden_from_heroes".into(), json!(true));
@@ -3815,11 +3939,23 @@ impl WebArena {
         m.insert("controlled_by".into(), json!(controlled_by));
         m.insert("initiative_roll".into(), json!(self.initiative_rolls.get(&ru.id)));
         m.insert("initiative".into(), if self.in_setup { json!(null) } else { json!(unit.initiative) });
-        if let Some((_, cls, sub)) = present_text::hero_class_meta(ru.t.base_id) {
+        if let Some(ref cm) = ru.custom {
             let lvl = ru.t.level;
-            let sub = if lvl < 3 { None } else { match ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
             if self.replay_version >= 2 {
-                m.insert("base_id".into(), json!(ru.t.base_id));
+                m.insert("base_id".into(), json!(cm.model_key));
+            }
+            let mut classes = Map::new();
+            classes.insert(cm.class_id.clone(), json!(lvl));
+            m.insert("level".into(), json!(lvl));
+            m.insert("classes".into(), Value::Object(classes));
+            m.insert("class".into(), json!(cm.class_id));
+            m.insert("subclass".into(), json!(cm.subclass_id));
+            m.insert("custom".into(), json!(true));
+        } else if let Some((_, cls, sub)) = present_text::hero_class_meta(&ru.t.base_id) {
+            let lvl = ru.t.level;
+            let sub = if lvl < 3 { None } else { match &*ru.t.base_id { "mara" => Some("champion"), "ilyra" => Some("evoker"), _ => sub } };
+            if self.replay_version >= 2 {
+                m.insert("base_id".into(), json!(&*ru.t.base_id));
             }
             let mut classes = Map::new();
             classes.insert(cls.to_string(), json!(lvl));
@@ -3854,10 +3990,16 @@ impl WebArena {
         }
         m.insert("content".into(), json!(ru.content));
         m.insert("dead".into(), json!(unit.dead()));
-        m.insert("model".into(), present_text::model_recipe(ru.t.base_id));
+        let model_id: &str = ru.custom.as_ref().map(|c| c.model_key.as_str()).unwrap_or(&ru.t.base_id);
+        m.insert("model".into(), present_text::model_recipe(model_id));
         m.insert("marks".into(), json!(self.unit_marks(u)));
         m.insert("str_loss".into(), json!(unit.str_drain.unwrap_or(0)));
-        if let Some(mut sheet) = present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version) {
+        let sheet_opt = if let Some(ref cm) = ru.custom {
+            Some(present_text::custom_hero_sheet(cm, &ru.t, hp, ac))
+        } else {
+            present_text::unit_sheet_for_replay(&ru.content, ru.t.pc, hp, ac, self.replay_version)
+        };
+        if let Some(mut sheet) = sheet_opt {
             if self.replay_version >= 8 && unit.str_drain.unwrap_or(0) > 0 {
                 if self.replay_version >= 9 {
                     if let Some(features) = sheet["features"].as_array_mut() {
@@ -4231,6 +4373,7 @@ mod tests {
             heroes: vec!["guy".into()], monsters: vec![("skeleton-1".into(), "skeleton".into(), "Skeleton".into())],
             suggested_placements: vec![Placement { id: "guy".into(), x: 0, y: 0 },
                                        Placement { id: "skeleton-1".into(), x: 1, y: 1 }],
+            custom_heroes: Vec::new(),
         };
         for version in [15, CURRENT_WEB_REPLAY_VERSION] {
             let mut game = WebArena::with_trace(level.clone(), Trace::web_free(1), 0, "csrf".into(), "enc".into(), version).unwrap();
@@ -4262,6 +4405,7 @@ mod tests {
             monsters: vec![("goblin_warrior-1".into(), "goblin_warrior".into(), "Goblin".into())],
             suggested_placements: vec![Placement { id: "ilyra_l1".into(), x: 3, y: 3 },
                                        Placement { id: "goblin_warrior-1".into(), x: 4, y: 4 }],
+            custom_heroes: Vec::new(),
         };
         let mut game = WebArena::new(level, 1, 0, "csrf".into(), "enc".into()).unwrap();
         game.start().unwrap();
@@ -4296,6 +4440,7 @@ mod tests {
             monsters: vec![("skeleton-1".into(), "skeleton".into(), "Skeleton".into())],
             suggested_placements: vec![Placement { id: "guy".into(), x: 1, y: 1 },
                                        Placement { id: "skeleton-1".into(), x: 4, y: 1 }],
+            custom_heroes: Vec::new(),
         };
         let mut game = WebArena::new(level, 1, 0, "csrf".into(), "enc".into()).unwrap();
         game.start().unwrap();
@@ -4325,6 +4470,7 @@ mod tests {
                 Placement { id: "bugbear_warrior-1".into(), x: 3, y: 2 },
                 Placement { id: "dryad-1".into(), x: 5, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut game = WebArena::new(level, 7, 0, "csrf".into(), "enc".into()).unwrap();
         game.start().unwrap();
@@ -4427,6 +4573,7 @@ mod tests {
                 Placement { id: "guy".into(), x: 2, y: 1 },
                 Placement { id: "ghast-1".into(), x: 3, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut game = WebArena::new(level, 3, 0, "csrf".into(), "enc".into()).unwrap();
         game.start().unwrap();
@@ -4479,6 +4626,7 @@ mod tests {
                 Placement { id: "sprite-1".into(), x: 3, y: 2 },
                 Placement { id: "goblin_warrior-1".into(), x: 4, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut game = WebArena::new(level, 11, 0, "csrf".into(), "enc".into()).unwrap();
         game.start().unwrap();
@@ -4580,6 +4728,7 @@ mod tests {
                     Placement { id: hero.into(), x: 2, y: 2 },
                     Placement { id: "goblin_warrior-1".into(), x: goblin_pos.0, y: goblin_pos.1 },
                 ],
+                custom_heroes: Vec::new(),
             };
             let mut game = WebArena::new(level, seed, 0, "csrf".into(), "enc".into()).unwrap();
             game.start().unwrap();
@@ -4755,6 +4904,7 @@ mod tests {
                 Placement { id: "guy".into(), x: 1, y: 2 },
                 Placement { id: "goblin_minion-1".into(), x: 6, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut live = WebArena::new(level.clone(), 19, 0, "csrf".into(), "enc".into()).unwrap();
         let initial_st = live.state();
@@ -4863,6 +5013,7 @@ mod tests {
                 Placement { id: "guy".into(), x: 1, y: 2 },
                 Placement { id: "goblin_warrior-1".into(), x: 6, y: 3 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut game = WebArena::new(level, 19, 0, "csrf".into(), "enc".into()).unwrap();
         game.start().unwrap();
@@ -4964,6 +5115,7 @@ mod tests {
                 Placement { id: "goblin_minion-1".into(), x: 5, y: 2 },
                 Placement { id: "ghast-1".into(), x: 6, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut game = WebArena::new(level.clone(), 19, 0, "csrf".into(), "enc".into()).unwrap();
         game.start().unwrap();
@@ -5043,6 +5195,7 @@ mod tests {
                 Placement { id: "goblin_warrior-1".into(), x: 3, y: 2 },
                 Placement { id: "skeleton-1".into(), x: 7, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut saw_living_hit = false;
         let mut saw_kill = false;
@@ -5122,6 +5275,7 @@ mod tests {
                 Placement { id: "guy".into(), x: 2, y: 2 },
                 Placement { id: "ghast-1".into(), x: 3, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut gs = WebArena::new(level_s, 1, 0, "csrf".into(), "enc".into()).unwrap();
         gs.start().unwrap();
@@ -5158,6 +5312,7 @@ mod tests {
                 Placement { id: "curogana".into(), x: 1, y: 2 },
                 Placement { id: "goblin_warrior-1".into(), x: 5, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut ga = WebArena::new(level_a, 1, 0, "csrf".into(), "enc".into()).unwrap();
         ga.start().unwrap();

@@ -24,6 +24,11 @@
     lesser_restoration: 'Lesser Restoration', protection_from_evil_and_good: 'Prot. Evil & Good',
     faerie_fire: 'Faerie Fire', see_invisibility: 'See Invisibility', vicious_mockery: 'Vicious Mockery',
     starry_wisp: 'Starry Wisp', poison_spray: 'Poison Spray', ray_of_sickness: 'Ray of Sickness',
+    invisibility: 'Invisibility', detect_magic: 'Detect Magic', disguise_self: 'Disguise Self',
+    animal_friendship: 'Animal Friendship', alter_self: 'Alter Self',
+    guidance: 'Guidance', resistance: 'Resistance', thaumaturgy: 'Thaumaturgy', mending: 'Mending',
+    mage_hand: 'Mage Hand', minor_illusion: 'Minor Illusion', elementalism: 'Elementalism',
+    prestidigitation: 'Prestidigitation',
     bardic_inspiration: 'Bardic Inspiration', cutting_words: 'Cutting Words',
     empowered_spell: 'Empowered', heightened_spell: 'Heightened',
     will_o_wisp: "Will-o'-Wisp",
@@ -36,7 +41,14 @@
     'satyr', 'steam_mephit', 'giant_wasp', 'blink_dog', 'violet_fungus', 'sprite',
     'zombie', 'skeleton', 'goblin_warrior', 'kobold_warrior', 'goblin_minion'];
 
+  const HERO_MODEL_PORTRAIT = {
+    guy: 'fighter', mara: 'fighter', chruna: 'barbarian',
+    elion: 'cleric', ilyra: 'mage', curogana: 'sorcerer', vesper: 'bard',
+  };
+
   function portraitSymbol(unit) {
+    const baseKey = String(unit?.base_id || '').toLowerCase();
+    if (HERO_MODEL_PORTRAIT[baseKey]) return HERO_MODEL_PORTRAIT[baseKey];
     const raw = [unit?.base_id, unit?.content, unit?.kind, unit?.class, unit?.id, unit?.name].filter(Boolean).join(' ').toLowerCase();
     if (raw.includes('owlbear')) return 'owlbear';
     if (raw.includes('ogre')) return 'ogre';
@@ -278,11 +290,16 @@
   const NEEDS_CONFIRM = new Set(['channel_divinity_turn_undead', 'preserve_life', 'innate_sorcery', 'action_surge', 'rage', 'create_spell_slot', 'convert_spell_slot']);
   const SHORTCUT_KEY = 'ff-shortcuts';
   const IDLE_KEY = 'ff-idle-animation';
+  const CUSTOM_HEROES_KEY = 'ff-custom-heroes-v1';
+  const MAX_SAVED_HEROES = 24;
 
   let catalogue = [];            // [{id, name, blurb, private, presets: [level view]}]
   let practiceHeroes = [];       // [{base_id, name, class_label, default_content}]
-  let customParty = null;        // null = preset party; string[] of base_ids when customized in Practice
-  let activeCustomParty = null;  // active game's custom party (preserved on Restart)
+  let savedHeroes = [];          // [{id, recipe, summary}] stored in localStorage (Practice only)
+  let customParty = null;        // null = preset party; string[] of base_ids or 'saved:<id>' in Practice
+  let activeCustomParty = null;  // active game's custom party (preserved on Restart; null in Story)
+  let activeCustomHeroes = null; // active game's custom_heroes recipe payload (preserved on Restart; null in Story)
+  let builderOptions = null;     // cached GET /api/builder/options catalog
   let state = null;
   let busy = false, paused = false, watching = false, timer = null, playing = false;
   let selectedGroup = null, activeCatFilter = 'all', setupFigure = null, inspectedId = null;
@@ -1193,6 +1210,7 @@
       'Starry Wisp': 'Cantrip. 60 ft ranged spell attack, 1d8 radiant; target sheds 10-ft Dim Light and can’t benefit from Invisible until the end of your next turn.',
       'Poison Spray': 'Cantrip (Abyssal Legacy). 30 ft ranged spell attack, 1d12 poison.',
       'Faerie Fire': 'Level 1, concentration. 20-ft cube within 60 ft: DEX save or outlined in dim light, can’t benefit from Invisible, and attacks against it have Advantage.',
+      'Invisibility': 'Level 2, concentration. Touch: willing creature becomes Invisible for 1 hour; ends if it makes an attack roll, deals damage, or casts a spell.',
       'See Invisibility': 'Level 2 (1 hour, no concentration). You see Invisible creatures and objects as if they were visible.',
       'Ray of Sickness': 'Level 1 (Abyssal Legacy, one free cast). 60 ft ranged spell attack, 2d8 poison and Poisoned until the end of your next turn.',
       'Healing Word': 'Level 1, bonus action. Heal 2d4 + CHA at range.',
@@ -1257,7 +1275,7 @@
   const SPELL_RANGE = {
     acid_splash: '60 ft', aid: '30 ft', bless: '30 ft', blur: 'Self', burning_hands: 'Self', chromatic_orb: '90 ft',
     command: '60 ft', cure_wounds: 'Touch', dragons_breath: 'Touch', faerie_fire: '60 ft', fire_bolt: '120 ft', guiding_bolt: '120 ft',
-    healing_word: '60 ft', lesser_restoration: 'Touch', mage_armor: 'Touch', magic_missile: '120 ft', poison_spray: '30 ft',
+    healing_word: '60 ft', invisibility: 'Touch', lesser_restoration: 'Touch', mage_armor: 'Touch', magic_missile: '120 ft', poison_spray: '30 ft',
     protection_from_evil_and_good: 'Touch', ray_of_frost: '60 ft', ray_of_sickness: '60 ft', sacred_flame: '60 ft', sanctuary: '30 ft',
     scorching_ray: '120 ft', see_invisibility: 'Self', shatter: '60 ft', shield: 'Self', shield_of_faith: '60 ft', sorcerous_burst: '120 ft',
     spare_the_dying: '15 ft', spiritual_weapon: '60 ft', starry_wisp: '60 ft', thunderwave: 'Self', vicious_mockery: '60 ft',
@@ -2545,11 +2563,62 @@
     $('start-custom-place').disabled = busy || !lv;
   }
 
+  function loadSavedHeroes() {
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_HEROES_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.heroes)) return [];
+      return parsed.heroes
+        .filter(h => h && typeof h.id === 'string' && h.recipe && typeof h.recipe === 'object')
+        .slice(0, MAX_SAVED_HEROES);
+    } catch {
+      return [];
+    }
+  }
+  function persistSavedHeroes() {
+    try {
+      window.localStorage.setItem(CUSTOM_HEROES_KEY, JSON.stringify({ version: 1, heroes: savedHeroes.slice(0, MAX_SAVED_HEROES) }));
+    } catch { /* private browsing or storage quota */ }
+  }
+  function savedHeroById(id) {
+    return savedHeroes.find(h => h.id === id) || null;
+  }
+  function savedHeroFromToken(token) {
+    return typeof token === 'string' && token.startsWith('saved:') ? savedHeroById(token.slice(6)) : null;
+  }
+  function partyTokenName(token) {
+    const sh = savedHeroFromToken(token);
+    if (sh) return `${sh.recipe.name || 'Custom Hero'} (Lv ${sh.recipe.level || 1})`;
+    return practiceHeroes.find(h => h.base_id === token)?.name || niceName(token);
+  }
+  function resolvePracticeLaunchParty(tokens) {
+    if (!Array.isArray(tokens) || !tokens.length) return { party: null, custom_heroes: null };
+    const party = [];
+    const custom_heroes = [];
+    for (const tok of tokens) {
+      if (typeof tok === 'string' && tok.startsWith('saved:')) {
+        const sh = savedHeroById(tok.slice(6));
+        if (!sh) continue;
+        party.push(`custom:${custom_heroes.length}`);
+        custom_heroes.push(sh.recipe);
+      } else if (typeof tok === 'string' && tok) {
+        party.push(tok);
+      }
+    }
+    if (!party.length) return { party: null, custom_heroes: null };
+    return { party, custom_heroes: custom_heroes.length ? custom_heroes : null };
+  }
+
   function presetPartyBases(lv) {
     return (lv?.preset?.party || []).map(h => h.base_id || String(h.content || '').replace(/_l[1-3]$/, '')).filter(Boolean);
   }
   function effectivePartyBases(lv) {
-    return customParty && customParty.length ? customParty : presetPartyBases(lv);
+    if (customParty && customParty.length) {
+      const cleaned = customParty.filter(tok => !tok.startsWith('saved:') || Boolean(savedHeroFromToken(tok)));
+      if (cleaned.length) return cleaned;
+    }
+    return presetPartyBases(lv);
   }
   function renderPartyPicker(lv) {
     const row = $('start-party-chips');
@@ -2559,16 +2628,33 @@
     const baseList = presetPartyBases(lv);
     const chosen = effectivePartyBases(lv);
     const isCustom = Boolean(customParty && customParty.length);
-    row.innerHTML = practiceHeroes.map(h => {
+    const builtinHtml = practiceHeroes.map(h => {
       const on = chosen.includes(h.base_id);
       return `<button type="button" class="party-chip ${on ? 'is-active' : ''}" data-party-hero="${escape(h.base_id)}" aria-pressed="${on}">${portrait({ team: 'heroes', base_id: h.base_id, content: h.default_content, name: h.name })}<span>${escape(h.name)}</span><small>${escape(h.class_label)}</small></button>`;
     }).join('');
+    const customHtml = savedHeroes.map(h => {
+      const tok = `saved:${h.id}`;
+      const on = chosen.includes(tok);
+      const lvNum = Number(h.recipe?.level) || 1;
+      const clsName = niceName(h.recipe?.class_id || 'fighter');
+      const model = h.recipe?.model_key || 'guy';
+      const canLvUp = lvNum < 3;
+      return `<div class="party-custom-group ${on ? 'is-active' : ''}" data-saved-hero="${escape(h.id)}">
+        <button type="button" class="party-chip ${on ? 'is-active' : ''}" data-party-hero="${escape(tok)}" aria-pressed="${on}">${portrait({ team: 'heroes', base_id: model, name: h.recipe?.name || 'Hero' })}<span>${escape(h.recipe?.name || 'Custom Hero')}</span><small>Lv ${escape(lvNum)} · ${escape(clsName)}</small></button>
+        <div class="party-chip-tools">
+          ${canLvUp ? `<button type="button" class="party-tool-btn lvup" data-builder-levelup="${escape(h.id)}" title="Level up ${escape(h.recipe?.name || 'hero')} to Level ${lvNum + 1}">Lv ${lvNum + 1} ↑</button>` : ''}
+          <button type="button" class="party-tool-btn" data-builder-edit="${escape(h.id)}" title="Edit ${escape(h.recipe?.name || 'hero')}">Edit</button>
+          <button type="button" class="party-tool-btn danger" data-builder-delete="${escape(h.id)}" aria-label="Delete ${escape(h.recipe?.name || 'hero')}" title="Delete">×</button>
+        </div>
+      </div>`;
+    }).join('');
+    row.innerHTML = builtinHtml + customHtml;
     if (resetBtn) resetBtn.hidden = !isCustom;
     if (note) {
-      const names = chosen.map(id => practiceHeroes.find(h => h.base_id === id)?.name || niceName(id)).join(', ');
+      const names = chosen.map(partyTokenName).join(', ');
       note.textContent = isCustom
         ? `Custom Practice party (${chosen.length}): ${names}.`
-        : lv ? `Preset party (${baseList.length}): ${names}. Click any hero to add or swap Vesper in.` : 'Click any hero to customize your Practice party.';
+        : lv ? `Preset party (${baseList.length}): ${names}. Click any hero to swap, or + Create Hero.` : 'Click any hero to customize your Practice party.';
     }
   }
   function togglePartyHero(baseId) {
@@ -2674,7 +2760,11 @@
     const resolve = window.EmberScene?.resolveCastKey;
     if (typeof resolve !== 'function' || !level) return [];
     const heroes = partyOverride?.length
-      ? partyOverride.map(base => ({ content: base, base_id: base, team: 'heroes' }))
+      ? partyOverride.map(tok => {
+          const sh = savedHeroFromToken(tok);
+          const base = sh ? (sh.recipe?.model_key || 'guy') : tok;
+          return { content: base, base_id: base, team: 'heroes' };
+        })
       : level.party.map(h => ({ content: h.content, base_id: h.base_id, team: 'heroes' }));
     const units = [...heroes, ...level.roster.map(r => ({ content: r.content, team: 'monsters' }))];
     return [...new Set(units.map(u => resolve(u)).filter(Boolean))];
@@ -2687,7 +2777,8 @@
     const lv = levelByKey(wanted.encounter, wanted.preset);
     if (!lv) return false;
     const monsterControl = opts.story ? 'ai' : ($('start-monster-control').value || 'ai');
-    const partyOverride = opts.story ? null : (customParty && customParty.length ? [...customParty] : null);
+    const rawPartyOverride = opts.story ? null : (customParty && customParty.length ? [...customParty] : null);
+    const resolved = opts.story ? { party: null, custom_heroes: null } : resolvePracticeLaunchParty(rawPartyOverride);
     let launchedOk = false;
     clearTimer(); watching = false; paused = false;
     viewer?.cancelPlayback?.(); viewer?.clearHoverPreview?.();
@@ -2697,7 +2788,7 @@
     busy = true;
     renderStartScreen(); renderControls();
     // Only this encounter's figures are fetched (the rest stream in if ever needed).
-    window.EmberScene?.prepareAssets?.({ keys: castKeysFor(lv.preset, partyOverride) })?.catch?.(() => {});
+    window.EmberScene?.prepareAssets?.({ keys: castKeysFor(lv.preset, rawPartyOverride) })?.catch?.(() => {});
     try {
       if (!state) state = await api('state');
       const heroLevel = opts.story ? Number(opts.story.hero_level) || 0 : Number($('start-hero-level').value);
@@ -2705,7 +2796,8 @@
       let fresh = await api('new', {
         encounter: lv.group.id, preset: lv.preset.id,
         ...(heroLevel && { hero_level: heroLevel }),
-        ...(partyOverride && { party: partyOverride }),
+        ...(resolved.party && { party: resolved.party }),
+        ...(resolved.custom_heroes && { custom_heroes: resolved.custom_heroes }),
         ...(seed !== null && { seed }),
       });
       lastActionId = 0;
@@ -2718,7 +2810,8 @@
       startScreenOpen = false;
       launched = true;
       storyRun = opts.story ? { ...opts.story } : null;
-      activeCustomParty = opts.story ? null : (partyOverride ? [...partyOverride] : null);
+      activeCustomParty = opts.story ? null : (resolved.party ? [...resolved.party] : null);
+      activeCustomHeroes = opts.story ? null : (resolved.custom_heroes ? resolved.custom_heroes.map(r => JSON.parse(JSON.stringify(r))) : null);
       await presentState(fresh, true, false);
       viewer?.setBiome?.(themeFor());
       applyCameraPreset('tactical');
@@ -2738,6 +2831,1149 @@
     state = previous;
     try { return await api(endpoint, { ...body, revision: previous.revision }); }
     finally { state = saved; }
+  }
+
+  // ===========================================================================
+  // PRACTICE CHARACTER BUILDER & LEVEL-UP (SRD 5.2.1, Levels 1-3)
+  // ===========================================================================
+  const BUILDER_TABS = [
+    { id: 'identity', label: '1. Identity' },
+    { id: 'origin', label: '2. Origin' },
+    { id: 'abilities', label: '3. Abilities' },
+    { id: 'class', label: '4. Class & Skills' },
+    { id: 'equipment', label: '5. Equipment' },
+    { id: 'spells', label: '6. Spells' },
+  ];
+  const FIELD_TO_TAB = {
+    name: 'identity', level: 'identity', class_id: 'identity', model_key: 'identity',
+    species: 'origin', lineage: 'origin', size: 'origin', background: 'origin',
+    bg_asi_mode: 'origin', bg_asi: 'origin', versatile_feat: 'origin',
+    high_elf_cantrip: 'origin', mi_cleric_cantrips: 'origin', mi_cleric_spell: 'origin',
+    mi_wizard_cantrips: 'origin', mi_wizard_spell: 'origin',
+    ability_method: 'abilities', base_abilities: 'abilities',
+    class_skills: 'class', species_skill: 'class', skilled_skills: 'class',
+    primal_knowledge_skill: 'class', expertise: 'class', lore_skills: 'class',
+    scholar_skill: 'class', fighting_style: 'class', divine_order: 'class',
+    metamagic: 'class', weapon_masteries: 'class',
+    class_equip_choice: 'equipment', bg_equip_choice: 'equipment', purchases: 'equipment',
+    equipped_armor: 'equipment', equipped_shield: 'equipment', equipped_weapons: 'equipment',
+    class_cantrips: 'spells', class_prepared: 'spells', wizard_spellbook: 'spells', evocation_savant: 'spells',
+  };
+  const CASTER_SET = new Set(['cleric', 'wizard', 'sorcerer', 'bard']);
+  const ABIL_IDS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+  const PB_COSTS = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+
+  let builderState = {
+    open: false, mode: 'create', editId: null, fromLevel: 1, tab: 'identity',
+    recipe: null, preview: null, errors: [], warnings: [], loading: false, timer: 0, seq: 0,
+    prevPreview: null,
+  };
+
+  function fmtMod(n) { return n >= 0 ? `+${n}` : String(n); }
+  function abilMod(score) { return Math.floor((Number(score) - 10) / 2); }
+  function fmtCp(cp) {
+    const c = Math.max(0, Math.round(Number(cp) || 0));
+    const gp = Math.floor(c / 100), rem = c % 100, sp = Math.floor(rem / 10), remCp = rem % 10;
+    const out = [];
+    if (gp) out.push(`${gp} GP`);
+    if (sp) out.push(`${sp} SP`);
+    if (remCp || !out.length) out.push(`${remCp} CP`);
+    return out.join(', ');
+  }
+
+  async function builderApi(endpoint, body) {
+    if (body !== undefined && !state?.csrf_token) {
+      state = await api('state');
+    }
+    const res = await fetch(apiURL(endpoint), {
+      redirect: 'error', method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: body === undefined ? { Accept: 'application/json' }
+        : { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': state?.csrf_token || '' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    let data = null;
+    try { data = await res.json(); } catch { data = null; }
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  async function ensureBuilderOptions() {
+    if (builderOptions) return builderOptions;
+    const res = await builderApi('builder/options');
+    if (!res.ok || !res.data) throw new Error(res.data?.error || 'Could not load builder options.');
+    builderOptions = res.data;
+    return builderOptions;
+  }
+
+  function spellsFor(classId, level) {
+    if (!builderOptions) return [];
+    return Object.values(builderOptions.spells)
+      .filter(s => s.level === level && s.lists.includes(classId))
+      .sort((a, b) => Number(b.combat) - Number(a.combat) || a.name.localeCompare(b.name));
+  }
+
+  function defaultRecipeForClass(classId, level = 1) {
+    const cls = builderOptions?.classes?.[classId];
+    const isCaster = CASTER_SET.has(classId);
+    const base = {
+      name: cls ? `New ${cls.name}` : 'New Hero',
+      model_key: cls?.default_model || 'guy',
+      level,
+      class_id: classId,
+      species: 'human',
+      lineage: null,
+      size: 'medium',
+      background: classId === 'wizard' ? 'sage' : (isCaster ? 'acolyte' : 'soldier'),
+      bg_asi_mode: '2_1',
+      bg_asi: {},
+      ability_method: 'standard_array',
+      base_abilities: { ...(cls?.recommended_array || { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }) },
+      class_skills: [],
+      species_skill: null,
+      versatile_feat: 'alert',
+      skilled_skills: [],
+      primal_knowledge_skill: null,
+      lore_skills: [],
+      expertise: [],
+      scholar_skill: null,
+      fighting_style: classId === 'fighter' ? 'defense' : null,
+      divine_order: classId === 'cleric' ? 'protector' : null,
+      metamagic: [],
+      weapon_masteries: [],
+      class_equip_choice: 'A',
+      bg_equip_choice: 'A',
+      purchases: [],
+      equipped_armor: null,
+      equipped_shield: false,
+      equipped_weapons: [],
+      class_cantrips: [],
+      class_prepared: [],
+      wizard_spellbook: [],
+      evocation_savant: [],
+      high_elf_cantrip: null,
+      mi_cleric_cantrips: [],
+      mi_cleric_spell: null,
+      mi_wizard_cantrips: [],
+      mi_wizard_spell: null,
+    };
+    const bg = builderOptions?.backgrounds?.[base.background];
+    if (bg) {
+      const castAb = cls?.casting_ability;
+      const first = (castAb && bg.abilities.includes(castAb)) ? castAb : bg.abilities[0];
+      const second = bg.abilities.find(a => a !== first) || bg.abilities[1];
+      base.bg_asi = { [first]: 2, [second]: 1 };
+    }
+    return reconcileRecipe(base, { resetEquip: true });
+  }
+
+  function computeOwnedAndPurse(r) {
+    const cls = builderOptions?.classes?.[r.class_id];
+    const bg = builderOptions?.backgrounds?.[r.background];
+    const cPkg = cls?.starting_equipment?.[r.class_equip_choice] || { items: [], cp: 0 };
+    const bPkg = bg?.equipment?.[r.bg_equip_choice] || { items: [], cp: 0 };
+    const owned = {};
+    for (const [id, q] of [...(cPkg.items || []), ...(bPkg.items || [])]) owned[id] = (owned[id] || 0) + q;
+    const priceById = new Map((builderOptions?.shop || []).map(i => [i.id, i.cost_cp]));
+    let spent = 0;
+    for (const p of (r.purchases || [])) {
+      const pr = priceById.get(p.id);
+      if (pr != null && p.qty > 0) {
+        spent += pr * p.qty;
+        owned[p.id] = (owned[p.id] || 0) + p.qty;
+      }
+    }
+    const starting = (cPkg.cp || 0) + (bPkg.cp || 0);
+    return { owned, starting, spent, remaining: starting - spent };
+  }
+
+  function finalAbilitiesOf(r) {
+    const out = {};
+    for (const a of ABIL_IDS) out[a] = (Number(r.base_abilities?.[a]) || 10) + (Number(r.bg_asi?.[a]) || 0);
+    return out;
+  }
+
+  function reconcileRecipe(raw, { resetEquip = false } = {}) {
+    if (!builderOptions) return raw;
+    const r = JSON.parse(JSON.stringify(raw));
+    const cls = builderOptions.classes[r.class_id] || builderOptions.classes.fighter;
+    r.class_id = cls.id;
+    const isCaster = CASTER_SET.has(r.class_id);
+    r.level = [1, 2, 3].includes(Number(r.level)) ? Number(r.level) : 1;
+
+    // Enforce Step 1 caster-only restrictions on species / background / versatile feat
+    let sp = builderOptions.species[r.species] || builderOptions.species.human;
+    if (sp.caster_only && !isCaster) sp = builderOptions.species.human;
+    r.species = sp.id;
+    const lineageKeys = Object.keys(sp.lineages || {});
+    r.lineage = lineageKeys.length ? (lineageKeys.includes(r.lineage) ? r.lineage : lineageKeys[0]) : null;
+    if (!sp.sizes.includes(r.size)) r.size = sp.sizes[0];
+
+    let bg = builderOptions.backgrounds[r.background] || builderOptions.backgrounds[isCaster ? 'acolyte' : 'soldier'];
+    if (bg.caster_only && !isCaster) bg = builderOptions.backgrounds.soldier;
+    r.background = bg.id;
+
+    // Background ASI
+    const allowedBgAb = bg.abilities;
+    const curAsiKeys = Object.keys(r.bg_asi || {}).filter(k => allowedBgAb.includes(k));
+    if (r.bg_asi_mode === '1_1_1') {
+      r.bg_asi = Object.fromEntries(allowedBgAb.map(a => [a, 1]));
+    } else {
+      r.bg_asi_mode = '2_1';
+      const k2 = curAsiKeys.find(k => r.bg_asi[k] === 2) || (cls.casting_ability && allowedBgAb.includes(cls.casting_ability) ? cls.casting_ability : allowedBgAb[0]);
+      const k1 = curAsiKeys.find(k => k !== k2 && r.bg_asi[k] === 1) || allowedBgAb.find(a => a !== k2);
+      r.bg_asi = { [k2]: 2, [k1]: 1 };
+    }
+
+    // Versatile feat (Human)
+    const feats = [bg.feat];
+    if (r.species === 'human') {
+      const validFeats = Object.values(builderOptions.origin_feats)
+        .filter(f => (!f.caster_only || isCaster) && f.id !== bg.feat)
+        .map(f => f.id);
+      if (!validFeats.includes(r.versatile_feat)) r.versatile_feat = validFeats[0];
+      feats.push(r.versatile_feat);
+    } else {
+      r.versatile_feat = null;
+    }
+
+    // Class options
+    r.fighting_style = r.class_id === 'fighter' ? (builderOptions.fighting_styles[r.fighting_style] ? r.fighting_style : 'defense') : null;
+    r.divine_order = r.class_id === 'cleric' ? (builderOptions.divine_orders[r.divine_order] ? r.divine_order : 'protector') : null;
+    r.metamagic = (r.class_id === 'sorcerer' && r.level >= 2) ? ['empowered_spell', 'heightened_spell'] : [];
+    if (r.class_id === 'fighter' || r.class_id === 'barbarian') {
+      const needM = cls.weapon_mastery_count;
+      const validM = builderOptions.mastery_weapons;
+      const keptM = (r.weapon_masteries || []).filter(w => validM.includes(w));
+      const prefM = r.class_id === 'barbarian' ? ['greataxe', 'halberd', 'greatsword'] : ['greatsword', 'longsword', 'halberd', 'greataxe', 'spear', 'mace'];
+      for (const m of [...prefM, ...validM]) {
+        if (keptM.length >= needM) break;
+        if (!keptM.includes(m)) keptM.push(m);
+      }
+      r.weapon_masteries = keptM.slice(0, needM);
+    } else {
+      r.weapon_masteries = [];
+    }
+
+    // Skills (source-specific, no duplicates, preserve Barbarian L3 reservation)
+    const taken = new Set(bg.skills);
+    const allSk = builderOptions.skills.map(s => s.id);
+    const barbSet = new Set(builderOptions.classes.barbarian.skills);
+    const pickSkills = (current, pool, count, reserveBarb = false) => {
+      const out = [];
+      for (const s of (current || [])) {
+        if (pool.includes(s) && !taken.has(s) && !out.includes(s)) {
+          if (reserveBarb && barbSet.has(s)) {
+            const remAfter = [...barbSet].filter(b => !taken.has(b) && !out.includes(b) && b !== s);
+            if (!remAfter.length) continue;
+          }
+          out.push(s);
+          if (out.length >= count) break;
+        }
+      }
+      for (const s of pool) {
+        if (out.length >= count) break;
+        if (taken.has(s) || out.includes(s)) continue;
+        if (reserveBarb && barbSet.has(s)) {
+          const remAfter = [...barbSet].filter(b => !taken.has(b) && !out.includes(b) && b !== s);
+          if (!remAfter.length) continue;
+        }
+        out.push(s);
+      }
+      out.forEach(s => taken.add(s));
+      return out;
+    };
+    const needBarbReserve = r.class_id === 'barbarian' && r.level < 3;
+    r.class_skills = pickSkills(r.class_skills, cls.skills, cls.skill_count, false);
+    if (r.species === 'human') {
+      r.species_skill = pickSkills(r.species_skill ? [r.species_skill] : [], allSk, 1, needBarbReserve)[0] || null;
+    } else if (r.species === 'elf') {
+      r.species_skill = pickSkills(r.species_skill ? [r.species_skill] : [], sp.keen_senses_skills, 1, false)[0] || null;
+    } else {
+      r.species_skill = null;
+    }
+    r.skilled_skills = feats.includes('skilled') ? pickSkills(r.skilled_skills, allSk, 3, needBarbReserve) : [];
+    if (r.class_id === 'barbarian' && r.level >= 3) {
+      r.primal_knowledge_skill = pickSkills(r.primal_knowledge_skill ? [r.primal_knowledge_skill] : [], cls.skills, 1, false)[0] || null;
+    } else {
+      r.primal_knowledge_skill = null;
+    }
+    if (r.class_id === 'bard' && r.level >= 2) {
+      const profList = [...taken];
+      const kept = (r.expertise || []).filter(s => profList.includes(s));
+      for (const s of profList) { if (kept.length >= 2) break; if (!kept.includes(s)) kept.push(s); }
+      r.expertise = kept.slice(0, 2);
+    } else {
+      r.expertise = [];
+    }
+    if (r.class_id === 'bard' && r.level >= 3) {
+      r.lore_skills = pickSkills(r.lore_skills, allSk, 3, false);
+    } else {
+      r.lore_skills = [];
+    }
+    if (r.class_id === 'wizard' && r.level >= 2) {
+      const elig = cls.scholar_skills.filter(s => taken.has(s));
+      r.scholar_skill = elig.includes(r.scholar_skill) ? r.scholar_skill : (elig[0] || null);
+    } else {
+      r.scholar_skill = null;
+    }
+
+    // Equipment packages & legal default loadout
+    if (!cls.starting_equipment[r.class_equip_choice]) r.class_equip_choice = 'A';
+    if (!bg.equipment[r.bg_equip_choice]) r.bg_equip_choice = 'A';
+    const { owned } = computeOwnedAndPurse(r);
+    const fin = finalAbilitiesOf(r);
+    const armorProfs = new Set(cls.armor_training);
+    const wepProfs = new Set(cls.weapon_proficiencies);
+    if (r.class_id === 'cleric' && r.divine_order === 'protector') { armorProfs.add('heavy'); wepProfs.add('martial'); }
+    const armorsById = new Map(builderOptions.shop.filter(i => i.group === 'armor').map(i => [i.id, i]));
+    const wepsById = new Map(builderOptions.shop.filter(i => i.group === 'weapon').map(i => [i.id, i]));
+    const canArmor = id => {
+      const a = armorsById.get(id);
+      return Boolean(a && owned[id] >= 1 && armorProfs.has(a.category) && (!a.min_str || fin.str >= a.min_str));
+    };
+    const canWep = id => {
+      const w = wepsById.get(id);
+      return Boolean(w && owned[id] >= 1 && wepProfs.has(w.category) && (!w.properties.includes('heavy') || fin.str >= 13));
+    };
+    if (resetEquip || (r.equipped_armor && !canArmor(r.equipped_armor))) {
+      const bestArmor = [...armorsById.values()].filter(a => canArmor(a.id)).sort((a, b) => b.ac - a.ac)[0];
+      r.equipped_armor = (r.class_id === 'barbarian' && resetEquip) ? null : (bestArmor?.id || null);
+    }
+    if (resetEquip || (r.equipped_shield && !(owned.shield >= 1 && armorProfs.has('shield')))) {
+      r.equipped_shield = Boolean(resetEquip && owned.shield >= 1 && armorProfs.has('shield'));
+    }
+    if (resetEquip) {
+      let slots = r.equipped_shield ? 1.0 : 0.0;
+      let lights = 0;
+      const picked = [];
+      for (const id of Object.keys(owned)) {
+        if (!canWep(id)) continue;
+        const w = wepsById.get(id);
+        if (w.properties.includes('light') && lights >= 1) continue;
+        if (slots + w.hand_slots > 2.0 + 1e-9) continue;
+        picked.push(id);
+        slots += w.hand_slots;
+        if (w.properties.includes('light')) lights++;
+        if (picked.length >= 2 || slots >= 2.0) break;
+      }
+      r.equipped_weapons = picked;
+    } else {
+      r.equipped_weapons = (r.equipped_weapons || []).filter(id => owned[id] >= 1 && wepsById.has(id)).slice(0, 2);
+    }
+
+    // Spells
+    if (!isCaster) {
+      r.class_cantrips = []; r.class_prepared = []; r.wizard_spellbook = []; r.evocation_savant = [];
+      r.high_elf_cantrip = null; r.mi_cleric_cantrips = []; r.mi_cleric_spell = null;
+      r.mi_wizard_cantrips = []; r.mi_wizard_spell = null;
+      return r;
+    }
+    const originUsed = new Set();
+    const pickFrom = (cur, list, count, avoidSet) => {
+      const ids = list.map(s => s.id);
+      const out = [];
+      for (const s of (cur || [])) {
+        if (ids.includes(s) && !avoidSet.has(s) && !out.includes(s)) {
+          out.push(s);
+          if (out.length >= count) break;
+        }
+      }
+      for (const s of ids) {
+        if (out.length >= count) break;
+        if (!avoidSet.has(s) && !out.includes(s)) out.push(s);
+      }
+      return out;
+    };
+    if (r.species === 'elf' && r.lineage === 'high_elf') {
+      const w0 = spellsFor('wizard', 0);
+      r.high_elf_cantrip = pickFrom(r.high_elf_cantrip ? [r.high_elf_cantrip] : ['prestidigitation'], w0, 1, originUsed)[0] || null;
+      if (r.high_elf_cantrip) originUsed.add(r.high_elf_cantrip);
+      if (r.level >= 3) originUsed.add('detect_magic');
+    } else {
+      r.high_elf_cantrip = null;
+    }
+    if (r.species === 'tiefling' && r.lineage === 'abyssal') {
+      originUsed.add('poison_spray'); originUsed.add('thaumaturgy');
+      if (r.level >= 3) originUsed.add('ray_of_sickness');
+    }
+    const alwaysPrep = new Set(r.level >= 3 ? (cls.always_prepared_l3 || []) : []);
+    if (feats.includes('magic_initiate_cleric')) {
+      const c0 = spellsFor('cleric', 0), c1 = spellsFor('cleric', 1);
+      r.mi_cleric_cantrips = pickFrom(r.mi_cleric_cantrips, c0.filter(s => !s.combat).concat(c0.filter(s => s.combat)), 2, originUsed);
+      r.mi_cleric_cantrips.forEach(s => originUsed.add(s));
+      const avoidL1 = new Set([...originUsed, ...alwaysPrep]);
+      r.mi_cleric_spell = pickFrom(r.mi_cleric_spell ? [r.mi_cleric_spell] : ['bless'], c1, 1, avoidL1)[0] || null;
+      if (r.mi_cleric_spell) originUsed.add(r.mi_cleric_spell);
+    } else {
+      r.mi_cleric_cantrips = []; r.mi_cleric_spell = null;
+    }
+    if (feats.includes('magic_initiate_wizard')) {
+      const w0 = spellsFor('wizard', 0), w1 = spellsFor('wizard', 1);
+      r.mi_wizard_cantrips = pickFrom(r.mi_wizard_cantrips, w0.filter(s => !s.combat).concat(w0.filter(s => s.combat)), 2, originUsed);
+      r.mi_wizard_cantrips.forEach(s => originUsed.add(s));
+      const avoidL1 = new Set([...originUsed, ...alwaysPrep]);
+      r.mi_wizard_spell = pickFrom(r.mi_wizard_spell ? [r.mi_wizard_spell] : ['magic_missile'], w1, 1, avoidL1)[0] || null;
+      if (r.mi_wizard_spell) originUsed.add(r.mi_wizard_spell);
+    } else {
+      r.mi_wizard_cantrips = []; r.mi_wizard_spell = null;
+    }
+
+    const needC0 = cls.cantrip_counts[String(r.level)] + (r.class_id === 'cleric' && r.divine_order === 'thaumaturge' ? 1 : 0);
+    r.class_cantrips = pickFrom(r.class_cantrips, spellsFor(r.class_id, 0), needC0, originUsed);
+
+    const maxSpLv = r.level >= 3 ? 2 : 1;
+    const clsL1 = spellsFor(r.class_id, 1);
+    const clsL2 = maxSpLv >= 2 ? spellsFor(r.class_id, 2) : [];
+    const clsLeveled = [...clsL1, ...clsL2];
+    const prepAvoid = new Set([...originUsed, ...alwaysPrep]);
+
+    if (r.class_id === 'wizard') {
+      const needSb = cls.spellbook_counts[String(r.level)];
+      const sbKeep = (r.wizard_spellbook || []).filter(s => clsLeveled.some(x => x.id === s));
+      let l2Cnt = sbKeep.filter(s => builderOptions.spells[s]?.level === 2).length;
+      const sb = [];
+      for (const s of sbKeep) {
+        if (sb.includes(s)) continue;
+        if (builderOptions.spells[s]?.level === 2 && sb.filter(x => builderOptions.spells[x]?.level === 2).length >= 4) continue;
+        sb.push(s);
+      }
+      // Prefer filling L2 slots at L3 (up to 4) then L1
+      if (r.level >= 3) {
+        for (const spObj of clsL2) {
+          if (sb.length >= needSb || l2Cnt >= 4) break;
+          if (!sb.includes(spObj.id)) { sb.push(spObj.id); l2Cnt++; }
+        }
+      }
+      for (const spObj of clsL1) {
+        if (sb.length >= needSb) break;
+        if (!sb.includes(spObj.id)) sb.push(spObj.id);
+      }
+      r.wizard_spellbook = sb.slice(0, needSb);
+      if (r.level >= 3) {
+        const evPool = r.wizard_spellbook.map(id => builderOptions.spells[id]).filter(s => s && s.school === 'evocation');
+        r.evocation_savant = pickFrom(r.evocation_savant, evPool, 2, new Set());
+      } else {
+        r.evocation_savant = [];
+      }
+      const sbObjs = r.wizard_spellbook.map(id => builderOptions.spells[id]).filter(Boolean);
+      r.class_prepared = pickFrom(r.class_prepared, sbObjs, cls.prepared_counts[String(r.level)], prepAvoid);
+    } else {
+      r.wizard_spellbook = []; r.evocation_savant = [];
+      r.class_prepared = pickFrom(r.class_prepared, clsLeveled, cls.prepared_counts[String(r.level)], prepAvoid);
+    }
+    return r;
+  }
+
+  function cleanRecipePayload(r) {
+    const out = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (v === null || v === undefined || v === '') {
+        if (k === 'equipped_armor') out[k] = null;
+        continue;
+      }
+      if (Array.isArray(v) && !v.length && !['purchases', 'equipped_weapons', 'class_skills', 'class_cantrips', 'class_prepared'].includes(k)) {
+        continue;
+      }
+      out[k] = v;
+    }
+    return out;
+  }
+
+  async function runBuilderPreviewNow() {
+    if (!builderState.open || !builderState.recipe) return null;
+    const seq = ++builderState.seq;
+    builderState.loading = true;
+    renderBuilderPreview();
+    try {
+      const res = await builderApi('builder/preview', { recipe: cleanRecipePayload(builderState.recipe) });
+      if (seq !== builderState.seq) return null;
+      builderState.loading = false;
+      if (res.ok && res.data?.summary) {
+        builderState.preview = res.data.summary;
+        builderState.errors = [];
+        builderState.warnings = res.data.warnings || res.data.summary.warnings || [];
+      } else {
+        builderState.errors = Array.isArray(res.data?.errors) ? res.data.errors : [{ field: 'recipe', message: res.data?.error || 'Validation failed.' }];
+        builderState.warnings = [];
+      }
+      renderBuilderChrome();
+      renderBuilderPreview();
+      return res;
+    } catch (err) {
+      if (seq !== builderState.seq) return null;
+      builderState.loading = false;
+      builderState.errors = [{ field: 'recipe', message: err.message || 'Could not contact preview server.' }];
+      renderBuilderChrome();
+      renderBuilderPreview();
+      return null;
+    }
+  }
+
+  function scheduleBuilderPreview(immediate = false) {
+    window.clearTimeout(builderState.timer);
+    if (immediate) { runBuilderPreviewNow(); return; }
+    builderState.timer = window.setTimeout(() => runBuilderPreviewNow(), 150);
+  }
+
+  async function openBuilder({ mode = 'create', heroId = null } = {}) {
+    try {
+      await ensureBuilderOptions();
+    } catch (err) {
+      showError(err.message);
+      return;
+    }
+    let recipe;
+    let fromLevel = 1;
+    let prevPreview = null;
+    let startTab = 'identity';
+    if (mode === 'edit' || mode === 'levelup') {
+      const existing = savedHeroById(heroId);
+      if (!existing) return;
+      recipe = JSON.parse(JSON.stringify(existing.recipe));
+      fromLevel = Number(recipe.level) || 1;
+      prevPreview = existing.summary || null;
+      if (mode === 'levelup') {
+        const nextLv = Math.min(3, fromLevel + 1);
+        recipe.level = nextLv;
+        recipe = reconcileRecipe(recipe, { resetEquip: false });
+        startTab = CASTER_SET.has(recipe.class_id) ? 'spells' : 'class';
+      } else {
+        recipe = reconcileRecipe(recipe, { resetEquip: false });
+      }
+    } else {
+      recipe = defaultRecipeForClass('fighter', 1);
+    }
+    builderState = {
+      open: true, mode, editId: heroId, fromLevel, tab: startTab,
+      recipe, preview: null, errors: [], warnings: [], loading: false, timer: 0, seq: 0,
+      prevPreview,
+    };
+    const dlg = $('builder-dialog');
+    if (typeof dlg.showModal === 'function') { if (!dlg.open) dlg.showModal(); }
+    else dlg.setAttribute('open', '');
+    renderBuilder();
+    scheduleBuilderPreview(true);
+  }
+
+  function closeBuilder() {
+    window.clearTimeout(builderState.timer);
+    builderState.open = false;
+    const dlg = $('builder-dialog');
+    if (typeof dlg.close === 'function') { if (dlg.open) dlg.close(); }
+    else dlg.removeAttribute('open');
+  }
+
+  function renderBuilderChrome() {
+    const r = builderState.recipe;
+    if (!r) return;
+    const isLvUp = builderState.mode === 'levelup';
+    const isEdit = builderState.mode === 'edit';
+    $('builder-eyebrow').textContent = isLvUp
+      ? `LEVEL UP · LEVEL ${builderState.fromLevel} → LEVEL ${r.level} (SRD 5.2.1)`
+      : 'PRACTICE CHARACTER BUILDER · SRD 5.2.1 (LEVELS 1–3)';
+    $('builder-title').textContent = isLvUp
+      ? `Level Up ${r.name || 'Hero'} → Level ${r.level}`
+      : isEdit ? `Edit ${r.name || 'Hero'}` : 'Create a Practice Hero';
+
+    const banner = $('builder-levelup-banner');
+    if (isLvUp && builderState.prevPreview?.next_level_preview) {
+      const nlp = builderState.prevPreview.next_level_preview;
+      banner.hidden = false;
+      banner.innerHTML = `<strong>Advancing ${escape(r.name)} from Level ${builderState.fromLevel} to Level ${r.level}:</strong>
+        <ul>${(nlp.gains || []).map(g => `<li>${escape(g)}</li>`).join('')}</ul>`;
+    } else if (isLvUp) {
+      banner.hidden = false;
+      banner.innerHTML = `<strong>Advancing ${escape(r.name)} to Level ${r.level}:</strong> Review your newly unlocked features, skills, and spells below (if you have Magic Initiate, you may also swap 1 feat spell in the Origin tab).`;
+    } else {
+      banner.hidden = true;
+      banner.innerHTML = '';
+    }
+
+    const errByTab = new Map();
+    for (const e of builderState.errors) {
+      const t = FIELD_TO_TAB[e.field] || 'identity';
+      errByTab.set(t, (errByTab.get(t) || 0) + 1);
+    }
+    const isCaster = CASTER_SET.has(r.class_id);
+    const tabs = BUILDER_TABS.filter(t => isCaster || t.id !== 'spells');
+    if (!tabs.some(t => t.id === builderState.tab)) builderState.tab = tabs[0].id;
+    $('builder-tabs').innerHTML = tabs.map(t => {
+      const on = t.id === builderState.tab;
+      const cnt = errByTab.get(t.id) || 0;
+      return `<button type="button" class="builder-tab ${on ? 'is-active' : ''} ${cnt ? 'has-error' : ''}" data-builder-tab="${t.id}" role="tab" aria-selected="${on}">${escape(t.label)}${cnt ? `<span class="builder-tab-badge">${cnt}</span>` : ''}</button>`;
+    }).join('');
+
+    const idx = tabs.findIndex(t => t.id === builderState.tab);
+    $('builder-prev-tab').disabled = idx <= 0;
+    $('builder-next-tab').disabled = idx >= tabs.length - 1;
+    $('builder-reset-btn').hidden = isLvUp;
+    const saveBtn = $('builder-save-btn');
+    saveBtn.textContent = isLvUp ? `Confirm Level Up → Lv ${r.level}` : isEdit ? 'Save Changes' : 'Save Hero & Add to Party';
+    saveBtn.disabled = builderState.loading || builderState.errors.length > 0;
+    $('builder-status-msg').textContent = builderState.loading
+      ? 'Checking SRD 5.2.1 rules…'
+      : builderState.errors.length
+        ? `${builderState.errors.length} rule issue(s) to resolve before saving.`
+        : 'Valid SRD 5.2.1 Practice hero.';
+  }
+
+  function spellBadgesHtml(sp) {
+    const out = [];
+    if (!sp.combat) out.push('<span class="builder-badge inert">No effect in combat</span>');
+    if (sp.reaction) out.push('<span class="builder-badge">Reaction</span>');
+    if (sp.concentration) out.push('<span class="builder-badge conc">Conc.</span>');
+    if (sp.requires_diamond_50gp) out.push('<span class="builder-badge warn">50 GP Diamond</span>');
+    if (sp.requires_holy_water) out.push('<span class="builder-badge warn">Holy Water</span>');
+    return out.join('');
+  }
+
+  function renderBuilderForm() {
+    const pane = $('builder-form-pane');
+    const r = builderState.recipe;
+    if (!pane || !r || !builderOptions) return;
+    const cls = builderOptions.classes[r.class_id];
+    const sp = builderOptions.species[r.species];
+    const bg = builderOptions.backgrounds[r.background];
+    const isCaster = CASTER_SET.has(r.class_id);
+    const isLvUp = builderState.mode === 'levelup';
+    const feats = [bg.feat, ...(r.species === 'human' && r.versatile_feat ? [r.versatile_feat] : [])];
+
+    if (builderState.tab === 'identity') {
+      pane.innerHTML = `<div class="builder-section">
+        <div class="builder-field">
+          <div class="builder-field-head"><label class="builder-label" for="builder-name">Hero Name</label><span class="builder-hint">1–32 printable characters</span></div>
+          <input type="text" id="builder-name" class="builder-input" maxlength="32" value="${escape(r.name)}" placeholder="e.g. Lyra Songweaver">
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Level</span><span class="builder-hint">${isLvUp ? 'Advancing one level' : 'Start at Level 1, 2, or 3 (Step 1)'}</span></div>
+          <div class="builder-pill-row">${[1, 2, 3].map(lv => `<button type="button" class="builder-pill ${r.level === lv ? 'is-selected' : ''}" data-set-level="${lv}" ${isLvUp && lv !== r.level ? 'disabled' : ''}>Level ${lv}</button>`).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Class (SRD 5.2.1)</span><span class="builder-hint">${isLvUp ? 'Class is fixed during level-up' : 'Subclass unlocks automatically at Level 3'}</span></div>
+          <div class="builder-grid">${Object.values(builderOptions.classes).map(c => `<button type="button" class="builder-card ${r.class_id === c.id ? 'is-selected' : ''}" data-set-class="${c.id}" ${isLvUp && c.id !== r.class_id ? 'disabled' : ''}>
+            <strong>${escape(c.name)}</strong>
+            <small>d${c.hit_die} · Saves: ${c.saves.map(s => s.toUpperCase()).join('/')}</small>
+            <small>Lv 3: ${escape(c.subclass_name)}</small>
+          </button>`).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">3D Miniature & Portrait</span><span class="builder-hint">Choose any rigged Forests and Faeries figure</span></div>
+          <div class="builder-grid models">${builderOptions.models.map(m => `<button type="button" class="builder-card builder-model-card ${r.model_key === m.id ? 'is-selected' : ''}" data-set-model="${m.id}">
+            ${portrait({ team: 'heroes', base_id: m.id, name: m.label })}
+            <div><strong>${escape(m.id.charAt(0).toUpperCase() + m.id.slice(1))}</strong><small>${escape(m.label)}</small></div>
+          </button>`).join('')}</div>
+        </div>
+      </div>`;
+      return;
+    }
+
+    if (builderState.tab === 'origin') {
+      const bgAb = bg.abilities;
+      const asi2 = Object.keys(r.bg_asi || {}).find(k => r.bg_asi[k] === 2) || bgAb[0];
+      const asi1 = Object.keys(r.bg_asi || {}).find(k => r.bg_asi[k] === 1 && k !== asi2) || bgAb.find(a => a !== asi2);
+      const miBlocks = [];
+      if (isCaster && r.species === 'elf' && r.lineage === 'high_elf') {
+        miBlocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">High Elf Cantrip</span><span class="builder-hint">1 Wizard cantrip (aligned to ${cls.casting_ability.toUpperCase()})</span></div>
+          <div class="builder-pill-row">${spellsFor('wizard', 0).map(s => `<button type="button" class="builder-pill ${r.high_elf_cantrip === s.id ? 'is-selected' : ''}" data-set-he-cantrip="${s.id}">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
+        </div>`);
+      }
+      if (isCaster && feats.includes('magic_initiate_cleric')) {
+        miBlocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Magic Initiate (Cleric) · 2 Cantrips</span><span class="builder-hint">${(r.mi_cleric_cantrips || []).length}/2 picked${isLvUp ? ' · Spell Change allowed on level-up' : ''}</span></div>
+          <div class="builder-pill-row">${spellsFor('cleric', 0).map(s => `<button type="button" class="builder-pill ${(r.mi_cleric_cantrips || []).includes(s.id) ? 'is-selected' : ''}" data-toggle-list="mi_cleric_cantrips" data-val="${s.id}" data-max="2">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Magic Initiate (Cleric) · Level 1 Spell</span><span class="builder-hint">1 free cast/Long Rest + castable with slots</span></div>
+          <div class="builder-pill-row">${spellsFor('cleric', 1).map(s => `<button type="button" class="builder-pill ${r.mi_cleric_spell === s.id ? 'is-selected' : ''}" data-set-field="mi_cleric_spell" data-val="${s.id}">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
+        </div>`);
+      }
+      if (isCaster && feats.includes('magic_initiate_wizard')) {
+        miBlocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Magic Initiate (Wizard) · 2 Cantrips</span><span class="builder-hint">${(r.mi_wizard_cantrips || []).length}/2 picked${isLvUp ? ' · Spell Change allowed on level-up' : ''}</span></div>
+          <div class="builder-pill-row">${spellsFor('wizard', 0).map(s => `<button type="button" class="builder-pill ${(r.mi_wizard_cantrips || []).includes(s.id) ? 'is-selected' : ''}" data-toggle-list="mi_wizard_cantrips" data-val="${s.id}" data-max="2">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Magic Initiate (Wizard) · Level 1 Spell</span><span class="builder-hint">1 free cast/Long Rest + castable with slots</span></div>
+          <div class="builder-pill-row">${spellsFor('wizard', 1).map(s => `<button type="button" class="builder-pill ${r.mi_wizard_spell === s.id ? 'is-selected' : ''}" data-set-field="mi_wizard_spell" data-val="${s.id}">${escape(s.name)}${spellBadgesHtml(s)}</button>`).join('')}</div>
+        </div>`);
+      }
+
+      pane.innerHTML = `<div class="builder-section">
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Species</span><span class="builder-hint">${isCaster ? 'All Step 1 species available' : 'Spellcasting lineages require a spellcasting class in Step 1'}</span></div>
+          <div class="builder-grid">${Object.values(builderOptions.species).map(s => {
+            const dis = (s.caster_only && !isCaster) || (isLvUp && s.id !== r.species);
+            const lin = Object.values(s.lineages || {})[0];
+            return `<button type="button" class="builder-card ${r.species === s.id ? 'is-selected' : ''}" data-set-species="${s.id}" ${dis ? 'disabled' : ''}>
+              <strong>${escape(s.name)}${lin ? ` (${escape(lin.name)})` : ''}</strong>
+              <small>Speed ${s.speed} ft${s.darkvision ? ` · Darkvision ${s.darkvision} ft` : ''}</small>
+              <small>${escape(lin ? lin.summary : 'Resourceful, Skillful (+1 skill), Versatile (+1 Origin feat)')}</small>
+            </button>`;
+          }).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Size</span></div>
+          <div class="builder-pill-row">${sp.sizes.map(sz => `<button type="button" class="builder-pill ${r.size === sz ? 'is-selected' : ''}" data-set-field="size" data-val="${sz}">${escape(niceName(sz))}</button>`).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Background</span><span class="builder-hint">Grants 2 skills, tool, Origin feat, and ability bonuses</span></div>
+          <div class="builder-grid two-col">${Object.values(builderOptions.backgrounds).map(b => {
+            const dis = (b.caster_only && !isCaster) || (isLvUp && b.id !== r.background);
+            return `<button type="button" class="builder-card ${r.background === b.id ? 'is-selected' : ''}" data-set-background="${b.id}" ${dis ? 'disabled' : ''}>
+              <strong>${escape(b.name)}</strong>
+              <small>Abilities: ${b.abilities.map(a => a.toUpperCase()).join(', ')} · Feat: ${escape(builderOptions.origin_feats[b.feat]?.name || b.feat)}</small>
+              <small>Skills: ${b.skills.map(niceName).join(', ')}</small>
+            </button>`;
+          }).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Background Ability Bonuses (${bg.name})</span><span class="builder-hint">SRD 5.2.1: +2/+1 or +1/+1/+1 across ${bgAb.map(a => a.toUpperCase()).join(', ')}</span></div>
+          <div class="builder-pill-row">
+            <button type="button" class="builder-pill ${r.bg_asi_mode === '2_1' ? 'is-selected' : ''}" data-set-asi-mode="2_1">+2 / +1</button>
+            <button type="button" class="builder-pill ${r.bg_asi_mode === '1_1_1' ? 'is-selected' : ''}" data-set-asi-mode="1_1_1">+1 / +1 / +1</button>
+          </div>
+          ${r.bg_asi_mode === '2_1' ? `<div class="builder-pill-row">
+            <label class="builder-hint">+2 to: <select class="builder-select" data-asi-pick="2">${bgAb.map(a => `<option value="${a}" ${asi2 === a ? 'selected' : ''}>${a.toUpperCase()}</option>`).join('')}</select></label>
+            <label class="builder-hint">+1 to: <select class="builder-select" data-asi-pick="1">${bgAb.filter(a => a !== asi2).map(a => `<option value="${a}" ${asi1 === a ? 'selected' : ''}>${a.toUpperCase()}</option>`).join('')}</select></label>
+          </div>` : `<span class="builder-hint">+1 to ${bgAb.map(a => a.toUpperCase()).join(', ')}.</span>`}
+        </div>
+        ${r.species === 'human' ? `<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Human Versatile · Origin Feat</span><span class="builder-hint">Cannot duplicate ${escape(builderOptions.origin_feats[bg.feat]?.name || bg.feat)}</span></div>
+          <div class="builder-grid two-col">${Object.values(builderOptions.origin_feats).map(f => {
+            const dis = (f.caster_only && !isCaster) || f.id === bg.feat || (isLvUp && f.id !== r.versatile_feat);
+            return `<button type="button" class="builder-card ${r.versatile_feat === f.id ? 'is-selected' : ''}" data-set-versatile="${f.id}" ${dis ? 'disabled' : ''}>
+              <strong>${escape(f.name)}</strong>
+              <small>${escape(f.summary)}</small>
+            </button>`;
+          }).join('')}</div>
+        </div>` : ''}
+        ${miBlocks.join('')}
+      </div>`;
+      return;
+    }
+
+    if (builderState.tab === 'abilities') {
+      const fin = finalAbilitiesOf(r);
+      const isPb = r.ability_method === 'point_buy';
+      const spent = isPb ? ABIL_IDS.reduce((s, a) => s + (PB_COSTS[r.base_abilities[a]] ?? 0), 0) : 0;
+      const rem = 27 - spent;
+      pane.innerHTML = `<div class="builder-section">
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Ability Score Method</span><span class="builder-hint">SRD 5.2.1: Standard Array or 27-Point Buy</span></div>
+          <div class="builder-pill-row">
+            <button type="button" class="builder-pill ${!isPb ? 'is-selected' : ''}" data-set-ab-method="standard_array">Standard Array (15, 14, 13, 12, 10, 8)</button>
+            <button type="button" class="builder-pill ${isPb ? 'is-selected' : ''}" data-set-ab-method="point_buy">Point Buy (27 pts)</button>
+          </div>
+        </div>
+        ${isPb ? `<div class="builder-point-bar ${rem < 0 ? 'is-over' : ''}"><span>Points spent: <b>${spent} / 27</b></span><span>${rem >= 0 ? `${rem} remaining` : `${-rem} over budget!`}</span></div>` : ''}
+        <div class="builder-ability-grid">${ABIL_IDS.map(a => {
+          const base = Number(r.base_abilities[a]) || 10;
+          const bonus = Number(r.bg_asi?.[a]) || 0;
+          const total = fin[a];
+          const mod = abilMod(total);
+          const ctrl = isPb
+            ? `<div class="builder-ability-ctrl">
+                <button type="button" class="builder-step-btn" data-pb-step="${a}" data-dir="-1" ${base <= 8 ? 'disabled' : ''}>−</button>
+                <span>Base <b>${base}</b> <small>(${PB_COSTS[base] ?? '?'}pt)</small></span>
+                <button type="button" class="builder-step-btn" data-pb-step="${a}" data-dir="1" ${base >= 15 ? 'disabled' : ''}>+</button>
+              </div>`
+            : `<select class="builder-select" data-sa-pick="${a}">${builderOptions.standard_array.map(v => `<option value="${v}" ${base === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
+          return `<div class="builder-ability-box">
+            <div class="builder-ability-top">
+              <span class="builder-label">${a.toUpperCase()} · ${escape(builderOptions.abilities.find(x => x.id === a)?.label || a)}</span>
+              <span class="builder-ability-final">${total} (${fmtMod(mod)})</span>
+            </div>
+            ${ctrl}
+            <span class="builder-hint">${bonus ? `Background +${bonus}` : 'No background bonus'}${cls.saves.includes(a) ? ' · Save prof.' : ''}</span>
+          </div>`;
+        }).join('')}</div>
+      </div>`;
+      return;
+    }
+
+    if (builderState.tab === 'class') {
+      const blocks = [];
+      if (r.class_id === 'fighter') {
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Fighting Style</span></div>
+          <div class="builder-grid two-col">${Object.values(builderOptions.fighting_styles).map(fs => `<button type="button" class="builder-card ${r.fighting_style === fs.id ? 'is-selected' : ''}" data-set-field="fighting_style" data-val="${fs.id}"><strong>${escape(fs.name)}</strong><small>${escape(fs.summary)}</small></button>`).join('')}</div>
+        </div>`);
+      }
+      if (r.class_id === 'cleric') {
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Divine Order</span></div>
+          <div class="builder-grid two-col">${Object.values(builderOptions.divine_orders).map(d => `<button type="button" class="builder-card ${r.divine_order === d.id ? 'is-selected' : ''}" data-set-divine="${d.id}"><strong>${escape(d.name)}</strong><small>${escape(d.summary)}</small></button>`).join('')}</div>
+        </div>`);
+      }
+      if (r.class_id === 'fighter' || r.class_id === 'barbarian') {
+        const needM = cls.weapon_mastery_count;
+        const shopById = new Map(builderOptions.shop.map(i => [i.id, i]));
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Weapon Masteries (${(r.weapon_masteries || []).length}/${needM})</span><span class="builder-hint">Implemented Practice masteries: Graze, Sap, Cleave</span></div>
+          <div class="builder-pill-row">${builderOptions.mastery_weapons.map(wid => {
+            const w = shopById.get(wid);
+            const on = (r.weapon_masteries || []).includes(wid);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-toggle-list="weapon_masteries" data-val="${wid}" data-max="${needM}">${escape(w?.name || niceName(wid))}<span class="builder-badge">${escape(niceName(w?.mastery || ''))}</span></button>`;
+          }).join('')}</div>
+        </div>`);
+      }
+      if (r.class_id === 'sorcerer' && r.level >= 2) {
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Metamagic (Level 2+)</span><span class="builder-hint">Both Step 1 options active</span></div>
+          <div class="builder-pill-row">${Object.values(builderOptions.metamagic).map(m => `<span class="builder-pill is-locked">${escape(m.name)}</span>`).join('')}</div>
+        </div>`);
+      }
+
+      // Source-specific skill blocks
+      const bgSet = new Set(bg.skills);
+      const clsSet = new Set(r.class_skills || []);
+      const spSk = r.species_skill;
+      const skdSet = new Set(r.skilled_skills || []);
+      const allProfs = new Set([...bgSet, ...clsSet, ...(spSk ? [spSk] : []), ...skdSet, ...(r.primal_knowledge_skill ? [r.primal_knowledge_skill] : [])]);
+
+      blocks.push(`<div class="builder-field">
+        <div class="builder-field-head"><span class="builder-label">Background Skills (${bg.name})</span><span class="builder-hint">Granted automatically</span></div>
+        <div class="builder-pill-row">${bg.skills.map(s => `<span class="builder-pill is-locked">${escape(niceName(s))}</span>`).join('')}</div>
+      </div>`);
+
+      blocks.push(`<div class="builder-field">
+        <div class="builder-field-head"><span class="builder-label">${escape(cls.name)} Class Skills (${clsSet.size}/${cls.skill_count})</span><span class="builder-hint">Choose ${cls.skill_count} from the ${escape(cls.name)} list</span></div>
+        <div class="builder-pill-row">${cls.skills.map(s => {
+          const on = clsSet.has(s);
+          const locked = bgSet.has(s);
+          return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''} ${locked ? 'is-locked' : ''}" data-toggle-list="class_skills" data-val="${s}" data-max="${cls.skill_count}" ${locked ? 'disabled' : ''}>${escape(niceName(s))}${locked ? '<span class="builder-badge">BG</span>' : ''}</button>`;
+        }).join('')}</div>
+      </div>`);
+
+      if (r.species === 'human' || r.species === 'elf') {
+        const pool = r.species === 'human' ? builderOptions.skills.map(s => s.id) : sp.keen_senses_skills;
+        const usedBefore = new Set([...bgSet, ...clsSet]);
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">${r.species === 'human' ? 'Human Skillful (1 Skill)' : 'Elf Keen Senses (1 Skill)'}</span>${r.class_id === 'barbarian' && r.level < 3 ? '<span class="builder-hint">Keep at least 1 Barbarian skill open for Level 3 Primal Knowledge</span>' : ''}</div>
+          <div class="builder-pill-row">${pool.map(s => {
+            const on = spSk === s;
+            const dis = usedBefore.has(s);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-set-field="species_skill" data-val="${s}" ${dis ? 'disabled' : ''}>${escape(niceName(s))}</button>`;
+          }).join('')}</div>
+        </div>`);
+      }
+
+      if (feats.includes('skilled')) {
+        const usedBefore = new Set([...bgSet, ...clsSet, ...(spSk ? [spSk] : [])]);
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Skilled Feat (${skdSet.size}/3 Skills)</span><span class="builder-hint">Supported 3-skill subset of SRD's 3 skills or tools</span></div>
+          <div class="builder-pill-row">${builderOptions.skills.map(sk => {
+            const on = skdSet.has(sk.id);
+            const dis = usedBefore.has(sk.id);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-toggle-list="skilled_skills" data-val="${sk.id}" data-max="3" ${dis ? 'disabled' : ''}>${escape(sk.label)}</button>`;
+          }).join('')}</div>
+        </div>`);
+      }
+
+      if (r.class_id === 'barbarian' && r.level >= 3) {
+        const usedBefore = new Set([...bgSet, ...clsSet, ...(spSk ? [spSk] : []), ...skdSet]);
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Level 3 Primal Knowledge (1 Barbarian Skill)</span><span class="builder-hint">STR-for-5-skills while raging is sheet-only in Practice</span></div>
+          <div class="builder-pill-row">${cls.skills.map(s => {
+            const on = r.primal_knowledge_skill === s;
+            const dis = usedBefore.has(s);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-set-field="primal_knowledge_skill" data-val="${s}" ${dis ? 'disabled' : ''}>${escape(niceName(s))}</button>`;
+          }).join('')}</div>
+        </div>`);
+      }
+
+      if (r.class_id === 'bard' && r.level >= 2) {
+        const profs = [...allProfs];
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Level 2 Expertise (${(r.expertise || []).length}/2 Proficient Skills)</span><span class="builder-hint">Doubles Proficiency Bonus (+4 at Lv 2–3)</span></div>
+          <div class="builder-pill-row">${profs.map(s => `<button type="button" class="builder-pill ${(r.expertise || []).includes(s) ? 'is-selected' : ''}" data-toggle-list="expertise" data-val="${s}" data-max="2">${escape(niceName(s))}</button>`).join('')}</div>
+        </div>`);
+      }
+
+      if (r.class_id === 'bard' && r.level >= 3) {
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Level 3 College of Lore · Bonus Proficiencies (${(r.lore_skills || []).length}/3)</span></div>
+          <div class="builder-pill-row">${builderOptions.skills.map(sk => {
+            const on = (r.lore_skills || []).includes(sk.id);
+            const dis = allProfs.has(sk.id);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-toggle-list="lore_skills" data-val="${sk.id}" data-max="3" ${dis ? 'disabled' : ''}>${escape(sk.label)}</button>`;
+          }).join('')}</div>
+        </div>`);
+      }
+
+      if (r.class_id === 'wizard' && r.level >= 2) {
+        const elig = cls.scholar_skills.filter(s => allProfs.has(s));
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Level 2 Scholar (Expertise)</span><span class="builder-hint">Pick 1 proficient academic skill</span></div>
+          <div class="builder-pill-row">${elig.length ? elig.map(s => `<button type="button" class="builder-pill ${r.scholar_skill === s ? 'is-selected' : ''}" data-set-field="scholar_skill" data-val="${s}">${escape(niceName(s))}</button>`).join('') : '<span class="builder-hint">No academic skill proficient yet.</span>'}</div>
+        </div>`);
+      }
+
+      pane.innerHTML = `<div class="builder-section">${blocks.join('')}</div>`;
+      return;
+    }
+
+    if (builderState.tab === 'equipment') {
+      const { owned, starting, spent, remaining } = computeOwnedAndPurse(r);
+      const fin = finalAbilitiesOf(r);
+      const armorProfs = new Set(cls.armor_training);
+      const wepProfs = new Set(cls.weapon_proficiencies);
+      if (r.class_id === 'cleric' && r.divine_order === 'protector') { armorProfs.add('heavy'); wepProfs.add('martial'); }
+      const purchaseMap = new Map((r.purchases || []).map(p => [p.id, p.qty]));
+      const shopArmors = builderOptions.shop.filter(i => i.group === 'armor');
+      const shopWeps = builderOptions.shop.filter(i => i.group === 'weapon');
+      const shopExtras = builderOptions.shop.filter(i => i.group !== 'armor' && i.group !== 'weapon');
+
+      const ownedArmors = shopArmors.filter(a => owned[a.id] >= 1);
+      const ownedWeps = shopWeps.filter(w => owned[w.id] >= 1);
+      const eqWepSet = new Set(r.equipped_weapons || []);
+      const usedHands = (r.equipped_shield ? 1.0 : 0.0) + (r.equipped_weapons || []).reduce((acc, id) => acc + (shopWeps.find(w => w.id === id)?.hand_slots || 0), 0);
+
+      const shopRow = item => {
+        const qty = purchaseMap.get(item.id) || 0;
+        const meta = item.group === 'weapon'
+          ? `${item.damage}${item.damage_2 ? '/' + item.damage_2 : ''} ${item.damage_type} · ${item.category}${item.properties.length ? ' · ' + item.properties.join(', ') : ''}`
+          : item.group === 'armor'
+            ? `AC ${item.ac} · ${item.category}${item.min_str ? ` · STR ${item.min_str}` : ''}`
+            : (item.note || item.group);
+        return `<div class="builder-shop-row">
+          <div class="builder-shop-info"><strong>${escape(item.name)}</strong><small>${escape(meta)}</small></div>
+          <div class="builder-shop-qty">
+            <span class="builder-shop-cost">${escape(item.cost_label)}</span>
+            <button type="button" class="builder-step-btn" data-shop-step="${item.id}" data-dir="-1" ${qty <= 0 ? 'disabled' : ''}>−</button>
+            <span>${qty}</span>
+            <button type="button" class="builder-step-btn" data-shop-step="${item.id}" data-dir="1" ${remaining < item.cost_cp ? 'disabled' : ''}>+</button>
+          </div>
+        </div>`;
+      };
+
+      pane.innerHTML = `<div class="builder-section">
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Class Starting Equipment (${escape(cls.name)})</span></div>
+          <div class="builder-grid two-col">${Object.entries(cls.starting_equipment).map(([k, pkg]) => `<button type="button" class="builder-card ${r.class_equip_choice === k ? 'is-selected' : ''}" data-set-equip-cls="${k}"><strong>Option ${k}</strong><small>${escape(pkg.label)}</small></button>`).join('')}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Background Starting Equipment (${escape(bg.name)})</span></div>
+          <div class="builder-grid two-col">${Object.entries(bg.equipment).map(([k, pkg]) => `<button type="button" class="builder-card ${r.bg_equip_choice === k ? 'is-selected' : ''}" data-set-equip-bg="${k}"><strong>Option ${k}</strong><small>${escape(pkg.label)}</small></button>`).join('')}</div>
+        </div>
+        <div class="builder-point-bar ${remaining < 0 ? 'is-over' : ''}">
+          <span>Purse: <b>${escape(fmtCp(starting))}</b> · Spent: <b>${escape(fmtCp(spent))}</b></span>
+          <span>Remaining: <b>${remaining >= 0 ? escape(fmtCp(remaining)) : 'Over budget!'}</b></span>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Practice Equipped Loadout</span><span class="builder-hint">Hands used: ${usedHands.toFixed(1).replace(/\.0$/, '')} / 2 · Max 1 Light weapon · Extra thrown copies become spares automatically</span></div>
+          <div class="builder-pill-row">
+            <label class="builder-hint">Armor: <select class="builder-select" data-eq-armor>
+              <option value="" ${!r.equipped_armor ? 'selected' : ''}>Unarmored</option>
+              ${ownedArmors.map(a => {
+                const profOk = armorProfs.has(a.category);
+                const strOk = !a.min_str || fin.str >= a.min_str;
+                const reason = !profOk ? ' (no training)' : !strOk ? ` (needs STR ${a.min_str})` : '';
+                return `<option value="${a.id}" ${r.equipped_armor === a.id ? 'selected' : ''} ${(!profOk || !strOk) ? 'disabled' : ''}>${escape(a.name)} (AC ${a.ac})${reason}</option>`;
+              }).join('')}
+            </select></label>
+            <button type="button" class="builder-pill ${r.equipped_shield ? 'is-selected' : ''}" data-toggle-shield ${!(owned.shield >= 1 && armorProfs.has('shield')) ? 'disabled' : ''}>Shield (+2 AC)${!(owned.shield >= 1) ? ' · buy/own first' : !armorProfs.has('shield') ? ' · no training' : ''}</button>
+          </div>
+          <div class="builder-pill-row">${ownedWeps.length ? ownedWeps.map(w => {
+            const on = eqWepSet.has(w.id);
+            const profOk = wepProfs.has(w.category);
+            const strOk = !w.properties.includes('heavy') || fin.str >= 13;
+            const dis = !on && (!profOk || !strOk);
+            const spareNote = w.properties.includes('thrown') && owned[w.id] > 1 ? ` (+${owned[w.id] - 1} spares)` : '';
+            const lockNote = !profOk ? ' · not prof.' : !strOk ? ' · needs STR 13' : '';
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-toggle-wep="${w.id}" ${dis ? 'disabled' : ''}>${escape(w.name)}${spareNote}${lockNote}</button>`;
+          }).join('') : '<span class="builder-hint">No equippable melee weapons owned (buy one below or fight unarmed).</span>'}</div>
+        </div>
+        <div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">SRD 5.2.1 Starting Shop</span><span class="builder-hint">Buy weapons, armor, shield, Holy Water (25 GP), or 50 GP Diamond</span></div>
+          <div class="builder-shop-list">${[...shopExtras, ...shopArmors, ...shopWeps].map(shopRow).join('')}</div>
+        </div>
+      </div>`;
+      return;
+    }
+
+    if (builderState.tab === 'spells' && isCaster) {
+      const needC0 = cls.cantrip_counts[String(r.level)] + (r.class_id === 'cleric' && r.divine_order === 'thaumaturge' ? 1 : 0);
+      const needPrep = cls.prepared_counts[String(r.level)];
+      const maxSpLv = r.level >= 3 ? 2 : 1;
+      const originIds = new Set([
+        ...(r.high_elf_cantrip ? [r.high_elf_cantrip] : []),
+        ...(r.species === 'elf' && r.level >= 3 ? ['detect_magic'] : []),
+        ...(r.species === 'tiefling' ? ['poison_spray', 'thaumaturgy', ...(r.level >= 3 ? ['ray_of_sickness'] : [])] : []),
+        ...(r.mi_cleric_cantrips || []), ...(r.mi_cleric_spell ? [r.mi_cleric_spell] : []),
+        ...(r.mi_wizard_cantrips || []), ...(r.mi_wizard_spell ? [r.mi_wizard_spell] : []),
+      ]);
+      const alwaysPrep = r.level >= 3 ? (cls.always_prepared_l3 || []) : [];
+      const alwaysSet = new Set(alwaysPrep);
+      const blocks = [];
+
+      blocks.push(`<div class="builder-field">
+        <div class="builder-field-head"><span class="builder-label">${escape(cls.name)} Cantrips (${(r.class_cantrips || []).length}/${needC0})</span><span class="builder-hint">Cast with ${cls.casting_ability.toUpperCase()}</span></div>
+        <div class="builder-pill-row">${spellsFor(r.class_id, 0).map(s => {
+          const on = (r.class_cantrips || []).includes(s.id);
+          const takenOrigin = originIds.has(s.id);
+          return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''} ${takenOrigin ? 'is-locked' : ''}" data-toggle-list="class_cantrips" data-val="${s.id}" data-max="${needC0}" ${takenOrigin ? 'disabled' : ''}>${escape(s.name)}${takenOrigin ? '<span class="builder-badge free">Origin</span>' : ''}${spellBadgesHtml(s)}</button>`;
+        }).join('')}</div>
+      </div>`);
+
+      if (alwaysPrep.length) {
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">${escape(cls.subclass_name)} Always Prepared (Level 3)</span><span class="builder-hint">Free bonus prepared spells</span></div>
+          <div class="builder-pill-row">${alwaysPrep.map(id => {
+            const s = builderOptions.spells[id];
+            return `<span class="builder-pill is-locked">${escape(s?.name || niceName(id))}${s ? spellBadgesHtml(s) : ''}</span>`;
+          }).join('')}</div>
+        </div>`);
+      }
+
+      if (r.class_id === 'wizard') {
+        const needSb = cls.spellbook_counts[String(r.level)];
+        const pool = [...spellsFor('wizard', 1), ...(maxSpLv >= 2 ? spellsFor('wizard', 2) : [])];
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Wizard Spellbook (${(r.wizard_spellbook || []).length}/${needSb})</span><span class="builder-hint">${r.level === 3 ? 'At most 4 Level 2 spells in book' : 'Level 1 Wizard spells'}</span></div>
+          <div class="builder-pill-row">${pool.map(s => {
+            const on = (r.wizard_spellbook || []).includes(s.id);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''}" data-toggle-sb="${s.id}">Lv${s.level} ${escape(s.name)}${spellBadgesHtml(s)}</button>`;
+          }).join('')}</div>
+        </div>`);
+        if (r.level >= 3) {
+          const evPool = (r.wizard_spellbook || []).map(id => builderOptions.spells[id]).filter(s => s && s.school === 'evocation');
+          blocks.push(`<div class="builder-field">
+            <div class="builder-field-head"><span class="builder-label">Evocation Savant (${(r.evocation_savant || []).length}/2 Evocation Spells)</span><span class="builder-hint">Must be in your spellbook</span></div>
+            <div class="builder-pill-row">${evPool.map(s => `<button type="button" class="builder-pill ${(r.evocation_savant || []).includes(s.id) ? 'is-selected' : ''}" data-toggle-list="evocation_savant" data-val="${s.id}" data-max="2">${escape(s.name)}</button>`).join('')}</div>
+          </div>`);
+        }
+        const sbObjs = (r.wizard_spellbook || []).map(id => builderOptions.spells[id]).filter(Boolean);
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Prepared Spells (${(r.class_prepared || []).length}/${needPrep})</span><span class="builder-hint">Prepared from your spellbook</span></div>
+          <div class="builder-pill-row">${sbObjs.map(s => {
+            const on = (r.class_prepared || []).includes(s.id);
+            const takenOrigin = originIds.has(s.id);
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''} ${takenOrigin ? 'is-locked' : ''}" data-toggle-list="class_prepared" data-val="${s.id}" data-max="${needPrep}" ${takenOrigin ? 'disabled' : ''}>Lv${s.level} ${escape(s.name)}${takenOrigin ? '<span class="builder-badge free">Origin</span>' : ''}${spellBadgesHtml(s)}</button>`;
+          }).join('')}</div>
+        </div>`);
+      } else {
+        const pool = [...spellsFor(r.class_id, 1), ...(maxSpLv >= 2 ? spellsFor(r.class_id, 2) : [])];
+        blocks.push(`<div class="builder-field">
+          <div class="builder-field-head"><span class="builder-label">Prepared Spells (${(r.class_prepared || []).length}/${needPrep})</span><span class="builder-hint">Level 1${maxSpLv >= 2 ? '–2' : ''} ${escape(cls.name)} spells</span></div>
+          <div class="builder-pill-row">${pool.map(s => {
+            const on = (r.class_prepared || []).includes(s.id);
+            const locked = originIds.has(s.id) || alwaysSet.has(s.id);
+            const tag = alwaysSet.has(s.id) ? '<span class="builder-badge free">Subclass</span>' : originIds.has(s.id) ? '<span class="builder-badge free">Origin</span>' : '';
+            return `<button type="button" class="builder-pill ${on ? 'is-selected' : ''} ${locked ? 'is-locked' : ''}" data-toggle-list="class_prepared" data-val="${s.id}" data-max="${needPrep}" ${locked ? 'disabled' : ''}>Lv${s.level} ${escape(s.name)}${tag}${spellBadgesHtml(s)}</button>`;
+          }).join('')}</div>
+        </div>`);
+      }
+
+      pane.innerHTML = `<div class="builder-section">${blocks.join('')}</div>`;
+    }
+  }
+
+  function renderBuilderPreview() {
+    const pane = $('builder-preview-pane');
+    const r = builderState.recipe;
+    if (!pane || !r) return;
+    const sum = builderState.preview;
+    const errs = builderState.errors;
+    const warns = builderState.warnings;
+    const errHtml = errs.length ? `<div class="builder-errors"><strong>Resolve before saving:</strong><ul>${errs.map(e => `<li><b>${escape(niceName(e.field))}:</b> ${escape(e.message)}</li>`).join('')}</ul></div>` : '';
+    const warnHtml = warns.length ? `<div class="builder-warnings"><strong>Notes:</strong><ul>${warns.map(w => `<li>${escape(w)}</li>`).join('')}</ul></div>` : '';
+    if (!sum) {
+      pane.innerHTML = `<div class="builder-preview-head">${portrait({ team: 'heroes', base_id: r.model_key, name: r.name })}<div><h3>${escape(r.name || 'Unnamed Hero')}</h3><p class="builder-preview-sub">Level ${escape(r.level)} ${escape(niceName(r.class_id))}</p></div></div>${errHtml}${warnHtml}<p class="builder-hint">${builderState.loading ? 'Validating with server…' : 'Fix the items above to see live combat stats.'}</p>`;
+      return;
+    }
+    const sc = sum.spellcasting;
+    const nextBox = sum.next_level_preview
+      ? `<div class="builder-next-box"><strong>Next Level (Lv ${sum.next_level_preview.next_level}):</strong> ${escape((sum.next_level_preview.gains || []).join(' · '))}</div>`
+      : '';
+    pane.innerHTML = `<div class="builder-preview-head">
+      ${portrait({ team: 'heroes', base_id: sum.model_key, name: sum.name })}
+      <div>
+        <h3>${escape(sum.name)}</h3>
+        <p class="builder-preview-sub">Lv ${escape(sum.level)} ${escape(sum.species_label)} · ${escape(sum.background_label)} ${escape(sum.class_name)}${sum.subclass_name ? ` (${escape(sum.subclass_name)})` : ''}</p>
+      </div>
+    </div>
+    ${errHtml}${warnHtml}
+    <div class="builder-stat-pills">
+      <div class="builder-stat-pill"><small>MAX HP</small><b>${escape(sum.max_hp)}</b></div>
+      <div class="builder-stat-pill"><small>AC</small><b>${escape(sum.ac)}</b></div>
+      <div class="builder-stat-pill"><small>INIT</small><b>${escape(fmtMod(sum.initiative))}${sum.initiative_adv ? ' adv' : ''}</b></div>
+      <div class="builder-stat-pill"><small>SPEED</small><b>${escape(sum.speed)} ft</b></div>
+      <div class="builder-stat-pill"><small>PASSIVE PERC</small><b>${escape(sum.passive_perception)}</b></div>
+      <div class="builder-stat-pill"><small>COINS</small><b>${escape(sum.coins_label)}</b></div>
+    </div>
+    <div class="builder-mini-scores">${ABIL_IDS.map(a => `<div class="builder-mini-score"><span>${a.toUpperCase()}</span><b>${escape(sum.abilities[a])}</b><span>${escape(fmtMod(sum.modifiers[a]))}</span></div>`).join('')}</div>
+    <div class="builder-preview-sec">
+      <h4>Attacks</h4>
+      <ul class="builder-preview-list">${(sum.attacks || []).map(a => `<li><b>${escape(a.name)}${a.thrown ? ' (Thrown)' : ''}</b> ${escape(fmtMod(a.to_hit))} to hit, ${escape(a.damage)} ${escape(a.damage_type)} (${escape(a.range)})${a.masteries?.length ? ` · ${escape(a.masteries.map(niceName).join(', '))}` : ''}</li>`).join('')}</ul>
+    </div>
+    ${sc ? `<div class="builder-preview-sec">
+      <h4>Spellcasting (${escape(sc.ability.toUpperCase())} · Atk ${escape(fmtMod(sc.attack))} · DC ${escape(sc.dc)})</h4>
+      <p class="builder-hint">Slots: L1 ×${sc.slots[1] || 0}${sc.slots[2] ? ` · L2 ×${sc.slots[2]}` : ''}${sc.free_casts?.length ? ` · Free: ${escape(sc.free_casts.join(', '))}` : ''}</p>
+      <p class="builder-hint"><b>Combat:</b> ${escape(sc.active_spells.join(', ') || 'None')}</p>
+      ${sc.inert_spells?.length ? `<ul class="builder-preview-list">${sc.inert_spells.map(sp => `<li><b>${escape(sp.name)}:</b> ${escape(sp.reason)}</li>`).join('')}</ul>` : ''}
+    </div>` : ''}
+    <div class="builder-preview-sec">
+      <h4>Skills & Equipment</h4>
+      <p class="builder-hint"><b>Proficient:</b> ${escape((sum.proficient_skills || []).map(niceName).join(', '))}${sum.expertise?.length ? ` · <b>Expertise:</b> ${escape(sum.expertise.map(niceName).join(', '))}` : ''}</p>
+      <p class="builder-hint"><b>Owned:</b> ${escape((sum.owned_equipment || []).join(', '))}</p>
+    </div>
+    ${nextBox}`;
+  }
+
+  function renderBuilder() {
+    renderBuilderChrome();
+    renderBuilderForm();
+    renderBuilderPreview();
+  }
+
+  function updateBuilderRecipe(mutator, { reconcile = false, resetEquip = false } = {}) {
+    if (!builderState.recipe) return;
+    mutator(builderState.recipe);
+    if (reconcile) builderState.recipe = reconcileRecipe(builderState.recipe, { resetEquip });
+    renderBuilder();
+    scheduleBuilderPreview(false);
+  }
+
+  async function saveBuilderHero() {
+    const res = await runBuilderPreviewNow();
+    if (!res?.ok || !res.data?.summary) return;
+    const clean = cleanRecipePayload(builderState.recipe);
+    const summary = res.data.summary;
+    if (builderState.editId) {
+      const idx = savedHeroes.findIndex(h => h.id === builderState.editId);
+      if (idx >= 0) savedHeroes[idx] = { id: builderState.editId, recipe: clean, summary };
+    } else {
+      if (savedHeroes.length >= MAX_SAVED_HEROES) {
+        builderState.errors = [{ field: 'recipe', message: `You can store up to ${MAX_SAVED_HEROES} custom heroes; delete one first.` }];
+        renderBuilderChrome(); renderBuilderPreview();
+        return;
+      }
+      const id = `h_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      savedHeroes.push({ id, recipe: clean, summary });
+      // Auto-include newly created hero in the Practice party if there is room (< 6)
+      const lv = selectedStart ? levelByKey(selectedStart.encounter, selectedStart.preset) : null;
+      if (lv) {
+        const cur = [...effectivePartyBases(lv)];
+        if (cur.length < 6) {
+          cur.push(`saved:${id}`);
+          customParty = cur;
+        }
+      }
+    }
+    persistSavedHeroes();
+    closeBuilder();
+    renderStartScreen();
+  }
+
+  function deleteSavedHero(id) {
+    savedHeroes = savedHeroes.filter(h => h.id !== id);
+    persistSavedHeroes();
+    if (customParty) {
+      const next = customParty.filter(tok => tok !== `saved:${id}`);
+      customParty = next.length ? next : null;
+    }
+    renderStartScreen();
   }
 
   // --- How to play: the encounters part comes from the catalogue -----------------------
@@ -2804,8 +4040,197 @@
     } else if (e.key === 'Enter') { e.preventDefault(); selectStartLevel(card.dataset.encounter, card.dataset.preset); launchSelectedLevel(true); }
   });
   $('start-party-chips')?.addEventListener('click', e => {
+    const lvBtn = e.target.closest('[data-builder-levelup]');
+    if (lvBtn) { openBuilder({ mode: 'levelup', heroId: lvBtn.dataset.builderLevelup }); return; }
+    const edBtn = e.target.closest('[data-builder-edit]');
+    if (edBtn) { openBuilder({ mode: 'edit', heroId: edBtn.dataset.builderEdit }); return; }
+    const delBtn = e.target.closest('[data-builder-delete]');
+    if (delBtn) { deleteSavedHero(delBtn.dataset.builderDelete); return; }
     const chip = e.target.closest('[data-party-hero]');
     if (chip) togglePartyHero(chip.dataset.partyHero);
+  });
+  $('open-builder-btn')?.addEventListener('click', () => openBuilder({ mode: 'create' }));
+  $('close-builder')?.addEventListener('click', () => closeBuilder());
+  $('builder-dialog')?.addEventListener('cancel', e => { e.preventDefault(); closeBuilder(); });
+  $('builder-reset-btn')?.addEventListener('click', () => {
+    if (!builderState.recipe) return;
+    builderState.recipe = defaultRecipeForClass(builderState.recipe.class_id, builderState.recipe.level);
+    renderBuilder();
+    scheduleBuilderPreview(true);
+  });
+  $('builder-prev-tab')?.addEventListener('click', () => {
+    const isCaster = CASTER_SET.has(builderState.recipe?.class_id);
+    const tabs = BUILDER_TABS.filter(t => isCaster || t.id !== 'spells');
+    const i = tabs.findIndex(t => t.id === builderState.tab);
+    if (i > 0) { builderState.tab = tabs[i - 1].id; renderBuilder(); }
+  });
+  $('builder-next-tab')?.addEventListener('click', () => {
+    const isCaster = CASTER_SET.has(builderState.recipe?.class_id);
+    const tabs = BUILDER_TABS.filter(t => isCaster || t.id !== 'spells');
+    const i = tabs.findIndex(t => t.id === builderState.tab);
+    if (i >= 0 && i < tabs.length - 1) { builderState.tab = tabs[i + 1].id; renderBuilder(); }
+  });
+  $('builder-save-btn')?.addEventListener('click', () => saveBuilderHero());
+  $('builder-tabs')?.addEventListener('click', e => {
+    const tab = e.target.closest('[data-builder-tab]');
+    if (tab) { builderState.tab = tab.dataset.builderTab; renderBuilder(); }
+  });
+  $('builder-form-pane')?.addEventListener('input', e => {
+    if (e.target.id === 'builder-name' && builderState.recipe) {
+      builderState.recipe.name = e.target.value;
+      scheduleBuilderPreview(false);
+    }
+  });
+  $('builder-form-pane')?.addEventListener('change', e => {
+    const sel = e.target;
+    if (sel.dataset.asiPick) {
+      const slot = sel.dataset.asiPick;
+      const val = sel.value;
+      updateBuilderRecipe(r => {
+        const bgAb = builderOptions.backgrounds[r.background].abilities;
+        const cur2 = Object.keys(r.bg_asi || {}).find(k => r.bg_asi[k] === 2) || bgAb[0];
+        const cur1 = Object.keys(r.bg_asi || {}).find(k => r.bg_asi[k] === 1 && k !== cur2) || bgAb.find(a => a !== cur2);
+        if (slot === '2') {
+          const next1 = cur1 === val ? bgAb.find(a => a !== val) : cur1;
+          r.bg_asi = { [val]: 2, [next1]: 1 };
+        } else {
+          r.bg_asi = { [cur2]: 2, [val]: 1 };
+        }
+      }, { reconcile: true });
+    } else if (sel.dataset.saPick) {
+      const ab = sel.dataset.saPick;
+      const val = Number(sel.value);
+      updateBuilderRecipe(r => {
+        const old = r.base_abilities[ab];
+        const other = ABIL_IDS.find(a => a !== ab && r.base_abilities[a] === val);
+        r.base_abilities[ab] = val;
+        if (other) r.base_abilities[other] = old;
+      }, { reconcile: true });
+    } else if (sel.hasAttribute('data-eq-armor')) {
+      updateBuilderRecipe(r => { r.equipped_armor = sel.value || null; });
+    }
+  });
+  $('builder-form-pane')?.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.setLevel) {
+      const lv = Number(b.dataset.setLevel);
+      updateBuilderRecipe(r => { r.level = lv; }, { reconcile: true });
+    } else if (b.dataset.setClass) {
+      const cid = b.dataset.setClass;
+      const keepName = builderState.recipe?.name;
+      const lv = builderState.recipe?.level || 1;
+      const next = defaultRecipeForClass(cid, lv);
+      if (keepName && !keepName.startsWith('New ')) next.name = keepName;
+      builderState.recipe = next;
+      renderBuilder();
+      scheduleBuilderPreview(true);
+    } else if (b.dataset.setModel) {
+      updateBuilderRecipe(r => { r.model_key = b.dataset.setModel; });
+    } else if (b.dataset.setSpecies) {
+      updateBuilderRecipe(r => { r.species = b.dataset.setSpecies; }, { reconcile: true });
+    } else if (b.dataset.setBackground) {
+      updateBuilderRecipe(r => { r.background = b.dataset.setBackground; r.bg_asi = {}; }, { reconcile: true, resetEquip: true });
+    } else if (b.dataset.setAsiMode) {
+      updateBuilderRecipe(r => { r.bg_asi_mode = b.dataset.setAsiMode; }, { reconcile: true });
+    } else if (b.dataset.setVersatile) {
+      updateBuilderRecipe(r => { r.versatile_feat = b.dataset.setVersatile; }, { reconcile: true });
+    } else if (b.dataset.setHeCantrip) {
+      updateBuilderRecipe(r => { r.high_elf_cantrip = b.dataset.setHeCantrip; }, { reconcile: true });
+    } else if (b.dataset.setDivine) {
+      updateBuilderRecipe(r => { r.divine_order = b.dataset.setDivine; }, { reconcile: true });
+    } else if (b.dataset.setAbMethod) {
+      const m = b.dataset.setAbMethod;
+      updateBuilderRecipe(r => {
+        r.ability_method = m;
+        if (m === 'standard_array') {
+          r.base_abilities = { ...(builderOptions.classes[r.class_id]?.recommended_array || { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }) };
+        }
+      }, { reconcile: true });
+    } else if (b.dataset.pbStep) {
+      const ab = b.dataset.pbStep, dir = Number(b.dataset.dir);
+      updateBuilderRecipe(r => {
+        const next = Math.max(8, Math.min(15, (Number(r.base_abilities[ab]) || 8) + dir));
+        r.base_abilities[ab] = next;
+      }, { reconcile: true });
+    } else if (b.dataset.setField) {
+      const fld = b.dataset.setField, val = b.dataset.val;
+      const needsRec = ['mi_cleric_spell', 'mi_wizard_spell', 'species_skill'].includes(fld);
+      updateBuilderRecipe(r => { r[fld] = val; }, { reconcile: needsRec });
+    } else if (b.dataset.toggleList) {
+      const fld = b.dataset.toggleList, val = b.dataset.val, max = Number(b.dataset.max) || 1;
+      updateBuilderRecipe(r => {
+        const arr = Array.isArray(r[fld]) ? [...r[fld]] : [];
+        const i = arr.indexOf(val);
+        if (i >= 0) {
+          arr.splice(i, 1);
+          // Clean up downstream references when unselecting a prerequisite skill
+          if (fld === 'class_skills' || fld === 'skilled_skills') {
+            r.expertise = (r.expertise || []).filter(s => s !== val);
+            if (r.scholar_skill === val) r.scholar_skill = null;
+          }
+        } else if (arr.length < max) {
+          arr.push(val);
+          // Avoid overlapping downstream picks if user picked a skill/cantrip already used elsewhere
+          if (fld === 'class_skills') {
+            if (r.species_skill === val) r.species_skill = null;
+            r.skilled_skills = (r.skilled_skills || []).filter(s => s !== val);
+            r.lore_skills = (r.lore_skills || []).filter(s => s !== val);
+            if (r.primal_knowledge_skill === val) r.primal_knowledge_skill = null;
+          } else if (fld === 'skilled_skills') {
+            r.lore_skills = (r.lore_skills || []).filter(s => s !== val);
+            if (r.primal_knowledge_skill === val) r.primal_knowledge_skill = null;
+          } else if (fld === 'mi_cleric_cantrips' || fld === 'mi_wizard_cantrips') {
+            r.class_cantrips = (r.class_cantrips || []).filter(s => s !== val);
+          }
+        }
+        r[fld] = arr;
+      });
+    } else if (b.dataset.toggleSb) {
+      const val = b.dataset.toggleSb;
+      updateBuilderRecipe(r => {
+        const max = builderOptions.classes.wizard.spellbook_counts[String(r.level)];
+        const arr = Array.isArray(r.wizard_spellbook) ? [...r.wizard_spellbook] : [];
+        const i = arr.indexOf(val);
+        if (i >= 0) {
+          arr.splice(i, 1);
+          r.class_prepared = (r.class_prepared || []).filter(s => s !== val);
+          r.evocation_savant = (r.evocation_savant || []).filter(s => s !== val);
+        } else if (arr.length < max) {
+          arr.push(val);
+        }
+        r.wizard_spellbook = arr;
+      });
+    } else if (b.dataset.setEquipCls) {
+      updateBuilderRecipe(r => { r.class_equip_choice = b.dataset.setEquipCls; }, { reconcile: true, resetEquip: true });
+    } else if (b.dataset.setEquipBg) {
+      updateBuilderRecipe(r => { r.bg_equip_choice = b.dataset.setEquipBg; }, { reconcile: true, resetEquip: true });
+    } else if (b.dataset.shopStep) {
+      const id = b.dataset.shopStep, dir = Number(b.dataset.dir);
+      updateBuilderRecipe(r => {
+        const list = Array.isArray(r.purchases) ? [...r.purchases] : [];
+        const idx = list.findIndex(p => p.id === id);
+        if (idx >= 0) {
+          const nq = list[idx].qty + dir;
+          if (nq <= 0) list.splice(idx, 1);
+          else list[idx] = { id, qty: Math.min(20, nq) };
+        } else if (dir > 0) {
+          list.push({ id, qty: 1 });
+        }
+        r.purchases = list;
+      }, { reconcile: true });
+    } else if (b.hasAttribute('data-toggle-shield')) {
+      updateBuilderRecipe(r => { r.equipped_shield = !r.equipped_shield; });
+    } else if (b.dataset.toggleWep) {
+      const wid = b.dataset.toggleWep;
+      updateBuilderRecipe(r => {
+        const arr = Array.isArray(r.equipped_weapons) ? [...r.equipped_weapons] : [];
+        const i = arr.indexOf(wid);
+        if (i >= 0) arr.splice(i, 1);
+        else if (arr.length < 2) arr.push(wid);
+        r.equipped_weapons = arr;
+      });
+    }
   });
   $('start-party-reset')?.addEventListener('click', () => {
     customParty = null;
@@ -3116,6 +4541,7 @@
       encounter: state.level.encounter, preset: state.level.id,
       ...(state.level.hero_level && { hero_level: state.level.hero_level }),
       ...(!storyRun && activeCustomParty && { party: activeCustomParty }),
+      ...(!storyRun && activeCustomHeroes && { custom_heroes: activeCustomHeroes }),
     }, true);
   };
   $('new-button').addEventListener('click', newEncounter);
@@ -3151,7 +4577,7 @@
   });
 
   document.addEventListener('keydown', e => {
-    if (e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || help.open || $('sheet-dialog').open) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || help.open || $('sheet-dialog').open || $('builder-dialog')?.open) return;
     if (window.FFStory?.isOpen?.()) return;  // the story layer handles its own keys
     if (startScreenOpen) {
       if (e.key === 'Escape') {
@@ -3210,6 +4636,9 @@
     showModeStep,
     selectStartLevel,
     setCustomParty: bases => { customParty = Array.isArray(bases) && bases.length ? [...bases] : null; renderStartScreen(); },
+    getSavedHeroes: () => savedHeroes.map(h => JSON.parse(JSON.stringify(h))),
+    openBuilder,
+    closeBuilder,
     launchSelectedLevel,
     getStoryRun: () => storyRun,
   };
@@ -3231,6 +4660,7 @@
     closeStartScreen: () => closeStartScreen(),
   };
 
+  savedHeroes = loadSavedHeroes();
   setDrawer('left', leftDrawerOpen);
   renderStartScreen();
 

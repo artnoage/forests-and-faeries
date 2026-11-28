@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use crate::web_events::{DeathSave, SaveOutcome};
-use crate::content::{ability_mod, Ability, AdvCond, AtkAbility, AttackDef, Condition, ContentPool, Dice, Dmg, OnHit, SpellId, TargetCond, Template};
+use crate::content::{ability_mod, Ability, AdvCond, AtkAbility, AttackDef, Condition, ContentPool, Dice, Dmg, OnHit, PoolRef, SpellId, TargetCond, Template, TemplateRef};
 use crate::effects::{EffEntry, EffKey, EffObj, Hook, HookEv};
 use crate::spells::Cast;
 use crate::dice::plus_string_modifier;
@@ -131,8 +131,9 @@ pub struct Unit {
     pub id: String,
     /// Index of the creature's template in the content pool.
     pub tid: u16,
-    /// That template (the pool lives for the whole process).
-    pub t: &'static Template,
+    /// That template (zero-overhead static pointer for built-in creatures,
+    /// `Arc`-owned for session-local Practice custom heroes).
+    pub t: TemplateRef,
     /// 0 = heroes (group `a`), 1 = monsters (group `b`).
     pub team: u8,
     pub pos: Pos,
@@ -670,7 +671,7 @@ impl Notes {
 pub struct Fight {
     /// The content pool the units come from (vocabulary ids for the
     /// observation encoder; no game state).
-    pub pool: &'static ContentPool,
+    pub pool: PoolRef,
     /// Version-one tapes predate Remarkable Athlete movement; their controllers declined it.
     pub champion_moves_enabled: bool,
     /// Version 3 movement costs and occupied-space crossings.
@@ -745,6 +746,17 @@ impl Fight {
         max_rounds: i32,
         trace: Trace,
     ) -> Result<Fight, String> {
+        Fight::on_map_pool(PoolRef::from_static(pool), grid, unit_ids, placements, max_rounds, trace)
+    }
+
+    pub fn on_map_pool(
+        pool: PoolRef,
+        grid: Arc<Grid>,
+        unit_ids: &[String],
+        placements: &[Placement],
+        max_rounds: i32,
+        trace: Trace,
+    ) -> Result<Fight, String> {
         let g = &grid;
         if unit_ids.len() > u8::MAX as usize {
             return Err(format!("{} units (at most 255)", unit_ids.len()));
@@ -752,7 +764,7 @@ impl Fight {
         let mut units = Vec::new();
         for id in unit_ids {
             let tid = pool.unit_tid(id).ok_or_else(|| format!("unit {id}: no such content"))?;
-            let t: &'static Template = &pool.templates[tid as usize];
+            let t: TemplateRef = pool.template_ref(tid);
             let p = placements.iter().find(|p| &p.id == id).ok_or_else(|| format!("no placement for {id}"))?;
             for (cx, cy) in UnitCells::new((p.x, p.y), t.token_size) {
                 if g.is_wall(cx, cy) {
@@ -762,13 +774,28 @@ impl Fight {
             if units.iter().any(|u: &Unit| u.id == *id) {
                 return Err(format!("unit {id} twice"));
             }
+            let team = if t.pc { 0 } else { 1 };
+            let max_hp = t.max_hp;
+            let second_wind_uses = t.second_wind_uses;
+            let action_surge_uses = t.action_surge_uses;
+            let bardic_inspiration_uses = t.bardic_inspiration_uses;
+            let slots = t.caster.as_ref().map_or([0; 3], |c| c.slots);
+            let cd = t.caster.as_ref().map_or(0, |c| c.channel_divinity);
+            let free_casts = t.caster.as_ref().map_or(Vec::new(), |c| c.free_casts.clone());
+            let holy_water = t.caster.as_ref().map_or(0, |c| c.holy_water);
+            let sorcery_points = t.caster.as_ref().map_or(0, |c| c.sorcery_points);
+            let innate_sorcery = t.caster.as_ref().map_or(0, |c| c.innate_sorcery);
+            let pools_init = !t.pc && t.caster.as_ref().is_some_and(|c| !c.free_casts.is_empty() || !c.inert_pools.is_empty());
+            let spares = t.spares.iter().map(|s| s.1).collect();
+            let items = t.inventory.iter().map(|i| i.1).collect();
+            let rage_uses = t.rage_uses;
             units.push(Unit {
                 id: id.clone(),
                 tid,
                 t,
-                team: if t.pc { 0 } else { 1 },
+                team,
                 pos: (p.x, p.y),
-                hp: t.max_hp,
+                hp: max_hp,
                 max_hp_reduction: 0,
                 temp_hp: 0,
                 statuses: Vec::new(),
@@ -784,9 +811,9 @@ impl Fight {
                 savage_turn: None,
                 first_turn_taken: false,
                 initiative: 0.0,
-                second_wind_count: t.second_wind_uses,
-                action_surge_count: t.action_surge_uses,
-                bardic_inspiration_count: t.bardic_inspiration_uses,
+                second_wind_count: second_wind_uses,
+                action_surge_count: action_surge_uses,
+                bardic_inspiration_count: bardic_inspiration_uses,
                 mem: Memory { visited: Bits::new(g.cells()), ..Default::default() },
                 str_drain: None,
                 stench_poison: Vec::new(),
@@ -795,12 +822,12 @@ impl Fight {
                 ma_groups: Vec::new(),
                 ma_combos: Vec::new(),
                 ma_started: false,
-                slots: t.caster.as_ref().map_or([0; 3], |c| c.slots),
-                cd: t.caster.as_ref().map_or(0, |c| c.channel_divinity),
-                free_casts: t.caster.as_ref().map_or(Vec::new(), |c| c.free_casts.clone()),
-                holy_water: t.caster.as_ref().map_or(0, |c| c.holy_water),
-                sorcery_points: t.caster.as_ref().map_or(0, |c| c.sorcery_points),
-                innate_sorcery: t.caster.as_ref().map_or(0, |c| c.innate_sorcery),
+                slots,
+                cd,
+                free_casts,
+                holy_water,
+                sorcery_points,
+                innate_sorcery,
                 last_slot_turn: None,
                 concentration: None,
                 effects: Vec::new(),
@@ -819,17 +846,17 @@ impl Fight {
                 cursed: false,
                 save_immune_to: Vec::new(),
                 until_next_turn: Vec::new(),
-                pools_init: !t.pc && t.caster.as_ref().is_some_and(|c| !c.free_casts.is_empty() || !c.inert_pools.is_empty()),
+                pools_init,
                 innate_until: None,
                 unseen: Vec::new(),
                 sap: None,
                 gear_off: 0,
-                spares: t.spares.iter().map(|s| s.1).collect(),
+                spares,
                 two_weapon: false,
                 hidden_stealth: None,
-                items: t.inventory.iter().map(|i| i.1).collect(),
+                items,
                 trail: Vec::new(),
-                rage_count: t.rage_uses,
+                rage_count: rage_uses,
                 raging: false,
                 rage_extended: false,
                 rage_rounds: 0,
@@ -1154,7 +1181,7 @@ impl Fight {
         let Some(caster) = self.units[u].t.caster.as_ref() else {
             return Vec::new();
         };
-        let legacy_curogana = self.rule_version < 18 && self.units[u].t.id == "curogana";
+        let legacy_curogana = self.rule_version < 18 && &*self.units[u].t.id == "curogana";
         caster
             .spells
             .iter()
@@ -1446,7 +1473,7 @@ impl Fight {
     /// pack require rule version 20+.
     #[inline]
     pub fn min_rule_version_for_template(t: &Template) -> i32 {
-        if t.token_size > 1 || matches!(t.base_id, "ogre" | "owlbear") {
+        if t.token_size > 1 || matches!(&*t.base_id, "ogre" | "owlbear") {
             20
         } else {
             1
@@ -1456,7 +1483,7 @@ impl Fight {
     /// Validate that every unit in this fight is supported by `version`.
     pub fn validate_rule_version(&self, version: i32) -> Result<(), String> {
         for u in &self.units {
-            let min = Self::min_rule_version_for_template(u.t);
+            let min = Self::min_rule_version_for_template(&u.t);
             if version < min {
                 return Err(format!(
                     "{} ({}) requires rule_version >= {min}, got {version}",
@@ -2092,11 +2119,14 @@ impl Fight {
             if self.units[u].dead() {
                 continue;
             }
-            let t = self.units[u].t;
-            let mode = if t.init_adv { RollMode::Advantage } else { RollMode::Normal };
+            let (init_adv, init_bonus, dex) = {
+                let t = &self.units[u].t;
+                (t.init_adv, t.init_bonus, t.abil[1])
+            };
+            let mode = if init_adv { RollMode::Advantage } else { RollMode::Normal };
             let face = self.roll_d20(u, "initiative", mode);
-            let total = face + plus_string_modifier_init(t.init_bonus);
-            self.units[u].initiative = total as f64 + t.abil[1] as f64 / 100.0;
+            let total = face + plus_string_modifier_init(init_bonus);
+            self.units[u].initiative = total as f64 + dex as f64 / 100.0;
             self.emit_web(crate::web_events::WebEv::Initiative { u, roll_total: total });
         }
         let mut order: Vec<usize> = (0..self.units.len()).filter(|&u| !self.units[u].dead()).collect();
@@ -3070,16 +3100,18 @@ impl Fight {
         if self.web_events.is_none() {
             return;
         }
-        let t = self.units[src].t;
-        let def: &'static AttackDef = &t.attacks[atk];
-        let attack_name = crate::web_events::pc_or_npc_attack_name(t.pc, def.name);
+        let (attack_name, ranged_weapon) = {
+            let t = &self.units[src].t;
+            let def = &t.attacks[atk];
+            (crate::web_events::pc_or_npc_attack_name(t.pc, def.name), def.ranged)
+        };
         let sp = self.units[src].pos;
         self.emit_web(crate::web_events::WebEv::BlindMiss {
             src,
             src_pos: sp,
             square,
             attack_name,
-            ranged_weapon: def.ranged,
+            ranged_weapon,
             atk_roll_fmt: None,
         });
     }
@@ -3366,8 +3398,8 @@ impl Fight {
         blind_occupant: Option<usize>,
     ) {
         let mut tgt = tgt;
-        let t = self.units[src].t;
-        let def: &'static AttackDef = &t.attacks[atk];
+        let t = self.units[src].t.clone();
+        let def = &t.attacks[atk];
         let atk_name = crate::web_events::pc_or_npc_attack_name(t.pc, def.name);
         let (to_hit, dmg, graze) = self.attack_numbers_ex(src, atk, cleave);
         let hit;
@@ -3686,7 +3718,7 @@ impl Fight {
         for oh in &def.on_hit {
             match *oh {
                 OnHit::SaveCondition { ability, dc, condition, not_undead, not_elf } => {
-                    let tt = self.units[tgt].t;
+                    let tt = &self.units[tgt].t;
                     if (not_undead && tt.undead) || (not_elf && tt.elf) {
                         continue;
                     }
@@ -3976,7 +4008,8 @@ impl Fight {
             self.do_attack_inner(src, atk, o, false, false, Some(o));
             return;
         }
-        let def: &'static AttackDef = &self.units[src].t.attacks[atk];
+        let t = self.units[src].t.clone();
+        let def = &t.attacks[atk];
         if self.web_human_blind_attack {
             if self.units[src].sap.is_some() {
                 self.units[src].sap = None;
@@ -4104,7 +4137,7 @@ impl Fight {
     /// `AttackAction.consume_resource` (thrown weapons, action economy and
     /// multiattack).
     fn consume_attack(&mut self, src: usize, atk: usize, reaction: bool) {
-        let t = self.units[src].t;
+        let t = self.units[src].t.clone();
         let def = &t.attacks[atk];
         if def.recharge.is_some() && !self.units[src].recharge_spent.contains(&def.name) {
             self.units[src].recharge_spent.push(def.name);
@@ -4217,7 +4250,7 @@ impl Fight {
     }
 
     fn adjusted_damage(&self, u: usize, dmg: i32, dt: Dmg) -> Option<i32> {
-        let t = self.units[u].t;
+        let t = &self.units[u].t;
         if t.immune & dt.bit() != 0 { return None; }
         let amount = match (self.resists(u, dt), t.vulnerable & dt.bit() != 0) {
             (true, false) => dmg.div_euclid(2),
@@ -4229,7 +4262,7 @@ impl Fight {
 
     fn apply_adjusted_damage(&mut self, u: usize, mut total: i32, dt: Dmg, critical: bool,
                              hit_state: Option<&mut HitState>, attacker: Option<usize>) -> Option<i32> {
-        let t = self.units[u].t;
+        let t = self.units[u].t.clone();
         // temporary hit points
         let temp_before = self.units[u].temp_hp;
         if total > 0 && temp_before > 0 {
@@ -4695,7 +4728,7 @@ impl Fight {
         if self.units[u].dead() || self.units[u].t.immune_frightened {
             return;
         }
-        let t = self.units[u].t;
+        let t = &self.units[u].t;
         if !(t.pc || t.beast || t.humanoid) {
             return;
         }
@@ -5248,7 +5281,8 @@ impl Fight {
 
     /// `NpcAreaAction` (Steam Mephit Steam Breath).
     fn do_npc_area_ability(&mut self, src: usize, idx: usize, target: Option<Pos>) {
-        let def = &self.units[src].t.area_abilities[idx];
+        let t_src = self.units[src].t.clone();
+        let def = &t_src.area_abilities[idx];
         let origin = self.units[src].pos;
         let squares = match def.shape {
             "radius" | "self" | "emanation" => self.squares_in_radius(origin, def.range, true),
@@ -5377,14 +5411,17 @@ impl Fight {
 
     /// `NpcTeleportAction` execution.
     fn do_npc_teleport(&mut self, src: usize, idx: usize, dest: Pos) {
-        let def = &self.units[src].t.teleports[idx];
-        if def.bonus_action {
+        let (bonus_action, has_recharge, name) = {
+            let def = &self.units[src].t.teleports[idx];
+            (def.bonus_action, def.recharge.is_some(), def.name)
+        };
+        if bonus_action {
             self.units[src].bonus = (self.units[src].bonus - 1).max(0);
         } else {
             self.units[src].action = (self.units[src].action - 1).max(0);
         }
-        if def.recharge.is_some() && !self.units[src].recharge_spent.contains(&def.name) {
-            self.units[src].recharge_spent.push(def.name);
+        if has_recharge && !self.units[src].recharge_spent.contains(&name) {
+            self.units[src].recharge_spent.push(name);
         }
         if self.placeable(src, dest) {
             self.move_to(src, dest);
@@ -5404,7 +5441,7 @@ impl Fight {
                 if self.dist(src, o) * 5 > cfg.range {
                     return false;
                 }
-                let t = self.units[o].t;
+                let t = &self.units[o].t;
                 if !(t.pc || t.humanoid || t.giant) {
                     return false;
                 }
@@ -6142,6 +6179,7 @@ mod srd_level_tests {
                 Placement { id: "guy".into(), x: 0, y: 0 },
                 Placement { id: "skeleton-1".into(), x: 3, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut a21 = WebArena::with_trace(level_skel, Trace::web_free(7), 0, "c".into(), "e".into(), 21).unwrap();
         let st21 = a21.start().unwrap();
@@ -6164,6 +6202,7 @@ mod srd_level_tests {
                 Placement { id: "guy".into(), x: 0, y: 0 },
                 Placement { id: "owlbear-1".into(), x: 3, y: 2 },
             ],
+            custom_heroes: Vec::new(),
         };
         assert!(
             WebArena::with_trace(level.clone(), Trace::web_free(7), 0, "c".into(), "e".into(), 21).is_err(),
@@ -6289,6 +6328,7 @@ mod srd_level_tests {
                 Placement { id: "guy".into(), x: 1, y: 1 },
                 Placement { id: "ogre-1".into(), x: 4, y: 4 },
             ],
+            custom_heroes: Vec::new(),
         };
         let mut a22 = WebArena::with_trace(sq_level.clone(), Trace::web_free(9), 0, "c".into(), "e".into(), 22).unwrap();
         a22.start().unwrap();

@@ -570,8 +570,11 @@
           <div class="start-party-bar" id="start-party-bar">
             <div class="start-theme-label">
               <span class="eyebrow">PRACTICE PARTY</span>
-              <small id="start-party-note">Preset party — click any hero to swap Vesper or others in for Practice.</small>
-              <button type="button" class="mini-action-btn" id="start-party-reset" hidden>Reset to preset</button>
+              <small id="start-party-note">Preset party — click any hero to swap or build your own SRD 5.2.1 hero for Practice.</small>
+              <div class="party-bar-actions">
+                <button type="button" class="mini-action-btn gold-accent" id="open-builder-btn">+ Create Hero</button>
+                <button type="button" class="mini-action-btn" id="start-party-reset" hidden>Reset to preset</button>
+              </div>
             </div>
             <div class="party-chip-row" id="start-party-chips" role="group" aria-label="Choose your Practice party"></div>
           </div>
@@ -812,6 +815,34 @@
     </div>
     <div id="sheet-units" class="sheet-units" role="group" aria-label="Figures"></div>
     <div id="sheet-body" class="sheet-body"></div>
+  </dialog>
+
+  <!-- PRACTICE CHARACTER BUILDER & LEVEL-UP (SRD 5.2.1, Levels 1–3) -->
+  <dialog id="builder-dialog" class="builder-dialog" aria-labelledby="builder-title">
+    <div class="dialog-heading builder-head">
+      <div>
+        <span class="eyebrow" id="builder-eyebrow">PRACTICE CHARACTER BUILDER · SRD 5.2.1</span>
+        <h2 id="builder-title">Create a Hero</h2>
+      </div>
+      <button type="button" class="button quiet" id="close-builder" aria-label="Close builder">✕</button>
+    </div>
+    <div class="builder-levelup-banner" id="builder-levelup-banner" hidden></div>
+    <nav class="builder-tabs" id="builder-tabs" role="tablist" aria-label="Character builder sections"></nav>
+    <div class="builder-layout">
+      <div class="builder-form-pane" id="builder-form-pane"></div>
+      <aside class="builder-preview-pane" id="builder-preview-pane" aria-label="Live character preview"></aside>
+    </div>
+    <div class="builder-footer">
+      <div class="builder-footer-left">
+        <button type="button" class="button quiet" id="builder-reset-btn">Reset to class defaults</button>
+        <span class="builder-status-msg" id="builder-status-msg" role="status" aria-live="polite"></span>
+      </div>
+      <div class="builder-footer-right">
+        <button type="button" class="button quiet" id="builder-prev-tab">← Back</button>
+        <button type="button" class="button quiet" id="builder-next-tab">Next →</button>
+        <button type="button" class="button primary" id="builder-save-btn">Save Hero</button>
+      </div>
+    </div>
   </dialog>
 
   <!-- HOW TO PLAY -->

@@ -50,7 +50,10 @@ fn level2_heroes_content() {
     let thrown = &ilyra.attacks[2];
     assert!(thrown.ranged && thrown.melee_type && thrown.ability == AtkAbility::Finesse);
     assert_eq!(thrown.item, Some(1));
-    assert_eq!(ilyra.gear, vec![("quarterstaff", 1.0), ("dagger", 0.5)]);
+    assert_eq!(
+        ilyra.gear.iter().map(|(s, h)| (s.as_ref(), *h)).collect::<Vec<_>>(),
+        vec![("quarterstaff", 1.0), ("dagger", 0.5)]
+    );
     assert_eq!(ilyra.spares, vec![(1, 1)]);
     let c = ilyra.caster.as_ref().unwrap();
     assert_eq!((c.spell_attack, c.dc, c.slots), (5, 13, [0, 3, 0]));

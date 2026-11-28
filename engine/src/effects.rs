@@ -706,7 +706,7 @@ impl Fight {
     /// `max(equipped_ac, 13 + DEX)` (N20-033; `Npc.armor_class` ignores
     /// `ac_override`, N20-035).
     pub fn armor_class(&self, u: usize) -> i32 {
-        let t = self.units[u].t;
+        let t = &self.units[u].t;
         let mut ac = t.ac;
         if t.pc && !self.units[u].effects.is_empty() && self.has_effect(u, EffKey::AcOverride) {
             ac = crate::spells::mage_armor_ac(t);

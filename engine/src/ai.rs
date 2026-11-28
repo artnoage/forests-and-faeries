@@ -609,7 +609,7 @@ impl Fight {
     /// [`Fight::ai_attack_value`]; `cleave`: the Cleave's extra attack
     /// (`no_ability_mod` damage).
     fn ai_attack_value_ex(&mut self, src: usize, atk: usize, tgt: usize, cleave: bool) -> f64 {
-        let def: &'static crate::content::AttackDef = &self.units[src].t.attacks[atk];
+        let def = &self.units[src].t.attacks[atk];
         let (to_hit, damage, _) = self.attack_numbers_ex(src, atk, cleave);
         let hit_chance = if let Some((ab, dc)) = def.save_attack {
             let t = &self.units[tgt];
@@ -748,7 +748,7 @@ impl Fight {
         let mut best = 0.0f64;
         let mut best_adv = 0.0f64;
         for atk in 0..unit.t.attacks.len() {
-            let def: &'static crate::content::AttackDef = &self.units[u].t.attacks[atk];
+            let def = &self.units[u].t.attacks[atk];
             if def.save_attack.is_some() {
                 continue;
             }
@@ -782,7 +782,7 @@ impl Fight {
     /// `BLIND_ASSUMED_AC`) x the mean damage; no target, so no riders and no
     /// downed weight.
     fn ai_blind_value(&mut self, src: usize, atk: usize, heard: bool) -> f64 {
-        let def: &'static crate::content::AttackDef = &self.units[src].t.attacks[atk];
+        let def = &self.units[src].t.attacks[atk];
         let (to_hit, damage, _) = self.attack_numbers(src, atk);
         let confidence = if heard { 1.0 } else { 0.35 };
         let hit_chance =

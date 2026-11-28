@@ -283,6 +283,7 @@ fn web_arena_move_closes_cleave_window() {
             Placement { id: "zombie-1".into(), x: 3, y: 3 },
             Placement { id: "zombie-2".into(), x: 3, y: 4 },
         ],
+        custom_heroes: Vec::new(),
     };
 
     let mut closed = 0;

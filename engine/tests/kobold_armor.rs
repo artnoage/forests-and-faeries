@@ -20,7 +20,7 @@ fn fight(rows: &[&str], roster: &[(&str, i32, i32)]) -> Fight {
 fn kobold_thrown_dagger_pack_tactics_requires_a_capable_ally() {
     let mut f = fight(&["HHHHHHHH", "H......H", "H......H", "H......H", "HHHHHHHH"],
                       &[("mara", 4, 2), ("kobold_warrior-1", 1, 2), ("kobold_warrior-2", 4, 3)]);
-    let kobold = f.units[1].t;
+    let kobold = f.units[1].t.clone();
     assert!(kobold.pack_tactics);
     let dagger = kobold.attacks.iter().find(|a| a.thrown).unwrap();
     assert_eq!((dagger.range, dagger.range_max), (20, 60));
@@ -36,7 +36,7 @@ fn armor_blindsight_obeys_range_and_total_cover() {
                                ("H..............H", 14, false)] {
         let mut f = fight(&["HHHHHHHHHHHHHHHH", "H..............H", lane, "H..............H", "HHHHHHHHHHHHHHHH"],
                           &[("mara", x, 2), ("animated_armor-1", 1, 2)]);
-        let armor = f.units[1].t;
+        let armor = f.units[1].t.clone();
         assert_eq!((armor.init_bonus, armor.blindsight, armor.max_hp, armor.ac), (2, 60, 33, 18));
         f.units[0].hidden_stealth = Some(25);
         assert_eq!(f.can_see(1, 0), visible);
@@ -46,11 +46,11 @@ fn armor_blindsight_obeys_range_and_total_cover() {
 #[test]
 fn blur_scores_and_attack_rolls_use_the_attackers_sense() {
     let pool = ContentPool::global();
-    let armor = pool.template(pool.tid("animated_armor").unwrap());
-    let truesight = Box::leak(Box::new(Template { blindsight: 0, truesight: 60, ..armor.clone() }));
+    let armor = ember_rs::content::TemplateRef::from_static(pool.template(pool.tid("animated_armor").unwrap()));
+    let truesight = ember_rs::content::TemplateRef::from_arc(Arc::new(Template { blindsight: 0, truesight: 60, ..(*armor).clone() }));
     let blur = Cast { spell: SpellId::Blur, at_level: 2, free: false, targets: vec![0],
                       multi: false, point: None, mm: None, dt: None };
-    for observer in [armor, truesight] {
+    for observer in [&armor, &truesight] {
         for (lane, x, valuable, disadvantage) in [
             ("H..............H", 4, false, false),
             ("H..............H", 13, false, false), // exactly 60 feet
@@ -59,7 +59,7 @@ fn blur_scores_and_attack_rolls_use_the_attackers_sense() {
         ] {
             let mut f = fight(&["HHHHHHHHHHHHHHHH", "H..............H", lane, "H..............H", "HHHHHHHHHHHHHHHH"],
                               &[("curogana", x, 2), ("animated_armor-1", 1, 2)]);
-            f.units[1].t = observer;
+            f.units[1].t = observer.clone();
             assert_eq!(f.spell_ai_value(0, &blur) > 0.0, valuable);
             f.do_spell(0, &blur);
             assert_eq!(f.advantage(1, 0, &observer.attacks[0]).1, disadvantage);
@@ -141,7 +141,8 @@ fn disengage_protects_a_hero_and_native_reactors_spare_turned_creatures() {
 fn dodge_and_prone_depend_on_perception_and_distance() {
     let mut f = fight(&["HHHHHHHH", "H......H", "H......H", "HHHHHHHH"],
                       &[("guy", 2, 1), ("skeleton-1", 6, 1)]);
-    let bow = f.units[1].t.attacks.iter().find(|a| a.ranged).unwrap();
+    let skel = f.units[1].t.clone();
+    let bow = skel.attacks.iter().find(|a| a.ranged).unwrap();
     f.units[0].dodge = true;
     assert_eq!(f.advantage(1, 0, bow), (false, true));
     f.units[1].hidden_stealth = Some(40);

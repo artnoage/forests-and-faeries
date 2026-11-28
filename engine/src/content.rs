@@ -20,7 +20,8 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::ptr::NonNull;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Deserialize;
 
@@ -585,12 +586,12 @@ pub struct CasterSpec {
 /// A creature of the pool. `id` is the natural20 content id.
 #[derive(Clone, Debug)]
 pub struct Template {
-    pub id: &'static str,
-    pub base_id: &'static str,
+    pub id: Arc<str>,
+    pub base_id: Arc<str>,
     pub level: i32,
     pub potent_cantrip: bool,
     pub remarkable_athlete: bool,
-    pub name: &'static str,
+    pub name: Arc<str>,
     pub size: &'static str,
     pub size_rank: u8,
     /// Footprint width/height in 5-ft squares (1 = Tiny/Small/Medium, 2 = Large, 3 = Huge).
@@ -670,7 +671,7 @@ pub struct Template {
     pub caster: Option<CasterSpec>,
     /// Heroes: equipped items in sheet order, with the hand slots
     /// `used_hand_slots` counts for each (weapons and shields; armor 0).
-    pub gear: Vec<(&'static str, f64)>,
+    pub gear: Vec<(Arc<str>, f64)>,
     /// Heroes: spare copies of an equipped thrown weapon in the inventory
     /// (index into `gear`, count), spent before the held one.
     pub spares: Vec<(u8, i32)>,
@@ -800,7 +801,7 @@ impl Feature {
             "potent_cantrip" => PotentCantrip,
             "wizard_subclass" | "evocation_savant" | "martial_archetype" | "weapon_mastery" | "divine_order" | "divine_domain"
             | "draconic_resilience" | "sorcerer_subclass" | "draconic_spells" | "spellcasting" | "alert"
-            | "magic_initiate_cleric" | "magic_initiate_wizard" | "resourceful" | "skillful" | "versatile"
+            | "magic_initiate_cleric" | "magic_initiate_wizard" | "skilled" | "resourceful" | "skillful" | "versatile"
             | "elven_lineage" | "keen_senses" | "trance" | "defense" | "ritual_adept"
             | "arcane_recovery" | "scholar" | "unarmored_defense_barbarian" | "primal_path" | "primal_knowledge"
             | "expertise" | "jack_of_all_trades" | "bard_subclass" | "bonus_proficiencies"
@@ -1209,15 +1210,81 @@ pub struct ContentDoc {
 
 /// Interned names: one `'static` allocation per distinct string, so names
 /// compare and copy as pointers (the pool lives for the whole process).
-pub fn intern(s: &str) -> &'static str {
+fn intern_table() -> &'static Mutex<HashSet<&'static str>> {
     static TABLE: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
-    let mut t = TABLE.get_or_init(Default::default).lock().unwrap();
+    TABLE.get_or_init(Default::default)
+}
+
+pub fn intern(s: &str) -> &'static str {
+    let mut t = intern_table().lock().unwrap();
     if let Some(&x) = t.get(s) {
         return x;
     }
     let leaked: &'static str = Box::leak(s.to_string().into_boxed_str());
     t.insert(leaked);
     leaked
+}
+
+/// Number of entries currently in the process-wide intern table (leak tests).
+pub fn intern_count() -> usize {
+    intern_table().lock().unwrap().len()
+}
+
+fn static_size(size: &str) -> Option<&'static str> {
+    Some(match size {
+        "tiny" => "tiny",
+        "small" => "small",
+        "medium" => "medium",
+        "large" => "large",
+        "huge" => "huge",
+        _ => return None,
+    })
+}
+
+fn static_pc_weapon_name(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "unarmed_attack" => "unarmed_attack",
+        "club" => "club",
+        "dagger" => "dagger",
+        "greatclub" => "greatclub",
+        "handaxe" => "handaxe",
+        "javelin" => "javelin",
+        "light_hammer" => "light_hammer",
+        "mace" => "mace",
+        "quarterstaff" => "quarterstaff",
+        "sickle" => "sickle",
+        "spear" => "spear",
+        "battleaxe" => "battleaxe",
+        "flail" => "flail",
+        "glaive" => "glaive",
+        "greataxe" => "greataxe",
+        "greatsword" => "greatsword",
+        "halberd" => "halberd",
+        "lance" => "lance",
+        "longsword" => "longsword",
+        "maul" => "maul",
+        "morningstar" => "morningstar",
+        "pike" => "pike",
+        "rapier" => "rapier",
+        "scimitar" => "scimitar",
+        "shortsword" => "shortsword",
+        "trident" => "trident",
+        "war_pick" => "war_pick",
+        "warhammer" => "warhammer",
+        "whip" => "whip",
+        _ => return None,
+    })
+}
+
+fn static_pc_pool_name(pool: &str) -> Option<&'static str> {
+    Some(match pool {
+        "magic_initiate_cleric" => "magic_initiate_cleric",
+        "magic_initiate_wizard" => "magic_initiate_wizard",
+        "magic_initiate_druid" => "magic_initiate_druid",
+        "fiendish_legacy" => "fiendish_legacy",
+        "elven_lineage" => "elven_lineage",
+        _ => return None,
+    })
 }
 
 // ----------------------------------------------------------------------------
@@ -1261,6 +1328,21 @@ impl Template {
         Template::build(d).map_err(ctx)
     }
 
+    /// Strict fail-closed builder for session-local custom Practice heroes.
+    /// Rejects NPC-only sections and guarantees zero calls to `intern()`.
+    pub fn from_custom_doc(d: &ContentDoc) -> Result<Template, String> {
+        if !d.pc || d.side != "heroes" {
+            return Err(format!("{}: custom hero must have pc=true and side=\"heroes\"", d.id));
+        }
+        if !d.traits.is_empty() || !d.multiattack.is_empty() {
+            return Err(format!("{}: custom hero cannot carry NPC traits or multiattack", d.id));
+        }
+        if d.spellcasting.as_ref().is_some_and(|sc| sc.innate) {
+            return Err(format!("{}: custom hero cannot use innate NPC spellcasting", d.id));
+        }
+        Template::from_doc(d)
+    }
+
     fn build(d: &ContentDoc) -> Result<Template, String> {
         if d.schema != 1 {
             return Err(format!("schema {} (expected 1)", d.schema));
@@ -1269,6 +1351,9 @@ impl Template {
             return Err(format!("side {:?} with pc {}", d.side, d.pc));
         }
         let token_size = token_size_for(&d.size).ok_or_else(|| {
+            format!("size {:?}: only Tiny, Small, Medium, Large, and Huge creatures are supported", d.size)
+        })?;
+        let size_static = static_size(&d.size).ok_or_else(|| {
             format!("size {:?}: only Tiny, Small, Medium, Large, and Huge creatures are supported", d.size)
         })?;
         let srank = size_rank(&d.size).unwrap_or(2);
@@ -1304,13 +1389,13 @@ impl Template {
             cond.insert(c.as_str());
         }
         let mut t = Template {
-            id: intern(&d.id),
-            base_id: intern(d.base_id.as_deref().unwrap_or(&d.id)),
+            id: Arc::from(d.id.as_str()),
+            base_id: Arc::from(d.base_id.as_deref().unwrap_or(&d.id)),
             level: d.classes.values().sum(),
             potent_cantrip: false,
             remarkable_athlete: false,
-            name: intern(&d.name),
-            size: intern(&d.size),
+            name: Arc::from(d.name.as_str()),
+            size: size_static,
             size_rank: srank,
             token_size,
             pc: d.pc,
@@ -1452,13 +1537,13 @@ impl Template {
                     if !counted || (g.kind == "armor" && g.hand_slots != 0.0) {
                         return Err(format!("item {}: hand slots {}", g.id, g.hand_slots));
                     }
-                    t.gear.push((intern(&g.id), g.hand_slots));
+                    t.gear.push((Arc::from(g.id.as_str()), g.hand_slots));
                 }
                 if t.gear.len() > 32 {
                     return Err("more than 32 equipped items".into());
                 }
                 for (name, &n) in &l.spares {
-                    let i = t.gear.iter().position(|g| g.0 == name).ok_or_else(|| format!("spare {name} is not equipped"))?;
+                    let i = t.gear.iter().position(|g| &*g.0 == name).ok_or_else(|| format!("spare {name} is not equipped"))?;
                     if n < 0 {
                         return Err(format!("spare {name}: {n}"));
                     }
@@ -1726,7 +1811,7 @@ fn attack(
     str_mod: i32,
     dex_mod: i32,
     pb: i32,
-    gear: &[(&'static str, f64)],
+    gear: &[(Arc<str>, f64)],
     hands: f64,
     inventory: &[(&'static str, i32)],
 ) -> Result<AttackDef, String> {
@@ -1869,7 +1954,7 @@ fn attack(
             }
         }
         item = match &a.item {
-            Some(name) => Some(gear.iter().position(|g| g.0 == name).ok_or_else(|| format!("item {name} is not equipped"))? as u8),
+            Some(name) => Some(gear.iter().position(|g| &*g.0 == name).ok_or_else(|| format!("item {name} is not equipped"))? as u8),
             None => None,
         };
         if a.thrown && item.is_none() {
@@ -1903,8 +1988,13 @@ fn attack(
         Some("bonus_action") => true,
         Some(other) => return Err(format!("attack cost {other:?} is not implemented")),
     };
+    let atk_name = if pc {
+        static_pc_weapon_name(&a.name).ok_or_else(|| format!("hero weapon {:?} is not supported", a.name))?
+    } else {
+        intern(&a.name)
+    };
     Ok(AttackDef {
-        name: intern(&a.name),
+        name: atk_name,
         ranged,
         melee_type,
         thrown: a.thrown,
@@ -1981,11 +2071,19 @@ fn caster(sc: &SpellcastingDoc, t: &Template, metamagic: Vec<Mm>) -> Result<Cast
             return Err(format!("free cast pool {} with {} uses", f.pool, f.uses));
         }
         free_casts.push(spell(&f.spell)?);
-        free_cast_pools.push(intern(&f.pool));
+        let pool_name = if t.pc {
+            static_pc_pool_name(&f.pool).ok_or_else(|| format!("unknown hero free cast pool {:?}", f.pool))?
+        } else {
+            intern(&f.pool)
+        };
+        free_cast_pools.push(pool_name);
     }
     let mut inert_pools = Vec::new();
     for (k, &v) in &sc.resources {
         if k.starts_with("innate:") {
+            if t.pc {
+                return Err(format!("hero resource {k:?} is not allowed"));
+            }
             inert_pools.push((intern(k), v));
         } else if !matches!(k.as_str(), "channel_divinity" | "holy_water" | "sorcery_points" | "innate_sorcery") {
             return Err(format!("resource {k:?} is not implemented"));
@@ -2097,13 +2195,148 @@ pub fn embedded_files() -> &'static [(&'static str, &'static str)] {
     embedded::FILES
 }
 
+/// Zero-overhead template reference:
+/// - For built-in templates (`BatchEnv` and standard heroes/monsters): `ptr`
+///   points directly into the contiguous static `ContentPool.templates` slice
+///   and `_owner` is `None` (zero atomic refcount operations on clone/drop and
+///   zero branches on deref).
+/// - For session-local custom heroes (Practice UI): `_owner` holds an
+///   `Arc<Template>` keeping the heap-pinned `Template` alive for the exact
+///   lifetime of this reference (dropped cleanly when the session ends).
+pub struct TemplateRef {
+    ptr: NonNull<Template>,
+    _owner: Option<Arc<Template>>,
+}
+
+// SAFETY: `Template` is immutable (`Sync + Send`), and `ptr` points either to a
+// `&'static Template` (`_owner: None`) or to the stable heap allocation owned by
+// `_owner: Some(Arc<Template>)` for the full lifetime of `TemplateRef`.
+unsafe impl Send for TemplateRef {}
+unsafe impl Sync for TemplateRef {}
+
+impl TemplateRef {
+    #[inline(always)]
+    pub fn from_static(t: &'static Template) -> Self {
+        Self { ptr: NonNull::from(t), _owner: None }
+    }
+
+    #[inline(always)]
+    pub fn from_arc(a: Arc<Template>) -> Self {
+        let ptr = NonNull::from(a.as_ref());
+        Self { ptr, _owner: Some(a) }
+    }
+}
+
+impl Clone for TemplateRef {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        match &self._owner {
+            None => Self { ptr: self.ptr, _owner: None },
+            Some(arc) => Self { ptr: self.ptr, _owner: Some(Arc::clone(arc)) },
+        }
+    }
+}
+
+impl std::ops::Deref for TemplateRef {
+    type Target = Template;
+    #[inline(always)]
+    fn deref(&self) -> &Template {
+        // SAFETY: `ptr` is valid and immutable for the lifetime of `self`.
+        unsafe { self.ptr.as_ref() }
+    }
+}
+
+impl std::fmt::Debug for TemplateRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&**self, f)
+    }
+}
+
+/// Either a process-wide static content pool (zero atomic refcount overhead and
+/// zero branches on deref for `BatchEnv`) or a session-local `Arc<ContentPool>`
+/// overlay for Practice custom heroes (freed automatically when the session ends).
+pub struct PoolRef {
+    ptr: NonNull<ContentPool>,
+    _owner: Option<Arc<ContentPool>>,
+}
+
+// SAFETY: `ContentPool` is `Sync + Send`, and `ptr` points either to a
+// `&'static ContentPool` (`_owner: None`) or to the stable heap allocation
+// owned by `_owner: Some(Arc<ContentPool>)` for the full lifetime of `PoolRef`.
+unsafe impl Send for PoolRef {}
+unsafe impl Sync for PoolRef {}
+
+impl PoolRef {
+    #[inline(always)]
+    pub fn from_static(p: &'static ContentPool) -> Self {
+        Self { ptr: NonNull::from(p), _owner: None }
+    }
+
+    #[inline(always)]
+    fn from_overlay_arc(a: Arc<ContentPool>) -> Self {
+        debug_assert!(a.base.is_some());
+        let ptr = NonNull::from(a.as_ref());
+        Self { ptr, _owner: Some(a) }
+    }
+
+    /// Borrow a [`TemplateRef`] for `tid` with zero atomic ops for all built-in templates.
+    #[inline(always)]
+    pub fn template_ref(&self, tid: u16) -> TemplateRef {
+        if self._owner.is_none() {
+            // SAFETY: `_owner` is `None` iff created via `from_static`, so `ptr`
+            // points to a `&'static ContentPool` whose `templates` slice is `'static`.
+            let static_pool: &'static ContentPool = unsafe { self.ptr.as_ref() };
+            TemplateRef::from_static(&static_pool.templates[tid as usize])
+        } else {
+            let p: &ContentPool = self;
+            let base = p.base.expect("overlay PoolRef always has a static base pool");
+            let i = tid as usize;
+            if i < base.templates.len() {
+                TemplateRef::from_static(&base.templates[i])
+            } else {
+                TemplateRef::from_arc(Arc::clone(&p.custom[i - base.templates.len()]))
+            }
+        }
+    }
+}
+
+impl Clone for PoolRef {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        match &self._owner {
+            None => Self { ptr: self.ptr, _owner: None },
+            Some(arc) => Self { ptr: self.ptr, _owner: Some(Arc::clone(arc)) },
+        }
+    }
+}
+
+impl std::ops::Deref for PoolRef {
+    type Target = ContentPool;
+    #[inline(always)]
+    fn deref(&self) -> &ContentPool {
+        // SAFETY: `ptr` is valid for the lifetime of `self`.
+        unsafe { self.ptr.as_ref() }
+    }
+}
+
+impl std::fmt::Debug for PoolRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&**self, f)
+    }
+}
+
 /// Every creature the engine can play, by content id.
 #[derive(Debug)]
 pub struct ContentPool {
+    /// Built-in templates stored contiguously (empty in a session-local overlay).
     pub templates: Vec<Template>,
+    /// Underlying static pool when this is a session-local custom-hero overlay.
+    base: Option<&'static ContentPool>,
+    /// Session-local custom hero templates (empty in all static/batch pools).
+    custom: Vec<Arc<Template>>,
     pub docs: Vec<ContentDoc>,
     pub vocab: Vocab,
-    by_id: HashMap<&'static str, u16>,
+    by_id: HashMap<Arc<str>, u16>,
     /// Vocabulary ids by template, attack, spell and action kind for the
     /// observation encoder (`encode.rs`), built on first use.
     pub(crate) enc_ids: OnceLock<crate::encode::EncIds>,
@@ -2122,8 +2355,15 @@ impl ContentPool {
                 vocab.merge(&v).map_err(|e| format!("{origin}: {e}"))?;
             }
         }
-        let mut pool =
-            ContentPool { templates: Vec::new(), docs: Vec::new(), vocab, by_id: HashMap::new(), enc_ids: OnceLock::new() };
+        let mut pool = ContentPool {
+            templates: Vec::new(),
+            base: None,
+            custom: Vec::new(),
+            docs: Vec::new(),
+            vocab,
+            by_id: HashMap::new(),
+            enc_ids: OnceLock::new(),
+        };
         for (origin, text) in docs {
             let doc: ContentDoc = serde_json::from_str(text).map_err(|e| format!("{origin}: {e}"))?;
             let stem = Path::new(origin).file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -2132,17 +2372,49 @@ impl ContentPool {
             }
             let t = Template::from_doc(&doc).map_err(|e| format!("{origin}: {e}"))?;
             pool.check_vocab(&doc).map_err(|e| format!("{origin}: {e}"))?;
-            if pool.by_id.contains_key(t.id) {
+            if pool.by_id.contains_key(&t.id) {
                 return Err(format!("{origin}: content id {:?} defined twice", t.id));
             }
             if pool.templates.len() >= u16::MAX as usize {
                 return Err("too many content ids".into());
             }
-            pool.by_id.insert(t.id, pool.templates.len() as u16);
+            pool.by_id.insert(Arc::clone(&t.id), pool.templates.len() as u16);
             pool.templates.push(t);
             pool.docs.push(doc);
         }
         Ok(pool)
+    }
+
+    /// Build a session-local [`PoolRef`] overlaying extra custom hero templates
+    /// on top of this static pool without mutating `self` or cloning built-in templates.
+    pub fn with_extra_templates(&'static self, extras: Vec<(ContentDoc, Template)>) -> Result<PoolRef, String> {
+        debug_assert!(self.base.is_none());
+        let base_len = self.templates.len();
+        let mut custom = Vec::with_capacity(extras.len());
+        let mut docs = Vec::with_capacity(extras.len());
+        let mut by_id = self.by_id.clone();
+        for (doc, tmpl) in extras {
+            let t = Arc::new(tmpl);
+            if by_id.contains_key(&t.id) {
+                return Err(format!("custom hero id {:?} collides with an existing creature id", t.id));
+            }
+            let tid = base_len + custom.len();
+            if tid >= u16::MAX as usize {
+                return Err("too many content ids".into());
+            }
+            by_id.insert(Arc::clone(&t.id), tid as u16);
+            custom.push(t);
+            docs.push(doc);
+        }
+        Ok(PoolRef::from_overlay_arc(Arc::new(ContentPool {
+            templates: Vec::new(),
+            base: Some(self),
+            custom,
+            docs,
+            vocab: self.vocab.clone(),
+            by_id,
+            enc_ids: OnceLock::new(),
+        })))
     }
 
     /// Every name a creature brings has a vocabulary id.
@@ -2270,8 +2542,27 @@ impl ContentPool {
         (t.pc && suffix == t.level.to_string()).then_some(id)
     }
 
+    #[inline(always)]
     pub fn template(&self, tid: u16) -> &Template {
-        &self.templates[tid as usize]
+        match self.base {
+            None => &self.templates[tid as usize],
+            Some(base) => {
+                let i = tid as usize;
+                if i < base.templates.len() {
+                    &base.templates[i]
+                } else {
+                    &self.custom[i - base.templates.len()]
+                }
+            }
+        }
+    }
+
+    pub fn iter_templates(&self) -> impl Iterator<Item = &Template> {
+        let (s_slice, c_slice) = match self.base {
+            None => (self.templates.as_slice(), [].as_slice()),
+            Some(base) => (base.templates.as_slice(), self.custom.as_slice()),
+        };
+        s_slice.iter().chain(c_slice.iter().map(|a| a.as_ref()))
     }
 
     /// The content id of a unit id: a hero's unit id is its content id,
@@ -2279,14 +2570,14 @@ impl ContentPool {
     /// `monster_content`).
     pub fn unit_tid(&self, uid: &str) -> Option<u16> {
         if let Some(t) = self.tid(uid) {
-            if self.templates[t as usize].pc {
+            if self.template(t).pc {
                 return Some(t);
             }
         }
         let (content, n) = uid.rsplit_once('-')?;
         let ok = !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && !n.starts_with('0');
         let t = self.tid(content).filter(|_| ok)?;
-        if self.templates[t as usize].pc {
+        if self.template(t).pc {
             return None;
         }
         Some(t)
@@ -2305,7 +2596,7 @@ impl ContentPool {
                 diffs.push(format!("{what} {ours} != tape {theirs}"));
             }
         };
-        let want_name = if t.pc { t.name } else { uid };
+        let want_name: &str = if t.pc { &t.name } else { uid };
         cmp("name", want_name.to_string(), s.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string());
         cmp("ac", t.ac.to_string(), format!("{:?}", int("ac").unwrap_or(-99)));
         cmp("hp", t.max_hp.to_string(), format!("{:?}", int("hp").unwrap_or(-99)));
@@ -2397,7 +2688,7 @@ impl ContentPool {
         let abil: serde_json::Map<String, serde_json::Value> =
             Ability::ALL.iter().map(|a| (a.short().to_string(), json!(t.abil[a.idx()]))).collect();
         let mut row = json!({
-            "name": if t.pc { t.name } else { uid }, "ac": t.ac, "hp": t.max_hp, "mhp": t.max_hp,
+            "name": if t.pc { &*t.name } else { uid }, "ac": t.ac, "hp": t.max_hp, "mhp": t.max_hp,
             "speed": t.speed, "size": t.size, "abil": abil, "init_bonus": t.init_bonus, "npc": !t.pc,
         });
         if !t.pc {

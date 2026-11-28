@@ -140,7 +140,7 @@ def create_app():
     if ui != 'ff':
         raise RuntimeError("EMBER_UI must be 'ff'.")
 
-    from game import catalogue
+    from game import builder, catalogue
     from game.arena import FFArena
 
     app = Flask(__name__, static_folder=None)
@@ -219,6 +219,40 @@ def create_app():
         return jsonify(encounters=catalogue.catalogue_view(include_private=private),
                        heroes=catalogue.practice_heroes())
 
+    @app.get('/api/builder/options')
+    def builder_options_endpoint():
+        return jsonify(builder.builder_options())
+
+    @app.post('/api/builder/preview')
+    def builder_preview():
+        if request.mimetype != 'application/json':
+            return jsonify(error='A JSON request body is required.'), 400
+        try:
+            data = request.get_json(silent=True)
+        except RecursionError:
+            return jsonify(error='JSON body is too deeply nested.'), 400
+        if not isinstance(data, dict) or set(data) != {'recipe'}:
+            return jsonify(error='Request body must be a JSON object with a recipe field.'), 400
+        with store.lock:
+            key = request.cookies.get(COOKIE)
+            game = store.get(key) if key else None
+            if game is None:
+                return jsonify(error='This game has expired. A new one was started.', code='expired'), 410
+            token = request.headers.get('X-CSRF-Token', '')
+            try:
+                token_bytes = token.encode('utf-8')
+            except UnicodeEncodeError:
+                return jsonify(error='Invalid CSRF token.'), 403
+            if not secrets.compare_digest(token_bytes, game.csrf_token.encode('utf-8')):
+                return jsonify(error='Invalid CSRF token.'), 403
+        try:
+            derived = builder.validate_and_derive(data['recipe'], unit_id='custom_preview', validate_rust=True)
+        except builder.BuilderError as err:
+            return jsonify(valid=False, error=str(err), errors=err.errors), 400
+        except ValueError as err:
+            return jsonify(valid=False, error=str(err), errors=[{'field': 'recipe', 'message': str(err)}]), 400
+        return jsonify(valid=True, errors=[], warnings=derived['warnings'], summary=derived['summary'])
+
     @app.get('/api/state')
     def state():
         with store.lock:
@@ -239,7 +273,7 @@ def create_app():
                                     max_age=store.ttl, path='/')
             return response
 
-    allowed = {'new': {'encounter', 'preset', 'seed', 'hero_level', 'party'}, 'action': {'revision', 'action_id'},
+    allowed = {'new': {'encounter', 'preset', 'seed', 'hero_level', 'party', 'custom_heroes'}, 'action': {'revision', 'action_id'},
                'end-turn': {'revision'}, 'advance': {'revision', 'autoplay'},
                'setup': {'revision', 'placements', 'monster_control'}, 'start': {'revision'}}
 
@@ -285,7 +319,15 @@ def create_app():
                     level = levels.get((encounter, preset))
                     if level is None:
                         raise ValueError('Unknown encounter or preset.')
-                    if 'party' in data:
+                    if 'custom_heroes' in data:
+                        if level.preset.get('story'):
+                            raise ValueError('Story chapters use their fixed party.')
+                        level = level.with_party(
+                            data.get('party'),
+                            hero_level=data.get('hero_level'),
+                            custom_heroes=data['custom_heroes'],
+                        )
+                    elif 'party' in data:
                         level = level.with_party(data['party'], hero_level=data.get('hero_level'))
                     elif 'hero_level' in data:
                         level = level.with_hero_level(data['hero_level'])
