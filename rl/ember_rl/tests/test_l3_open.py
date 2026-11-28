@@ -613,6 +613,51 @@ def test_phase_budget_per_team(tmp_path, catalog):
     assert all(p['finished'] == 'heroes' for p in phases)       # the monsters' phase has no budget and never ends
 
 
+def test_frozen_team_trains_one_side_in_gated_phases(tmp_path, catalog):
+    """--frozen-team heroes: every phase is a monsters' phase against the heroes' selected policy (and league);
+    each phase scores its baseline first, ends on the gate or budget and archives its selection."""
+    out = tmp_path / 'frozen'
+    duel.main(['--output', str(out), '--max-updates', '6', '--gate-threshold', '1', '--phase-budget', '64',
+               '--frozen-team', 'heroes', '--league', '--league-size', '2',
+               *strata_args(catalog), *PPO, *TINY, *GATED])      # --first-team heroes (default) is overridden
+    r = rows(out)
+    phases = [x for x in r if x['type'] == 'phase']
+    assert len(phases) >= 2 and all(p['finished'] == 'monsters' and p['active'] == 'monsters' for p in phases)
+    assert [p['phase'] for p in phases] == list(range(1, len(phases) + 1))
+    devs = [x for x in r if x['type'] == 'dev']
+    assert devs and all(x['team'] == 'monsters' for x in devs)
+    assert sum(x['label'] == 'baseline' for x in devs) >= len(phases)
+    assert phases[-1]['updates']['heroes'] == 0 and phases[-1]['updates']['monsters'] >= 2
+    index = json.loads((out / 'archive' / 'index.json').read_text())
+    assert index['entries'] and all(e['team'] == 'monsters' for e in index['entries'])
+
+
+def test_frozen_team_ends_a_resumed_phase_of_that_team(tmp_path, catalog):
+    """A run resumed with --frozen-team in a phase of the frozen team: that phase ends at once without a
+    selection and the other team trains from a new phase; with --native-opponent the frozen side is the native
+    AI (no league)."""
+    out = tmp_path / 'resumed'
+    base = [*strata_args(catalog), *PPO, *TINY, *GATED, '--gate-threshold', '1', '--phase-budget', '0']
+    duel.main(['--output', str(out), '--max-updates', '2', *base])                 # heroes' phase, never ends
+    payload = torch.load(out / 'checkpoint.pt', map_location='cpu', weights_only=False)
+    assert payload['schedule']['active_team'] == 'heroes'
+    heroes_before = payload['updates']['heroes']
+    duel.main(['--output', str(out), '--max-updates', '6', *base, '--frozen-team', 'heroes',
+               '--resume', str(out / 'checkpoint.pt')])
+    r = rows(out)
+    switch = [x for x in r if x['type'] == 'phase' and x.get('reason') == 'frozen_team']
+    assert len(switch) == 1 and switch[0]['active'] == 'monsters' and switch[0]['selected'] is None
+    after = torch.load(out / 'checkpoint.pt', map_location='cpu', weights_only=False)
+    assert after['updates']['heroes'] == heroes_before and after['updates']['monsters'] > 0
+    assert after['schedule']['active_team'] == 'monsters'
+    native = tmp_path / 'native'
+    duel.main(['--output', str(native), '--max-updates', '3', *base, '--frozen-team', 'monsters',
+               '--native-opponent', 'monsters'])
+    devs = [x for x in rows(native) if x['type'] == 'dev']
+    assert devs and all(x['team'] == 'heroes' for x in devs)
+    assert torch.load(native / 'checkpoint.pt', map_location='cpu', weights_only=False)['updates']['monsters'] == 0
+
+
 def test_learner_balance_estimates_weights_fit_and_state():
     from ember_rl.balance import LearnerBalance
     rows_ = synthetic_catalog(parties=(TRIO,), families=('fixed',), splits=(('train', 6),), wide=0,

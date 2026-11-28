@@ -305,6 +305,28 @@ class Trainer:
                 self.selected[team] = self._frozen_copy(self.policies.learner[team])
             self.selected_id = {t: f'initial-{t}' for t in TEAMS}
             self.active_team = args.first_team
+        frozen_team = getattr(args, 'frozen_team', None)
+        if frozen_team is not None and self.active_team == frozen_team:
+            # --frozen-team: never a phase of that team. A fresh run starts with the other team; a run resumed
+            # in a phase of the frozen team ends that phase at once without a selection (its selected policy
+            # stays, its candidates and pending development round are dropped) and the other team starts a
+            # new phase, baseline first.
+            self.active_team = OTHER[frozen_team]
+            if saved:
+                for key in [k for k in self.policies.frozen if k.startswith('dev-')]:
+                    del self.policies.frozen[key]
+                for key in [k for k in self.streams if k[1] == frozen_team]:
+                    del self.streams[key]
+                self.phase += 1
+                saved = None
+                row = dict(type='phase', schedule='gated', phase=self.phase, active=self.active_team,
+                           finished=frozen_team, reason='frozen_team', selected=None,
+                           selected_id=self.selected_id[frozen_team], last=None, frozen_team=frozen_team,
+                           updates=dict(self.updates), decisions=dict(self.decisions),
+                           elapsed=round(self.elapsed(), 1))
+                with (self.out / 'metrics.jsonl').open('a') as stream:
+                    stream.write(json.dumps(row) + '\n')
+                print('PHASE', json.dumps(row), flush=True)
         inactive = OTHER[self.active_team]
         self.policies.frozen[f'phase-{inactive}'] = self.selected[inactive]
         self.buffer[inactive] = []
@@ -596,6 +618,20 @@ class Trainer:
                                            decisions=dict(self.decisions), updates=dict(self.updates)))
         for key in [k for k in self.policies.frozen if k.startswith('dev-')]:
             del self.policies.frozen[key]
+        if getattr(self.args, 'frozen_team', None) == OTHER[team]:
+            # --frozen-team: the other team never trains. The same team starts its next phase against the
+            # same frozen opponent (its selected policy and league); the new phase scores the team's new
+            # selected policy as its baseline. The learner, its buffer and its streams carry on.
+            self.phase += 1
+            row = dict(type='phase', schedule='gated', phase=self.phase, active=self.active_team,
+                       finished=team, reason=reason, selected=best, selected_id=self.selected_id[team],
+                       last=g['last'], frozen_team=OTHER[team], updates=dict(self.updates),
+                       decisions=dict(self.decisions), elapsed=round(self.elapsed(), 1))
+            with (self.out / 'metrics.jsonl').open('a') as stream:
+                stream.write(json.dumps(row) + '\n')
+            print('PHASE', json.dumps(row), flush=True)
+            self.new_gate_phase()
+            return
         self.active_team = OTHER[team]
         self.phase += 1
         # The team that just finished is now the frozen opponent, as its selected policy.
@@ -1132,6 +1168,9 @@ def parser():
                         'team\'s learner and every other creature by the native AI (see general_duel)')
     p.add_argument('--phase-updates', type=int, default=8, help='alternating: active-team updates per phase')
     p.add_argument('--first-team', choices=TEAMS, default='heroes', help='gated: team that trains first')
+    p.add_argument('--frozen-team', choices=TEAMS, default=None,
+                   help='gated: this team never trains; every phase is a phase of the other team, against this '
+                        'team\'s selected policy (and league); the gate and phase budget still end each phase')
     p.add_argument('--gate-threshold', type=float, default=.8,
                    help='gated: switch when native elimination wins > this fraction of development games')
     p.add_argument('--gate-rule', choices=('absolute', 'paired'), default='absolute',
@@ -1468,6 +1507,8 @@ def prepare_args(args):
         raise SystemExit('learner balance: --balance-floor in [0, 1], window, fit games and refresh >= 1, prior >= 0')
     if args.until_stopped and args.deadline:
         raise SystemExit('--until-stopped has no deadline: drop --deadline')
+    if args.frozen_team is not None and args.schedule != 'gated':
+        raise SystemExit('--frozen-team needs --schedule gated')
     if args.league:
         if args.schedule != 'gated':
             raise SystemExit('--league needs --schedule gated')
