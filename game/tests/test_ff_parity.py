@@ -524,15 +524,16 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
     assert hdr17['version'] == 17
     assert hdr17['n20_commit'] == 'ef91112bf07b933734bff12a94d7e724ca8f3fee'
 
-    # Explicit rule 18/19 preserve c0025a88; rule 20 preserves ddb92d5a; rule 21 stamps the current pin.
+    # Explicit historical rule pins preserve their frozen Natural20 commits; rule 22 stamps the current pin.
     rule_pins = {
         17: 'ef91112bf07b933734bff12a94d7e724ca8f3fee',
         18: 'c0025a88679950621baa29a64a66e1aadcd40ea9',
         19: 'c0025a88679950621baa29a64a66e1aadcd40ea9',
         20: 'ddb92d5a0cd6401e27530ccb1e5b956c7771dfbf',
-        21: ember_rs.NATURAL20_COMMIT,
+        21: 'cc11193aaab2d9f9d9ae06c97342f8f533bd40ea',
+        22: ember_rs.NATURAL20_COMMIT,
     }
-    for rv in (18, 19, 20, 21):
+    for rv in (18, 19, 20, 21, 22):
         expected_commit = rule_pins[rv]
         env_v = ember_rs.BatchEnv(n_slots=1, catalog=[row], threads=1, rule_version=rv)
         assert env_v.rule_version == rv
@@ -546,13 +547,13 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
     # Every rule-version pin must match real provenance / reference history (never a typo or made-up hash).
     repo_root = Path(__file__).resolve().parents[2]
     ref_pin = (repo_root / 'engine' / 'reference' / 'NATURAL20_COMMIT').read_text(encoding='utf-8').strip()
-    assert rule_pins[21] == ref_pin
+    assert rule_pins[22] == ref_pin
     srd_commits = {
         json.loads(p.read_text(encoding='utf-8')).get('provenance', {}).get('natural20_commit')
         for p in (repo_root / 'engine' / 'content' / 'srd').glob('*.json')
     }
     assert rule_pins[18] in srd_commits, f'rule 18/19 pin {rule_pins[18]} not found in engine/content/srd provenance'
-    assert rule_pins[21] in srd_commits, f'rule 21 pin {rule_pins[21]} not found in engine/content/srd provenance'
+    assert rule_pins[22] in srd_commits, f'rule 22 pin {rule_pins[22]} not found in engine/content/srd provenance'
     if (repo_root / '.git').exists():
         import subprocess
         hist = subprocess.check_output(
@@ -561,7 +562,7 @@ def test_batch_env_rule_version_isolation_and_rule17_curogana_compat(tmp_path: P
         )
         for rv, sha in rule_pins.items():
             assert len(sha) == 40 and all(c in '0123456789abcdef' for c in sha), f'rule {rv} pin malformed: {sha}'
-            if rv < 21:
+            if rv < 22:
                 assert sha in hist, f'rule {rv} pin {sha} not found in engine/reference/NATURAL20_COMMIT git history'
     priv_repo = repo_root.parent / 'forests-and-faeries-private'
     if (priv_repo / '.git').exists():

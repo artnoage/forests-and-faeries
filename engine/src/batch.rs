@@ -62,6 +62,9 @@ pub const NATURAL20_COMMIT_RULE_18_19: &str = "c0025a88679950621baa29a64a66e1aad
 /// The natural20 commit for rule-20 (initial multi-square Large/Huge with temporary squeeze/drag blocks) tapes.
 pub const NATURAL20_COMMIT_RULE_20: &str = "ddb92d5a0cd6401e27530ccb1e5b956c7771dfbf";
 
+/// The natural20 commit for rule-21 (upstream squeeze, drag clamp, Dodge, cover, melee ring) tapes.
+pub const NATURAL20_COMMIT_RULE_21: &str = "cc11193aaab2d9f9d9ae06c97342f8f533bd40ea";
+
 /// Return the Natural20 reference commit corresponding to `rule_version`.
 pub fn natural20_commit_for_rule_version(version: i32) -> &'static str {
     if version < 18 {
@@ -70,6 +73,8 @@ pub fn natural20_commit_for_rule_version(version: i32) -> &'static str {
         NATURAL20_COMMIT_RULE_18_19
     } else if version < 21 {
         NATURAL20_COMMIT_RULE_20
+    } else if version < 22 {
+        NATURAL20_COMMIT_RULE_21
     } else {
         NATURAL20_COMMIT.trim()
     }
@@ -952,6 +957,7 @@ mod pin_tests {
             (19, natural20_commit_for_rule_version(19)),
             (20, natural20_commit_for_rule_version(20)),
             (21, natural20_commit_for_rule_version(21)),
+            (22, natural20_commit_for_rule_version(22)),
         ];
         for (rv, sha) in pins {
             assert_eq!(sha.len(), 40, "rule {rv} pin must be 40 hex chars: {sha}");
@@ -961,7 +967,8 @@ mod pin_tests {
         assert_eq!(natural20_commit_for_rule_version(18), NATURAL20_COMMIT_RULE_18_19);
         assert_eq!(natural20_commit_for_rule_version(19), NATURAL20_COMMIT_RULE_18_19);
         assert_eq!(natural20_commit_for_rule_version(20), NATURAL20_COMMIT_RULE_20);
-        assert_eq!(natural20_commit_for_rule_version(21), ref_pin);
+        assert_eq!(natural20_commit_for_rule_version(21), NATURAL20_COMMIT_RULE_21);
+        assert_eq!(natural20_commit_for_rule_version(22), ref_pin);
 
         // Rule 18/19 and current pins must match actual SRD provenance exported from Natural20.
         let srd_dir = root.join("content").join("srd");
@@ -974,7 +981,7 @@ mod pin_tests {
         assert_eq!(ref_pin, read_prov("ogre.json"));
         assert_eq!(ref_pin, read_prov("owlbear.json"));
 
-        // If git metadata is available, every historical pin (17, 18/19, 20) must exist in
+        // If git metadata is available, every historical pin (17, 18/19, 20, 21) must exist in
         // engine/reference/NATURAL20_COMMIT's commit history (preventing typos or invented hashes).
         let repo_root = root.parent().unwrap();
         if repo_root.join(".git").exists() {
@@ -989,6 +996,7 @@ mod pin_tests {
                 (18, NATURAL20_COMMIT_RULE_18_19),
                 (19, NATURAL20_COMMIT_RULE_18_19),
                 (20, NATURAL20_COMMIT_RULE_20),
+                (21, NATURAL20_COMMIT_RULE_21),
             ] {
                 assert!(hist.contains(sha), "rule {rv} pin {sha} missing from NATURAL20_COMMIT git history");
             }

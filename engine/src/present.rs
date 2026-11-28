@@ -32,7 +32,7 @@ use crate::tape::{DrawVal, Ev, Placement};
 use crate::trace::Trace;
 use crate::web_events::{DeathSave, SaveOutcome, WebEv};
 
-pub const CURRENT_WEB_REPLAY_VERSION: u8 = 23;
+pub const CURRENT_WEB_REPLAY_VERSION: u8 = 24;
 
 pub(crate) fn web_replay_rule_version(replay_version: u8) -> i32 {
     match replay_version {
@@ -43,7 +43,8 @@ pub(crate) fn web_replay_rule_version(replay_version: u8) -> i32 {
         20 => 18,
         21 => 19,
         22 => 20,
-        _ => 21,
+        23 => 21,
+        _ => 22,
     }
 }
 const MAX_LOG: usize = 180;

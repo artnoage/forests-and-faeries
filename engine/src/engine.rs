@@ -18,7 +18,7 @@ use crate::tape::{Ev, Placement, StateDigest, UnitDigest};
 use crate::trace::{RollMode, Trace};
 
 pub const MAX_ROUNDS: i32 = 50;
-pub const CURRENT_RULE_VERSION: i32 = 21;
+pub const CURRENT_RULE_VERSION: i32 = 22;
 
 /// Zero-allocation iterator over a creature's `s x s` grid cells in Natural20
 /// `Map.entity_squares_at_pos` order (`ox` outer `0..s`, `oy` inner `0..s`).
@@ -1321,10 +1321,13 @@ impl Fight {
     /// True if `p` is inside an active `Entangle` difficult-terrain zone.
     pub fn is_entangle_square(&self, p: Pos) -> bool {
         let gt = self.gt();
+        let r22 = self.rule_version >= 22;
         self.objs.iter().any(|o| {
             !o.ended
                 && match &o.kind {
-                    crate::effects::ObjKind::Entangle { squares, expires_at, .. } => gt < *expires_at && squares.contains(&p),
+                    crate::effects::ObjKind::Entangle { squares, expires_at, .. } => {
+                        (if r22 { gt <= *expires_at } else { gt < *expires_at }) && squares.contains(&p)
+                    }
                     _ => false,
                 }
         })
@@ -1922,10 +1925,11 @@ impl Fight {
         }
         if !self.units[u].t.fly {
             let gt = self.gt();
+            let r22 = self.rule_version >= 22;
             for obj in &self.objs {
                 if !obj.ended {
                     if let crate::effects::ObjKind::Entangle { squares, expires_at, .. } = &obj.kind {
-                        if gt < *expires_at {
+                        if if r22 { gt <= *expires_at } else { gt < *expires_at } {
                             for &(x, y) in squares {
                                 if self.grid.in_bounds(x, y) {
                                     mask.set(self.grid.index(x, y));
@@ -6123,7 +6127,7 @@ mod srd_level_tests {
         // Web replay v21 omits token_size/cells/climb_speed (1x1) and rejects Large creatures; v22 includes them
         use crate::present::{LevelInput, WebArena, CURRENT_WEB_REPLAY_VERSION};
         use crate::tape::Placement;
-        assert_eq!(CURRENT_WEB_REPLAY_VERSION, 23);
+        assert_eq!(CURRENT_WEB_REPLAY_VERSION, 24);
         let level_skel = LevelInput {
             encounter_id: "test-skel".into(),
             preset_id: "test-skel".into(),
@@ -6187,7 +6191,7 @@ mod srd_level_tests {
             "HHHHHHHHHH",
         ];
         let mut f = fight(&squeeze_arena, &[("ogre-1", (4, 4)), ("guy", (5, 1))]);
-        assert_eq!(f.rule_version(), 21);
+        assert_eq!(f.rule_version(), CURRENT_RULE_VERSION);
         assert!(!f.units[0].squeezed());
         assert_eq!(f.unit_cells(0).collect::<Vec<_>>().len(), 4);
         assert!(f.requires_squeeze(0, (5, 3)));
@@ -6334,5 +6338,63 @@ mod srd_level_tests {
         assert!(pc_huge.compute_path((1, 1), (1, 3)).is_some(), "Huge squeezes 3x3->2x2 at y=h-2");
         assert!(pc_huge.compute_path((1, 1), (5, 1)).is_none(), "Huge cannot fit 2x2 at x=w-1");
         assert!(pc_huge.compute_path((1, 1), (1, 4)).is_none(), "Huge cannot fit 2x2 at y=h-1");
+    }
+
+    #[test]
+    fn rule22_entangle_difficult_terrain_persists_until_caster_turn_in_round_r_plus_10() {
+        use crate::effects::ObjKind;
+
+        let mut f = fight(&["......"; 5], &[("mara", (1, 2)), ("dryad-1", (4, 2))]);
+        f.round = 1; // gt == 6; Entangle cast in round 1 lasts 10 rounds (expires_at == 66)
+        let zone_sq = (2, 2);
+        let zone_obj = f.new_obj(
+            SpellId::Entangle,
+            ObjKind::Entangle {
+                squares: vec![zone_sq, (2, 3), (3, 2), (3, 3)],
+                dc: 12,
+                restraints: Vec::new(),
+                expires_at: f.gt() + 60,
+            },
+            1,
+            Vec::new(),
+            true,
+        );
+        f.add_casted(1, 1, zone_obj, Some(60));
+        f.concentration_on(1, zone_obj);
+
+        // Round 10 (gt == 60 < 66): difficult terrain under both rule 21 and rule 22.
+        f.round = 10;
+        for rv in [21, 22] {
+            f.set_rule_version(rv);
+            assert!(f.is_entangle_square(zone_sq), "round 10 rule {rv}: zone active");
+            assert_eq!(f.step_cost(0, zone_sq), 2, "round 10 rule {rv}: 10 ft step cost");
+            assert!(f.occupied_mask(0).get(f.grid.index(zone_sq.0, zone_sq.1)), "round 10 rule {rv}: mask set");
+        }
+
+        // Round 11 (gt == 66 == expires_at), BEFORE dryad-1's turn:
+        // - Rule 21 (legacy): terrain switches off at top of round 11 (5 ft).
+        // - Rule 22 (SRD 5.2.1 / Natural20): terrain stays difficult until dryad-1's cleanup (10 ft).
+        f.round = 11;
+        f.set_rule_version(21);
+        assert!(!f.is_entangle_square(zone_sq), "rule 21 preserves legacy top-of-round-11 expiry");
+        assert_eq!(f.step_cost(0, zone_sq), 1);
+        assert!(!f.occupied_mask(0).get(f.grid.index(zone_sq.0, zone_sq.1)));
+
+        f.set_rule_version(22);
+        assert!(f.is_entangle_square(zone_sq), "rule 22 keeps Entangle terrain active before caster's turn in round r+10");
+        assert_eq!(f.step_cost(0, zone_sq), 2);
+        assert!(f.occupied_mask(0).get(f.grid.index(zone_sq.0, zone_sq.1)));
+
+        // Start of dryad-1's turn in round 11: cleanup_effects dismisses the zone and concentration.
+        f.cleanup_effects(1);
+        assert!(f.objs[zone_obj as usize].ended);
+        assert_eq!(f.units[1].concentration, None);
+        assert!(!f.is_entangle_square(zone_sq), "zone ends at caster's round r+10 cleanup");
+        assert_eq!(f.step_cost(0, zone_sq), 1);
+        assert!(!f.occupied_mask(0).get(f.grid.index(zone_sq.0, zone_sq.1)));
+
+        // Web replay v23 preserves rule 21 while v24 maps to rule 22.
+        assert_eq!(crate::present::web_replay_rule_version(23), 21);
+        assert_eq!(crate::present::web_replay_rule_version(24), 22);
     }
 }

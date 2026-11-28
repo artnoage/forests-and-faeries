@@ -1,10 +1,10 @@
 //! Replays every committed rule-21 Natural20 reference tape in `fixtures/r21/`
-//! (pinned to `reference/NATURAL20_COMMIT`, adopting upstream 8f46774a & 1a7eeb03)
+//! (pinned to `NATURAL20_COMMIT_RULE_21`, adopting upstream 8f46774a & 1a7eeb03)
 //! and requires zero divergences.
 
 use std::path::Path;
 
-use ember_rs::batch::NATURAL20_COMMIT;
+use ember_rs::batch::NATURAL20_COMMIT_RULE_21;
 use ember_rs::content::ContentPool;
 use ember_rs::replay::{check_stats, install_quiet_hook, replay_file, Outcome};
 use ember_rs::tape::{Ev, Tape};
@@ -21,7 +21,7 @@ fn rule21_upstream_fixtures_replay_without_divergence() {
     files.sort();
     assert!(files.len() >= 6, "expected >= 6 rule-21 fixtures, got {}", files.len());
     let pool = ContentPool::global();
-    let pinned = NATURAL20_COMMIT.trim();
+    let pinned = NATURAL20_COMMIT_RULE_21;
     let mut failures = Vec::new();
     let mut saw_squeezed = false;
     for f in &files {
